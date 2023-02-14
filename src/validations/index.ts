@@ -5,10 +5,11 @@ import { ValidationError } from '../errors'
 import { Instance } from '../instance'
 import { StorageFile } from '../storage'
 
-const isNotTruncated = (error?: string) => Validate.makeRule((file: StorageFile) => {
+const isNotTruncated = (error?: string) => Validate.makeRule<StorageFile>((file) => {
+	const val = file as StorageFile
 	error = error ?? `is larger than allowed limit of ${Instance.get().settings.maxFileUploadSizeInMb}mb`
-	const valid = file ? !file.isTruncated : true
-	return valid ? Validate.isValid(file) : Validate.isInvalid([error], file)
+	const valid = val ? !val.isTruncated : true
+	return valid ? Validate.isValid(val) : Validate.isInvalid([error], val)
 })
 
 export const Validation = { ...Validate, isNotTruncated }
