@@ -1,6 +1,6 @@
+import cookie from 'cookie-parser'
 import cors from 'cors'
 import express from 'express'
-import cookie from 'cookie-parser'
 import fileUpload from 'express-fileupload'
 import rateLimit from 'express-rate-limit'
 import slowDown from 'express-slow-down'
@@ -23,8 +23,7 @@ export type Route = {
 	controllers: Controller[]
 }
 
-const preRoutes: Route[] = []
-const postRoutes: Route[] = [
+const postRoutes = () : Route[] => [
 	{
 		path: '__health',
 		method: 'get',
@@ -93,7 +92,7 @@ export class Server {
 	}
 
 	set routes(routes: Route[]) {
-		const allRoutes = [...preRoutes, ...routes, ...postRoutes]
+		const allRoutes = [...routes, ...postRoutes()]
 		allRoutes.forEach(({ method, path, controllers }) => {
 			controllers = [parseAuthUser, ...controllers]
 			if (path) this.#expressApp[method]?.(formatPath(path), ...controllers)

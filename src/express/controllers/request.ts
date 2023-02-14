@@ -1,6 +1,6 @@
-import { AuthUser, RefreshUser } from '../../utils/authUser'
-import { StorageFile } from '../../storage'
 import { CustomError } from '../../errors'
+import { StorageFile } from '../../storage'
+import { AuthUser, RefreshUser } from '../../utils/authUser'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
