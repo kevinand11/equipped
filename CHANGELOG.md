@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.0.0-alpha.8](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha.7...v4.0.0-alpha.8) (2023-02-14)
+
+
+### Features
+
+* add isNotTruncated to file types ([4d013e1](https://github.com/kevinand11/equipped/commit/4d013e142301df7e98bbe96a8bf18d5fc3a10dc6))
+
 ## [4.0.0-alpha.7](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha.6...v4.0.0-alpha.7) (2023-02-14)
 
 
