@@ -16,6 +16,7 @@ export class Request {
 	readonly method: string
 	readonly path: string
 	readonly body: Record<string, any>
+	readonly cookies: Record<string, any>
 	readonly rawBody: Record<string, any>
 	readonly params: Record<string, string>
 	readonly query: Record<string, string>
@@ -26,11 +27,11 @@ export class Request {
 	pendingError: null | CustomError = null
 
 	constructor ({
-		             body, params, query,
-		             method, path, headers, files,
-		             data
+		             body, cookies, params, query,
+		             method, path, headers, files, data
 	             }: {
 		body: Record<string, any>
+		cookies: Record<string, any>
 		params: Record<string, any>
 		query: Record<string, any>
 		headers: Record<HeaderKeys, any>
@@ -43,10 +44,11 @@ export class Request {
 		this.path = path
 		this.rawBody = body
 		this.body = parseJSON(body)
+		this.cookies = cookies
 		this.params = params
 		this.query = Object.fromEntries(
 			Object.entries(query ?? {})
-				.map(([key, val]) => [key, this.parseQueryStrings(val as any)])
+				.map(([key, val]) => [key, this.#parseQueryStrings(val as any)])
 		)
 		this.headers = headers
 		this.files = files
@@ -54,8 +56,8 @@ export class Request {
 		this.refreshUser = data.refreshUser ?? null
 	}
 
-	private parseQueryStrings (value: string | string[]) {
-		if (Array.isArray(value)) return value.map(this.parseQueryStrings)
+	#parseQueryStrings (value: string | string[]) {
+		if (Array.isArray(value)) return value.map(this.#parseQueryStrings)
 		try {
 			return JSON.parse(value)
 		} catch (e) {

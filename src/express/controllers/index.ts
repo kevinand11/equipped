@@ -1,8 +1,8 @@
 import { ErrorRequestHandler, Handler, NextFunction, Request, Response } from 'express'
-import { Request as CustomRequest } from './request'
-import { StatusCodes, SupportedStatusCodes } from '../statusCodes'
 import { StorageFile } from '../../storage'
 import { getMediaDuration } from '../../utils/media'
+import { StatusCodes, SupportedStatusCodes } from '../statusCodes'
+import { Request as CustomRequest } from './request'
 
 type CustomResponse = {
 	status: SupportedStatusCodes,
@@ -71,6 +71,7 @@ const extractRequest = async (req: Request) => {
 	// @ts-ignore
 	const request = req.savedReq ?? new CustomRequest({
 		body: req.body ?? {},
+		cookies: req.cookies ?? {},
 		params: req.params ?? {},
 		query: req.query ?? {},
 		method: req.method,

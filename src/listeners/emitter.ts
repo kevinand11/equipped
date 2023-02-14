@@ -21,7 +21,7 @@ export type SocketCallers = {
 	onDisconnect: (userId: string, socketId: string) => Promise<void>
 }
 
-export class SocketEmitter {
+export class Listener {
 	#socket: io.Server
 	#callers: SocketCallers
 	#routes = {} as Record<string, OnJoinFn>
@@ -32,15 +32,15 @@ export class SocketEmitter {
 		this.#setupSocketConnection()
 	}
 
-	async emitCreated (channel: string, data: BaseEntity) {
+	async created (channel: string, data: BaseEntity) {
 		await this.#emit(channel, EmitTypes.created, data)
 	}
 
-	async emitUpdated (channel: string, data: BaseEntity) {
+	async updated (channel: string, data: BaseEntity) {
 		await this.#emit(channel, EmitTypes.updated, data)
 	}
 
-	async emitDeleted (channel: string, data: BaseEntity) {
+	async deleted (channel: string, data: BaseEntity) {
 		await this.#emit(channel, EmitTypes.deleted, data)
 	}
 

@@ -1,5 +1,6 @@
 import cors from 'cors'
 import express from 'express'
+import cookie from 'cookie-parser'
 import fileUpload from 'express-fileupload'
 import rateLimit from 'express-rate-limit'
 import slowDown from 'express-slow-down'
@@ -9,7 +10,7 @@ import path from 'path'
 import io from 'socket.io'
 import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
-import { SocketEmitter } from '../sockets'
+import { Listener } from '../listeners'
 import { Controller, makeController } from './controllers'
 import { errorHandler, notFoundHandler } from './middlewares'
 import { parseAuthUser } from './middlewares/parseAuthUser'
@@ -51,7 +52,7 @@ const postRoutes: Route[] = [
 export class Server {
 	#expressApp: express.Express
 	#httpServer: http.Server<any, any>
-	#socketEmitter: SocketEmitter
+	#listener: Listener
 
 	constructor () {
 		const settings = Instance.get().settings
@@ -60,6 +61,7 @@ export class Server {
 		this.#httpServer = http.createServer(this.#expressApp)
 		if (settings.isDev) this.#expressApp.use(morgan('dev'))
 		this.#expressApp.use(express.json())
+		this.#expressApp.use(cookie())
 		this.#expressApp.use(cors({ origin: '*' }))
 		this.#expressApp.use(express.urlencoded({ extended: false }))
 		this.#expressApp.use(express.static(path.join(process.cwd(), 'public')))
@@ -80,14 +82,14 @@ export class Server {
 			}) as any
 		)
 		const socket = new io.Server(this.#httpServer, { cors: { origin: '*' } })
-		this.#socketEmitter = new SocketEmitter(socket, {
+		this.#listener = new Listener(socket, {
 			onConnect: async () => {},
 			onDisconnect: async () => {}
 		})
 	}
 
-	get socketEmitter() {
-		return this.#socketEmitter
+	get listener() {
+		return this.#listener
 	}
 
 	set routes(routes: Route[]) {

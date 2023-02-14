@@ -93,8 +93,8 @@ export class Instance {
 		return this.#server
 	}
 
-	get socketEmitter () {
-		return this.server.socketEmitter
+	get listener () {
+		return this.server.listener
 	}
 
 	get settings () {
