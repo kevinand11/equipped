@@ -19,7 +19,7 @@ type Rules<T> = {
 	rules: Validate.Rule<T>[]
 }
 
-export const validate = <Keys extends Record<string, any>, T> (data: Keys, rules: Record<keyof Keys, Rules<T>>) => {
+export const validate = <Keys extends Record<string, any>> (data: Keys, rules: Record<keyof Keys, Rules<any>>) => {
 	const errors = Object.entries(data)
 		.map(([key, value]) => ({
 			key,
