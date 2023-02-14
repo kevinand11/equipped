@@ -5,7 +5,7 @@
 	"description": "",
 	"main": "lib/index.js",
 	"scripts": {
-		"build": "tsc --build --force",
+		"build": "tsc --project tsconfig.json",
 		"lint": "eslint src/ --ext .ts,.js --fix",
 		"pub": "yarn lint && yarn build && yarn publish --access public",
 		"release": "standard-version",
