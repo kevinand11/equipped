@@ -26,6 +26,8 @@ const isValidPhone = (error?: string) => Validate.makeRule<Phone>((value) => {
 	return Validate.isValid(phone)
 })
 
+const file = Validate.v.file
+Validate.v.file = (...args: Parameters<typeof file>) => file(...args).addRule(isNotTruncated())
 export const Schema = Validate.v
 export const Validation = { ...Validate, isNotTruncated, isValidPhone }
 
