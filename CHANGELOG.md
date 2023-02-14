@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.0.0-alpha.7](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha.6...v4.0.0-alpha.7) (2023-02-14)
+
+
+### Bug Fixes
+
+* update valleyed version ([638ea0a](https://github.com/kevinand11/equipped/commit/638ea0a2c91967ae897f83b8ea9da480dcd1a7bf))
+
 ## [4.0.0-alpha.6](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha.5...v4.0.0-alpha.6) (2023-02-14)
 
 ## [4.0.0-alpha.5](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha.4...v4.0.0-alpha.5) (2023-02-14)
