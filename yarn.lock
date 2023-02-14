@@ -1046,13 +1046,6 @@
   resolved "https://registry.yarnpkg.com/@socket.io/component-emitter/-/component-emitter-3.1.0.tgz#96116f2a912e0c02817345b3c10751069920d553"
   integrity sha512-+9jVqKhRSpsc591z5vX+X5Yyw+he/HCB4iQ/RYxw35CEPaY1gnsNE43nf9n9AaYjAQrTiI/mOwKUKdUs9vf7Xg==
 
-"@stranerd/validate@^3.5.1":
-  version "3.5.1"
-  resolved "https://registry.yarnpkg.com/@stranerd/validate/-/validate-3.5.1.tgz#86006b8d1c961251e5d3cc063eef2522bda6eb72"
-  integrity sha512-C6xs8KHLfZbY+VrqNELKDdqmd51jQcctZr88cRANQeNh9qohVBOUF7Hydw2d3k0LiNPsVitWrf+fdbGrGsq+sg==
-  dependencies:
-    url-regex-safe "^3.0.0"
-
 "@tokenizer/token@^0.3.0":
   version "0.3.0"
   resolved "https://registry.yarnpkg.com/@tokenizer/token/-/token-0.3.0.tgz#fe98a93fe789247e998c75e74e9c7c63217aa276"
@@ -4818,6 +4811,13 @@ validate-npm-package-license@^3.0.1:
   dependencies:
     spdx-correct "^3.0.0"
     spdx-expression-parse "^3.0.0"
+
+valleyed@^4.0.2-patched:
+  version "4.0.2-patched"
+  resolved "https://registry.yarnpkg.com/valleyed/-/valleyed-4.0.2-patched.tgz#5998b9c84a37e35badbf6488c4e8867c32d232a5"
+  integrity sha512-zhaDJvQNYMxUgRucrf15Og1Klu3dxtnA3FQFLZlahuS/zyqGWoOtfEkDoYjwsIlgGT+sa93Ii1xycyepJ+o68g==
+  dependencies:
+    url-regex-safe "^3.0.0"
 
 vary@^1, vary@~1.1.2:
   version "1.1.2"

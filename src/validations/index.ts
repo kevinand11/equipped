@@ -1,44 +1,63 @@
-import * as Validate from '@stranerd/validate'
 import * as bcrypt from 'bcryptjs'
+import * as Validate from 'valleyed'
+import { VCore } from 'valleyed/lib/api/core'
 import { ValidationError } from '../errors'
 import { Instance } from '../instance'
 import { StorageFile } from '../storage'
 
-const isNotTruncated = (file?: StorageFile, error?: string) => {
+const isNotTruncated = (error?: string) => Validate.makeRule((file: StorageFile) => {
 	error = error ?? `is larger than allowed limit of ${Instance.get().settings.maxFileUploadSizeInMb}mb`
 	const valid = file ? !file.isTruncated : true
-	return valid ? Validate.isValid() : Validate.isInvalid(error)
-}
+	return valid ? Validate.isValid(file) : Validate.isInvalid([error], file)
+})
 
-const isNotTruncatedX = (error?: string) => (val: any) => isNotTruncated(val, error)
+export const Validation = { ...Validate, isNotTruncated }
 
-export const Validation = { ...Validate, isNotTruncated, isNotTruncatedX }
-
-type Rules = {
+type Rules<T> = {
 	required?: boolean | (() => boolean)
 	nullable?: boolean
-	rules: Validate.Rule[]
+	rules: Validate.Rule<T>[]
 }
 
-export const validate = <Keys extends Record<string, any>> (data: Keys, rules: Record<keyof Keys, Rules>) => {
+export const validate = <Keys extends Record<string, any>, T> (data: Keys, rules: Record<keyof Keys, Rules<T>>) => {
 	const errors = Object.entries(data)
 		.map(([key, value]) => ({
 			key,
-			valid: Validation.Validator.single(value, rules[key].rules, {
+			validity: Validation.Validator.and(value, [rules[key].rules], {
 				required: rules[key].required,
 				nullable: rules[key].nullable
 			})
 		}))
 
-	const failed = errors.some(({ valid }) => !valid.isValid)
+	const failed = errors.some(({ validity }) => !validity.valid)
 
 	if (failed) throw new ValidationError(
 		errors
-			.filter(({ valid }) => !valid.isValid)
-			.map(({ key, valid }) => ({ field: key, messages: valid.errors }))
+			.filter(({ validity }) => !validity.valid)
+			.map(({ key, validity }) => ({ field: key, messages: validity.errors }))
 	)
 
 	return data
+}
+
+export const validateReq = <T extends Record<string, VCore<any, any>>>(schema: T, value: Record<string, any>) => {
+	const validity = Validation.v.object(schema).parse(value)
+	if (validity.valid) return validity.value
+	const errorsObject = validity.errors
+		.map((error) => {
+			const splitKey = ': '
+			const [field, ...rest] = error.split(splitKey)
+			return { field, message: rest.join(splitKey) }
+		}).reduce(((acc, cur) => {
+			if (acc[cur.field]) acc[cur.field].push(cur.message)
+			else acc[cur.field] = [cur.message]
+			return acc
+		}), {} as Record<string, string[]>)
+
+	throw new ValidationError(
+		Object.entries(errorsObject)
+			.map(([key, value]) => ({ field: key, messages: value }))
+	)
 }
 
 const hash = async (password: string) => {
