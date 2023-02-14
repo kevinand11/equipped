@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.0.0-alpha.4](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha.3...v4.0.0-alpha.4) (2023-02-14)
+
 ## [4.0.0-alpha.3](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha.2...v4.0.0-alpha.3) (2023-02-14)
 
 
