@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.0.0-alpha.2](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha.1...v4.0.0-alpha.2) (2023-02-14)
+
+
+### Bug Fixes
+
+* add test command ([4782e3e](https://github.com/kevinand11/equipped/commit/4782e3ec5be379885724404a3146a7f060086431))
+
 ## 4.0.0-alpha.1 (2023-02-14)
 
 
