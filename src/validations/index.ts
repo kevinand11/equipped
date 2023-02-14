@@ -12,7 +12,22 @@ const isNotTruncated = (error?: string) => Validate.makeRule<StorageFile>((file)
 	return valid ? Validate.isValid(val) : Validate.isInvalid([error], val)
 })
 
-export const Validation = { ...Validate, isNotTruncated }
+
+type Phone = { code: string, number: string }
+const isValidPhone = (error?: string) => Validate.makeRule<Phone>((value) => {
+	const phone = value as Phone
+	const { code = '', number = '' } = phone ?? {}
+	const isValidCode = Validate.isString()(code).valid &&
+		code.startsWith('+') &&
+		Validate.isNumber()(parseInt(code.slice(1))).valid
+	const isValidNumber = Validate.isNumber()(parseInt(number)).valid
+	if (!isValidCode) return Validate.isInvalid([error ?? 'invalid phone code'], phone)
+	if (!isValidNumber) return Validate.isInvalid([error ?? 'invalid phone number'], phone)
+	return Validate.isValid(phone)
+})
+
+export const Schema = Validate.v
+export const Validation = { ...Validate, isNotTruncated, isValidPhone }
 
 type Rules<T> = {
 	required?: boolean | (() => boolean)
@@ -74,3 +89,7 @@ const compare = async (plainPassword: string, hashed: string) => {
 }
 
 export const Hash = { hash, compare }
+
+declare module 'valleyed/lib/rules/files' {
+    interface File extends StorageFile {}
+}
