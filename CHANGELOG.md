@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.0.0-alpha.9](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha.8...v4.0.0-alpha.9) (2023-02-15)
+
+
+### Bug Fixes
+
+* remove file type from validation ([5511b44](https://github.com/kevinand11/equipped/commit/5511b447a2d80af6cd65af7d222ea1b9126d3bc5))
+
 ## [4.0.0-alpha.8](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha.7...v4.0.0-alpha.8) (2023-02-14)
 
 
