@@ -57,7 +57,7 @@
 		"pug": "^3.0.2",
 		"redis": "^4.6.4",
 		"socket.io": "4.6.0",
-		"valleyed": "^4.0.6"
+		"valleyed": "^4.0.7"
 	},
 	"repository": {
 		"url": "git://github.com/kevinand11/equipped.git"
