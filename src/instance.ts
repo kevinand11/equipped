@@ -1,11 +1,12 @@
 import { BullJob } from './bull'
 import { Cache } from './cache/cache'
 import { RedisCache } from './cache/types/redis-cache'
+import { startAllDbChanges } from './db'
+import { start, close } from './db/mongoose'
 import { EventBus } from './events/events'
 import { addWaitBeforeExit } from './exit'
 import { Server } from './express/app'
 import { ConsoleLogger, Logger } from './logger'
-import { mongoose, startAllChangeStreams } from './mongoose'
 
 type Settings = {
 	isDev: boolean
@@ -118,10 +119,10 @@ export class Instance {
 
 	async startDbConnection () {
 		try {
-			await mongoose.connect(this.settings.mongoDbURI)
+			await start(this.settings.mongoDbURI)
 			await Instance.get().cache.connect()
-			await startAllChangeStreams()
-			addWaitBeforeExit(mongoose.disconnect)
+			await startAllDbChanges()
+			addWaitBeforeExit(close)
 		} catch (error) {
 			await Instance.get().logger.error('MongoDb failed with error:', error)
 			process.exit(1)

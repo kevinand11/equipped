@@ -1,4 +1,4 @@
-import { Instance } from '../instance'
+import { Instance } from '../../instance'
 import { mongoose } from './index'
 
 export enum QueryKeys { and = 'and', or = 'or' }
