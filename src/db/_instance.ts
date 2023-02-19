@@ -1,9 +1,18 @@
 import { BaseEntity } from '../structure'
+import { QueryParams, QueryResults } from './query'
 
 export abstract class Db {
 	#dbChanges = [] as DbChange<any, any>[]
 
-	abstract generateDbChange<Model, Entity extends BaseEntity> (...args: any[]): DbChange<Model, Entity>
+	abstract generateDbChange<Model, Entity extends BaseEntity> (
+		collection: any,
+		mapper: (model: Model | null) => Entity | null
+	): DbChange<Model, Entity>
+
+	abstract parseQueryParams<Model> (
+		collection: any,
+		params: QueryParams
+	): Promise<QueryResults<Model>>
 
 	protected _addToDbChanges (dbChange: DbChange<any, any>) {
 		this.#dbChanges.push(dbChange)

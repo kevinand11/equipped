@@ -4,15 +4,24 @@ import { Db, Callbacks, DbChange } from '../_instance'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { Validation } from '../../validations'
+import { QueryParams, QueryResults } from '../query'
+import { parseMongodbQueryParams } from './query'
 
 export class MongoDb extends Db {
-	generateDbChange<Model extends { _id: string }, Entity extends BaseEntity> (
+	generateDbChange<Model, Entity extends BaseEntity> (
 		collection: mongoose.Model<Model | any>,
 		mapper: (model: Model | null) => Entity | null
 	) {
 		const change = new MongoDbChange<Model, Entity>(collection, mapper)
 		this._addToDbChanges(change)
 		return change
+	}
+
+	async parseQueryParams<Model> (
+		collection: mongoose.Model<Model | any>,
+		params: QueryParams
+	): Promise<QueryResults<Model>> {
+		return parseMongodbQueryParams(collection, params)
 	}
 
 	async start (url: string) {
@@ -25,7 +34,7 @@ export class MongoDb extends Db {
 }
 
 
-class MongoDbChange<Model extends { _id: string }, Entity extends BaseEntity> extends DbChange<Model, Entity> {
+class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, Entity> {
 	#started = false
 	#col: mongoose.Model<Model | any>
 	#mapper: (model: Model | null) => Entity | null
@@ -91,7 +100,7 @@ class MongoDbChange<Model extends { _id: string }, Entity extends BaseEntity> ex
 						// @ts-ignore
 						const _id = data.documentKey!._id
 						const after = data.fullDocument as Model
-						const { value: before } = await getClone().findOneAndUpdate({ _id }, { $set: after }, { returnDocument: 'before' })
+						const { value: before } = await getClone().findOneAndUpdate({ _id }, { $set: after as any }, { returnDocument: 'before' })
 						// @ts-ignore
 						const {
 							updatedFields = {},
