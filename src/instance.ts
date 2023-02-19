@@ -1,7 +1,7 @@
 import { BullJob } from './bull'
 import { Cache } from './cache/cache'
 import { RedisCache } from './cache/types/redis-cache'
-import { startAllDbChanges } from './db'
+import { startAllDbChanges } from './db/changes'
 import { start, close } from './db/mongoose'
 import { EventBus } from './events/events'
 import { addWaitBeforeExit } from './exit'

@@ -1,9 +1,9 @@
 import mongoose from 'mongoose'
-import { Validation } from '../../validations'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { BaseEntity } from '../../structure'
-import { Callbacks, DbChange } from '../change'
+import { Validation } from '../../validations'
+import { Callbacks, DbChange } from '../_change'
 
 export class MongoDbChange<Model extends { _id: string }, Entity extends BaseEntity> extends DbChange<Model, Entity> {
 	#started = false

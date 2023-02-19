@@ -1,28 +1,6 @@
 import { Instance } from '../../instance'
-import { mongoose } from './index'
-
-export enum QueryKeys { and = 'and', or = 'or' }
-
-export enum Conditions {
-	lt = 'lt', lte = 'lte', gt = 'gt', gte = 'gte',
-	eq = 'eq', ne = 'ne', in = 'in', nin = 'nin', exists = 'exists'
-}
-
-type Where = { field: string, value: any, condition?: Conditions }
-type WhereBlock = { condition: QueryKeys, value: (Where | WhereBlock)[] }
-type WhereClause = Where | WhereBlock
-
-export type QueryParams = {
-	where?: WhereClause[]
-	auth?: WhereClause[]
-	whereType?: QueryKeys
-	authType?: QueryKeys
-	sort?: [{ field: string, desc?: boolean }]
-	limit?: number
-	all?: boolean
-	page?: number
-	search?: { value: string, fields: string[] }
-}
+import { Conditions, QueryKeys, QueryParams, QueryResults, QueryWhere, QueryWhereClause } from '../query'
+import mongoose from 'mongoose'
 
 export const parseQueryParams = async <Model> (collection: mongoose.Model<Model | any>, params: QueryParams): Promise<QueryResults<Model>> => {
 	// Handle where clauses
@@ -85,26 +63,10 @@ export const parseQueryParams = async <Model> (collection: mongoose.Model<Model 
 	}
 }
 
-export type QueryResults<Model> = {
-	pages: {
-		start: number,
-		last: number,
-		previous: number | null,
-		next: number | null,
-		current: number,
-	},
-	docs: {
-		limit: number,
-		total: number,
-		count: number
-	},
-	results: Model[]
-}
-
-const buildWhereQuery = (params: WhereClause[], key: QueryKeys = QueryKeys.and) => {
+const buildWhereQuery = (params: QueryWhereClause[], key: QueryKeys = QueryKeys.and) => {
 	const where = params.map((param) => {
 		if (Object.values(QueryKeys).includes(param.condition as QueryKeys)) return buildWhereQuery(param.value, param.condition as QueryKeys)
-		const { field } = param as Where
+		const { field } = param as QueryWhere
 		const checkedField = field === 'id' ? '_id' : (field ?? '')
 		const checkedValue = param.value === undefined ? '' : param.value
 		const checkedCondition = Object.keys(Conditions).indexOf(param.condition as string) > -1 ? param.condition : Conditions.eq

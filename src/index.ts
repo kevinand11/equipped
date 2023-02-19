@@ -2,8 +2,7 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-export { generateMongoDbChange }  from './db'
-export * from './db/mongoose'
+export * from './db'
 export * from './emails'
 export * from './enums'
 export { Enum } from './enums/types'
