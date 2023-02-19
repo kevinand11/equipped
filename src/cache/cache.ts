@@ -1,5 +1,6 @@
 export abstract class Cache {
 	abstract connect (): Promise<void>
+	abstract close (): Promise<void>
 
 	abstract set (key: string, data: string, ttlInSecs: number): Promise<void>
 

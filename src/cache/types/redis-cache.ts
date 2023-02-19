@@ -1,5 +1,4 @@
 import { createClient } from 'redis'
-import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { Cache } from '../cache'
 
@@ -13,11 +12,14 @@ export class RedisCache extends Cache {
 			await Instance.get().logger.error('Redis failed with error:', error)
 			process.exit(1)
 		})
-		addWaitBeforeExit(() => this.client.quit())
 	}
 
 	async connect () {
 		await this.client.connect()
+	}
+
+	async close () {
+		this.client.quit()
 	}
 
 	async delete (key: string) {

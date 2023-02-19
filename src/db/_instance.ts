@@ -1,5 +1,25 @@
 import { BaseEntity } from '../structure'
 
+export abstract class Db {
+	#dbChanges = [] as DbChange<any, any>[]
+
+	abstract generateDbChange<Model extends { _id: string }, Entity extends BaseEntity> (...args: any[]): DbChange<Model, Entity>
+
+	protected _addToDbChanges (dbChange: DbChange<any, any>) {
+		this.#dbChanges.push(dbChange)
+		return this
+	}
+
+	async startAllDbChanges () {
+		await Promise.all(
+			this.#dbChanges.map((change) => change.start())
+		)
+	}
+
+	abstract start (url: string): Promise<void>
+	abstract close (): Promise<void>
+}
+
 export abstract class DbChange<Model, Entity extends BaseEntity> {
 	abstract _cbs: Callbacks<Model, Entity>
 	abstract start (...args: any[]): Promise<void>

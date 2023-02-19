@@ -1,8 +1,8 @@
 import { BullJob } from './bull'
 import { Cache } from './cache/cache'
 import { RedisCache } from './cache/types/redis-cache'
-import { startAllDbChanges } from './db/changes'
-import { start, close } from './db/mongoose'
+import { MongoDb } from './db/mongoose'
+import { Db } from './db/_instance'
 import { EventBus } from './events/events'
 import { addWaitBeforeExit } from './exit'
 import { Server } from './express/app'
@@ -65,6 +65,7 @@ export class Instance {
 	#cache: Cache | null = null
 	#eventBus: EventBus | null = null
 	#server: Server | null = null
+	#db: Db | null = null
 
 	private constructor () {
 	}
@@ -94,6 +95,11 @@ export class Instance {
 		return this.#server
 	}
 
+	get db () {
+		if (!this.#db) this.#db = new MongoDb()
+		return this.#db
+	}
+
 	get listener () {
 		return this.server.listener
 	}
@@ -117,12 +123,13 @@ export class Instance {
 		return Instance.#instance
 	}
 
-	async startDbConnection () {
+	async startConnections () {
 		try {
-			await start(this.settings.mongoDbURI)
+			await Instance.get().db.start(this.settings.mongoDbURI)
 			await Instance.get().cache.connect()
-			await startAllDbChanges()
-			addWaitBeforeExit(close)
+			await Instance.get().db.startAllDbChanges()
+			addWaitBeforeExit(Instance.get().db.close)
+			addWaitBeforeExit(Instance.get().cache.close)
 		} catch (error) {
 			await Instance.get().logger.error('MongoDb failed with error:', error)
 			process.exit(1)
