@@ -1,5 +1,5 @@
 import mongoose from 'mongoose'
-import { addWaitBeforeExit } from '../../exit'
+import { addWaitBeforeExit, exit } from '../../exit'
 import { Instance } from '../../instance'
 import { BaseEntity } from '../../structure'
 import { Validation } from '../../validations'
@@ -9,7 +9,7 @@ import { parseMongodbQueryParams } from './query'
 
 export class MongoDb extends Db {
 	generateDbChange<Model, Entity extends BaseEntity> (
-		collection: mongoose.Model<Model | any>,
+		collection: string,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	) {
@@ -19,14 +19,15 @@ export class MongoDb extends Db {
 		return change
 	}
 
-	async parseQueryParams<Model> (
-		collection: mongoose.Model<Model | any>,
+	async query<Model> (
+		modelName: string,
 		params: QueryParams
 	): Promise<QueryResults<Model>> {
-		return parseMongodbQueryParams(collection, params)
+		return parseMongodbQueryParams(modelName, params)
 	}
 
 	async start (url: string) {
+		mongoose.set('strictQuery', true)
 		await mongoose.connect(url)
 	}
 
@@ -38,31 +39,35 @@ export class MongoDb extends Db {
 
 class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, Entity> {
 	#started = false
-	#col: mongoose.Model<Model | any>
+	#modelName: string
 	#mapper: (model: Model | null) => Entity | null
 
 	constructor (
-		collection: mongoose.Model<Model | any>,
+		modelName: string,
 		mapper: (model: Model | null) => Entity | null
 	) {
 		super()
-		this.#col = collection
+		this.#modelName = modelName
 		this.#mapper = mapper
 		this._cbs = {}
 	}
 
-	async start (skipResume = false) {
+	async start (skipResume = false): Promise<void> {
 		if (this.#started) return
 		this.#started = true
-		const dbName = this.#col.collection.collectionName as any
+
+		const model = mongoose.models[this.#modelName]
+		if (!model) return exit(`Model ${this.#modelName} not found`)
+
+		const dbName = model.collection.collectionName
 		const cloneName = dbName + '_streams_clone'
-		const getClone = () => this.#col.collection.conn.db.collection(cloneName)
-		const getStreamTokens = () => this.#col.collection.conn.db.collection('stream-tokens')
+		const getClone = () => model.collection.conn.db.collection(cloneName)
+		const getStreamTokens = () => model.collection.conn.db.collection('stream-tokens')
 
 		const res = await getStreamTokens().findOne({ _id: dbName })
 		const resumeToken = skipResume ? undefined : res?.resumeToken
 
-		const changeStream = this.#col
+		const changeStream = model
 			.watch([], { fullDocument: 'updateLookup', startAfter: resumeToken })
 			.on('change', async (data) => {
 				// @ts-ignore
@@ -83,7 +88,7 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 						})
 						if (value) this._cbs.created?.({
 							before: null,
-							after: this.#mapper(new this.#col(after))!
+							after: this.#mapper(new model(after))!
 						})
 					}
 
@@ -92,7 +97,7 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 						const _id = data.documentKey!._id
 						const { value: before } = await getClone().findOneAndDelete({ _id })
 						if (before) this._cbs.deleted?.({
-							before: this.#mapper(new this.#col(before))!,
+							before: this.#mapper(new model(before))!,
 							after: null
 						})
 					}
@@ -114,8 +119,8 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 							.concat(Object.keys(updatedFields))
 						const changes = Validation.Differ.from(changed)
 						if (before) this._cbs.updated?.({
-							before: this.#mapper(new this.#col(before))!,
-							after: this.#mapper(new this.#col(after))!,
+							before: this.#mapper(new model(before))!,
+							after: this.#mapper(new model(after))!,
 							changes
 						})
 					}

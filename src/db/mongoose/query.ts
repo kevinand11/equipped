@@ -1,8 +1,12 @@
+import mongoose from 'mongoose'
+import { BadRequestError } from '../../errors'
 import { Instance } from '../../instance'
 import { Conditions, QueryKeys, QueryParams, QueryResults, QueryWhere, QueryWhereClause } from '../query'
-import mongoose from 'mongoose'
 
-export const parseMongodbQueryParams = async <Model> (collection: mongoose.Model<Model | any>, params: QueryParams): Promise<QueryResults<Model>> => {
+export const parseMongodbQueryParams = async <Model> (modelName: string, params: QueryParams): Promise<QueryResults<Model>> => {
+	const model = mongoose.models[modelName]
+	if (!model) throw new BadRequestError(`Model ${modelName} not found`)
+
 	// Handle where clauses
 	const query = [] as ReturnType<typeof buildWhereQuery>[]
 	const whereType = Object.values(QueryKeys).indexOf(params.whereType!) !== -1 ? params.whereType! : QueryKeys.and
@@ -36,17 +40,16 @@ export const parseMongodbQueryParams = async <Model> (collection: mongoose.Model
 	let page = Number.isNaN(Number(params.page)) ? 0 : Number(params.page)
 	page = page < 1 ? 1 : page
 
-	const total = await collection.countDocuments(totalClause).exec()
+	const total = await model.countDocuments(totalClause)
 
-	let builtQuery = collection.find(totalClause)
+	let builtQuery = model.find(totalClause)
 	if (sort.length) builtQuery = builtQuery.sort(Object.fromEntries(sort))
 	if (!all && limit) {
 		builtQuery = builtQuery.limit(limit)
 		if (page) builtQuery = builtQuery.skip((page - 1) * limit)
 	}
 
-	const results = await builtQuery.exec()
-
+	const results = await builtQuery
 	const start = 1
 	const last = Math.ceil(total / limit) || 1
 	const next = page >= last ? null : page + 1
@@ -59,7 +62,7 @@ export const parseMongodbQueryParams = async <Model> (collection: mongoose.Model
 		docs: {
 			limit, total, count: results.length
 		},
-		results: results.map((r) => r.toJSON()) as Model[]
+		results: results.map((r) => new model(r)) as Model[]
 	}
 }
 

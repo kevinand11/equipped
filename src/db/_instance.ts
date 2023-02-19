@@ -5,13 +5,13 @@ export abstract class Db {
 	#dbChanges = [] as DbChange<any, any>[]
 
 	abstract generateDbChange<Model, Entity extends BaseEntity> (
-		collection: any,
+		modelName: string,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	): DbChange<Model, Entity>
 
-	abstract parseQueryParams<Model> (
-		collection: any,
+	abstract query<Model> (
+		modelName: string,
 		params: QueryParams
 	): Promise<QueryResults<Model>>
 
