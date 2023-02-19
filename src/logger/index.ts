@@ -10,21 +10,21 @@ export abstract class Logger {
 
 export class ConsoleLogger extends Logger {
 	// eslint-disable-next-line no-console
-	log = console.log
+	#log = console.log
 
 	async error (...args: any[]) {
-		this.log('LOG:ERROR:', ...args)
+		this.#log('LOG:ERROR:', ...args)
 	}
 
 	async success (...args: any[]) {
-		this.log('LOG:SUCCESS:', ...args)
+		this.#log('LOG:SUCCESS:', ...args)
 	}
 
 	async info (...args: any[]) {
-		this.log('LOG:INFO:', ...args)
+		this.#log('LOG:INFO:', ...args)
 	}
 
 	async warn (...args: any[]) {
-		this.log('LOG:WARN:', ...args)
+		this.#log('LOG:WARN:', ...args)
 	}
 }

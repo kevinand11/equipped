@@ -1,7 +1,7 @@
 import { match as Match } from 'path-to-regexp'
 import io from 'socket.io'
 import { Enum } from '../enums/types'
-import { StatusCodes } from '../express'
+import { StatusCodes } from '../server'
 import { BaseEntity } from '../structure'
 import { AuthUser } from '../utils/authUser'
 import { verifyAccessToken } from '../utils/tokens'

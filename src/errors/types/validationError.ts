@@ -1,5 +1,5 @@
+import { StatusCodes } from '../../server'
 import { CustomError } from '../customError'
-import { StatusCodes } from '../../express'
 
 type Error = {
 	messages: string[]

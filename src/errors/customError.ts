@@ -1,4 +1,4 @@
-import { SupportedStatusCodes } from '../express'
+import { SupportedStatusCodes } from '../server'
 
 export abstract class CustomError extends Error {
 	abstract readonly statusCode: SupportedStatusCodes

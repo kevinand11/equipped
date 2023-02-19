@@ -1,4 +1,5 @@
 import dotenv from 'dotenv'
+import { exit } from './exit'
 
 dotenv.config()
 
@@ -9,9 +10,9 @@ export { Enum } from './enums/types'
 export * from './errors'
 export { Events } from './events/events'
 export * from './exit'
-export * from './express'
 export * from './instance'
 export * from './listeners'
+export * from './server'
 export * from './storage'
 export * from './structure'
 export * from './utils/auth'
@@ -23,7 +24,6 @@ export * from './validations'
 export const getEnvOrFail = (key: string) => {
 	const value = process.env[key]
 	if (value) return value
-	// eslint-disable-next-line no-console
-	console.error(`Environment variable not found: ${key}`)
-	process.exit(1)
+	exit(`Environment variable not found: ${key}`)
+	return ''
 }

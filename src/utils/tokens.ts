@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken'
 import { AccessTokenExpired, CustomError, NotAuthenticatedError } from '../errors'
-import { StatusCodes } from '../express'
 import { Instance } from '../instance'
+import { StatusCodes } from '../server'
 import { AuthUser, RefreshUser } from './authUser'
 
 const getAccessTokenKey = (userId: string) => `${userId}-access-token`

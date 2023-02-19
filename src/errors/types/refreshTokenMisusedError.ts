@@ -1,5 +1,5 @@
+import { StatusCodes } from '../../server'
 import { CustomError } from '../customError'
-import { StatusCodes } from '../../express'
 
 export class RefreshTokenMisusedError extends CustomError {
 	statusCode = StatusCodes.RefreshTokenMisused

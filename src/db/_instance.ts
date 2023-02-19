@@ -3,7 +3,7 @@ import { BaseEntity } from '../structure'
 export abstract class Db {
 	#dbChanges = [] as DbChange<any, any>[]
 
-	abstract generateDbChange<Model extends { _id: string }, Entity extends BaseEntity> (...args: any[]): DbChange<Model, Entity>
+	abstract generateDbChange<Model, Entity extends BaseEntity> (...args: any[]): DbChange<Model, Entity>
 
 	protected _addToDbChanges (dbChange: DbChange<any, any>) {
 		this.#dbChanges.push(dbChange)

@@ -4,6 +4,12 @@ export const addWaitBeforeExit = (fn: any) => {
 	listeners.push(fn)
 }
 
+export const exit = (message: string) => {
+	// eslint-disable-next-line no-console
+	console.error(message)
+	process.exit(1)
+}
+
 const signals = {
 	SIGHUP: 1,
 	SIGINT: 2,
