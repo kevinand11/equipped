@@ -13,8 +13,7 @@ export class MongoDb extends Db {
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	) {
-		const change = new MongoDbChange<Model, Entity>(collection, mapper)
-			.setCallbacks(callbacks)
+		const change = new MongoDbChange<Model, Entity>(collection, callbacks, mapper)
 		this._addToDbChanges(change)
 		return change
 	}
@@ -39,25 +38,21 @@ export class MongoDb extends Db {
 
 class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, Entity> {
 	#started = false
-	#modelName: string
-	#mapper: (model: Model | null) => Entity | null
 
 	constructor (
 		modelName: string,
+		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	) {
-		super()
-		this.#modelName = modelName
-		this.#mapper = mapper
-		this._cbs = {}
+		super(modelName, callbacks, mapper)
 	}
 
 	async start (skipResume = false): Promise<void> {
 		if (this.#started) return
 		this.#started = true
 
-		const model = mongoose.models[this.#modelName]
-		if (!model) return exit(`Model ${this.#modelName} not found`)
+		const model = mongoose.models[this.modelName]
+		if (!model) return exit(`Model ${this.modelName} not found`)
 
 		const dbName = model.collection.collectionName
 		const cloneName = dbName + '_streams_clone'
@@ -72,9 +67,9 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 			.on('change', async (data) => {
 				// @ts-ignore
 				const streamId = data._id._data
-				const cacheName = `streams-${streamId}`
-				const cached = await Instance.get().cache.setInTransaction(cacheName, streamId, 15)
-				if (cached[0]) return
+				const shouldRun = await this._shouldRun(streamId)
+				if (!shouldRun) return
+
 				addWaitBeforeExit((async () => {
 					await getStreamTokens().findOneAndUpdate({ _id: dbName }, { $set: { resumeToken: data._id } }, { upsert: true })
 
@@ -86,9 +81,9 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 							upsert: true,
 							returnDocument: 'after'
 						})
-						if (value) this._cbs.created?.({
+						if (value) this.callbacks.created?.({
 							before: null,
-							after: this.#mapper(new model(after))!
+							after: this.mapper(new model(after))!
 						})
 					}
 
@@ -96,8 +91,8 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 						// @ts-ignore
 						const _id = data.documentKey!._id
 						const { value: before } = await getClone().findOneAndDelete({ _id })
-						if (before) this._cbs.deleted?.({
-							before: this.#mapper(new model(before))!,
+						if (before) this.callbacks.deleted?.({
+							before: this.mapper(new model(before))!,
 							after: null
 						})
 					}
@@ -114,13 +109,12 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 							truncatedArrays = []
 						} = data.updateDescription ?? {}
 						const changed = removedFields
-							.map((f) => f.toString())
 							.concat(truncatedArrays.map((a) => a.field))
 							.concat(Object.keys(updatedFields))
 						const changes = Validation.Differ.from(changed)
-						if (before) this._cbs.updated?.({
-							before: this.#mapper(new model(before))!,
-							after: this.#mapper(new model(after))!,
+						if (before) this.callbacks.updated?.({
+							before: this.mapper(new model(before))!,
+							after: this.mapper(new model(after))!,
 							changes
 						})
 					}

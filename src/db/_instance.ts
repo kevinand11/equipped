@@ -1,3 +1,4 @@
+import { Instance } from '../instance'
 import { BaseEntity } from '../structure'
 import { QueryParams, QueryResults } from './query'
 
@@ -31,14 +32,39 @@ export abstract class Db {
 }
 
 export abstract class DbChange<Model, Entity extends BaseEntity> {
-	_cbs: DbChangeCallbacks<Model, Entity> = {}
+	#modelName: string
+	#callbacks: DbChangeCallbacks<Model, Entity> = {}
+	#mapper: (model: Model | null) => Entity | null
+
+	constructor (
+		modelName: string,
+		callbacks: DbChangeCallbacks<Model, Entity>,
+		mapper: (model: Model | null) => Entity | null
+	) {
+		this.#modelName = modelName
+		this.#callbacks = callbacks
+		this.#mapper = mapper
+	}
+
 	abstract start (...args: any[]): Promise<void>
 
-	setCallbacks (callbacks: DbChangeCallbacks<Model, Entity>) {
-		this._cbs.created = callbacks.created
-		this._cbs.updated = callbacks.updated
-		this._cbs.deleted = callbacks.deleted
-		return this
+	get modelName () {
+		return this.#modelName
+	}
+
+	get callbacks () {
+		return Object.freeze(this.#callbacks)
+	}
+
+	get mapper () {
+		return this.#mapper
+	}
+
+	protected async _shouldRun (key: string) {
+		const cacheName = `streams-${key}`
+		const cached = await Instance.get().cache.setInTransaction(cacheName, key, 30)
+		if (cached[0]) return false
+		return true
 	}
 }
 
