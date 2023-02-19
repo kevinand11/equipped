@@ -1,6 +1,6 @@
 {
 	"name": "equipped",
-	"version": "4.0.2-alpha.1",
+	"version": "4.0.2-alpha.2",
 	"private": false,
 	"description": "",
 	"main": "lib/index.js",

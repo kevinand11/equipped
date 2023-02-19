@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.0.2-alpha.2](https://github.com/kevinand11/equipped/compare/v4.0.2-alpha.1...v4.0.2-alpha.2) (2023-02-19)
+
 ### [4.0.2-alpha.1](https://github.com/kevinand11/equipped/compare/v4.0.2...v4.0.2-alpha.1) (2023-02-19)
 
 
