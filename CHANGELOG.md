@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.0.2-alpha.1](https://github.com/kevinand11/equipped/compare/v4.0.2...v4.0.2-alpha.1) (2023-02-19)
+
+
+### Features
+
+* make db change abstract ([e747c3f](https://github.com/kevinand11/equipped/commit/e747c3f2f74dc178521c3ee4d9a79efc8b160d32))
+
 ### [4.0.2](https://github.com/kevinand11/equipped/compare/v4.0.1...v4.0.2) (2023-02-16)
 
 ### [4.0.1](https://github.com/kevinand11/equipped/compare/v4.0.0-alpha-10...v4.0.1) (2023-02-16)
