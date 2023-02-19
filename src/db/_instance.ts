@@ -6,6 +6,7 @@ export abstract class Db {
 
 	abstract generateDbChange<Model, Entity extends BaseEntity> (
 		collection: any,
+		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	): DbChange<Model, Entity>
 
@@ -30,27 +31,19 @@ export abstract class Db {
 }
 
 export abstract class DbChange<Model, Entity extends BaseEntity> {
-	abstract _cbs: Callbacks<Model, Entity>
+	_cbs: DbChangeCallbacks<Model, Entity> = {}
 	abstract start (...args: any[]): Promise<void>
 
-	setCreated (callback: Exclude<Callbacks<Model, Entity>['created'], undefined>) {
-		this._cbs.created = callback
-		return this
-	}
-
-	setUpdated (callback: Exclude<Callbacks<Model, Entity>['updated'], undefined>) {
-		this._cbs.updated = callback
-		return this
-	}
-
-	setDeleted (callback: Exclude<Callbacks<Model, Entity>['deleted'], undefined>) {
-		this._cbs.deleted = callback
+	setCallbacks (callbacks: DbChangeCallbacks<Model, Entity>) {
+		this._cbs.created = callbacks.created
+		this._cbs.updated = callbacks.updated
+		this._cbs.deleted = callbacks.deleted
 		return this
 	}
 }
 
 type DeepPartial<T> = { [P in keyof T]?: DeepPartial<T[P]> }
-export type Callbacks<Model, Entity> = {
+export type DbChangeCallbacks<Model, Entity> = {
 	created?: (data: { before: null, after: Entity }) => Promise<void>
 	updated?: (data: { before: Entity, after: Entity, changes: DeepPartial<Model> }) => Promise<void>
 	deleted?: (data: { before: Entity, after: null }) => Promise<void>

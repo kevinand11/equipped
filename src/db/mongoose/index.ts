@@ -1,18 +1,20 @@
 import mongoose from 'mongoose'
-import { BaseEntity } from '../../structure'
-import { Db, Callbacks, DbChange } from '../_instance'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
+import { BaseEntity } from '../../structure'
 import { Validation } from '../../validations'
 import { QueryParams, QueryResults } from '../query'
+import { Db, DbChange, DbChangeCallbacks } from '../_instance'
 import { parseMongodbQueryParams } from './query'
 
 export class MongoDb extends Db {
 	generateDbChange<Model, Entity extends BaseEntity> (
 		collection: mongoose.Model<Model | any>,
+		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	) {
 		const change = new MongoDbChange<Model, Entity>(collection, mapper)
+			.setCallbacks(callbacks)
 		this._addToDbChanges(change)
 		return change
 	}
@@ -38,7 +40,6 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 	#started = false
 	#col: mongoose.Model<Model | any>
 	#mapper: (model: Model | null) => Entity | null
-	_cbs: Callbacks<Model, Entity>
 
 	constructor (
 		collection: mongoose.Model<Model | any>,
@@ -129,7 +130,5 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 			changeStream.close()
 			this.#started = false
 		})
-
-		await Instance.get().logger.info(`${dbName} changestream started`)
 	}
 }

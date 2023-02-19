@@ -1,5 +1,5 @@
 import { createClient } from 'redis'
-import { Instance } from '../../instance'
+import { exit } from '../../exit'
 import { Cache } from '../cache'
 
 export class RedisCache extends Cache {
@@ -9,8 +9,7 @@ export class RedisCache extends Cache {
 		super()
 		this.client = createClient({ url: connection })
 		this.client.on('error', async (error) => {
-			await Instance.get().logger.error('Redis failed with error:', error)
-			process.exit(1)
+			exit(`Redis failed with error: ${error}`)
 		})
 	}
 

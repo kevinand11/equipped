@@ -1,5 +1,5 @@
 import amqp from 'amqplib'
-import { addWaitBeforeExit } from '../exit'
+import { addWaitBeforeExit, exit } from '../exit'
 import { Instance } from '../instance'
 
 export const pubAndSub = async () => {
@@ -7,8 +7,7 @@ export const pubAndSub = async () => {
 	const con = await amqp.connect(Instance.get().settings.rabbitURI)
 
 	con.on('error', (err) => {
-		Instance.get().logger.error('Amqp error:', err.message)
-		process.exit(1)
+		exit(`Amqp error: ${err.message}`)
 	})
 
 	const channel = await con.createChannel()

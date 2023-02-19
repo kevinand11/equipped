@@ -8,7 +8,6 @@ import { ConsoleLogger, Logger } from '../logger'
 import { Server } from '../server/app'
 import { defaulInstanceSetting, Settings } from './settings'
 
-
 export class Instance {
 	static #initialized = false
 	static #instance: Instance
@@ -82,9 +81,8 @@ export class Instance {
 			await Instance.get().db.startAllDbChanges()
 			addWaitBeforeExit(Instance.get().db.close)
 			addWaitBeforeExit(Instance.get().cache.close)
-		} catch (error) {
-			await Instance.get().logger.error('MongoDb failed with error:', error)
-			process.exit(1)
+		} catch (error: any) {
+			exit(`'Error starting connections: ${error}`)
 		}
 	}
 }
