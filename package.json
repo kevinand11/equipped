@@ -5,12 +5,12 @@
 	"description": "",
 	"main": "lib/index.js",
 	"scripts": {
+		"dev": "tsc -watch",
 		"build": "tsc --project tsconfig.json",
 		"lint": "eslint src/ --ext .ts,.js --fix",
-		"pub": "yarn lint && yarn build && yarn publish --access public",
+		"test": "echo",
 		"release": "standard-version",
-		"prepare": "husky install",
-		"test": "echo"
+		"prepare": "husky install"
 	},
 	"author": "",
 	"license": "ISC",
