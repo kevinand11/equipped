@@ -2,6 +2,7 @@ import { BullJob } from '../bull'
 import { Cache } from '../cache/cache'
 import { RedisCache } from '../cache/types/redis-cache'
 import { MongoDb } from '../db/mongoose'
+import { Db } from '../db/_instance'
 import { EventBus } from '../events/events'
 import { addWaitBeforeExit, exit } from '../exit'
 import { ConsoleLogger, Logger } from '../logger'
@@ -17,7 +18,7 @@ export class Instance {
 	#cache: Cache | null = null
 	#eventBus: EventBus | null = null
 	#server: Server | null = null
-	#db: MongoDb | null = null
+	#db: Db | null = null
 
 	private constructor () {
 	}

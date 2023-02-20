@@ -46,7 +46,7 @@ export abstract class DbChange<Model, Entity extends BaseEntity> {
 		this.#mapper = mapper
 	}
 
-	abstract start (...args: any[]): Promise<void>
+	abstract start (): Promise<void>
 
 	get modelName () {
 		return this.#modelName
