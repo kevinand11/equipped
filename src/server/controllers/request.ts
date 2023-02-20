@@ -1,16 +1,9 @@
+import { parseJSONValue } from '../../utils/json'
 import { CustomError } from '../../errors'
 import { StorageFile } from '../../storage'
 import { AuthUser, RefreshUser } from '../../utils/authUser'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
-
-const parseJSON = (body: Record<string, any>) => Object.fromEntries(Object.entries(body).map(([key, value]) => {
-	try {
-		return [key, JSON.parse(value)]
-	} catch {
-		return [key, value]
-	}
-}))
 
 export class Request {
 	readonly method: string
@@ -27,9 +20,9 @@ export class Request {
 	pendingError: null | CustomError = null
 
 	constructor ({
-		             body, cookies, params, query,
-		             method, path, headers, files, data
-	             }: {
+		body, cookies, params, query,
+		method, path, headers, files, data
+	}: {
 		body: Record<string, any>
 		cookies: Record<string, any>
 		params: Record<string, any>
@@ -43,12 +36,15 @@ export class Request {
 		this.method = method
 		this.path = path
 		this.rawBody = body
-		this.body = parseJSON(body)
+		this.body = Object.fromEntries(
+			Object.entries(body)
+				.map(([key, value]) => [key, parseJSONValue(value)])
+		)
 		this.cookies = cookies
 		this.params = params
 		this.query = Object.fromEntries(
 			Object.entries(query ?? {})
-				.map(([key, val]) => [key, this.#parseQueryStrings(val as any)])
+				.map(([key, val]) => [key, this.#parseQueryStrings(val)])
 		)
 		this.headers = headers
 		this.files = files
@@ -58,10 +54,6 @@ export class Request {
 
 	#parseQueryStrings (value: string | string[]) {
 		if (Array.isArray(value)) return value.map(this.#parseQueryStrings)
-		try {
-			return JSON.parse(value)
-		} catch (e) {
-			return value
-		}
+		return parseJSONValue(value)
 	}
 }
