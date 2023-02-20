@@ -78,6 +78,7 @@ export class Instance {
 		try {
 			await Instance.get().db.start(this.settings.mongoDbURI)
 			await Instance.get().cache.connect()
+			await Instance.get().listener.start()
 			await Instance.get().db.startAllDbChanges()
 			addWaitBeforeExit(Instance.get().db.close)
 			addWaitBeforeExit(Instance.get().cache.close)

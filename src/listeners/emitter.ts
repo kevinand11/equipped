@@ -1,5 +1,6 @@
 import { match as Match } from 'path-to-regexp'
 import io from 'socket.io'
+import { Instance } from '../instance'
 import { Enum } from '../enums/types'
 import { StatusCodes } from '../server'
 import { BaseEntity } from '../structure'
@@ -12,6 +13,8 @@ enum EmitTypes {
 	deleted = 'deleted'
 }
 
+const EmitterEvent = '__listener_emitter'
+type EmitData = { channel: string, type: EmitTypes, data: any }
 type LeaveRoomParams = { channel: string }
 type JoinRoomParams = { channel: string, token?: string, app?: string }
 type Callback = (params: { code: Enum<typeof StatusCodes>, message: string, channel: string }) => void
@@ -25,11 +28,19 @@ export class Listener {
 	#socket: io.Server
 	#callers: SocketCallers
 	#routes = {} as Record<string, OnJoinFn>
+	#subscriber = Instance.get().eventBus.createSubscriber(EmitterEvent as never, async (data: EmitData) => {
+		this.#socket.to(data.channel).emit(data.channel, data)
+	}, { fanout: true })
+	#publisher = Instance.get().eventBus.createPublisher(EmitterEvent as never)
 
 	constructor (socket: io.Server, callers: SocketCallers) {
 		this.#socket = socket
 		this.#callers = callers
 		this.#setupSocketConnection()
+	}
+
+	async start () {
+		await this.#subscriber.subscribe()
 	}
 
 	async created (channel: string, data: BaseEntity) {
@@ -69,9 +80,8 @@ export class Listener {
 	}
 
 	async #emit (channel: string, type: EmitTypes, data: any) {
-		this.#socket.to(channel).emit(channel, {
-			type, data, channel
-		})
+		const emitData: EmitData = { channel, type, data }
+		this.#publisher.publish(emitData as never)
 	}
 
 	#setupSocketConnection = () => {
