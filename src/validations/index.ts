@@ -58,7 +58,7 @@ export const validate = <Keys extends Record<string, any>> (data: Keys, rules: R
 	return data
 }
 
-export const validateReq = <T extends Record<string, VCore<any, any>>>(schema: T, value: Record<string, any>) => {
+export const validateReq = <T extends Record<string, VCore<any, any>>> (schema: T, value: Record<string, any>) => {
 	const validity = Validation.v.object(schema).parse(value)
 	if (validity.valid) return validity.value
 	const errorsObject = validity.errors

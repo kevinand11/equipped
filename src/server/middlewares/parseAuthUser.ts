@@ -1,6 +1,6 @@
-import { makeMiddleware } from '../controllers'
-import { verifyAccessToken } from '../../utils/tokens'
 import { CustomError } from '../../errors'
+import { verifyAccessToken } from '../../utils/tokens'
+import { makeMiddleware } from '../controllers'
 
 export const parseAuthUser = makeMiddleware(
 	async (request) => {

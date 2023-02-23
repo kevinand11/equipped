@@ -5,8 +5,8 @@ import {
 } from './types'
 
 type Keys = keyof {
-    AuthRole: IAuthRole
-    AuthTypes: IAuthTypes
+	AuthRole: IAuthRole
+	AuthTypes: IAuthTypes
 	EmailsList: IEmailsList
 	EventTypes: IEventTypes
 	DelayedJobs: IDelayedJobs
@@ -22,7 +22,7 @@ export let DelayedJobs: IDelayedJobs = DefaultDelayedJobs as any
 export let CronLikeJobs: ICronLikeJobs = DefaultCronLikeJobs as any
 export let CronTypes: ICronTypes = DefaultCronTypes as any
 
-export const makeEnum = <T extends Record<string, any>> (key: Keys, obj: T) :Readonly<T> => {
+export const makeEnum = <T extends Record<string, any>> (key: Keys, obj: T): Readonly<T> => {
 	if (key === 'AuthRole') return AuthRole = { ...AuthRole, ...obj }
 	if (key === 'AuthTypes') return AuthTypes = { ...AuthTypes, ...obj }
 	if (key === 'EmailsList') return EmailsList = { ...EmailsList, ...obj }

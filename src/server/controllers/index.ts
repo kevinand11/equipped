@@ -70,6 +70,7 @@ const extractRequest = async (req: Request) => {
 
 	// @ts-ignore
 	const request = req.savedReq ?? new CustomRequest({
+		ip: req.ip,
 		body: req.body ?? {},
 		cookies: req.cookies ?? {},
 		params: req.params ?? {},

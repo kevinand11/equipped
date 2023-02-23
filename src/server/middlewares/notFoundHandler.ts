@@ -1,5 +1,5 @@
-import { makeMiddleware } from '../controllers'
 import { NotFoundError } from '../../errors'
+import { makeMiddleware } from '../controllers'
 
 export const notFoundHandler = makeMiddleware(
 	async (_) => {

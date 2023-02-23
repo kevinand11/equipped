@@ -1,11 +1,12 @@
-import { parseJSONValue } from '../../utils/json'
 import { CustomError } from '../../errors'
 import { StorageFile } from '../../storage'
 import { AuthUser, RefreshUser } from '../../utils/authUser'
+import { parseJSONValue } from '../../utils/json'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
 export class Request {
+	readonly ip: string
 	readonly method: string
 	readonly path: string
 	readonly body: Record<string, any>
@@ -20,9 +21,10 @@ export class Request {
 	pendingError: null | CustomError = null
 
 	constructor ({
-		body, cookies, params, query,
+		ip, body, cookies, params, query,
 		method, path, headers, files, data
 	}: {
+		ip: string
 		body: Record<string, any>
 		cookies: Record<string, any>
 		params: Record<string, any>
@@ -33,6 +35,7 @@ export class Request {
 		path: string,
 		data: Record<string, any>
 	}) {
+		this.ip = ip
 		this.method = method
 		this.path = path
 		this.rawBody = body

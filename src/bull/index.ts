@@ -13,8 +13,8 @@ type Cron = Enum<ICronTypes>
 type Delayed = Enum<IDelayedJobs>
 type CronLike = Enum<ICronLikeJobs>
 
-interface DelayedJobEvents extends Record<Delayed, { type: Delayed, data: any }> {}
-interface CronLikeJobsEvents extends Record<CronLike, { type: CronLike, data: any }> {}
+interface DelayedJobEvents extends Record<Delayed, { type: Delayed, data: any }> { }
+interface CronLikeJobsEvents extends Record<CronLike, { type: CronLike, data: any }> { }
 
 type DelayedJobEvent = DelayedJobEvents[keyof DelayedJobEvents]
 type CronLikeJobEvent = CronLikeJobsEvents[keyof CronLikeJobsEvents]

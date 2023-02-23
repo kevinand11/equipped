@@ -23,7 +23,7 @@ export type Route = {
 	controllers: Controller[]
 }
 
-const postRoutes = () : Route[] => [
+const postRoutes = (): Route[] => [
 	{
 		path: '__health',
 		method: 'get',
@@ -82,16 +82,16 @@ export class Server {
 		)
 		const socket = new io.Server(this.#httpServer, { cors: { origin: '*' } })
 		this.#listener = new Listener(socket, {
-			onConnect: async () => {},
-			onDisconnect: async () => {}
+			onConnect: async () => { },
+			onDisconnect: async () => { }
 		})
 	}
 
-	get listener() {
+	get listener () {
 		return this.#listener
 	}
 
-	set routes(routes: Route[]) {
+	set routes (routes: Route[]) {
 		const allRoutes = [...routes, ...postRoutes()]
 		allRoutes.forEach(({ method, path, controllers }) => {
 			controllers = [parseAuthUser, ...controllers]
@@ -100,7 +100,7 @@ export class Server {
 		})
 	}
 
-	async start  (port: number) {
+	async start (port: number) {
 		return await new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
 			try {
 				const app = this.#httpServer.listen(port, () => resolve(true))

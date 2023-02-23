@@ -1,5 +1,5 @@
-import { Request } from '../controllers/request'
 import { NotAuthenticatedError } from '../../errors'
+import { Request } from '../controllers/request'
 
 export const requireAuthUser = async (request: Request) => {
 	if (request.pendingError) throw request.pendingError

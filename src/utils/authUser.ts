@@ -9,4 +9,4 @@ export interface AuthUser {
 	roles: AuthRoles
 }
 
-export interface AuthRoles extends Partial<Record<Enum<IAuthRole>, boolean>> {}
+export interface AuthRoles extends Partial<Record<Enum<IAuthRole>, boolean>> { }
