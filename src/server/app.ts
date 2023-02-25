@@ -13,42 +13,9 @@ import supertest from 'supertest'
 import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
 import { Listener } from '../listeners'
-import { Controller, makeController } from './controllers'
-import { errorHandler, notFoundHandler } from './middlewares'
 import { parseAuthUser } from './middlewares/parseAuthUser'
+import { PostRoutes, Route } from './routes'
 import { StatusCodes } from './statusCodes'
-
-type MethodTypes = 'get' | 'post' | 'put' | 'delete' | 'all'
-export type Route = {
-	path: string
-	method: MethodTypes
-	controllers: Controller[]
-}
-
-const postRoutes = (): Route[] => [
-	{
-		path: '__health',
-		method: 'get',
-		controllers: [
-			makeController(async () => {
-				return {
-					status: StatusCodes.Ok,
-					result: `${Instance.get().settings.appId} service running`
-				}
-			})
-		]
-	},
-	{
-		path: '',
-		method: 'all',
-		controllers: [notFoundHandler]
-	},
-	{
-		path: '',
-		method: 'all',
-		controllers: [errorHandler]
-	}
-]
 
 export class Server {
 	#expressApp: express.Express
@@ -95,7 +62,7 @@ export class Server {
 	}
 
 	set routes (routes: Route[]) {
-		const allRoutes = [...routes, ...postRoutes()]
+		const allRoutes = [...routes, ...PostRoutes()]
 		allRoutes.forEach(({ method, path, controllers }) => {
 			controllers = [parseAuthUser, ...controllers]
 			if (path) this.#expressApp[method]?.(formatPath(path), ...controllers)
