@@ -4,10 +4,12 @@ import express from 'express'
 import fileUpload from 'express-fileupload'
 import rateLimit from 'express-rate-limit'
 import slowDown from 'express-slow-down'
+import helmet from 'helmet'
 import http from 'http'
 import morgan from 'morgan'
 import path from 'path'
 import io from 'socket.io'
+import supertest from 'supertest'
 import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
 import { Listener } from '../listeners'
@@ -61,6 +63,7 @@ export class Server {
 		if (settings.isDev) this.#expressApp.use(morgan('dev'))
 		this.#expressApp.use(express.json())
 		this.#expressApp.use(cookie())
+		this.#expressApp.use(helmet())
 		this.#expressApp.use(cors({ origin: '*' }))
 		this.#expressApp.use(express.urlencoded({ extended: false }))
 		this.#expressApp.use(express.static(path.join(process.cwd(), 'public')))
@@ -98,6 +101,10 @@ export class Server {
 			if (path) this.#expressApp[method]?.(formatPath(path), ...controllers)
 			else this.#expressApp.use(...controllers)
 		})
+	}
+
+	test () {
+		return supertest(this.#httpServer)
 	}
 
 	async start (port: number) {
