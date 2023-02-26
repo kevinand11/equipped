@@ -3,7 +3,8 @@ import { Cache } from '../cache/cache'
 import { RedisCache } from '../cache/types/redis-cache'
 import { MongoDb } from '../db/mongoose'
 import { Db } from '../db/_instance'
-import { EventBus } from '../events/events'
+import { EventBus } from '../events/'
+import { RabbitEventBus } from '../events/rabbit'
 import { addWaitBeforeExit, exit } from '../exit'
 import { ConsoleLogger, Logger } from '../logger'
 import { Server } from '../server/app'
@@ -39,7 +40,7 @@ export class Instance {
 	}
 
 	get eventBus () {
-		if (!this.#eventBus) this.#eventBus = new EventBus()
+		if (!this.#eventBus) this.#eventBus = new RabbitEventBus()
 		return this.#eventBus
 	}
 
@@ -77,8 +78,8 @@ export class Instance {
 
 	async startConnections () {
 		try {
-			await Instance.get().db.start(this.settings.mongoDbURI)
-			await Instance.get().cache.connect()
+			await Instance.get().db.start()
+			await Instance.get().cache.start()
 			await Instance.get().listener.start()
 			await Instance.get().db.startAllDbChanges()
 			addWaitBeforeExit(Instance.get().db.close)

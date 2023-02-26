@@ -1,17 +1,15 @@
 import amqp, { ChannelWrapper } from 'amqp-connection-manager'
 import { ConfirmChannel } from 'amqplib'
-import { Enum, IEventTypes } from '../enums/types'
+import { EventBus, Events, SubscribeOptions } from '.'
 import { Instance } from '../instance'
 import { parseJSONValue } from '../utils/json'
 
-export interface Events extends Record<Enum<IEventTypes>, { topic: Enum<IEventTypes>, data: any }> { }
-type SubscribeOptions = { fanout: boolean }
-
-export class EventBus {
+export class RabbitEventBus extends EventBus {
 	#client: ChannelWrapper
-	#columnName = Instance.get().settings.rabbitColumnName
+	#columnName = Instance.get().settings.eventColumnName
 
 	constructor () {
+		super()
 		this.#client = amqp.connect([Instance.get().settings.rabbitURI])
 			.createChannel({
 				json: false,
@@ -24,7 +22,7 @@ export class EventBus {
 
 	createPublisher<Event extends Events[keyof Events]> (topic: Event['topic']) {
 		const publish = async (data: Event['data']) => {
-			await this.#client.publish(this.#columnName, topic, JSON.stringify(data), { persistent: true })
+			return await this.#client.publish(this.#columnName, topic, JSON.stringify(data), { persistent: true })
 		}
 
 		return { publish }

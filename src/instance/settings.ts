@@ -9,7 +9,7 @@ export type Settings = {
 	redisURI: string
 	appId: string
 	bullQueueName: string
-	rabbitColumnName: string
+	eventColumnName: string
 	maxFileUploadSizeInMb: number
 	useRateLimit: boolean
 	rateLimitPeriodInMs: number
@@ -33,7 +33,7 @@ export const defaulInstanceSetting: Settings = {
 	redisURI: '',
 	appId: 'appId',
 	bullQueueName: 'appTasksQueue',
-	rabbitColumnName: 'appEventsColumn',
+	eventColumnName: 'appEventsColumn',
 	maxFileUploadSizeInMb: 500,
 	useRateLimit: false,
 	rateLimitPeriodInMs: 60 * 60 * 1000,

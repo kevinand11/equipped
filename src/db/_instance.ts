@@ -27,7 +27,7 @@ export abstract class Db {
 		)
 	}
 
-	abstract start (url: string): Promise<void>
+	abstract start (): Promise<void>
 	abstract close (): Promise<void>
 }
 

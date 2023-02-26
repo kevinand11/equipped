@@ -25,9 +25,9 @@ export class MongoDb extends Db {
 		return parseMongodbQueryParams(modelName, params)
 	}
 
-	async start (url: string) {
+	async start () {
 		mongoose.set('strictQuery', true)
-		await mongoose.connect(url)
+		await mongoose.connect(Instance.get().settings.mongoDbURI)
 	}
 
 	async close () {

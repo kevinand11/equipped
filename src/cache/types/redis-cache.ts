@@ -13,7 +13,7 @@ export class RedisCache extends Cache {
 		})
 	}
 
-	async connect () {
+	async start () {
 		await this.client.connect()
 	}
 
