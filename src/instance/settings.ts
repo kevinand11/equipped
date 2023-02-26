@@ -6,6 +6,7 @@ export type Settings = {
 	refreshTokenTTL: number
 	mongoDbURI: string
 	rabbitURI: string
+	kafkaURIs: string[]
 	redisURI: string
 	appId: string
 	bullQueueName: string
@@ -31,6 +32,7 @@ export const defaulInstanceSetting: Settings = {
 	mongoDbURI: '',
 	rabbitURI: '',
 	redisURI: '',
+	kafkaURIs: [],
 	appId: 'appId',
 	bullQueueName: 'appTasksQueue',
 	eventColumnName: 'appEventsColumn',

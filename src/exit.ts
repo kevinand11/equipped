@@ -1,4 +1,4 @@
-const listeners = [] as any
+const listeners: any[] = []
 
 export const addWaitBeforeExit = (fn: any) => {
 	listeners.push(fn)

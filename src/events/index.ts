@@ -8,7 +8,11 @@ export abstract class EventBus {
 		publish: (data: Event['data']) => Promise<boolean>
 	}
 
-	abstract createSubscriber<Event extends Events[keyof Events]> (topic: Event['topic'], onMessage: (data: Event['data']) => Promise<void>, options: Partial<SubscribeOptions>): {
+	abstract createSubscriber<Event extends Events[keyof Events]> (topic: Event['topic'], onMessage: (data: Event['data']) => Promise<void>, options?: Partial<SubscribeOptions>): {
 		subscribe: () => Promise<void>
 	}
+}
+
+export const DefaultSubscribeOptions = {
+	fanout: false
 }
