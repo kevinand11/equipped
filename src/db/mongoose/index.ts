@@ -28,6 +28,14 @@ export class MongoDb extends Db {
 	async start () {
 		mongoose.set('strictQuery', true)
 		await mongoose.connect(Instance.get().settings.mongoDbURI)
+		const db = mongoose.connection.db
+		await Promise.all(
+			Object.values(mongoose.models)
+				.map(async (model) => {
+					// Enable changesstream before images for all collections
+					await db.command({ collMod: model.collection.collectionName, changeStreamPreAndPostImages: { enabled: true } })
+				})
+		)
 	}
 
 	async close () {
