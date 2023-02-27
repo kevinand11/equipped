@@ -8,6 +8,8 @@ import { Db, DbChange, DbChangeCallbacks } from '../_instance'
 import { parseMongodbQueryParams } from './query'
 
 export class MongoDb extends Db {
+	#started = false
+
 	generateDbChange<Model, Entity extends BaseEntity> (
 		collection: string,
 		callbacks: DbChangeCallbacks<Model, Entity>,
@@ -18,11 +20,16 @@ export class MongoDb extends Db {
 		return change
 	}
 
+	protected get name () {
+		if (!this.#started) exit('Db not started')
+		return mongoose.connection.name
+	}
+
 	async query<Model> (
 		modelName: string,
 		params: QueryParams
 	): Promise<QueryResults<Model>> {
-		return parseMongodbQueryParams(modelName, params)
+		return await parseMongodbQueryParams(modelName, params)
 	}
 
 	async start () {
@@ -36,6 +43,7 @@ export class MongoDb extends Db {
 					await db.command({ collMod: model.collection.collectionName, changeStreamPreAndPostImages: { enabled: true } })
 				})
 		)
+		this.#started = true
 	}
 
 	async close () {

@@ -11,6 +11,8 @@ export abstract class Db {
 		mapper: (model: Model | null) => Entity | null
 	): DbChange<Model, Entity>
 
+	protected abstract get name () :string
+
 	abstract query<Model> (
 		modelName: string,
 		params: QueryParams
