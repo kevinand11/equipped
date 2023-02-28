@@ -42,7 +42,7 @@ export const parseMongodbQueryParams = async <Model> (modelName: string, params:
 
 	const total = await model.countDocuments(totalClause)
 
-	let builtQuery = model.find(totalClause)
+	let builtQuery = model.find(totalClause).lean()
 	if (sort.length) builtQuery = builtQuery.sort(Object.fromEntries(sort))
 	if (!all && limit) {
 		builtQuery = builtQuery.limit(limit)
@@ -62,7 +62,7 @@ export const parseMongodbQueryParams = async <Model> (modelName: string, params:
 		docs: {
 			limit, total, count: results.length
 		},
-		results: results.map((r) => new model(r)) as Model[]
+		results: results.map((r) => new model(r))
 	}
 }
 
