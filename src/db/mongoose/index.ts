@@ -6,6 +6,15 @@ import { Validation } from '../../validations'
 import { QueryParams, QueryResults } from '../query'
 import { Db, DbChange, DbChangeCallbacks } from '../_instance'
 import { parseMongodbQueryParams } from './query'
+import defaults from 'mongoose-lean-defaults'
+import virtuals from 'mongoose-lean-virtuals'
+import getters from 'mongoose-lean-getters'
+
+mongoose.plugin(defaults)
+	.plugin(virtuals)
+	.plugin(getters)
+
+export { mongoose }
 
 export class MongoDb extends Db {
 	#started = false
