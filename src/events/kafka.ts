@@ -1,4 +1,4 @@
-import { Kafka } from 'kafkajs'
+import { Kafka, logLevel } from 'kafkajs'
 import { DefaultSubscribeOptions, EventBus, Events, SubscribeOptions } from '.'
 import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
@@ -8,7 +8,8 @@ import { Random } from '../utils/utils'
 export class KafkaEventBus extends EventBus {
 	#client = new Kafka({
 		clientId: Instance.get().settings.eventColumnName,
-		brokers: Instance.get().settings.kafkaURIs
+		brokers: Instance.get().settings.kafkaURIs,
+		logLevel: logLevel.NOTHING
 	})
 
 	constructor () {

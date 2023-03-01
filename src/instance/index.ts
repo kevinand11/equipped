@@ -4,7 +4,7 @@ import { RedisCache } from '../cache/types/redis-cache'
 import { MongoDb } from '../db/mongoose'
 import { Db } from '../db/_instance'
 import { EventBus } from '../events/'
-import { RabbitEventBus } from '../events/rabbit'
+import { KafkaEventBus } from '../events/kafka'
 import { addWaitBeforeExit, exit } from '../exit'
 import { ConsoleLogger, Logger } from '../logger'
 import { Server } from '../server/app'
@@ -40,7 +40,7 @@ export class Instance {
 	}
 
 	get eventBus () {
-		if (!this.#eventBus) this.#eventBus = new RabbitEventBus()
+		if (!this.#eventBus) this.#eventBus = new KafkaEventBus()
 		return this.#eventBus
 	}
 

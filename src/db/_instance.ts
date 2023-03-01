@@ -1,6 +1,6 @@
 import axios from 'axios'
-import { Instance } from '../instance'
 import { exit } from '../exit'
+import { Instance } from '../instance'
 import { BaseEntity } from '../structure'
 import { DebeziumSetup, DefaultDebeziumSetup } from './debezium'
 import { QueryParams, QueryResults } from './query'
@@ -64,11 +64,10 @@ export abstract class DbChange<Model, Entity extends BaseEntity> {
 	}
 
 	protected async _setup (key: string, data: DebeziumSetup) {
-		const debeziumUrl = Instance.get().settings.debeziumUrl
 		data = { ...DefaultDebeziumSetup, ...data }
-		await axios.put(`${debeziumUrl}/connectors/${key}/config`, data)
-			.catch(() => {
-				exit(`Failed to setup debezium for ${key}`)
+		await axios.put(`/connectors/${key}/config`, data, { baseURL: Instance.get().settings.debeziumUrl })
+			.catch((err) => {
+				exit(`Failed to setup debezium for ${key}: ${err.message}`)
 			})
 	}
 }

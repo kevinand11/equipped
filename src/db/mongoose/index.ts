@@ -80,28 +80,37 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 		const model = mongoose.models[this.modelName]
 		if (!model) return exit(`Model ${this.modelName} not found`)
 		const colName = model.collection.collectionName
+		const dbColName = `${dbName}.${colName}`
+		const topic = `${TopicPrefix}.${dbColName}`
 
-		await this._setup(colName, {
+		const { hosts, credentials, replicaSet } = mongoose.connection.getClient().options
+
+		await this._setup(topic, {
 			'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
 			'capture.mode': 'change_streams_update_full_with_pre_image',
-			'mongodb.connection.string': Instance.get().settings.mongoDbURI,
-			'collection.include.list': `${dbName}.${colName}`
+			'mongodb.hosts': `${replicaSet}/` + hosts.map((h) => `${h.host}:${h.port}`).join(','),
+			... (credentials ? {
+				'mongodb.user': credentials.username,
+				'mongodb.password': credentials.password,
+				'mongodb.authSource': credentials.source
+			} : {}),
+			'collection.include.list': dbColName
 		})
 
 		await Instance.get().eventBus
-			.createSubscriber(`${TopicPrefix}.${dbName}.${colName}` as never, async (data: DbDocumentChange) => {
+			.createSubscriber(topic as never, async (data: DbDocumentChange) => {
 				const op = data.op
 
 				if (op === 'c' && this.callbacks.created) {
 					const after = JSON.parse(data.after ?? 'null')
-					await this.callbacks.created({
+					if (after) await this.callbacks.created({
 						before: null,
 						after: this.mapper(new model(after))!
 					})
 				} else if (op === 'u' && this.callbacks.updated) {
 					const before = JSON.parse(data.before ?? 'null')
 					const after = JSON.parse(data.after ?? 'null')
-					await this.callbacks.updated?.({
+					if (before) await this.callbacks.updated({
 						before: this.mapper(new model(before))!,
 						after: this.mapper(new model(after))!,
 						changes: Validation.Differ.from(
@@ -110,7 +119,7 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 					})
 				} else if (op === 'd' && this.callbacks.deleted) {
 					const before = JSON.parse(data.before ?? 'null')
-					await this.callbacks.deleted({
+					if (before) await this.callbacks.deleted({
 						before: this.mapper(new model(before))!,
 						after: null
 					})
