@@ -5,6 +5,7 @@ import virtuals from 'mongoose-lean-virtuals'
 import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { BaseEntity } from '../../structure'
+import { retry } from '../../utils/retry'
 import { Validation } from '../../validations'
 import { TopicPrefix } from '../debezium'
 import { QueryParams, QueryResults } from '../query'
@@ -83,53 +84,55 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 		const dbColName = `${dbName}.${colName}`
 		const topic = `${TopicPrefix}.${dbColName}`
 
-		const started = await this._setup(topic, {
-			'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
-			'capture.mode': 'change_streams_update_full_with_pre_image',
-			'mongodb.connection.string': Instance.get().settings.mongoDbURI,
-			'collection.include.list': dbColName
-		})
-
-		const TestId = '__equipped__testing__'
-		if (!started) {
-			const db = mongoose.connection.db
-			await db.collection(colName).findOneAndUpdate({ _id: TestId }, { $set: { colName } }, { upsert: true })
-			await db.collection(colName).deleteOne({ _id: TestId })
-			setTimeout(() => {
-				exit(`Wait a few minutes for db changes for ${colName} to initialize...`)
-			}, 5000)
-		}
-
-		if (started) await Instance.get().eventBus
-			.createSubscriber(topic as never, async (data: DbDocumentChange) => {
-				const op = data.op
-
-				const before = JSON.parse(data.before ?? 'null')
-				const after = JSON.parse(data.after ?? 'null')
-
-				if (before?.__id === TestId || after?.__id === TestId) return
-
-				if (op === 'c' && this.callbacks.created) {
-					if (after) await this.callbacks.created({
-						before: null,
-						after: this.mapper(new model(after))!
-					})
-				} else if (op === 'u' && this.callbacks.updated) {
-					if (before) await this.callbacks.updated({
-						before: this.mapper(new model(before))!,
-						after: this.mapper(new model(after))!,
-						changes: Validation.Differ.from(
-							Validation.Differ.diff(before, after)
-						)
-					})
-				} else if (op === 'd' && this.callbacks.deleted) {
-					if (before) await this.callbacks.deleted({
-						before: this.mapper(new model(before))!,
-						after: null
-					})
-				}
+		retry(async () => {
+			const started = await this._setup(topic, {
+				'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
+				'capture.mode': 'change_streams_update_full_with_pre_image',
+				'mongodb.connection.string': Instance.get().settings.mongoDbURI,
+				'collection.include.list': dbColName
 			})
-			.subscribe()
+
+			const TestId = '__equipped__testing__'
+
+			if (!started) {
+				const db = mongoose.connection.db
+				await db.collection(colName).findOneAndUpdate({ _id: TestId }, { $set: { colName } }, { upsert: true })
+				await db.collection(colName).deleteOne({ _id: TestId })
+				throw new Error(`Wait a few minutes for db changes for ${colName} to initialize...`)
+			}
+
+			if (started) await Instance.get().eventBus
+				.createSubscriber(topic as never, async (data: DbDocumentChange) => {
+					const op = data.op
+
+					const before = JSON.parse(data.before ?? 'null')
+					const after = JSON.parse(data.after ?? 'null')
+
+					if (before?.__id === TestId || after?.__id === TestId) return
+
+					if (op === 'c' && this.callbacks.created) {
+						if (after) await this.callbacks.created({
+							before: null,
+							after: this.mapper(new model(after))!
+						})
+					} else if (op === 'u' && this.callbacks.updated) {
+						if (before) await this.callbacks.updated({
+							before: this.mapper(new model(before))!,
+							after: this.mapper(new model(after))!,
+							changes: Validation.Differ.from(
+								Validation.Differ.diff(before, after)
+							)
+						})
+					} else if (op === 'd' && this.callbacks.deleted) {
+						if (before) await this.callbacks.deleted({
+							before: this.mapper(new model(before))!,
+							after: null
+						})
+					}
+				})
+				.subscribe()
+		}, 5, 120_000)
+			.catch((err) => exit(err.message))
 	}
 }
 
