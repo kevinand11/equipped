@@ -1,14 +1,15 @@
 import mongoose from 'mongoose'
-import { addWaitBeforeExit, exit } from '../../exit'
+import defaults from 'mongoose-lean-defaults'
+import getters from 'mongoose-lean-getters'
+import virtuals from 'mongoose-lean-virtuals'
+import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { BaseEntity } from '../../structure'
 import { Validation } from '../../validations'
+import { TopicPrefix } from '../debezium'
 import { QueryParams, QueryResults } from '../query'
 import { Db, DbChange, DbChangeCallbacks } from '../_instance'
 import { parseMongodbQueryParams } from './query'
-import defaults from 'mongoose-lean-defaults'
-import virtuals from 'mongoose-lean-virtuals'
-import getters from 'mongoose-lean-getters'
 
 mongoose.plugin(defaults)
 	.plugin(virtuals)
@@ -29,19 +30,19 @@ export class MongoDb extends Db {
 		return change
 	}
 
-	protected get name () {
-		if (!this.#started) exit('Db not started')
-		return mongoose.connection.name
-	}
-
 	async query<Model> (
 		modelName: string,
 		params: QueryParams
 	): Promise<QueryResults<Model>> {
-		return await parseMongodbQueryParams(modelName, params)
+		const model = mongoose.models[modelName]
+		if (!model) return exit(`Model ${modelName} not found`)
+		return await parseMongodbQueryParams(model, params)
 	}
 
 	async start () {
+		if (this.#started) return
+		this.#started = true
+
 		mongoose.set('strictQuery', true)
 		await mongoose.connect(Instance.get().settings.mongoDbURI)
 		const db = mongoose.connection.db
@@ -52,7 +53,6 @@ export class MongoDb extends Db {
 					await db.command({ collMod: model.collection.collectionName, changeStreamPreAndPostImages: { enabled: true } })
 				})
 		)
-		this.#started = true
 	}
 
 	async close () {
@@ -72,87 +72,56 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 		super(modelName, callbacks, mapper)
 	}
 
-	async start (skipResume = false): Promise<void> {
+	async start (): Promise<void> {
 		if (this.#started) return
 		this.#started = true
 
+		const dbName = mongoose.connection.name
 		const model = mongoose.models[this.modelName]
 		if (!model) return exit(`Model ${this.modelName} not found`)
+		const colName = model.collection.collectionName
 
-		const dbName = model.collection.collectionName
-		const cloneName = dbName + '_streams_clone'
-		const getClone = () => model.collection.conn.db.collection(cloneName)
-		const getStreamTokens = () => model.collection.conn.db.collection('stream-tokens')
-
-		const res = await getStreamTokens().findOne({ _id: dbName })
-		const resumeToken = skipResume ? undefined : res?.resumeToken
-
-		const changeStream = model
-			.watch([], { fullDocument: 'updateLookup', startAfter: resumeToken })
-			.on('change', async (data) => {
-				// @ts-ignore
-				const streamId = data._id._data
-				const shouldRun = await this._shouldRun(streamId)
-				if (!shouldRun) return
-
-				addWaitBeforeExit((async () => {
-					await getStreamTokens().findOneAndUpdate({ _id: dbName }, { $set: { resumeToken: data._id } }, { upsert: true })
-
-					if (data.operationType === 'insert') {
-						// @ts-ignore
-						const _id = data.documentKey!._id
-						const after = data.fullDocument as Model
-						const { value } = await getClone().findOneAndUpdate({ _id }, { $set: { ...after, _id } }, {
-							upsert: true,
-							returnDocument: 'after'
-						})
-						if (value) this.callbacks.created?.({
-							before: null,
-							after: this.mapper(new model(after))!
-						})
-					}
-
-					if (data.operationType === 'delete') {
-						// @ts-ignore
-						const _id = data.documentKey!._id
-						const { value: before } = await getClone().findOneAndDelete({ _id })
-						if (before) this.callbacks.deleted?.({
-							before: this.mapper(new model(before))!,
-							after: null
-						})
-					}
-
-					if (data.operationType === 'update') {
-						// @ts-ignore
-						const _id = data.documentKey!._id
-						const after = data.fullDocument as Model
-						const { value: before } = await getClone().findOneAndUpdate({ _id }, { $set: after as any }, { returnDocument: 'before' })
-						// @ts-ignore
-						const {
-							updatedFields = {},
-							removedFields = [],
-							truncatedArrays = []
-						} = data.updateDescription ?? {}
-						const changed = removedFields
-							.concat(truncatedArrays.map((a) => a.field))
-							.concat(Object.keys(updatedFields))
-						const changes = Validation.Differ.from(changed)
-						if (before) this.callbacks.updated?.({
-							before: this.mapper(new model(before))!,
-							after: this.mapper(new model(after))!,
-							changes
-						})
-					}
-				})())
-			})
-			.on('error', async (err) => {
-				await Instance.get().logger.error(`Change Stream errored out: ${dbName}: ${err.message}`)
-				changeStream.close()
-				return this.start(true)
-			})
-		addWaitBeforeExit(async () => {
-			changeStream.close()
-			this.#started = false
+		await this._setup(colName, {
+			'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
+			'capture.mode': 'change_streams_update_full_with_pre_image',
+			'mongodb.connection.string': Instance.get().settings.mongoDbURI,
+			'collection.include.list': `${dbName}.${colName}`
 		})
+
+		await Instance.get().eventBus
+			.createSubscriber(`${TopicPrefix}.${dbName}.${colName}` as never, async (data: DbDocumentChange) => {
+				const op = data.op
+
+				if (op === 'c' && this.callbacks.created) {
+					const after = JSON.parse(data.after ?? 'null')
+					await this.callbacks.created({
+						before: null,
+						after: this.mapper(new model(after))!
+					})
+				} else if (op === 'u' && this.callbacks.updated) {
+					const before = JSON.parse(data.before ?? 'null')
+					const after = JSON.parse(data.after ?? 'null')
+					await this.callbacks.updated?.({
+						before: this.mapper(new model(before))!,
+						after: this.mapper(new model(after))!,
+						changes: Validation.Differ.from(
+							Validation.Differ.diff(before, after)
+						)
+					})
+				} else if (op === 'd' && this.callbacks.deleted) {
+					const before = JSON.parse(data.before ?? 'null')
+					await this.callbacks.deleted({
+						before: this.mapper(new model(before))!,
+						after: null
+					})
+				}
+			})
+			.subscribe()
 	}
+}
+
+type DbDocumentChange = {
+	before: string | null
+	after: string | null
+	op: 'c' | 'u' | 'd'
 }

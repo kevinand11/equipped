@@ -1,12 +1,8 @@
 import mongoose from 'mongoose'
-import { BadRequestError } from '../../errors'
 import { Instance } from '../../instance'
 import { Conditions, QueryKeys, QueryParams, QueryResults, QueryWhere, QueryWhereClause } from '../query'
 
-export const parseMongodbQueryParams = async <Model> (modelName: string, params: QueryParams): Promise<QueryResults<Model>> => {
-	const model = mongoose.models[modelName]
-	if (!model) throw new BadRequestError(`Model ${modelName} not found`)
-
+export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<any>, params: QueryParams): Promise<QueryResults<Model>> => {
 	// Handle where clauses
 	const query = [] as ReturnType<typeof buildWhereQuery>[]
 	const whereType = Object.values(QueryKeys).indexOf(params.whereType!) !== -1 ? params.whereType! : QueryKeys.and

@@ -1,6 +1,6 @@
 import { Kafka } from 'kafkajs'
-import { addWaitBeforeExit } from '../exit'
 import { DefaultSubscribeOptions, EventBus, Events, SubscribeOptions } from '.'
+import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
 import { parseJSONValue } from '../utils/json'
 import { Random } from '../utils/utils'
@@ -47,9 +47,10 @@ export class KafkaEventBus extends EventBus {
 
 			await consumer.run({
 				eachMessage: async ({ message }) => {
-					if (!message.value) return
-					await onMessage(parseJSONValue(message.value.toString()))
-						.catch()
+					addWaitBeforeExit((async () => {
+						if (!message.value) return
+						await onMessage(parseJSONValue(message.value.toString())).catch()
+					})())
 				},
 			})
 

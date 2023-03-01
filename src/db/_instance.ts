@@ -1,5 +1,8 @@
+import axios from 'axios'
 import { Instance } from '../instance'
+import { exit } from '../exit'
 import { BaseEntity } from '../structure'
+import { DebeziumSetup, DefaultDebeziumSetup } from './debezium'
 import { QueryParams, QueryResults } from './query'
 
 export abstract class Db {
@@ -10,8 +13,6 @@ export abstract class Db {
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	): DbChange<Model, Entity>
-
-	protected abstract get name () :string
 
 	abstract query<Model> (
 		modelName: string,
@@ -62,11 +63,13 @@ export abstract class DbChange<Model, Entity extends BaseEntity> {
 		return this.#mapper
 	}
 
-	protected async _shouldRun (key: string) {
-		const cacheName = `streams-${key}`
-		const cached = await Instance.get().cache.setInTransaction(cacheName, key, 30)
-		if (cached[0]) return false
-		return true
+	protected async _setup (key: string, data: DebeziumSetup) {
+		const debeziumUrl = Instance.get().settings.debeziumUrl
+		data = { ...DefaultDebeziumSetup, ...data }
+		await axios.put(`${debeziumUrl}/connectors/${key}/config`, data)
+			.catch(() => {
+				exit(`Failed to setup debezium for ${key}`)
+			})
 	}
 }
 
