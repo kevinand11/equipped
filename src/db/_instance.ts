@@ -65,10 +65,16 @@ export abstract class DbChange<Model, Entity extends BaseEntity> {
 
 	protected async _setup (key: string, data: DebeziumSetup) {
 		data = { ...DefaultDebeziumSetup, ...data }
-		await axios.put(`/connectors/${key}/config`, data, { baseURL: Instance.get().settings.debeziumUrl })
-			.catch((err) => {
-				exit(`Failed to setup debezium for ${key}: ${err.message}`)
+		const res = await axios.put(`/connectors/${key}/config`, data, { baseURL: Instance.get().settings.debeziumUrl })
+			.then(async () => {
+				const res = await axios.get(`/connectors/${key}/topics`, { baseURL: Instance.get().settings.debeziumUrl })
+				return res.data[key]?.topics as string[] ?? []
+				// if (!topics || topics.length === 0) throw new Error('Setup still running')
 			})
+			.catch((err) => {
+				return exit(`Failed to setup debezium for ${key}: ${err.message}`)
+			})
+		return res[0] === key
 	}
 }
 

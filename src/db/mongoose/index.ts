@@ -83,21 +83,14 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 		const dbColName = `${dbName}.${colName}`
 		const topic = `${TopicPrefix}.${dbColName}`
 
-		const { hosts, credentials, replicaSet } = mongoose.connection.getClient().options
-
-		await this._setup(topic, {
+		const started = await this._setup(topic, {
 			'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
 			'capture.mode': 'change_streams_update_full_with_pre_image',
-			'mongodb.hosts': `${replicaSet}/` + hosts.map((h) => `${h.host}:${h.port}`).join(','),
-			... (credentials ? {
-				'mongodb.user': credentials.username,
-				'mongodb.password': credentials.password,
-				'mongodb.authSource': credentials.source
-			} : {}),
+			'mongodb.connection.string': Instance.get().settings.mongoDbURI,
 			'collection.include.list': dbColName
 		})
 
-		await Instance.get().eventBus
+		if (started) await Instance.get().eventBus
 			.createSubscriber(topic as never, async (data: DbDocumentChange) => {
 				const op = data.op
 
