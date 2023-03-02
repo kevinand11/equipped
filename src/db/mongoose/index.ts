@@ -105,33 +105,32 @@ class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, En
 				.createSubscriber(topic as never, async (data: DbDocumentChange) => {
 					const op = data.op
 
-					const before = JSON.parse(data.before ?? 'null')
-					const after = JSON.parse(data.after ?? 'null')
+					let before = JSON.parse(data.before ?? 'null')
+					let after = JSON.parse(data.after ?? 'null')
 
 					if (before?.__id === TestId || after?.__id === TestId) return
 
-					if (op === 'c' && this.callbacks.created) {
-						if (after) await this.callbacks.created({
-							before: null,
-							after: this.mapper(new model(after))!
-						})
-					} else if (op === 'u' && this.callbacks.updated) {
-						if (before) await this.callbacks.updated({
-							before: this.mapper(new model(before))!,
-							after: this.mapper(new model(after))!,
-							changes: Validation.Differ.from(
-								Validation.Differ.diff(before, after)
-							)
-						})
-					} else if (op === 'd' && this.callbacks.deleted) {
-						if (before) await this.callbacks.deleted({
-							before: this.mapper(new model(before))!,
-							after: null
-						})
-					}
+					if (before) before = model.hydrate(before).toJSON({ getters: true, virtuals: true })
+					if (after) after = model.hydrate(after).toJSON({ getters: true, virtuals: true })
+
+					if (op === 'c' && this.callbacks.created && after) await this.callbacks.created({
+						before: null,
+						after: this.mapper(after)!
+					})
+					else if (op === 'u' && this.callbacks.updated && before) await this.callbacks.updated({
+						before: this.mapper(before)!,
+						after: this.mapper(after)!,
+						changes: Validation.Differ.from(
+							Validation.Differ.diff(before, after)
+						)
+					})
+					else if (op === 'd' && this.callbacks.deleted && before) await this.callbacks.deleted({
+						before: this.mapper(before)!,
+						after: null
+					})
 				})
 				.subscribe()
-		}, 5, 120_000)
+		}, 10, 60_000)
 			.catch((err) => exit(err.message))
 	}
 }
