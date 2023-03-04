@@ -1,5 +1,5 @@
 import mongoose from 'mongoose'
-import { addWaitBeforeExit, exit } from '../../exit'
+import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { BaseEntity } from '../../structure'
 import { Validation } from '../../validations'
@@ -7,31 +7,30 @@ import { DbChange, DbChangeCallbacks } from '../_instance'
 
 export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, Entity> {
 	#started = false
+	#model: mongoose.Model<Model>
 
 	constructor (
-		modelName: string,
+		model: mongoose.Model<Model>,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	) {
-		super(modelName, callbacks, mapper)
+		super(callbacks, mapper)
+		this.#model = model
 	}
 
 	async start (skipResume = false): Promise<void> {
 		if (this.#started) return
 		this.#started = true
 
-		const model = mongoose.models[this.modelName]
-		if (!model) return exit(`Model ${this.modelName} not found`)
-
-		const dbName = model.collection.collectionName
+		const dbName = this.#model.collection.name
 		const cloneName = dbName + '_streams_clone'
-		const getClone = () => model.collection.conn.db.collection(cloneName)
-		const getStreamTokens = () => model.collection.conn.db.collection('stream-tokens')
+		const getClone = () => this.#model.collection.conn.db.collection(cloneName)
+		const getStreamTokens = () => this.#model.collection.conn.db.collection('stream-tokens')
 
 		const res = await getStreamTokens().findOne({ _id: dbName })
 		const resumeToken = skipResume ? undefined : res?.resumeToken
 
-		const changeStream = model
+		const changeStream = this.#model
 			.watch([], { fullDocument: 'updateLookup', startAfter: resumeToken })
 			.on('change', async (data) => {
 				// @ts-ignore
@@ -41,6 +40,8 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 
 				addWaitBeforeExit((async () => {
 					await getStreamTokens().findOneAndUpdate({ _id: dbName }, { $set: { resumeToken: data._id } }, { upsert: true })
+
+					const hydrate = (value: any) => value ? this.#model.hydrate(value).toObject({ getters: true, virtuals: true }) : null
 
 					if (data.operationType === 'insert') {
 						// @ts-ignore
@@ -52,7 +53,7 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 						})
 						if (value) this.callbacks.created?.({
 							before: null,
-							after: this.mapper(new model(after))!
+							after: this.mapper(hydrate(after))!
 						})
 					}
 
@@ -61,7 +62,7 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 						const _id = data.documentKey!._id
 						const { value: before } = await getClone().findOneAndDelete({ _id })
 						if (before) this.callbacks.deleted?.({
-							before: this.mapper(new model(before))!,
+							before: this.mapper(hydrate(before))!,
 							after: null
 						})
 					}
@@ -82,8 +83,8 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 							.concat(Object.keys(updatedFields))
 						const changes = Validation.Differ.from(changed)
 						if (before) this.callbacks.updated?.({
-							before: this.mapper(new model(before))!,
-							after: this.mapper(new model(after))!,
+							before: this.mapper(hydrate(before))!,
+							after: this.mapper(hydrate(after))!,
 							changes
 						})
 					}
@@ -91,11 +92,11 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 			})
 			.on('error', async (err) => {
 				await Instance.get().logger.error(`Change Stream errored out: ${dbName}: ${err.message}`)
-				changeStream.close()
+				await changeStream.close()
 				return this.start(true)
 			})
 		addWaitBeforeExit(async () => {
-			changeStream.close()
+			await changeStream.close()
 			this.#started = false
 		})
 	}

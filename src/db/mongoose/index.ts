@@ -28,21 +28,21 @@ export class MongoDb extends Db {
 		return conn
 	}
 
-	generateDbChange<Model, Entity extends BaseEntity> (
-		collection: string,
+	change<Model, Entity extends BaseEntity> (
+		model: mongoose.Model<Model>,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	) {
-		const change = new MongoDbChange<Model, Entity>(collection, callbacks, mapper)
+		const change = new MongoDbChange<Model, Entity>(model, callbacks, mapper)
 		this._addToDbChanges(change)
 		return change
 	}
 
 	async query<Model> (
-		modelName: string,
+		model: mongoose.Model<Model>,
 		params: QueryParams
 	): Promise<QueryResults<Model>> {
-		return await parseMongodbQueryParams(modelName, params)
+		return await parseMongodbQueryParams(model, params)
 	}
 
 	async start () {

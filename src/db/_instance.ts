@@ -5,14 +5,14 @@ import { QueryParams, QueryResults } from './query'
 export abstract class Db {
 	#dbChanges = [] as DbChange<any, any>[]
 
-	abstract generateDbChange<Model, Entity extends BaseEntity> (
-		modelName: string,
+	abstract change<Model, Entity extends BaseEntity> (
+		collection: any,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	): DbChange<Model, Entity>
 
 	abstract query<Model> (
-		modelName: string,
+		collection: any,
 		params: QueryParams
 	): Promise<QueryResults<Model>>
 
@@ -32,25 +32,18 @@ export abstract class Db {
 }
 
 export abstract class DbChange<Model, Entity extends BaseEntity> {
-	#modelName: string
 	#callbacks: DbChangeCallbacks<Model, Entity> = {}
 	#mapper: (model: Model | null) => Entity | null
 
 	constructor (
-		modelName: string,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	) {
-		this.#modelName = modelName
 		this.#callbacks = callbacks
 		this.#mapper = mapper
 	}
 
 	abstract start (): Promise<void>
-
-	get modelName () {
-		return this.#modelName
-	}
 
 	get callbacks () {
 		return Object.freeze(this.#callbacks)
