@@ -2,7 +2,7 @@ import mongoose from 'mongoose'
 import { Instance } from '../../instance'
 import { Conditions, QueryKeys, QueryParams, QueryResults, QueryWhere, QueryWhereClause } from '../query'
 
-export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<any>, params: QueryParams): Promise<QueryResults<Model>> => {
+export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<Model>, params: QueryParams): Promise<QueryResults<Model>> => {
 	// Handle where clauses
 	const query = [] as ReturnType<typeof buildWhereQuery>[]
 	const whereType = Object.values(QueryKeys).indexOf(params.whereType!) !== -1 ? params.whereType! : QueryKeys.and
@@ -58,7 +58,7 @@ export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<any>
 		docs: {
 			limit, total, count: results.length
 		},
-		results
+		results: results as Model[]
 	}
 }
 

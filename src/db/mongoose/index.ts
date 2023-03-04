@@ -2,41 +2,46 @@ import mongoose from 'mongoose'
 import defaults from 'mongoose-lean-defaults'
 import getters from 'mongoose-lean-getters'
 import virtuals from 'mongoose-lean-virtuals'
-import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { BaseEntity } from '../../structure'
-import { retry } from '../../utils/retry'
-import { Validation } from '../../validations'
-import { TopicPrefix } from '../debezium'
 import { QueryParams, QueryResults } from '../query'
-import { Db, DbChange, DbChangeCallbacks } from '../_instance'
+import { Db, DbChangeCallbacks } from '../_instance'
+import { MongoDbChange } from './changes'
 import { parseMongodbQueryParams } from './query'
-
-mongoose.plugin(defaults)
-	.plugin(virtuals)
-	.plugin(getters)
-
-export { mongoose }
 
 export class MongoDb extends Db {
 	#started = false
+	#conns = new Map<string, mongoose.Connection>()
 
-	generateDbChange<Model, Entity extends BaseEntity> (
-		collection: string,
+	get Schema () {
+		return mongoose.Schema
+	}
+
+	use (dbName = 'default') {
+		let conn = this.#conns.get(dbName)
+		if (conn) return conn
+		conn = dbName === 'default' ? mongoose.connection : mongoose.connection.useDb(dbName, { useCache: true })
+		conn.set('strictQuery', true)
+		conn.plugin(defaults).plugin(virtuals).plugin(getters)
+		conn.on('close', () => this.#conns.delete(dbName))
+		this.#conns.set(dbName, conn)
+		return conn
+	}
+
+	change<Model, Entity extends BaseEntity> (
+		model: mongoose.Model<Model>,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
 	) {
-		const change = new MongoDbChange<Model, Entity>(collection, callbacks, mapper)
+		const change = new MongoDbChange<Model, Entity>(model, callbacks, mapper)
 		this._addToDbChanges(change)
 		return change
 	}
 
 	async query<Model> (
-		modelName: string,
+		model: mongoose.Model<Model>,
 		params: QueryParams
 	): Promise<QueryResults<Model>> {
-		const model = mongoose.models[modelName]
-		if (!model) return exit(`Model ${modelName} not found`)
 		return await parseMongodbQueryParams(model, params)
 	}
 
@@ -44,99 +49,25 @@ export class MongoDb extends Db {
 		if (this.#started) return
 		this.#started = true
 
-		mongoose.set('strictQuery', true)
 		await mongoose.connect(Instance.get().settings.mongoDbURI)
-		const db = mongoose.connection.db
+
 		await Promise.all(
-			Object.values(mongoose.models)
-				.map(async (model) => {
-					// Enable changesstream before images for all collections
-					await db.command({ collMod: model.collection.collectionName, changeStreamPreAndPostImages: { enabled: true } })
-				})
+			[...this.#conns.values()].map(async (conn) => {
+				await Promise.all(
+					Object.values(mongoose.models)
+						.map(async (model) => {
+							// Enable changesstream before images for all collections
+							await conn.db.command({ collMod: model.collection.name, changeStreamPreAndPostImages: { enabled: true } })
+						})
+				)
+			})
 		)
 	}
 
 	async close () {
+		await Promise.all(
+			[...this.#conns.values()].map(async (conn) => conn.close())
+		)
 		await mongoose.disconnect()
 	}
-}
-
-
-class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, Entity> {
-	#started = false
-
-	constructor (
-		modelName: string,
-		callbacks: DbChangeCallbacks<Model, Entity>,
-		mapper: (model: Model | null) => Entity | null
-	) {
-		super(modelName, callbacks, mapper)
-	}
-
-	async start (): Promise<void> {
-		if (this.#started) return
-		this.#started = true
-
-		const dbName = mongoose.connection.name
-		const model = mongoose.models[this.modelName]
-		if (!model) return exit(`Model ${this.modelName} not found`)
-		const colName = model.collection.collectionName
-		const dbColName = `${dbName}.${colName}`
-		const topic = `${TopicPrefix}.${dbColName}`
-
-		retry(async () => {
-			const started = await this._setup(topic, {
-				'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
-				'capture.mode': 'change_streams_update_full_with_pre_image',
-				'mongodb.connection.string': Instance.get().settings.mongoDbURI,
-				'collection.include.list': dbColName
-			})
-
-			const TestId = '__equipped__testing__'
-
-			if (!started) {
-				const db = mongoose.connection.db
-				await db.collection(colName).findOneAndUpdate({ _id: TestId }, { $set: { colName } }, { upsert: true })
-				await db.collection(colName).deleteOne({ _id: TestId })
-				throw new Error(`Wait a few minutes for db changes for ${colName} to initialize...`)
-			}
-
-			if (started) await Instance.get().eventBus
-				.createSubscriber(topic as never, async (data: DbDocumentChange) => {
-					const op = data.op
-
-					let before = JSON.parse(data.before ?? 'null')
-					let after = JSON.parse(data.after ?? 'null')
-
-					if (before?.__id === TestId || after?.__id === TestId) return
-
-					if (before) before = model.hydrate(before).toJSON({ getters: true, virtuals: true })
-					if (after) after = model.hydrate(after).toJSON({ getters: true, virtuals: true })
-
-					if (op === 'c' && this.callbacks.created && after) await this.callbacks.created({
-						before: null,
-						after: this.mapper(after)!
-					})
-					else if (op === 'u' && this.callbacks.updated && before) await this.callbacks.updated({
-						before: this.mapper(before)!,
-						after: this.mapper(after)!,
-						changes: Validation.Differ.from(
-							Validation.Differ.diff(before, after)
-						)
-					})
-					else if (op === 'd' && this.callbacks.deleted && before) await this.callbacks.deleted({
-						before: this.mapper(before)!,
-						after: null
-					})
-				})
-				.subscribe()
-		}, 10, 60_000)
-			.catch((err) => exit(err.message))
-	}
-}
-
-type DbDocumentChange = {
-	before: string | null
-	after: string | null
-	op: 'c' | 'u' | 'd'
 }
