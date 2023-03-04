@@ -23,15 +23,13 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 		this.#started = true
 
 		const dbName = this.#model.collection.name
-		const cloneName = dbName + '_streams_clone'
-		const getClone = () => this.#model.collection.conn.db.collection(cloneName)
 		const getStreamTokens = () => this.#model.collection.conn.db.collection('stream-tokens')
 
 		const res = await getStreamTokens().findOne({ _id: dbName })
 		const resumeToken = skipResume ? undefined : res?.resumeToken
 
 		const changeStream = this.#model
-			.watch([], { fullDocument: 'updateLookup', startAfter: resumeToken })
+			.watch<mongoose.Document<Model>>([], { fullDocument: 'whenAvailable', fullDocumentBeforeChange: 'whenAvailable', startAfter: resumeToken })
 			.on('change', async (data) => {
 				// @ts-ignore
 				const streamId = data._id._data
@@ -43,46 +41,27 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 
 					const hydrate = (value: any) => value ? this.#model.hydrate(value).toObject({ getters: true, virtuals: true }) : null
 
-					if (data.operationType === 'insert') {
-						// @ts-ignore
-						const _id = data.documentKey!._id
-						const after = data.fullDocument as Model
-						const { value } = await getClone().findOneAndUpdate({ _id }, { $set: { ...after, _id } }, {
-							upsert: true,
-							returnDocument: 'after'
-						})
-						if (value) this.callbacks.created?.({
+					if (data.operationType === 'insert' && this.callbacks.created) {
+						const after = data.fullDocument
+						if (after) await this.callbacks.created({
 							before: null,
 							after: this.mapper(hydrate(after))!
 						})
 					}
 
-					if (data.operationType === 'delete') {
-						// @ts-ignore
-						const _id = data.documentKey!._id
-						const { value: before } = await getClone().findOneAndDelete({ _id })
+					if (data.operationType === 'delete' && this.callbacks.deleted) {
+						const before = data.fullDocumentBeforeChange
 						if (before) this.callbacks.deleted?.({
 							before: this.mapper(hydrate(before))!,
 							after: null
 						})
 					}
 
-					if (data.operationType === 'update') {
-						// @ts-ignore
-						const _id = data.documentKey!._id
-						const after = data.fullDocument as Model
-						const { value: before } = await getClone().findOneAndUpdate({ _id }, { $set: after as any }, { returnDocument: 'before' })
-						// @ts-ignore
-						const {
-							updatedFields = {},
-							removedFields = [],
-							truncatedArrays = []
-						} = data.updateDescription ?? {}
-						const changed = removedFields
-							.concat(truncatedArrays.map((a) => a.field))
-							.concat(Object.keys(updatedFields))
-						const changes = Validation.Differ.from(changed)
-						if (before) this.callbacks.updated?.({
+					if (data.operationType === 'update' && this.callbacks.updated) {
+						const before = data.fullDocumentBeforeChange
+						const after = data.fullDocument
+						const changes = Validation.Differ.from(Validation.Differ.diff(before, after))
+						if (before && after) this.callbacks.updated({
 							before: this.mapper(hydrate(before))!,
 							after: this.mapper(hydrate(after))!,
 							changes
