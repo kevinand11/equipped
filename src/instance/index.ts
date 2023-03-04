@@ -2,7 +2,6 @@ import { BullJob } from '../bull'
 import { Cache } from '../cache/cache'
 import { RedisCache } from '../cache/types/redis-cache'
 import { MongoDb } from '../db/mongoose'
-import { Db } from '../db/_instance'
 import { EventBus } from '../events/'
 import { RabbitEventBus } from '../events/rabbit'
 import { addWaitBeforeExit, exit } from '../exit'
@@ -19,39 +18,33 @@ export class Instance {
 	#cache: Cache | null = null
 	#eventBus: EventBus | null = null
 	#server: Server | null = null
-	#db: Db | null = null
+	#dbs: { mongo: MongoDb } | null = null
 
 	private constructor () {
 	}
 
 	get logger () {
-		if (!this.#logger) this.#logger = new ConsoleLogger()
-		return this.#logger
+		return this.#logger ||= new ConsoleLogger()
 	}
 
 	get job () {
-		if (!this.#job) this.#job = new BullJob()
-		return this.#job
+		return this.#job ||= new BullJob()
 	}
 
 	get cache () {
-		if (!this.#cache) this.#cache = new RedisCache(this.settings.redisURI)
-		return this.#cache
+		return this.#cache ||= new RedisCache()
 	}
 
 	get eventBus () {
-		if (!this.#eventBus) this.#eventBus = new RabbitEventBus()
-		return this.#eventBus
+		return this.#eventBus ||= new RabbitEventBus()
 	}
 
 	get server () {
-		if (!this.#server) this.#server = new Server()
-		return this.#server
+		return this.#server ||= new Server()
 	}
 
-	get db () {
-		if (!this.#db) this.#db = new MongoDb()
-		return this.#db
+	get dbs () {
+		return this.#dbs ||= { mongo: new MongoDb() }
 	}
 
 	get listener () {
@@ -78,11 +71,15 @@ export class Instance {
 
 	async startConnections () {
 		try {
-			await Instance.get().db.start()
 			await Instance.get().cache.start()
 			await Instance.get().listener.start()
-			await Instance.get().db.startAllDbChanges()
-			addWaitBeforeExit(Instance.get().db.close)
+			await Promise.all(
+				Object.values(Instance.get().dbs).map(async (db) => {
+					await db.start()
+					await db.startAllDbChanges()
+					addWaitBeforeExit(db.close)
+				})
+			)
 			addWaitBeforeExit(Instance.get().cache.close)
 		} catch (error: any) {
 			exit(`'Error starting connections: ${error}`)
