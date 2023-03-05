@@ -31,14 +31,21 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 		const topic = `${TopicPrefix}.${dbColName}`
 
 		retry(async () => {
+			const { hosts, replicaSet, credentials } = model.collection.conn.getClient().options
+
 			const started = await this._setup(topic, {
 				'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
 				'capture.mode': 'change_streams_update_full_with_pre_image',
-				'mongodb.connection.string': Instance.get().settings.mongoDbURI,
+				'mongodb.hosts': `${replicaSet}/` + hosts.map((h) => `${h.host}:${h.port}`).join(','),
+				...(credentials ? {
+					'mongodb.user': credentials.username,
+					'mongodb.pass': credentials.password,
+					'mongodb.auth-source': credentials.source
+				} : {}),
 				'collection.include.list': dbColName
 			})
 
-			const TestId = '__equipped__testing__'
+			const TestId = new mongoose.Types.ObjectId('__equipped__')
 
 			if (!started) {
 				await model.findByIdAndUpdate(TestId, { $set: { colName } }, { upsert: true })
