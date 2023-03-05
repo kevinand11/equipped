@@ -11,7 +11,6 @@ import { parseMongodbQueryParams } from './query'
 
 export class MongoDb extends Db {
 	#started = false
-	#conns = new Map<string, mongoose.Connection>()
 
 	get Schema () {
 		return mongoose.Schema
@@ -21,13 +20,14 @@ export class MongoDb extends Db {
 		return new mongoose.Types.ObjectId()
 	}
 
+	get #connections () {
+		// @ts-ignore
+		return mongoose.connection.otherDbs as mongoose.Connection[] ?? []
+	}
+
 	use (dbName = 'default') {
-		let conn = this.#conns.get(dbName)
-		if (conn) return conn
-		conn = dbName === 'default' ? mongoose.connection : mongoose.connection.useDb(dbName, { useCache: true })
+		const conn = dbName === 'default' ? mongoose.connection : mongoose.connection.useDb(dbName, { useCache: true })
 		conn.plugin(defaults).plugin(virtuals).plugin(getters)
-		conn.on('close', () => this.#conns.delete(dbName))
-		this.#conns.set(dbName, conn)
 		return conn
 	}
 
@@ -56,22 +56,18 @@ export class MongoDb extends Db {
 		await mongoose.connect(Instance.get().settings.mongoDbURI)
 
 		await Promise.all(
-			[...this.#conns.values()].map(async (conn) => {
-				await Promise.all(
-					Object.values(mongoose.models)
-						.map(async (model) => {
-							// Enable changesstream before images for all collections
-							await conn.db.command({ collMod: model.collection.name, changeStreamPreAndPostImages: { enabled: true } })
-						})
-				)
-			})
+			[mongoose.connection, ...this.#connections].map((conn) => {
+				return Object.values(conn.models)
+					.map(async (model) => {
+						// Enable changesstream before images for all collections
+						await conn.db.command({ collMod: model.collection.name, changeStreamPreAndPostImages: { enabled: true } })
+					})
+			}).flat()
 		)
 	}
 
 	async close () {
-		await Promise.all(
-			[...this.#conns.values()].map(async (conn) => conn.close())
-		)
+		await Promise.all(this.#connections.map(async (conn) => conn.close()))
 		await mongoose.disconnect()
 	}
 }
