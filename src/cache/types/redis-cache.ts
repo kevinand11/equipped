@@ -1,6 +1,6 @@
 import { createClient } from 'redis'
-import { Instance } from '../../instance'
 import { exit } from '../../exit'
+import { Instance } from '../../instance'
 import { Cache } from '../cache'
 
 export class RedisCache extends Cache {
@@ -33,12 +33,5 @@ export class RedisCache extends Cache {
 	async set (key: string, data: string, ttlInSecs: number) {
 		if (ttlInSecs > 0) await this.client.setEx(key, ttlInSecs, data)
 		else this.client.set(key, data)
-	}
-
-	async setInTransaction (key: string, data: string, ttlInSecs: number) {
-		return await this.client.multi()
-			.get(key)
-			.setEx(key, ttlInSecs, data)
-			.exec() as [string, string]
 	}
 }
