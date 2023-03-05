@@ -17,11 +17,14 @@ export class MongoDb extends Db {
 		return mongoose.Schema
 	}
 
+	get Id () {
+		return new mongoose.Types.ObjectId()
+	}
+
 	use (dbName = 'default') {
 		let conn = this.#conns.get(dbName)
 		if (conn) return conn
 		conn = dbName === 'default' ? mongoose.connection : mongoose.connection.useDb(dbName, { useCache: true })
-		conn.set('strictQuery', true)
 		conn.plugin(defaults).plugin(virtuals).plugin(getters)
 		conn.on('close', () => this.#conns.delete(dbName))
 		this.#conns.set(dbName, conn)
@@ -49,6 +52,7 @@ export class MongoDb extends Db {
 		if (this.#started) return
 		this.#started = true
 
+		mongoose.set('strictQuery', true)
 		await mongoose.connect(Instance.get().settings.mongoDbURI)
 
 		await Promise.all(
