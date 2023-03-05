@@ -77,7 +77,10 @@ export class Server {
 	async start (port: number) {
 		return await new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
 			try {
-				const app = this.#httpServer.listen(port, () => resolve(true))
+				const app = this.#httpServer.listen(port, async () => {
+					await Instance.get().logger.success(`${Instance.get().settings.appId} service listening on port`, port)
+					resolve(true)
+				})
 				addWaitBeforeExit(app.close)
 			} catch (err) {
 				reject(err as Error)

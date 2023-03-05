@@ -1,10 +1,10 @@
 import amqp, { ChannelWrapper } from 'amqp-connection-manager'
 import { ConfirmChannel } from 'amqplib'
-import { Random } from '../utils/utils'
+import { addWaitBeforeExit } from 'src/exit'
 import { DefaultSubscribeOptions, EventBus, Events, SubscribeOptions } from '.'
 import { Instance } from '../instance'
 import { parseJSONValue } from '../utils/json'
-import { addWaitBeforeExit } from 'src/exit'
+import { Random } from '../utils/utils'
 
 export class RabbitEventBus extends EventBus {
 	#client: ChannelWrapper
@@ -32,7 +32,10 @@ export class RabbitEventBus extends EventBus {
 
 	createSubscriber<Event extends Events[keyof Events]> (topic: Event['topic'], onMessage: (data: Event['data']) => Promise<void>, options: Partial<SubscribeOptions> = {}) {
 		options = { ...DefaultSubscribeOptions, ...options }
+		let started = false
 		const subscribe = async () => {
+			if (started) return
+			started = true
 			await this.#client.addSetup(async (channel: ConfirmChannel) => {
 				const queueName = options.fanout
 					? `${Instance.get().settings.appId}-fanout-${Random.string(10)}`
@@ -52,6 +55,8 @@ export class RabbitEventBus extends EventBus {
 				}, { noAck: false })
 			})
 		}
+
+		this._subscribers.push(subscribe)
 
 		return { subscribe }
 	}

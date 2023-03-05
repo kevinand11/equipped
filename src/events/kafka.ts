@@ -36,7 +36,10 @@ export class KafkaEventBus extends EventBus {
 
 	createSubscriber<Event extends Events[keyof Events]> (topic: Event['topic'], onMessage: (data: Event['data']) => Promise<void>, options: Partial<SubscribeOptions> = {}) {
 		options = { ...DefaultSubscribeOptions, ...options }
+		let started = false
 		const subscribe = async () => {
+			if (started) return
+			started = true
 			await this.#createTopic(topic)
 			const groupId = options.fanout
 				? `${Instance.get().settings.appId}-fanout-${Random.string(10)}`
@@ -60,6 +63,7 @@ export class KafkaEventBus extends EventBus {
 				await this.#deleteGroup(groupId)
 			})
 		}
+		this._subscribers.push(subscribe)
 
 		return { subscribe }
 	}
