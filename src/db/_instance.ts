@@ -1,5 +1,8 @@
+import axios from 'axios'
+import { exit } from '../exit'
 import { Instance } from '../instance'
 import { BaseEntity } from '../structure'
+import { DebeziumSetup, DefaultDebeziumSetup } from './debezium'
 import { QueryParams, QueryResults } from './query'
 
 export abstract class Db {
@@ -53,11 +56,18 @@ export abstract class DbChange<Model, Entity extends BaseEntity> {
 		return this.#mapper
 	}
 
-	protected async _shouldRun (key: string) {
-		const cacheName = `streams-${key}`
-		const cached = await Instance.get().cache.setInTransaction(cacheName, key, 30)
-		if (cached[0]) return false
-		return true
+	protected async _setup (key: string, data: DebeziumSetup) {
+		data = { ...DefaultDebeziumSetup, ...data }
+		const topics = await axios.put(`/connectors/${key}/config`, data, { baseURL: Instance.get().settings.debeziumUrl })
+			.then(async () => {
+				const res = await axios.get(`/connectors/${key}/topics`, { baseURL: Instance.get().settings.debeziumUrl })
+				return res.data[key]?.topics ?? []
+			})
+			.catch((err) => {
+				exit(`Failed to setup debezium for ${key}: ${err.message}`)
+				return []
+			})
+		return topics[0] === key
 	}
 }
 

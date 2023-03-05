@@ -4,6 +4,7 @@ export type Settings = {
 	accessTokenTTL: number
 	refreshTokenKey: string
 	refreshTokenTTL: number
+	debeziumUrl: string
 	mongoDbURI: string
 	rabbitURI: string
 	kafkaURIs: string[]
@@ -29,6 +30,7 @@ export const defaulInstanceSetting: Settings = {
 	accessTokenTTL: 60 * 60,
 	refreshTokenKey: 'refreshTokenKey',
 	refreshTokenTTL: 14 * 24 * 60 * 60,
+	debeziumUrl: '',
 	mongoDbURI: '',
 	rabbitURI: '',
 	redisURI: '',

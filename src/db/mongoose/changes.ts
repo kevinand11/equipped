@@ -1,8 +1,10 @@
 import mongoose from 'mongoose'
-import { addWaitBeforeExit } from '../../exit'
+import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { BaseEntity } from '../../structure'
+import { retry } from '../../utils/retry'
 import { Validation } from '../../validations'
+import { TopicPrefix } from '../debezium'
 import { DbChange, DbChangeCallbacks } from '../_instance'
 
 export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, Entity> {
@@ -18,65 +20,69 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 		this.#model = model
 	}
 
-	async start (skipResume = false): Promise<void> {
+	async start (): Promise<void> {
 		if (this.#started) return
 		this.#started = true
 
-		const dbName = this.#model.collection.name
-		const getStreamTokens = () => this.#model.collection.conn.db.collection('stream-tokens')
+		const model = this.#model
+		const dbName = model.db.name
+		const colName = model.collection.name
+		const dbColName = `${dbName}.${colName}`
+		const topic = `${TopicPrefix}.${dbColName}`
 
-		const res = await getStreamTokens().findOne({ _id: dbName })
-		const resumeToken = skipResume ? undefined : res?.resumeToken
-
-		const changeStream = this.#model
-			.watch<mongoose.Document<Model>>([], { fullDocument: 'whenAvailable', fullDocumentBeforeChange: 'whenAvailable', startAfter: resumeToken })
-			.on('change', async (data) => {
-				// @ts-ignore
-				const streamId = data._id._data
-				const shouldRun = await this._shouldRun(streamId)
-				if (!shouldRun) return
-
-				addWaitBeforeExit((async () => {
-					await getStreamTokens().findOneAndUpdate({ _id: dbName }, { $set: { resumeToken: data._id } }, { upsert: true })
-
-					const hydrate = (value: any) => value ? this.#model.hydrate(value).toObject({ getters: true, virtuals: true }) : null
-
-					if (data.operationType === 'insert' && this.callbacks.created) {
-						const after = data.fullDocument
-						if (after) await this.callbacks.created({
-							before: null,
-							after: this.mapper(hydrate(after))!
-						})
-					}
-
-					if (data.operationType === 'delete' && this.callbacks.deleted) {
-						const before = data.fullDocumentBeforeChange
-						if (before) this.callbacks.deleted?.({
-							before: this.mapper(hydrate(before))!,
-							after: null
-						})
-					}
-
-					if (data.operationType === 'update' && this.callbacks.updated) {
-						const before = data.fullDocumentBeforeChange
-						const after = data.fullDocument
-						const changes = Validation.Differ.from(Validation.Differ.diff(before, after))
-						if (before && after) this.callbacks.updated({
-							before: this.mapper(hydrate(before))!,
-							after: this.mapper(hydrate(after))!,
-							changes
-						})
-					}
-				})())
+		retry(async () => {
+			const started = await this._setup(topic, {
+				'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
+				'capture.mode': 'change_streams_update_full_with_pre_image',
+				'mongodb.connection.string': Instance.get().settings.mongoDbURI,
+				'collection.include.list': dbColName
 			})
-			.on('error', async (err) => {
-				await Instance.get().logger.error(`Change Stream errored out: ${dbName}: ${err.message}`)
-				await changeStream.close()
-				return this.start(true)
-			})
-		addWaitBeforeExit(async () => {
-			await changeStream.close()
-			this.#started = false
-		})
+
+			const TestId = '__equipped__testing__'
+
+			if (!started) {
+				await model.findByIdAndUpdate(TestId, { $set: { colName } }, { upsert: true })
+				await model.findByIdAndDelete(TestId)
+				throw new Error(`Wait a few minutes for db changes for ${colName} to initialize...`)
+			}
+
+			if (started) await Instance.get().eventBus
+				.createSubscriber(topic as never, async (data: DbDocumentChange) => {
+					const op = data.op
+
+					let before = JSON.parse(data.before ?? 'null')
+					let after = JSON.parse(data.after ?? 'null')
+
+					if (before?.__id === TestId || after?.__id === TestId) return
+
+					if (before) before = model.hydrate(before).toObject({ getters: true, virtuals: true })
+					if (after) after = model.hydrate(after).toObject({ getters: true, virtuals: true })
+
+					if (op === 'c' && this.callbacks.created && after) await this.callbacks.created({
+						before: null,
+						after: this.mapper(after)!
+					})
+					else if (op === 'u' && this.callbacks.updated && before) await this.callbacks.updated({
+						before: this.mapper(before)!,
+						after: this.mapper(after)!,
+						changes: Validation.Differ.from(
+							Validation.Differ.diff(before, after)
+						)
+					})
+					else if (op === 'd' && this.callbacks.deleted && before) await this.callbacks.deleted({
+						before: this.mapper(before)!,
+						after: null
+					})
+				})
+				.subscribe()
+		}, 10, 60_000)
+			.catch((err) => exit(err.message))
 	}
+}
+
+
+type DbDocumentChange = {
+	before: string | null
+	after: string | null
+	op: 'c' | 'u' | 'd'
 }

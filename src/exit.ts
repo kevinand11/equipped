@@ -1,7 +1,7 @@
 const listeners: any[] = []
 
 export const addWaitBeforeExit = (fn: any) => {
-	listeners.push(fn)
+	listeners.unshift(fn)
 }
 
 export const exit = (message: string): never => {
