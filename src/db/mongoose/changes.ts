@@ -53,6 +53,10 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 				throw new Error(`Wait a few minutes for db changes for ${colName} to initialize...`)
 			}
 
+			const hydrate = (data: any) => model.hydrate({
+				...data, _id: new mongoose.Types.ObjectId(data._id['$oid'])
+			}).toObject({ getters: true, virtuals: true })
+
 			if (started) await Instance.get().eventBus
 				.createSubscriber(topic as never, async (data: DbDocumentChange) => {
 					const op = data.op
@@ -62,8 +66,8 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 
 					if (before?.__id === TestId || after?.__id === TestId) return
 
-					if (before) before = model.hydrate(before).toObject({ getters: true, virtuals: true })
-					if (after) after = model.hydrate(after).toObject({ getters: true, virtuals: true })
+					if (before) before = hydrate(before)
+					if (after) after = hydrate(after)
 
 					if (op === 'c' && this.callbacks.created && after) await this.callbacks.created({
 						before: null,
