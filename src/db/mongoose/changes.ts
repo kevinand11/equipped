@@ -30,7 +30,7 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 		const dbColName = `${dbName}.${colName}`
 		const topic = `${TopicPrefix}.${dbColName}`
 
-		retry(async () => {
+		await retry(async () => {
 			const { hosts, replicaSet, credentials } = model.collection.conn.getClient().options
 
 			const started = await this._setup(topic, {
@@ -47,46 +47,44 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 
 			const TestId = new mongoose.Types.ObjectId('__equipped__')
 
-			if (!started) {
-				await model.findByIdAndUpdate(TestId, { $set: { colName } }, { upsert: true })
-				await model.findByIdAndDelete(TestId)
-				throw new Error(`Wait a few minutes for db changes for ${colName} to initialize...`)
-			}
-
 			const hydrate = (data: any) => model.hydrate({
 				...data, _id: new mongoose.Types.ObjectId(data._id['$oid'])
 			}).toObject({ getters: true, virtuals: true })
 
-			if (started) await Instance.get().eventBus
-				.createSubscriber(topic as never, async (data: DbDocumentChange) => {
-					const op = data.op
+			Instance.get().eventBus.createSubscriber(topic as never, async (data: DbDocumentChange) => {
+				const op = data.op
 
-					let before = JSON.parse(data.before ?? 'null')
-					let after = JSON.parse(data.after ?? 'null')
+				let before = JSON.parse(data.before ?? 'null')
+				let after = JSON.parse(data.after ?? 'null')
 
-					if (before?.__id === TestId || after?.__id === TestId) return
+				if (before) before = hydrate(before)
+				if (after) after = hydrate(after)
+				if (before?.__id === TestId || after?.__id === TestId) return
 
-					if (before) before = hydrate(before)
-					if (after) after = hydrate(after)
-
-					if (op === 'c' && this.callbacks.created && after) await this.callbacks.created({
-						before: null,
-						after: this.mapper(after)!
-					})
-					else if (op === 'u' && this.callbacks.updated && before) await this.callbacks.updated({
-						before: this.mapper(before)!,
-						after: this.mapper(after)!,
-						changes: Validation.Differ.from(
-							Validation.Differ.diff(before, after)
-						)
-					})
-					else if (op === 'd' && this.callbacks.deleted && before) await this.callbacks.deleted({
-						before: this.mapper(before)!,
-						after: null
-					})
+				if (op === 'c' && this.callbacks.created && after) await this.callbacks.created({
+					before: null,
+					after: this.mapper(after)!
 				})
-				.subscribe()
-		}, 10, 60_000)
+				else if (op === 'u' && this.callbacks.updated && before) await this.callbacks.updated({
+					before: this.mapper(before)!,
+					after: this.mapper(after)!,
+					changes: Validation.Differ.from(
+						Validation.Differ.diff(before, after)
+					)
+				})
+				else if (op === 'd' && this.callbacks.deleted && before) await this.callbacks.deleted({
+					before: this.mapper(before)!,
+					after: null
+				})
+			})
+
+			if (!started) {
+				await model.findByIdAndUpdate(TestId, { $set: { colName } }, { upsert: true })
+				await model.findByIdAndDelete(TestId)
+				await Instance.get().logger.warn(`Waiting for db changes for ${dbColName} to start...`)
+				throw new Error(`Wait a few minutes for db changes for ${dbColName} to initialize...`)
+			}
+		}, 5, 60_000)
 			.catch((err) => exit(err.message))
 	}
 }

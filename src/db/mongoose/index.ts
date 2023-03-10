@@ -59,7 +59,6 @@ export class MongoDb extends Db {
 			[mongoose.connection, ...this.#connections].map((conn) => {
 				return Object.values(conn.models)
 					.map(async (model) => {
-						// Enable changesstream before images for all collections
 						await conn.db.command({ collMod: model.collection.name, changeStreamPreAndPostImages: { enabled: true } })
 					})
 			}).flat()
