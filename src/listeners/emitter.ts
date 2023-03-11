@@ -43,16 +43,16 @@ export class Listener {
 		await this.#subscriber.subscribe()
 	}
 
-	async created (channel: string, data: BaseEntity) {
-		await this.#emit(channel, EmitTypes.created, data)
+	async created (channels: string[], data: BaseEntity) {
+		await this.#emit(channels, EmitTypes.created, data)
 	}
 
-	async updated (channel: string, data: BaseEntity) {
-		await this.#emit(channel, EmitTypes.updated, data)
+	async updated (channels: string[], data: BaseEntity) {
+		await this.#emit(channels, EmitTypes.updated, data)
 	}
 
-	async deleted (channel: string, data: BaseEntity) {
-		await this.#emit(channel, EmitTypes.deleted, data)
+	async deleted (channels: string[], data: BaseEntity) {
+		await this.#emit(channels, EmitTypes.deleted, data)
 	}
 
 	set callers (callers: SocketCallers) {
@@ -79,9 +79,11 @@ export class Listener {
 		}
 	}
 
-	async #emit (channel: string, type: EmitTypes, data: any) {
-		const emitData: EmitData = { channel, type, data }
-		this.#publisher.publish(emitData as never)
+	async #emit (channels: string[], type: EmitTypes, data: any) {
+		await Promise.all(channels.map(async (channel) => {
+			const emitData: EmitData = { channel, type, data }
+			await this.#publisher.publish(emitData as never)
+		}))
 	}
 
 	#setupSocketConnection = () => {
