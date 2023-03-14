@@ -12,18 +12,15 @@ const isNotTruncated = (error?: string) => Validate.makeRule<StorageFile>((file)
 	return valid ? Validate.isValid(val) : Validate.isInvalid([error], val)
 })
 
-
 type Phone = { code: string, number: string }
 const isValidPhone = (error?: string) => Validate.makeRule<Phone>((value) => {
-	const phone = value as Phone
-	const { code = '', number = '' } = phone ?? {}
-	const isValidCode = Validate.isString()(code).valid &&
-		code.startsWith('+') &&
-		Validate.isNumber()(parseInt(code.slice(1))).valid
-	const isValidNumber = Validate.isNumber()(parseInt(number)).valid
-	if (!isValidCode) return Validate.isInvalid([error ?? 'invalid phone code'], phone)
-	if (!isValidNumber) return Validate.isInvalid([error ?? 'invalid phone number'], phone)
-	return Validate.isValid(phone)
+	return Validate.v.object({
+		code: Validate.v.string().custom((val) => {
+			return val.startsWith('+') &&
+				Validate.v.force.number(val.slice(1)).parse(val).valid
+		}, error ?? 'invalid phone code'),
+		number: Validate.v.force.number(error ?? 'invalid phone number').transform((val) => val.toString())
+	}).parse(value)
 })
 
 const file = Validate.v.file
@@ -31,34 +28,7 @@ Validate.v.file = (...args: Parameters<typeof file>) => file(...args).addRule(is
 export const Schema = Validate.v
 export const Validation = { ...Validate, isNotTruncated, isValidPhone }
 
-type Rules<T> = {
-	required?: boolean | (() => boolean)
-	nullable?: boolean
-	rules: Validate.Rule<T>[]
-}
-
-export const validate = <Keys extends Record<string, any>> (data: Keys, rules: Record<keyof Keys, Rules<any>>) => {
-	const errors = Object.entries(data)
-		.map(([key, value]) => ({
-			key,
-			validity: Validation.Validator.and(value, [rules[key].rules], {
-				required: rules[key].required,
-				nullable: rules[key].nullable
-			})
-		}))
-
-	const failed = errors.some(({ validity }) => !validity.valid)
-
-	if (failed) throw new ValidationError(
-		errors
-			.filter(({ validity }) => !validity.valid)
-			.map(({ key, validity }) => ({ field: key, messages: validity.errors }))
-	)
-
-	return data
-}
-
-export const validateReq = <T extends Record<string, VCore<any, any>>> (schema: T, value: Record<string, any>) => {
+export const validate = <T extends Record<string, VCore<any>>> (schema: T, value: Record<string, any>) => {
 	const validity = Validation.v.object(schema).parse(value)
 	if (validity.valid) return validity.value
 	const errorsObject = validity.errors
