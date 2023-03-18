@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.6](https://github.com/kevinand11/equipped/compare/v4.1.5...v4.1.6) (2023-03-18)
+
+
+### Features
+
+* update to latest version of valleyed ([bdcd8e1](https://github.com/kevinand11/equipped/commit/bdcd8e16c3a05dadf7393558cae746c3ab007ddf))
+
 ### [4.1.5](https://github.com/kevinand11/equipped/compare/v4.1.4...v4.1.5) (2023-03-17)
 
 
