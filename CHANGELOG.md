@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.7](https://github.com/kevinand11/equipped/compare/v4.1.6...v4.1.7) (2023-03-22)
+
+
+### Bug Fixes
+
+* parse _id if string or ObjectId ([3aab101](https://github.com/kevinand11/equipped/commit/3aab101960a3a1fe88bea887a1b8e638ae2f3577))
+
 ### [4.1.6](https://github.com/kevinand11/equipped/compare/v4.1.5...v4.1.6) (2023-03-18)
 
 
