@@ -48,7 +48,7 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 			const TestId = new mongoose.Types.ObjectId('__equipped__')
 
 			const hydrate = (data: any) => model.hydrate({
-				...data, _id: new mongoose.Types.ObjectId(data._id['$oid'])
+				...data, _id: new mongoose.Types.ObjectId(data._id['$oid'] ?? data._id)
 			}).toObject({ getters: true, virtuals: true })
 
 			Instance.get().eventBus.createSubscriber(topic as never, async (data: DbDocumentChange) => {
