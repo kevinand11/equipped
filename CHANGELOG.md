@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.0.2-alpha.4](https://github.com/kevinand11/equipped/compare/v4.0.2-alpha.3...v4.0.2-alpha.4) (2023-03-29)
+
+
+### Bug Fixes
+
+* freeze valleyed version ([29994e7](https://github.com/kevinand11/equipped/commit/29994e70ac60478b1837dee29c5f68d7bb653a7e))
+
 ### [4.0.2-alpha.3](https://github.com/kevinand11/equipped/compare/v4.0.2-alpha.2...v4.0.2-alpha.3) (2023-02-19)
 
 ### [4.0.2-alpha.2](https://github.com/kevinand11/equipped/compare/v4.0.2-alpha.1...v4.0.2-alpha.2) (2023-02-19)
