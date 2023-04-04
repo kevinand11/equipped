@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.9](https://github.com/kevinand11/equipped/compare/v4.1.8...v4.1.9) (2023-04-04)
+
+
+### Bug Fixes
+
+* export bull jobs interfaces to allow extending in user code ([a897617](https://github.com/kevinand11/equipped/commit/a897617eb7ee5bc6153568c7c4cbbc45d36e0f76))
+
 ### [4.1.8](https://github.com/kevinand11/equipped/compare/v4.0.2-alpha.4...v4.1.8) (2023-03-30)
 
 
