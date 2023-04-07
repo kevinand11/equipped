@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.10](https://github.com/kevinand11/equipped/compare/v4.1.9...v4.1.10) (2023-04-07)
+
+
+### Features
+
+* add list to ignore when converting baseEntity to json ([624d134](https://github.com/kevinand11/equipped/commit/624d134f87b3acbec686cde1ad0c02d6b34dc73b))
+
 ### [4.1.9](https://github.com/kevinand11/equipped/compare/v4.1.8...v4.1.9) (2023-04-04)
 
 
