@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.11](https://github.com/kevinand11/equipped/compare/v4.1.10...v4.1.11) (2023-04-09)
+
+
+### Bug Fixes
+
+* do not convert value in JSON.parse if it is not a string ([e7d735f](https://github.com/kevinand11/equipped/commit/e7d735f0bc3f82210102d5a9d667e2574eab3cea))
+
 ### [4.1.10](https://github.com/kevinand11/equipped/compare/v4.1.9...v4.1.10) (2023-04-07)
 
 
