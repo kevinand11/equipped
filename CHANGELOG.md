@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.13](https://github.com/kevinand11/equipped/compare/v4.1.12...v4.1.13) (2023-05-02)
+
+
+### Features
+
+* allow other content types ([312e66f](https://github.com/kevinand11/equipped/commit/312e66f441c6ca89f5b5c950879dca6a11de5561))
+
 ### [4.1.12](https://github.com/kevinand11/equipped/compare/v4.1.11...v4.1.12) (2023-04-10)
 
 ### [4.1.11](https://github.com/kevinand11/equipped/compare/v4.1.10...v4.1.11) (2023-04-09)
