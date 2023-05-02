@@ -9,13 +9,14 @@ type CustomResponse = {
 }
 
 export type Controller = Handler | ErrorRequestHandler
+const defaultHeaders = { 'Content-Type': 'application/json' }
 
 export const makeController = (cb: (_: CustomRequest) => Promise<CustomResponse>): Controller => {
 	return async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const { status = StatusCodes.Ok, result, headers = {} } = await cb(await CustomRequest.make(req))
+			const { status = StatusCodes.Ok, result, headers = defaultHeaders } = await cb(await CustomRequest.make(req))
 			Object.entries(headers).forEach(([key, value]) => res.header(key, value))
-			return res.status(status).json(result).end()
+			return res.status(status).send(result).end()
 		} catch (e) {
 			next(e)
 			return
@@ -36,8 +37,8 @@ export const makeMiddleware = (cb: (_: CustomRequest) => Promise<void>): Control
 
 export const makeErrorMiddleware = (cb: (_: CustomRequest, __: Error) => Promise<CustomResponse>): Controller => {
 	return async (err: Error, req: Request, res: Response, _: NextFunction) => {
-		const { status = StatusCodes.BadRequest, result, headers = {} } = await cb(await CustomRequest.make(req), err)
+		const { status = StatusCodes.BadRequest, result, headers = defaultHeaders } = await cb(await CustomRequest.make(req), err)
 		Object.entries(headers).forEach(([key, value]) => res.header(key, value))
-		return res.status(status).json(result).end()
+		return res.status(status).send(result).end()
 	}
 }
