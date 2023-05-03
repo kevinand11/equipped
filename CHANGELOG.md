@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.14](https://github.com/kevinand11/equipped/compare/v4.1.13...v4.1.14) (2023-05-03)
+
+
+### Features
+
+* add ability to pipe through response ([12bd81e](https://github.com/kevinand11/equipped/commit/12bd81e360059313feeb8a8114639750fce7a141))
+
 ### [4.1.13](https://github.com/kevinand11/equipped/compare/v4.1.12...v4.1.13) (2023-05-02)
 
 
