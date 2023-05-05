@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.15](https://github.com/kevinand11/equipped/compare/v4.1.14...v4.1.15) (2023-05-05)
+
+
+### Bug Fixes
+
+* nullish checks when parsing json ([cb9d132](https://github.com/kevinand11/equipped/commit/cb9d132f02a8976ddc4407c300763ccf46b1bc97))
+
 ### [4.1.14](https://github.com/kevinand11/equipped/compare/v4.1.13...v4.1.14) (2023-05-03)
 
 
