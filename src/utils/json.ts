@@ -1,7 +1,7 @@
 
 export const parseJSONValue = (data: any) => {
-	if (data.constructor.name !== 'String') return data
 	try {
+		if (data?.constructor?.name !== 'String') return data
 		return JSON.parse(data)
 	} catch {
 		return data
