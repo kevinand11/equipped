@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.16](https://github.com/kevinand11/equipped/compare/v4.1.15...v4.1.16) (2023-05-15)
+
+
+### Bug Fixes
+
+* helmet allow cross origin ([c513b29](https://github.com/kevinand11/equipped/commit/c513b2995f2be329fee221b21ea7a04bfc6c92c1))
+
 ### [4.1.15](https://github.com/kevinand11/equipped/compare/v4.1.14...v4.1.15) (2023-05-05)
 
 
