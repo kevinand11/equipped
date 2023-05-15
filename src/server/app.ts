@@ -30,7 +30,7 @@ export class Server {
 		if (settings.isDev) this.#expressApp.use(morgan('dev'))
 		this.#expressApp.use(express.json())
 		this.#expressApp.use(cookie())
-		this.#expressApp.use(helmet())
+		this.#expressApp.use(helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }))
 		this.#expressApp.use(cors({ origin: '*' }))
 		this.#expressApp.use(express.urlencoded({ extended: false }))
 		this.#expressApp.use(express.static(path.join(process.cwd(), 'public')))
