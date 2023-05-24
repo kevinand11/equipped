@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.17](https://github.com/kevinand11/equipped/compare/v4.1.16...v4.1.17) (2023-05-24)
+
+
+### Bug Fixes
+
+* only run update if there is an after ([1628b4e](https://github.com/kevinand11/equipped/commit/1628b4e04181714509e029abe5fc5d8f68f7c25b))
+
 ### [4.1.16](https://github.com/kevinand11/equipped/compare/v4.1.15...v4.1.16) (2023-05-15)
 
 
