@@ -65,7 +65,7 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 					before: null,
 					after: this.mapper(after)!
 				})
-				else if (op === 'u' && this.callbacks.updated && before) await this.callbacks.updated({
+				else if (op === 'u' && this.callbacks.updated && before && after) await this.callbacks.updated({
 					before: this.mapper(before)!,
 					after: this.mapper(after)!,
 					changes: Validation.Differ.from(
