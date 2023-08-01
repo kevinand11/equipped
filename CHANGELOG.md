@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.18](https://github.com/kevinand11/equipped/compare/v4.1.17...v4.1.18) (2023-08-01)
+
+
+### Bug Fixes
+
+* make id ([e61c656](https://github.com/kevinand11/equipped/commit/e61c6569ac45d429a1cb9b7ee2c7fd80cc54d436))
+
 ### [4.1.17](https://github.com/kevinand11/equipped/compare/v4.1.16...v4.1.17) (2023-05-24)
 
 
