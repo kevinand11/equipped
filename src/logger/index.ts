@@ -14,19 +14,23 @@ export class ConsoleLogger extends Logger {
 	// eslint-disable-next-line no-console
 	#log = console.log
 
+	#getTime () {
+		return new Date().toJSON().split('T')[1].slice(0, 8)
+	}
+
 	async error (...args: any[]) {
-		this.#log(chalk.red('ERROR:', ...args))
+		this.#log(chalk.red(`[ERROR] ${this.#getTime()}:`, ...args))
 	}
 
 	async success (...args: any[]) {
-		this.#log(chalk.greenBright('SUCCESS:', ...args))
+		this.#log(chalk.greenBright(`[SUCCESS] ${this.#getTime()}:`, ...args))
 	}
 
 	async info (...args: any[]) {
-		this.#log(chalk.blueBright('INFO:', ...args))
+		this.#log(chalk.blueBright(`[INFO] ${this.#getTime()}:`, ...args))
 	}
 
 	async warn (...args: any[]) {
-		this.#log(chalk.yellow('WARNING:', ...args))
+		this.#log(chalk.yellow(	`[WARNING] ${this.#getTime()}:`, ...args))
 	}
 }
