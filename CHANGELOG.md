@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.19](https://github.com/kevinand11/equipped/compare/v4.1.18...v4.1.19) (2023-08-13)
+
+
+### Bug Fixes
+
+* use json res if null or undefined ([4b80d3e](https://github.com/kevinand11/equipped/commit/4b80d3ed1d68be7b9b65c2c9f2ae5b4238b05980))
+
 ### [4.1.18](https://github.com/kevinand11/equipped/compare/v4.1.17...v4.1.18) (2023-08-01)
 
 
