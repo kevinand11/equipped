@@ -26,7 +26,8 @@ export const makeController = (cb: (_: CustomRequest, extras: ExtraArgs) => Prom
 			const { status = StatusCodes.Ok, result, headers = defaultHeaders, piped = false } = await cb(await CustomRequest.make(req), extras)
 			if (!piped) {
 				Object.entries(headers).forEach(([key, value]) => res.header(key, value))
-				res.status(status).send(result).end()
+				const type = result === null || result == undefined ? 'json' : 'send'
+				res.status(status)[type](result).end()
 			}
 		} catch (e) {
 			next(e)
