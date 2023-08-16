@@ -19,18 +19,18 @@ export class ConsoleLogger extends Logger {
 	}
 
 	async error (...args: any[]) {
-		this.#log(chalk.red(`[ERROR] ${this.#getTime()}:`, ...args))
+		this.#log(chalk.red(`[ERROR] ${this.#getTime()} `, ...args))
 	}
 
 	async success (...args: any[]) {
-		this.#log(chalk.greenBright(`[SUCCESS] ${this.#getTime()}:`, ...args))
+		this.#log(chalk.greenBright(`[SUCCESS] ${this.#getTime()} `, ...args))
 	}
 
 	async info (...args: any[]) {
-		this.#log(chalk.blueBright(`[INFO] ${this.#getTime()}:`, ...args))
+		this.#log(chalk.blueBright(`[INFO] ${this.#getTime()} `, ...args))
 	}
 
 	async warn (...args: any[]) {
-		this.#log(chalk.yellow(	`[WARNING] ${this.#getTime()}:`, ...args))
+		this.#log(chalk.yellow(	`[WARNING] ${this.#getTime()} `, ...args))
 	}
 }
