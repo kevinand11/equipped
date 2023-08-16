@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.21](https://github.com/kevinand11/equipped/compare/v4.1.20...v4.1.21) (2023-08-16)
+
+
+### Bug Fixes
+
+* logger time ([14c1bd3](https://github.com/kevinand11/equipped/commit/14c1bd350739b5cba68d8f23183301861d6aa5ee))
+
 ### [4.1.20](https://github.com/kevinand11/equipped/compare/v4.1.19...v4.1.20) (2023-08-13)
 
 ### [4.1.19](https://github.com/kevinand11/equipped/compare/v4.1.18...v4.1.19) (2023-08-13)
