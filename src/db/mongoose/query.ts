@@ -17,7 +17,6 @@ export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<Mode
 				$regex: new RegExp(params.search!.value, 'i')
 			}
 		}))
-
 		query.push({ $or: search })
 	}
 	const totalClause = {}
@@ -45,19 +44,17 @@ export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<Mode
 		if (page) builtQuery = builtQuery.skip((page - 1) * limit)
 	}
 
-	const results = await builtQuery
+	const results = await builtQuery.catch(() => {
+		throw new Error('Error querying database')
+	})
 	const start = 1
 	const last = Math.ceil(total / limit) || 1
 	const next = page >= last ? null : page + 1
 	const previous = page <= start ? null : page - 1
 
 	return {
-		pages: {
-			start, last, next, previous, current: page
-		},
-		docs: {
-			limit, total, count: results.length
-		},
+		pages: { start, last, next, previous, current: page },
+		docs: { limit, total, count: results.length },
 		results: results as Model[]
 	}
 }
