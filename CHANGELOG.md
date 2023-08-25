@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.22](https://github.com/kevinand11/equipped/compare/v4.1.21...v4.1.22) (2023-08-25)
+
+
+### Bug Fixes
+
+* don't return db error from querying ([49642bd](https://github.com/kevinand11/equipped/commit/49642bdd9791753586bcee017c9bdea46c520907))
+* remove space in logger ([12eddb8](https://github.com/kevinand11/equipped/commit/12eddb855f71bfe8ad335889bb5df2047e1cf6c8))
+
 ### [4.1.21](https://github.com/kevinand11/equipped/compare/v4.1.20...v4.1.21) (2023-08-16)
 
 
