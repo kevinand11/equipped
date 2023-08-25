@@ -35,7 +35,9 @@ export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<Mode
 	let page = Number.isNaN(Number(params.page)) ? 0 : Number(params.page)
 	page = page < 1 ? 1 : page
 
-	const total = await model.countDocuments(totalClause)
+	const total = await model.countDocuments(totalClause).catch(() => {
+		throw new Error('Error querying database')
+	})
 
 	let builtQuery = model.find(totalClause).lean({ virtuals: true, getters: true, defaults: true })
 	if (sort.length) builtQuery = builtQuery.sort(Object.fromEntries(sort))
