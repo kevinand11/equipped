@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.1.23](https://github.com/kevinand11/equipped/compare/v4.1.22...v4.1.23) (2023-08-25)
+
+
+### Bug Fixes
+
+* don't return db error from querying ([6eb6915](https://github.com/kevinand11/equipped/commit/6eb6915a77ff508d36c0c349d053dd012aed2020))
+
 ### [4.1.22](https://github.com/kevinand11/equipped/compare/v4.1.21...v4.1.22) (2023-08-25)
 
 
