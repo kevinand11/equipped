@@ -10,6 +10,7 @@ const deleteKeyFromObject = (obj: Record<string, any>, keys: string[]) => {
 export class BaseEntity {
 	public hash: string
 	public ignoreInJSON = [] as string[]
+	public __type = this.constructor.name
 
 	constructor () {
 		this.hash = Random.string()
