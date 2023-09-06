@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.2.0](https://github.com/kevinand11/equipped/compare/v4.1.23...v4.2.0) (2023-09-06)
+
+
+### Features
+
+* add type for base entity ([0f54bc8](https://github.com/kevinand11/equipped/commit/0f54bc8fe424d595f37003c27b668e64440b783f))
+
 ### [4.1.23](https://github.com/kevinand11/equipped/compare/v4.1.22...v4.1.23) (2023-08-25)
 
 
