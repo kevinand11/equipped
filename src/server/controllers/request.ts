@@ -11,6 +11,7 @@ export class Request {
 	readonly ip: string
 	readonly method: string
 	readonly path: string
+	readonly originalUrl: string
 	readonly body: Record<string, any>
 	readonly cookies: Record<string, any>
 	readonly rawBody: Record<string, any>
@@ -23,7 +24,7 @@ export class Request {
 	pendingError: null | CustomError = null
 
 	constructor ({
-		ip, body, cookies, params, query,
+		ip, body, cookies, params, query, originalUrl,
 		method, path, headers, files, data
 	}: {
 		ip: string
@@ -35,11 +36,13 @@ export class Request {
 		files: Record<string, StorageFile[]>
 		method: string
 		path: string,
+		originalUrl: string,
 		data: Record<string, any>
 	}) {
 		this.ip = ip
 		this.method = method
 		this.path = path
+		this.originalUrl = decodeURIComponent(originalUrl)
 		this.rawBody = body
 		this.body = Object.fromEntries(
 			Object.entries(body)
@@ -95,6 +98,7 @@ export class Request {
 			query: req.query ?? {},
 			method: req.method,
 			path: req.path,
+			originalUrl: req.originalUrl,
 			headers, files,
 			data: {}
 		})
