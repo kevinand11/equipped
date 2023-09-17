@@ -1,6 +1,5 @@
 import * as bcrypt from 'bcryptjs'
 import * as Validate from 'valleyed'
-import { VCore } from 'valleyed/lib/api/core'
 import { ValidationError } from '../errors'
 import { Instance } from '../instance'
 import { StorageFile } from '../storage'
@@ -28,7 +27,7 @@ Validate.v.file = (...args: Parameters<typeof file>) => file(...args).addRule(is
 export const Schema = Validate.v
 export const Validation = { ...Validate, isNotTruncated, isValidPhone }
 
-export const validate = <T extends Record<string, VCore<any>>> (schema: T, value: Record<string, any>) => {
+export const validate = <T extends Record<string, Validate.VCore<any>>> (schema: T, value: Record<string, any>) => {
 	const validity = Validation.v.object(schema).parse(value)
 	if (validity.valid) return validity.value
 	const errorsObject = validity.errors
