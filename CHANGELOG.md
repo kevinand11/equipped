@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.2.2](https://github.com/kevinand11/equipped/compare/v4.2.1...v4.2.2) (2023-11-07)
+
+
+### Bug Fixes
+
+* files all converted to buffer ([703bc2b](https://github.com/kevinand11/equipped/commit/703bc2bd7bf22eaddba57bda70733aedc5b58d1d))
+
 ### [4.2.1](https://github.com/kevinand11/equipped/compare/v4.2.0...v4.2.1) (2023-09-09)
 
 ## [4.2.0](https://github.com/kevinand11/equipped/compare/v4.1.23...v4.2.0) (2023-09-06)
