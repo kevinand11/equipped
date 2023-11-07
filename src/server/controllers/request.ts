@@ -80,7 +80,7 @@ export class Request {
 				type: f.mimetype,
 				size: f.size,
 				isTruncated: f.truncated,
-				data: f.data,
+				data: Buffer.from(f.data),
 				duration: await getMediaDuration(f.data)
 			})))
 			return [key, fileArray]
