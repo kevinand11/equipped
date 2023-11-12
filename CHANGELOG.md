@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.2.4](https://github.com/kevinand11/equipped/compare/v4.2.3...v4.2.4) (2023-11-12)
+
+
+### Bug Fixes
+
+* pass hex string for id ([07b31bb](https://github.com/kevinand11/equipped/commit/07b31bbb78d845b97bbd18570b89f4fc08470444))
+
 ### [4.2.3](https://github.com/kevinand11/equipped/compare/v4.2.2...v4.2.3) (2023-11-12)
 
 ### [4.2.2](https://github.com/kevinand11/equipped/compare/v4.2.1...v4.2.2) (2023-11-07)
