@@ -4,8 +4,8 @@ import { Instance } from '../../instance'
 import { BaseEntity } from '../../structure'
 import { retry } from '../../utils/retry'
 import { Validation } from '../../validations'
-import { TopicPrefix } from '../debezium'
 import { DbChange, DbChangeCallbacks } from '../_instance'
+import { TopicPrefix } from '../debezium'
 
 export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, Entity> {
 	#started = false
@@ -45,7 +45,8 @@ export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Mo
 				'collection.include.list': dbColName
 			})
 
-			const TestId = new mongoose.Types.ObjectId('__equipped__')
+			const hexId = '5f5f65717569707065645f5f' // __equipped__
+			const TestId = new mongoose.Types.ObjectId(hexId)
 
 			const hydrate = (data: any) => model.hydrate({
 				...data, _id: makeId(data._id['$oid'] ?? data._id)
