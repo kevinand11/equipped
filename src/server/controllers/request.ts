@@ -8,7 +8,7 @@ import { getMediaDuration } from '../../utils/media'
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
 export class Request {
-	readonly ip: string
+	readonly ip: string | undefined
 	readonly method: string
 	readonly path: string
 	readonly body: Record<string, any>
@@ -26,7 +26,7 @@ export class Request {
 		ip, body, cookies, params, query,
 		method, path, headers, files, data
 	}: {
-		ip: string
+		ip: string | undefined
 		body: Record<string, any>
 		cookies: Record<string, any>
 		params: Record<string, any>
@@ -80,7 +80,7 @@ export class Request {
 				type: f.mimetype,
 				size: f.size,
 				isTruncated: f.truncated,
-				data: Buffer.from(f.data),
+				data: f.data,
 				duration: await getMediaDuration(f.data)
 			})))
 			return [key, fileArray]

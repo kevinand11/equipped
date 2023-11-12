@@ -36,7 +36,7 @@ export class Server {
 		this.#expressApp.use(express.static(path.join(process.cwd(), 'public')))
 		if (settings.useRateLimit) this.#expressApp.use(rateLimit({
 			windowMs: settings.rateLimitPeriodInMs,
-			max: settings.rateLimit,
+			limit: settings.rateLimit,
 			handler: (_: express.Request, res: express.Response) => res.status(StatusCodes.TooManyRequests).json([{ message: 'Too Many Requests' }])
 		}))
 		if (settings.useSlowDown) this.#expressApp.use(slowDown({
