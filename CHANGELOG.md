@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.2.6](https://github.com/kevinand11/equipped/compare/v4.2.5...v4.2.6) (2023-11-27)
+
+
+### Bug Fixes
+
+* base entities need to include getters in toJSON ([1a3848d](https://github.com/kevinand11/equipped/commit/1a3848d6c7b64b255183f9ee12d19a080231c645))
+
 ### [4.2.5](https://github.com/kevinand11/equipped/compare/v4.2.4...v4.2.5) (2023-11-21)
 
 ### [4.2.4](https://github.com/kevinand11/equipped/compare/v4.2.3...v4.2.4) (2023-11-12)
