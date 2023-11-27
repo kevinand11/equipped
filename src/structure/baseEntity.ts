@@ -17,8 +17,17 @@ export class BaseEntity {
 	}
 
 	toJSON () {
-		const json = Object.assign({}, this) as Record<string, any>
+		const json = Object.assign({}, this) as this
+		const proto = Object.getPrototypeOf(this)
+		Object.getOwnPropertyNames(proto)
+			.filter((k) => k !== 'constructor')
+			.forEach((key) => {
+				const value = this[key as keyof BaseEntity]
+				// @ts-ignore
+				json[key] = value?.toJSON?.() ?? value
+			})
 		this.ignoreInJSON.forEach((k) => deleteKeyFromObject(json, k.split('.').reverse()))
+		// @ts-ignore
 		delete json.ignoreInJSON
 		return json
 	}
