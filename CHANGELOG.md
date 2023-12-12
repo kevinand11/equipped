@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.2.7](https://github.com/kevinand11/equipped/compare/v4.2.6...v4.2.7) (2023-12-12)
+
+
+### Bug Fixes
+
+* params.map ([fdc2ffc](https://github.com/kevinand11/equipped/commit/fdc2ffcfac6bfbda63fdd11c1585a98f85533e0c))
+
 ### [4.2.6](https://github.com/kevinand11/equipped/compare/v4.2.5...v4.2.6) (2023-11-27)
 
 
