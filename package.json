@@ -25,12 +25,12 @@
 		"@types/express-fileupload": "^1.4.4",
 		"@types/jsonwebtoken": "^9.0.5",
 		"@types/morgan": "^1.9.9",
-		"@types/node": "^20.10.4",
+		"@types/node": "^20.10.5",
 		"@types/pug": "^2.0.10",
 		"@types/supertest": "^2.0.16",
-		"@typescript-eslint/eslint-plugin": "^6.14.0",
-		"@typescript-eslint/parser": "^6.14.0",
-		"eslint": "^8.55.0",
+		"@typescript-eslint/eslint-plugin": "^6.15.0",
+		"@typescript-eslint/parser": "^6.15.0",
+		"eslint": "^8.56.0",
 		"eslint-plugin-promise": "^6.1.1",
 		"husky": "^8.0.3",
 		"standard-version": "^9.5.0",
@@ -41,7 +41,7 @@
 		"amqplib": "^0.10.3",
 		"axios": "^1.6.2",
 		"bcryptjs": "^2.4.3",
-		"bull": "^4.11.5",
+		"bull": "^4.12.0",
 		"chalk": "^4.1.2",
 		"compression": "^1.7.4",
 		"cookie-parser": "^1.4.6",
@@ -63,10 +63,10 @@
 		"music-metadata": "^7.14.0",
 		"path-to-regexp": "^6.2.1",
 		"pug": "^3.0.2",
-		"redis": "^4.6.11",
+		"redis": "^4.6.12",
 		"socket.io": "4.7.2",
 		"supertest": "^6.3.3",
-		"valleyed": "4.2.3"
+		"valleyed": "4.2.4"
 	},
 	"repository": {
 		"url": "git://github.com/kevinand11/equipped.git"
