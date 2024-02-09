@@ -10,7 +10,7 @@
 		"lint": "eslint src/ --ext .ts,.js --fix",
 		"test": "echo",
 		"release": "standard-version",
-		"prepare": "husky init"
+		"prepare": "husky"
 	},
 	"author": "",
 	"license": "ISC",
