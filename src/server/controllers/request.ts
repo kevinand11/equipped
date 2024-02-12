@@ -15,7 +15,7 @@ export class Request {
 	readonly cookies: Record<string, any>
 	readonly rawBody: Record<string, any>
 	readonly params: Record<string, string>
-	readonly query: Record<string, string>
+	readonly query: Record<string, any>
 	readonly headers: Record<HeaderKeys | string, string | null>
 	readonly files: Record<string, StorageFile[]>
 	authUser: null | AuthUser = null

@@ -16,9 +16,9 @@ enum EmitTypes {
 const EmitterEvent = '__listener_emitter'
 type EmitData = { channel: string, type: EmitTypes, data: any }
 type LeaveRoomParams = { channel: string }
-type JoinRoomParams = { channel: string, token?: string, app?: string }
+type JoinRoomParams = { channel: string, token?: string, query: Record<string, any> }
 type Callback = (params: { code: Enum<typeof StatusCodes>, message: string, channel: string }) => void
-export type OnJoinFn = (data: { channel: string, user: AuthUser | null }, params: Record<string, any>) => Promise<string | null>
+export type OnJoinFn = (data: { channel: string, user: AuthUser | null }, params: Record<string, any>, query: Record<string, any>) => Promise<string | null>
 export type SocketCallers = {
 	onConnect: (userId: string, socketId: string) => Promise<void>
 	onDisconnect: (userId: string, socketId: string) => Promise<void>
@@ -119,7 +119,7 @@ export class Listener {
 					message: 'unknown channel',
 					channel
 				})
-				const newChannel = await route.onJoin({ channel, user }, route.params)
+				const newChannel = await route.onJoin({ channel, user }, route.params, data.query ?? {})
 				if (!newChannel) return typeof (callback) === 'function' && callback({
 					code: StatusCodes.NotAuthorized,
 					message: 'restricted access',
