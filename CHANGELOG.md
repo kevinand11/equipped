@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.3.0](https://github.com/kevinand11/equipped/compare/v4.2.10...v4.3.0) (2024-02-12)
+
+
+### Bug Fixes
+
+* query types and add query in sockets ([881c397](https://github.com/kevinand11/equipped/commit/881c3972a209fd3d5832255b3628da99e4c0726a))
+
 ### [4.2.10](https://github.com/kevinand11/equipped/compare/v4.2.9...v4.2.10) (2024-02-09)
 
 ### [4.2.9](https://github.com/kevinand11/equipped/compare/v4.2.8...v4.2.9) (2024-02-09)
