@@ -43,15 +43,15 @@ export class Listener {
 		await this.#subscriber.subscribe()
 	}
 
-	async created (channels: string[], data: BaseEntity) {
+	async created (channels: string[], data: BaseEntity<any>) {
 		await this.#emit(channels, EmitTypes.created, data)
 	}
 
-	async updated (channels: string[], data: BaseEntity) {
+	async updated (channels: string[], data: BaseEntity<any>) {
 		await this.#emit(channels, EmitTypes.updated, data)
 	}
 
-	async deleted (channels: string[], data: BaseEntity) {
+	async deleted (channels: string[], data: BaseEntity<any>) {
 		await this.#emit(channels, EmitTypes.deleted, data)
 	}
 

@@ -1,3 +1,4 @@
+import { ClassPropertiesWrapper } from 'valleyed'
 import { Random } from '../utils/utils'
 
 const deleteKeyFromObject = (obj: Record<string, any>, keys: string[]) => {
@@ -7,28 +8,24 @@ const deleteKeyFromObject = (obj: Record<string, any>, keys: string[]) => {
 	return deleteKeyFromObject(obj[key], keys)
 }
 
-export class BaseEntity {
+export class BaseEntity<Keys extends Record<string, any>> extends ClassPropertiesWrapper<Keys>{
 	public hash: string
-	public ignoreInJSON = [] as string[]
+	public ignoreInJSON: string[] = []
 	public __type = this.constructor.name
 
-	constructor () {
+	constructor (keys: Keys) {
+		super(keys)
 		this.hash = Random.string()
 	}
 
-	toJSON () {
-		const json = Object.assign({}, this) as this
-		const proto = Object.getPrototypeOf(this)
-		Object.getOwnPropertyNames(proto)
-			.filter((k) => k !== 'constructor')
-			.forEach((key) => {
-				const value = this[key as keyof BaseEntity]
-				// @ts-ignore
-				json[key] = value?.toJSON?.() ?? value
-			})
-		this.ignoreInJSON.forEach((k) => deleteKeyFromObject(json, k.split('.').reverse()))
-		// @ts-ignore
+	toJSON (includeIgnored = false) {
+		const json = super.toJSON()
+		if (!includeIgnored) this.ignoreInJSON.forEach((k) => deleteKeyFromObject(json, k.split('.').reverse()))
 		delete json.ignoreInJSON
 		return json
+	}
+
+	toString () {
+		return JSON.stringify(this.toJSON(true))
 	}
 }
