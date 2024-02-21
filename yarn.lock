@@ -4517,10 +4517,10 @@ validate-npm-package-license@^3.0.1:
     spdx-correct "^3.0.0"
     spdx-expression-parse "^3.0.0"
 
-valleyed@4.2.6:
-  version "4.2.6"
-  resolved "https://registry.yarnpkg.com/valleyed/-/valleyed-4.2.6.tgz#fe17cf9019e8a7045875ff56baa61a0e900474f6"
-  integrity sha512-2nsO0JAbt6fTGQethC0+nlukq3ClacqXDSLd5gRYvwxID2whj9YlBnOvMtodjKkBY4ONkLhzWStRQnNytyTHzA==
+valleyed@4.2.7:
+  version "4.2.7"
+  resolved "https://registry.yarnpkg.com/valleyed/-/valleyed-4.2.7.tgz#fdea3237a4f721dadcc530d57a7a1f4a04fbdf2e"
+  integrity sha512-k7a4JY7a8hBHer8O/7/N1h4K1N8XYVQFriL/tgsY1FIkdGe3sgHkM3K3US2XD5sjEvANPVahCBZoC5FZ0H8/Gw==
   dependencies:
     url-regex-safe "^4.0.0"
 
