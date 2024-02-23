@@ -1,9 +1,12 @@
-import { Request as ExpressRequest } from 'express'
+import { Request as ExpressRequest, Response as ExpressResponse } from 'express'
+import { Writable } from 'stream'
 import { CustomError } from '../../errors'
 import { StorageFile } from '../../storage'
 import { AuthUser, RefreshUser } from '../../utils/authUser'
 import { parseJSONValue } from '../../utils/json'
 import { getMediaDuration } from '../../utils/media'
+import { StatusCodes } from '../statusCodes'
+import { Response } from './response'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
@@ -36,7 +39,7 @@ export class Request {
 		method: string
 		path: string,
 		data: Record<string, any>
-	}) {
+	}, private readonly rawRes: ExpressResponse) {
 		this.ip = ip
 		this.method = method
 		this.path = path
@@ -51,6 +54,8 @@ export class Request {
 			Object.entries(query ?? {})
 				.map(([key, val]) => [key, this.#parseQueryStrings(val)])
 		)
+		if (this.query['auth']) delete this.query['auth']
+		if (this.query['authType']) delete this.query['authType']
 		this.headers = headers
 		this.files = files
 		this.authUser = data.authUser ?? null
@@ -62,7 +67,7 @@ export class Request {
 		return parseJSONValue(value)
 	}
 
-	static async make (req: ExpressRequest): Promise<Request> {
+	static async make (req: ExpressRequest, res: ExpressResponse): Promise<Request> {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
@@ -97,6 +102,11 @@ export class Request {
 			path: req.path,
 			headers, files,
 			data: {}
-		})
+		}, res)
+	}
+
+	pipe (cb: (stream: Writable) => void) {
+		cb(this.rawRes)
+		return new Response({ piped: true, status: StatusCodes.Ok, body: this.rawRes })
 	}
 }

@@ -1,33 +1,21 @@
-import { ErrorRequestHandler, Handler, NextFunction, Request, Response } from 'express'
-import { Writable } from 'stream'
-import { StatusCodes, SupportedStatusCodes } from '../statusCodes'
+import { Request as ERequest, Response as EResponse, ErrorRequestHandler, Handler, NextFunction } from 'express'
+import { StatusCodes } from '../statusCodes'
 import { Request as CustomRequest } from './request'
+import { Response } from './response'
 
-type CustomResponse = {
-	result: any,
-	status?: SupportedStatusCodes,
-	headers?: Record<string, any>
-	piped?: boolean
-}
-
-type ExtraArgs = {
-	pipeThrough?: Writable
-}
-
+type CustomResponse<T> = Response<T> | T
 export type Controller = Handler | ErrorRequestHandler
-const defaultHeaders = { 'Content-Type': 'application/json' }
+export type RouteHandler<T> = (req: CustomRequest) => Promise<CustomResponse<T>>
 
-export const makeController = (cb: (_: CustomRequest, extras: ExtraArgs) => Promise<CustomResponse>): Controller => {
-	return async (req: Request, res: Response, next: NextFunction) => {
+export const makeController = <T>(cb: RouteHandler<T>): Controller => {
+	return async (req: ERequest, res: EResponse, next: NextFunction) => {
 		try {
-			const extras = {
-				pipeThrough: res
-			}
-			const { status = StatusCodes.Ok, result, headers = defaultHeaders, piped = false } = await cb(await CustomRequest.make(req), extras)
-			if (!piped) {
-				Object.entries(headers).forEach(([key, value]) => res.header(key, value))
-				const type = result === null || result == undefined ? 'json' : 'send'
-				res.status(status)[type](result).end()
+			const rawResponse = await cb(await CustomRequest.make(req, res))
+			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse })
+			if (!response.piped) {
+				Object.entries(response.headers).forEach(([key, value]) => res.header(key, value))
+				const type = response.shouldJSONify ? 'json' : 'send'
+				res.status(response.status)[type](response.body).end()
 			}
 		} catch (e) {
 			next(e)
@@ -35,13 +23,10 @@ export const makeController = (cb: (_: CustomRequest, extras: ExtraArgs) => Prom
 	}
 }
 
-export const makeMiddleware = (cb: (_: CustomRequest, extras: ExtraArgs) => Promise<void>): Controller => {
-	return async (req: Request, res: Response, next: NextFunction) => {
+export const makeMiddleware = <T>(cb: RouteHandler<T>): Controller => {
+	return async (req: ERequest, res: EResponse, next: NextFunction) => {
 		try {
-			const extras = {
-				pipeThrough: res
-			}
-			await cb(await CustomRequest.make(req), extras)
+			await cb(await CustomRequest.make(req, res))
 			return next()
 		} catch (e) {
 			return next(e)
@@ -49,15 +34,13 @@ export const makeMiddleware = (cb: (_: CustomRequest, extras: ExtraArgs) => Prom
 	}
 }
 
-export const makeErrorMiddleware = (cb: (_: CustomRequest, __: Error, extras: ExtraArgs) => Promise<CustomResponse>): Controller => {
-	return async (err: Error, req: Request, res: Response, _: NextFunction) => {
-		const extras = {
-			pipeThrough: res
-		}
-		const { status = StatusCodes.BadRequest, result, headers = defaultHeaders, piped = false } = await cb(await CustomRequest.make(req), err, extras)
-		if (!piped) {
-			Object.entries(headers).forEach(([key, value]) => res.header(key, value))
-			res.status(status).send(result).end()
+export const makeErrorMiddleware = <T>(cb: (_: CustomRequest, __: Error) => Promise<CustomResponse<T>>): Controller => {
+	return async (err: Error, req: ERequest, res: EResponse, _: NextFunction) => {
+		const rawResponse = await cb(await CustomRequest.make(req, res), err)
+		const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest })
+		if (!response.piped) {
+			Object.entries(response.headers).forEach(([key, value]) => res.header(key, value))
+			res.status(response.status).send(response.body).end()
 		}
 	}
 }

@@ -13,8 +13,9 @@ import supertest from 'supertest'
 import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
 import { Listener } from '../listeners'
+import { errorHandler, notFoundHandler } from './middlewares'
 import { parseAuthUser } from './middlewares/parseAuthUser'
-import { PostRoutes, Route } from './routes'
+import { Route, Router, formatPath } from './routes'
 import { StatusCodes } from './statusCodes'
 
 export class Server {
@@ -27,7 +28,9 @@ export class Server {
 		this.#expressApp = express()
 		this.#expressApp.disable('x-powered-by')
 		this.#httpServer = http.createServer(this.#expressApp)
-		if (settings.isDev) this.#expressApp.use(morgan('dev'))
+		this.#expressApp.use(morgan((tokens, req, res) =>
+			`${tokens.method(req, res)}(${tokens.status(req, res)}) ${tokens.url(req, res)} ${tokens.res(req, res, 'content-length')}b - ${tokens['response-time'](req, res)}ms`
+		))
 		this.#expressApp.use(express.json())
 		this.#expressApp.use(cookie())
 		this.#expressApp.use(helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }))
@@ -62,10 +65,17 @@ export class Server {
 	}
 
 	set routes (routes: Route[]) {
-		const allRoutes = [...routes, ...PostRoutes()]
-		allRoutes.forEach(({ method, path, controllers }) => {
+		routes.forEach(({ method, path, controllers }) => {
 			controllers = [parseAuthUser, ...controllers]
 			if (path) this.#expressApp[method]?.(formatPath(path), ...controllers)
+			else this.#expressApp.use(...controllers)
+		})
+	}
+
+	register (router: Router) {
+		router.routes.forEach(({ method, path, controllers }) => {
+			controllers = [parseAuthUser, ...controllers]
+			if (path) this.#expressApp[method]?.(path, ...controllers)
 			else this.#expressApp.use(...controllers)
 		})
 	}
@@ -75,6 +85,12 @@ export class Server {
 	}
 
 	async start (port: number) {
+		const postRoutesRouter = new Router()
+		postRoutesRouter.get({ path: '__health' })(async () => `${Instance.get().settings.appId} service running`)
+		postRoutesRouter.all({ middlewares: [notFoundHandler] })()
+		postRoutesRouter.all({ middlewares: [errorHandler] })()
+		this.register(postRoutesRouter)
+
 		return await new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
 			try {
 				const app = this.#httpServer.listen(port, async () => {
@@ -88,7 +104,3 @@ export class Server {
 		})
 	}
 }
-
-const formatPath = (path: string) => `/${path}/`
-	.replaceAll('///', '/')
-	.replaceAll('//', '/')

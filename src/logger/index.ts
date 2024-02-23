@@ -15,7 +15,9 @@ export class ConsoleLogger extends Logger {
 	#log = console.log
 
 	#getTime () {
-		return new Date().toJSON().split('T')[1].slice(0, 8)
+		const date = new Date().toJSON()
+		const split = date.split('T')
+		return [split[0], split[1].slice(0, 8)].join('T')
 	}
 
 	async error (...args: any[]) {

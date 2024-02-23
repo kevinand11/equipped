@@ -1,6 +1,7 @@
 export * from './controllers'
 export * from './controllers/request'
+export * from './controllers/response'
 export * from './middlewares'
-export { groupRoutes } from './routes'
+export { Router, groupRoutes } from './routes'
 export type { Route } from './routes'
 export * from './statusCodes'
