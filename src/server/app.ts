@@ -65,17 +65,17 @@ export class Server {
 	}
 
 	set routes (routes: Route[]) {
-		routes.forEach(({ method, path, controllers }) => {
+		routes.forEach(({ method, path, global, controllers }) => {
 			controllers = [parseAuthUser, ...controllers]
-			if (path) this.#expressApp[method]?.(formatPath(path), ...controllers)
+			if (!global) this.#expressApp[method]?.(formatPath(path), ...controllers)
 			else this.#expressApp.use(...controllers)
 		})
 	}
 
 	register (router: Router) {
-		router.routes.forEach(({ method, path, controllers }) => {
+		router.routes.forEach(({ method, path, global, controllers }) => {
 			controllers = [parseAuthUser, ...controllers]
-			if (path) this.#expressApp[method]?.(path, ...controllers)
+			if (!global) this.#expressApp[method]?.(path, ...controllers)
 			else this.#expressApp.use(...controllers)
 		})
 	}
@@ -87,8 +87,8 @@ export class Server {
 	async start (port: number) {
 		const postRoutesRouter = new Router()
 		postRoutesRouter.get({ path: '__health' })(async () => `${Instance.get().settings.appId} service running`)
-		postRoutesRouter.all({ middlewares: [notFoundHandler] })()
-		postRoutesRouter.all({ middlewares: [errorHandler] })()
+		postRoutesRouter.all({ global: true, middlewares: [notFoundHandler] })()
+		postRoutesRouter.all({ global: true, middlewares: [errorHandler] })()
 		this.register(postRoutesRouter)
 
 		return await new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {

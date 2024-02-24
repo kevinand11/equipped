@@ -6,6 +6,7 @@ export type Route = {
 	path: string
 	method: MethodTypes
 	controllers: Controller[]
+	global?: boolean
 }
 
 export const formatPath = (path: string) => `/${path}`
@@ -31,6 +32,8 @@ export class Router {
 			const controllers = [...(this.#config?.middlewares ?? []), ...(route.middlewares ?? [])]
 			if (handler) controllers.push(makeController(handler))
 			this.routes.push({
+				...this.#config,
+				...route,
 				method,
 				controllers,
 				path: formatPath(`${this.#config?.path ?? ''}/${route.path ?? ''}`),
