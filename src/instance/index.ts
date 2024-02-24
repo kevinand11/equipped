@@ -83,7 +83,7 @@ export class Instance {
 			await Instance.get().eventBus.startSubscribers()
 			addWaitBeforeExit(Instance.get().cache.close)
 		} catch (error: any) {
-			exit(`'Error starting connections: ${error}`)
+			exit(`Error starting connections: ${error}`)
 		}
 	}
 }
