@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.4.2](https://github.com/kevinand11/equipped/compare/v4.4.1...v4.4.2) (2024-03-01)
+
+
+### Bug Fixes
+
+* emit toJSONed base entity ([501c0c7](https://github.com/kevinand11/equipped/commit/501c0c76a8459c6bdbb78d510e6a16725b54c0bc))
+* error message on start connections ([37aba2e](https://github.com/kevinand11/equipped/commit/37aba2e74d05e8afbab05f617667fc934f7a2b3c))
+
 ### [4.4.1](https://github.com/kevinand11/equipped/compare/v4.4.0...v4.4.1) (2024-02-24)
 
 
