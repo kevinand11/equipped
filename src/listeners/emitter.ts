@@ -44,15 +44,15 @@ export class Listener {
 	}
 
 	async created (channels: string[], data: BaseEntity<any>) {
-		await this.#emit(channels, EmitTypes.created, data)
+		await this.#emit(channels, EmitTypes.created, data.toJSON())
 	}
 
 	async updated (channels: string[], data: BaseEntity<any>) {
-		await this.#emit(channels, EmitTypes.updated, data)
+		await this.#emit(channels, EmitTypes.updated, data.toJSON())
 	}
 
 	async deleted (channels: string[], data: BaseEntity<any>) {
-		await this.#emit(channels, EmitTypes.deleted, data)
+		await this.#emit(channels, EmitTypes.deleted, data.toJSON())
 	}
 
 	set callers (callers: SocketCallers) {
