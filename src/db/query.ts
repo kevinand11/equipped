@@ -30,7 +30,7 @@ export type QueryParams = {
     auth?: QueryWhereClause[]
     whereType?: QueryKeys
     authType?: QueryKeys
-    sort?: [{ field: string, desc?: boolean }]
+    sort?: { field: string, desc?: boolean }[]
     limit?: number
     all?: boolean
     page?: number
