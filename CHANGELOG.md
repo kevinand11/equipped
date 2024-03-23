@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.4.4](https://github.com/kevinand11/equipped/compare/v4.4.3...v4.4.4) (2024-03-23)
+
+
+### Bug Fixes
+
+* debezium connector mongodb string ([125b199](https://github.com/kevinand11/equipped/commit/125b1992ac0caa9c9d40ae5de26706e8c5d01f43))
+
 ### [4.4.3](https://github.com/kevinand11/equipped/compare/v4.4.2...v4.4.3) (2024-03-01)
 
 
