@@ -36,7 +36,7 @@ export class MongoDbChange<Model, Entity extends BaseEntity<any>> extends DbChan
 			const started = await this._setup(topic, {
 				'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
 				'capture.mode': 'change_streams_update_full_with_pre_image',
-				'mongodb.hosts': `${replicaSet}/` + hosts.map((h) => `${h.host}:${h.port}`).join(','),
+				'mongodb.connection.string': `mongodb://${hosts.map((h) => `${h.host}:${h.port}`).join(',')}/?replicaSet=${replicaSet}`,
 				...(credentials ? {
 					'mongodb.user': credentials.username,
 					'mongodb.pass': credentials.password,
