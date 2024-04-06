@@ -4,10 +4,11 @@
 	"private": false,
 	"description": "",
 	"main": "lib/index.js",
+	"type": "module",
 	"scripts": {
 		"dev": "tsc -watch",
 		"build": "tsc --project tsconfig.json",
-		"lint": "eslint src/ --ext .ts,.js --fix",
+		"lint": "eslint --fix",
 		"test": "echo",
 		"release": "standard-version",
 		"prepare": "husky"
@@ -17,6 +18,7 @@
 	"devDependencies": {
 		"@commitlint/cli": "^19.2.1",
 		"@commitlint/config-conventional": "^19.1.0",
+		"@stylistic/eslint-plugin": "^1.7.0",
 		"@types/amqplib": "^0.10.5",
 		"@types/bcryptjs": "^2.4.6",
 		"@types/bull": "^3.15.9",
@@ -25,16 +27,16 @@
 		"@types/express-fileupload": "^1.5.0",
 		"@types/jsonwebtoken": "^9.0.6",
 		"@types/morgan": "^1.9.9",
-		"@types/node": "^20.11.30",
+		"@types/node": "^20.12.5",
 		"@types/pug": "^2.0.10",
 		"@types/supertest": "^6.0.2",
-		"@typescript-eslint/eslint-plugin": "^7.3.1",
-		"@typescript-eslint/parser": "^7.3.1",
-		"eslint": "^8.57.0",
+		"@typescript-eslint/eslint-plugin": "^7.5.0",
+		"@typescript-eslint/parser": "^7.5.0",
+		"eslint": "^9.0.0",
 		"eslint-plugin-promise": "^6.1.1",
 		"husky": "^9.0.11",
 		"standard-version": "^9.5.0",
-		"typescript": "^5.4.3"
+		"typescript": "^5.4.4"
 	},
 	"dependencies": {
 		"amqp-connection-manager": "^4.1.14",
@@ -47,7 +49,7 @@
 		"cookie-parser": "^1.4.6",
 		"cors": "^2.8.5",
 		"dotenv": "^16.4.5",
-		"express": "^4.19.1",
+		"express": "^4.19.2",
 		"express-fileupload": "^1.5.0",
 		"express-rate-limit": "^7.2.0",
 		"express-slow-down": "^2.0.1",
@@ -55,7 +57,7 @@
 		"jsonwebtoken": "^9.0.2",
 		"jwks-rsa": "^3.1.0",
 		"kafkajs": "^2.2.4",
-		"mongoose": "^8.2.3",
+		"mongoose": "^8.3.0",
 		"mongoose-lean-defaults": "^2.2.1",
 		"mongoose-lean-getters": "^2.0.1",
 		"mongoose-lean-virtuals": "^0.9.1",
@@ -66,7 +68,7 @@
 		"redis": "^4.6.13",
 		"socket.io": "4.7.5",
 		"supertest": "^6.3.4",
-		"valleyed": "4.2.9"
+		"valleyed": "4.2.10"
 	},
 	"repository": {
 		"url": "git://github.com/kevinand11/equipped.git"
