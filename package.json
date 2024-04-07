@@ -4,7 +4,7 @@
 	"private": false,
 	"description": "",
 	"main": "lib/index.js",
-	"type": "module",
+	"type": "commonjs",
 	"scripts": {
 		"dev": "tsc -watch",
 		"build": "tsc --project tsconfig.json",
@@ -63,12 +63,12 @@
 		"mongoose-lean-virtuals": "^0.9.1",
 		"morgan": "^1.10.0",
 		"music-metadata": "^7.14.0",
-		"path-to-regexp": "^6.2.1",
+		"path-to-regexp": "^6.2.2",
 		"pug": "^3.0.2",
 		"redis": "^4.6.13",
 		"socket.io": "4.7.5",
 		"supertest": "^6.3.4",
-		"valleyed": "4.2.10"
+		"valleyed": "4.2.11"
 	},
 	"repository": {
 		"url": "git://github.com/kevinand11/equipped.git"

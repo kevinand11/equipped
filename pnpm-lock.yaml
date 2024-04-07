@@ -78,8 +78,8 @@ dependencies:
     specifier: ^7.14.0
     version: 7.14.0
   path-to-regexp:
-    specifier: ^6.2.1
-    version: 6.2.1
+    specifier: ^6.2.2
+    version: 6.2.2
   pug:
     specifier: ^3.0.2
     version: 3.0.2
@@ -93,8 +93,8 @@ dependencies:
     specifier: ^6.3.4
     version: 6.3.4
   valleyed:
-    specifier: 4.2.10
-    version: 4.2.10
+    specifier: 4.2.11
+    version: 4.2.11
 
 devDependencies:
   '@commitlint/cli':
@@ -3884,8 +3884,8 @@ packages:
     resolution: {integrity: sha512-5DFkuoqlv1uYQKxy8omFBeJPQcdoE07Kv2sferDCrAq1ohOU+MSDswDIbnx3YAM60qIOnYa53wBhXW0EbMonrQ==}
     dev: false
 
-  /path-to-regexp@6.2.1:
-    resolution: {integrity: sha512-JLyh7xT1kizaEvcaXOQwOc2/Yhw6KZOvPf1S8401UyLk86CU79LN3vl7ztXGm/pZ+YjoyAJ4rxmHwbkBXJX+yw==}
+  /path-to-regexp@6.2.2:
+    resolution: {integrity: sha512-GQX3SSMokngb36+whdpRXE+3f9V8UzyAorlYvOGx87ufGHehNTn5lCxrKtLyZ4Yl/wEKnNnr98ZzOwwDZV5ogw==}
     dev: false
 
   /path-type@3.0.0:
@@ -4912,8 +4912,8 @@ packages:
       spdx-expression-parse: 3.0.1
     dev: true
 
-  /valleyed@4.2.10:
-    resolution: {integrity: sha512-8dR/PmYrOv/YqgHhOjxLUzTKXt82aNHCmLBUSz54UUTh7J9RBsM38Pd0VqQa1uxd/nRf2P6qPhG0iQwiWh39og==}
+  /valleyed@4.2.11:
+    resolution: {integrity: sha512-jDk8EUIC8j32mjMim8sacBtAqNYildcjcMH2YhY3uLCVPCXRd3GLptByzz4BUWwG0jXi4AoxltlRTHzGGFnvrA==}
     dependencies:
       url-regex-safe: 4.0.0
     transitivePeerDependencies:
