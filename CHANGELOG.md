@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.4.6](https://github.com/kevinand11/equipped/compare/v4.4.5...v4.4.6) (2024-04-07)
+
 ### [4.4.5](https://github.com/kevinand11/equipped/compare/v4.4.4...v4.4.5) (2024-04-06)
 
 ### [4.4.4](https://github.com/kevinand11/equipped/compare/v4.4.3...v4.4.4) (2024-03-23)
