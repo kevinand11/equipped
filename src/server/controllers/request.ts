@@ -77,19 +77,22 @@ export class Request {
 			Referer: req.get('referer') ?? null,
 			UserAgent: req.get('User-Agent') ?? null
 		}
-		// @ts-ignore
-		const files = Object.fromEntries(await Promise.all(Object.entries(req.files ?? {}).map(async ([key, file]) => {
-			const fileArray: StorageFile[] = []
-			if (file) await Promise.all((Array.isArray(file) ? file : [file]).map(async (f) => fileArray.push({
-				name: f.name,
-				type: f.mimetype,
-				size: f.size,
-				isTruncated: f.truncated,
-				data: f.data,
-				duration: await getMediaDuration(f.data)
-			})))
-			return [key, fileArray]
-		})))
+		const files = Object.fromEntries(
+			await Promise.all(
+				Object.entries(req.files ?? {}).map(async ([key, file]) => {
+					const uploads = Array.isArray(file) ? file : [file]
+					const fileArray: StorageFile[] = await Promise.all(uploads.map(async (f) => ({
+						name: f.name,
+						type: f.mimetype,
+						size: f.size,
+						isTruncated: f.truncated,
+						data: f.data,
+						duration: await getMediaDuration(f.data)
+					})))
+					return [key, fileArray] as const
+				})
+			)
+		)
 
 		// @ts-ignore
 		return req.savedReq ||= new Request({
