@@ -5,14 +5,24 @@ type Res<T> = Response<T> | T
 type RouteHandler<T> = (req: Request) => Promise<Res<T>>
 type RouteMiddlewareHandler = (req: Request) => Promise<void>
 
+export type Schema = {
+  body?: any;
+  query?: any;
+  params?: any;
+  headers?: any;
+  response?: Record<string, any>;
+}
+
 export type Route = {
 	path: string
 	method: MethodTypes
 	handler: RouteHandler<any>
 	middlewares?: RouteMiddlewareHandler[]
+	schema?: Schema
 }
 
 type RouteConfig = Partial<Omit<Route, 'method'>>
+type GeneralConfig = Omit<RouteConfig, 'schema'>
 
 export const makeController = <T>(cb: RouteHandler<T>) => cb
 export const makeMiddleware = (cb: RouteMiddlewareHandler) => cb
@@ -27,11 +37,11 @@ export const groupRoutes = (parent: string, routes: Route[]): Route[] => routes
 
 
 export class Router {
-	#config?: RouteConfig
+	#config?: GeneralConfig
 	#routes: Route[] = []
 	#children: Router[] = []
 
-	constructor (config?: RouteConfig) {
+	constructor (config?: GeneralConfig) {
 		this.#config = config
 	}
 

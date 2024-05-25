@@ -85,11 +85,18 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	}
 
 	registerRoute (route: Route) {
-		const { method, path, middlewares = [], handler } = route
+		const { method, path, middlewares = [], handler, schema } = route
 		const controllers = [parseAuthUser, ...middlewares].map((m) => this.makeMiddleware(m))
 		this.#fastifyApp[method](formatPath(path), {
 			handler: this.makeController(handler),
-			preHandler: controllers
+			preHandler: controllers,
+			schema: schema ? {
+				body: schema.body,
+				querystring: schema.query,
+				params: schema.params,
+				headers: schema.headers,
+				response: schema.response
+			} : undefined
 		})
 	}
 

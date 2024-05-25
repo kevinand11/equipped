@@ -19,7 +19,7 @@ import { StorageFile } from '../../storage'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler, parseAuthUser } from '../middlewares'
 import { Request, Response } from '../request'
-import { Route } from '../routes'
+import { Route, formatPath } from '../routes'
 import { StatusCodes } from '../statusCodes'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
@@ -67,9 +67,8 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 	registerRoute (route: Route) {
 		const { method, path, middlewares = [], handler } = route
-		const controllers = [parseAuthUser, ...middlewares].map((m) => this.makeMiddleware(m))
-		if (handler) this.#expressApp[method]?.(path, ...controllers, this.makeController(handler))
-		else this.#expressApp.use(...controllers)
+		const controllers: express.RequestHandler[] = [parseAuthUser, ...middlewares].map((m) => this.makeMiddleware(m))
+		this.#expressApp[method]?.(formatPath(path), ...controllers, this.makeController(handler))
 	}
 
 	async startServer (port: number) {
