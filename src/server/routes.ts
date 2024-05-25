@@ -1,13 +1,22 @@
-import { Controller, RouteHandler, makeController } from './controllers'
+import { Request, Response } from './request'
 
 type MethodTypes = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'all'
+type Res<T> = Response<T> | T
+type RouteHandler<T> = (req: Request) => Promise<Res<T>>
+type RouteMiddlewareHandler = (req: Request) => Promise<void>
 
 export type Route = {
 	path: string
 	method: MethodTypes
-	controllers: Controller[]
-	global?: boolean
+	handler: RouteHandler<any>
+	middlewares?: RouteMiddlewareHandler[]
 }
+
+type RouteConfig = Partial<Omit<Route, 'method'>>
+
+export const makeController = <T>(cb: RouteHandler<T>) => cb
+export const makeMiddleware = (cb: RouteMiddlewareHandler) => cb
+export const makeErrorMiddleware = <T>(cb: (req: Request, err: Error) => Promise<Response<T>>) => cb
 
 export const formatPath = (path: string) => `/${path}`
 	.replaceAll('///', '/')
@@ -17,57 +26,63 @@ export const groupRoutes = (parent: string, routes: Route[]): Route[] => routes
 	.map((route) => ({ ...route, path: formatPath(`${parent}/${route.path}`) }))
 
 
-type RouteConfig = Partial<Omit<Route, 'method' | 'controllers'>> & { middlewares?: Route['controllers'] }
-
 export class Router {
 	#config?: RouteConfig
-	readonly routes: Route[] = []
+	#routes: Route[] = []
+	#children: Router[] = []
 
 	constructor (config?: RouteConfig) {
 		this.#config = config
 	}
 
-	#addRoute (method: Route['method'], route: RouteConfig) {
-		return <T>(handler?: RouteHandler<T>) => {
-			const controllers = [...(this.#config?.middlewares ?? []), ...(route.middlewares ?? [])]
-			if (handler) controllers.push(makeController(handler))
-			this.routes.push({
+	#addRoute (method: Route['method'], route: RouteConfig, collection: Route[] = this.#routes) {
+		return <T>(handler: RouteHandler<T>) => {
+			collection.push({
 				...this.#config,
 				...route,
+				middlewares: [...(this.#config?.middlewares ?? []), ...(route.middlewares ?? [])],
+				handler,
 				method,
-				controllers,
 				path: formatPath(`${this.#config?.path ?? ''}/${route.path ?? ''}`),
 			})
 		}
 	}
 
-	public get (route: RouteConfig) {
+	get (route: RouteConfig) {
 		return this.#addRoute('get', route)
 	}
 
-	public post (route: RouteConfig) {
+	post (route: RouteConfig) {
 		return this.#addRoute('post', route)
 	}
 
-	public put (route: RouteConfig) {
+	put (route: RouteConfig) {
 		return this.#addRoute('put', route)
 	}
 
-	public patch (route: RouteConfig) {
+	patch (route: RouteConfig) {
 		return this.#addRoute('patch', route)
 	}
 
-	public delete (route: RouteConfig) {
+	delete (route: RouteConfig) {
 		return this.#addRoute('delete', route)
 	}
 
-	public all (route: RouteConfig) {
+	all (route: RouteConfig) {
 		return this.#addRoute('all', route)
 	}
 
 	include (router: Router) {
-		router.routes.forEach((route) => {
-			this.#addRoute(route.method, route)()
+		this.#children.push(router)
+	}
+
+	get routes () {
+		const routes = this.#routes
+		this.#children.forEach((child) => {
+			child.routes.forEach((route) => {
+				this.#addRoute(route.method, route, routes)(route.handler)
+			})
 		})
+		return routes
 	}
 }

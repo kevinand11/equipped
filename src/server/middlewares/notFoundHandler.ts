@@ -1,5 +1,5 @@
 import { NotFoundError } from '../../errors'
-import { makeMiddleware } from '../controllers'
+import { makeMiddleware } from '../routes'
 
 export const notFoundHandler = makeMiddleware(
 	async (_) => {

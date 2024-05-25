@@ -6,7 +6,7 @@ import { EventBus } from '../events/'
 import { KafkaEventBus } from '../events/kafka'
 import { addWaitBeforeExit, exit } from '../exit'
 import { ConsoleLogger, Logger } from '../logger'
-import { Server } from '../server/app'
+import { ExpressServer, Server } from '../server'
 import { defaulInstanceSetting, Settings } from './settings'
 
 export class Instance {
@@ -40,7 +40,7 @@ export class Instance {
 	}
 
 	get server () {
-		return this.#server ||= new Server()
+		return this.#server ||= new ExpressServer()
 	}
 
 	get dbs () {
