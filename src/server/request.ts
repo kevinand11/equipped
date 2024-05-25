@@ -41,8 +41,8 @@ export class Request {
 		this.method = method
 		this.path = path
 		this.rawBody = body
-		this.body = Object.fromEntries(
-			Object.entries(body)
+		this.body =  Object.fromEntries(
+			Object.entries(typeof body === 'object' ? body : { raw: body })
 				.map(([key, value]) => [key, parseJSONValue(value)])
 		)
 		this.cookies = cookies

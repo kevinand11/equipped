@@ -4,6 +4,15 @@ export { Router, groupRoutes, makeController, makeMiddleware } from './routes'
 export type { Route } from './routes'
 export * from './statusCodes'
 
-export { Server } from './impls/base'
-export { ExpressServer } from './impls/express'
-export { FastifyServer } from './impls/fastify'
+import { Server } from './impls/base'
+import { ExpressServer } from './impls/express'
+import { FastifyServer } from './impls/fastify'
+
+export type { Server }
+
+export type ServerTypes = 'express' | 'fastify'
+
+export const serverTypes: Record<ServerTypes, () => Server> = {
+	express: () => new ExpressServer(),
+	fastify: () => new FastifyServer(),
+}

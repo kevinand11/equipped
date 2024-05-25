@@ -44,7 +44,22 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		this.#fastifyApp.register(fastifyCookie, {})
 		this.#fastifyApp.register(fastifyCors, { origin: '*' })
 		this.#fastifyApp.register(fastifyMultipart, {
-			limits: { fileSize: this.settings.maxFileUploadSizeInMb * 1024 * 1024 }
+			attachFieldsToBody: 'keyValues',
+			throwFileSizeLimit: false,
+			limits: { fileSize: this.settings.maxFileUploadSizeInMb * 1024 * 1024 },
+			onFile: async (f) => {
+				const buffer = await f.toBuffer()
+				const parsed: StorageFile = {
+					name: f.filename,
+					type: f.mimetype,
+					size: buffer.byteLength,
+					isTruncated: f.file.truncated,
+					data: buffer,
+					duration: await getMediaDuration(buffer),
+				}
+				// @ts-ignore
+				f.value = parsed
+			}
 		})
 		this.#fastifyApp.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
 		this.#fastifyApp.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' } })
@@ -69,9 +84,9 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		})
 	}
 
-	registerRoute (route: Route): void {
+	registerRoute (route: Route) {
 		const { method, path, middlewares = [], handler } = route
-		const controllers = [parseAuthUser, ...middlewares].map(this.makeMiddleware)
+		const controllers = [parseAuthUser, ...middlewares].map((m) => this.makeMiddleware(m))
 		this.#fastifyApp[method](formatPath(path), {
 			handler: this.makeController(handler),
 			preHandler: controllers
@@ -88,7 +103,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		return true
 	}
 
-	async make (req: FastifyRequest, res: FastifyReply) {
+	async parse (req: FastifyRequest, res: FastifyReply) {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
@@ -98,31 +113,16 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			Referer: req.headers['referer']?.toString() ?? null,
 			UserAgent: req.headers['User-Agent']?.toString() ?? null
 		}
-		const files = Object.fromEntries(
-			await Promise.all(
-				Object.entries(req.files ?? {}).map(async ([key, file]) => {
-					const uploads = Array.isArray(file) ? file : [file]
-					const fileArray: StorageFile[] = await Promise.all(uploads.map(async (f) => ({
-						name: f.name,
-						type: f.mimetype,
-						size: f.size,
-						isTruncated: f.truncated,
-						data: f.data,
-						duration: await getMediaDuration(f.data)
-					})))
-					return [key, fileArray] as const
-				})
-			)
-		)
+		const { body, files } = excludeBufferKeys(req.body ?? {})
 
 		return req.savedReq ||= new Request({
 			ip: req.ip,
-			body: req.body ?? {},
+			body,
 			cookies: req.cookies ?? {},
 			params: req.params ?? {},
 			query: req.query ?? {},
 			method: req.method,
-			path: req.routeOptions.url ?? '',
+			path: req.url,
 			headers,
 			files,
 			data: {}
@@ -131,7 +131,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 
 	makeController(cb: Defined<Route['handler']>) {
 		const handler: RouteHandlerMethod = async (req, reply) => {
-			const rawResponse = await cb(await this.make(req, reply))
+			const rawResponse = await cb(await this.parse(req, reply))
 			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse })
 			const type = response.shouldJSONify ? 'json' : 'send'
 			if (!response.piped) reply.status(response.status).headers(response.headers)[type](response.body)
@@ -141,14 +141,14 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 
 	makeMiddleware(cb: Defined<Route['middlewares']>[number]) {
 		const handler: preHandlerHookHandler = async (req, reply) => {
-			await cb(await this.make(req, reply))
+			await cb(await this.parse(req, reply))
 		}
 		return handler
 	}
 
 	makeErrorMiddleware(cb: (req: Request, err: Error) => Promise<Response<unknown>>) {
 		const handler: Parameters<FastifyInstance['setErrorHandler']>[0] = async (error, req, reply)=> {
-			const rawResponse = await cb(await this.make(req, reply), error)
+			const rawResponse = await cb(await this.parse(req, reply), error)
 			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest })
 			if (!response.piped) reply.status(response.status).headers(response.headers).send(response.body)
 		}
@@ -160,4 +160,16 @@ declare module 'fastify' {
   interface FastifyRequest {
     savedReq: Request | null
   }
+}
+
+function excludeBufferKeys<T> (body: T) {
+	if (typeof body !== 'object') return { body: body as T, files: {} }
+	const entries = Object.entries(body ?? {})
+	const isFile = (val: any) => Array.isArray(val) ? isFile(val.at(0)) : Buffer.isBuffer(val?.data)
+	const fileEntries = entries.filter(([_, value]) => isFile(value)).map(([key, value]) => [key, Array.isArray(value) ? value : [value]])
+	const nonFileEntries = entries.filter(([_, value]) => !isFile(value))
+	return {
+		body: Object.fromEntries(nonFileEntries) as T,
+		files: Object.fromEntries(fileEntries) as Record<string, StorageFile[]>
+	}
 }

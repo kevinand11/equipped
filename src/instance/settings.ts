@@ -1,3 +1,5 @@
+import type { ServerTypes } from '../server'
+
 export type Settings = {
 	isDev: boolean
 	accessTokenKey: string
@@ -22,6 +24,7 @@ export type Settings = {
 	slowDownDelayInMs: number
 	hashSaltRounds: number
 	paginationDefaultLimit: number
+	server: ServerTypes
 }
 
 export const defaulInstanceSetting: Settings = {
@@ -47,5 +50,6 @@ export const defaulInstanceSetting: Settings = {
 	slowDownAfter: 1000,
 	slowDownDelayInMs: 500,
 	hashSaltRounds: 10,
-	paginationDefaultLimit: 100
+	paginationDefaultLimit: 100,
+	server: 'express',
 }

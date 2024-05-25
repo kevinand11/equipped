@@ -14,15 +14,15 @@ export abstract class Server<Req = any, Res = any> {
 	abstract listener: Listener
 	settings = Instance.get().settings
 	abstract startServer (port: number): Promise<boolean>
-	abstract make(req: Req, res: Res): Promise<Request>
+	protected abstract parse(req: Req, res: Res): Promise<Request>
 	abstract registerRoute (route: Route): void
 
 	set routes (routes: Route[]) {
-		routes.forEach(this.registerRoute)
+		routes.forEach((route) => this.registerRoute(route))
 	}
 
 	register (router: Router) {
-		router.routes.forEach(this.registerRoute)
+		router.routes.forEach((route) => this.registerRoute(route))
 	}
 
 	test () {

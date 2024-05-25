@@ -36,6 +36,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			`${tokens.method(req, res)}(${tokens.status(req, res)}) ${tokens.url(req, res)} ${tokens.res(req, res, 'content-length')}b - ${tokens['response-time'](req, res)}ms`
 		))
 		this.#expressApp.use(express.json())
+		this.#expressApp.use(express.text())
 		this.#expressApp.use(cookie())
 		this.#expressApp.use(helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }))
 		this.#expressApp.use(cors({ origin: '*' }))
@@ -64,9 +65,9 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})
 	}
 
-	registerRoute (route: Route): void {
+	registerRoute (route: Route) {
 		const { method, path, middlewares = [], handler } = route
-		const controllers = [parseAuthUser, ...middlewares].map(this.makeMiddleware)
+		const controllers = [parseAuthUser, ...middlewares].map((m) => this.makeMiddleware(m))
 		if (handler) this.#expressApp[method]?.(path, ...controllers, this.makeController(handler))
 		else this.#expressApp.use(...controllers)
 	}
@@ -88,7 +89,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})
 	}
 
-	async make (req: express.Request, res: express.Response) {
+	async parse (req: express.Request, res: express.Response) {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
@@ -108,7 +109,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 						size: f.size,
 						isTruncated: f.truncated,
 						data: f.data,
-						duration: await getMediaDuration(f.data)
+						duration: await getMediaDuration(f.data),
 					})))
 					return [key, fileArray] as const
 				})
@@ -132,7 +133,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 	makeController(cb: Defined<Route['handler']>) {
 		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
-				const rawResponse = await cb(await this.make(req, res))
+				const rawResponse = await cb(await this.parse(req, res))
 				const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse })
 				if (!response.piped) {
 					Object.entries(response.headers).forEach(([key, value]) => res.header(key, value))
@@ -148,7 +149,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 	makeMiddleware(cb: Defined<Route['middlewares']>[number]) {
 		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
-				await cb(await this.make(req, res))
+				await cb(await this.parse(req, res))
 				return next()
 			} catch (e) {
 				return next(e)
@@ -157,8 +158,8 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 	}
 
 	makeErrorMiddleware(cb: (req: Request, err: Error) => Promise<Response<unknown>>) {
-		return async (err: Error, req: express.Request, res: express.Response) => {
-			const rawResponse = await cb(await this.make(req, res), err)
+		return async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+			const rawResponse = await cb(await this.parse(req, res), err)
 			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest })
 			if (!response.piped) {
 				Object.entries(response.headers).forEach(([key, value]) => res.header(key, value))
