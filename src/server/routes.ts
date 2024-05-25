@@ -19,6 +19,7 @@ export type Route = {
 	handler: RouteHandler<any>
 	middlewares?: RouteMiddlewareHandler[]
 	schema?: Schema
+	tags?: string[]
 }
 
 type RouteConfig = Partial<Omit<Route, 'method'>>
@@ -50,6 +51,7 @@ export class Router {
 			collection.push({
 				...this.#config,
 				...route,
+				tags: [...(this.#config?.tags ?? []), ...(route.tags ?? [])],
 				middlewares: [...(this.#config?.middlewares ?? []), ...(route.middlewares ?? [])],
 				handler,
 				method,

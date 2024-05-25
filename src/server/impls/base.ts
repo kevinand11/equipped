@@ -13,12 +13,17 @@ export abstract class Server<Req = any, Res = any> {
 	abstract server: http.Server
 	abstract listener: Listener
 	settings = Instance.get().settings
+	abstract onLoad (): Promise<void>
 	abstract startServer (port: number): Promise<boolean>
 	protected abstract parse(req: Req, res: Res): Promise<Request>
 	abstract registerRoute (route: Route): void
 
 	set routes (routes: Route[]) {
 		routes.forEach((route) => this.registerRoute(route))
+	}
+
+	async load () {
+		await this.onLoad()
 	}
 
 	register (router: Router) {

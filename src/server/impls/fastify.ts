@@ -5,6 +5,8 @@ import fastifyHelmet from '@fastify/helmet'
 import fastifyMultipart from '@fastify/multipart'
 import fastifyRateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
+import fastifySwagger from '@fastify/swagger'
+import fastifySwaggerUi from '@fastify/swagger-ui'
 import Fastify, { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler, RouteHandlerMethod } from 'fastify'
 import fastifySlowDown from 'fastify-slow-down'
 
@@ -16,6 +18,7 @@ import path from 'path'
 import io from 'socket.io'
 
 import qs from 'qs'
+import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { StorageFile } from '../../storage'
@@ -34,7 +37,9 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		super()
 
 		this.#fastifyApp = Fastify({
-			logger: false,
+			logger: true,
+			ajv: { customOptions: { coerceTypes: false } },
+			schemaErrorFormatter: (errors, data) => new ValidationError(errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })))
 		})
 		this.server = this.#fastifyApp.server
 
@@ -43,6 +48,15 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		this.#fastifyApp.register(fastifyStatic, { root: path.join(process.cwd(), 'public') })
 		this.#fastifyApp.register(fastifyCookie, {})
 		this.#fastifyApp.register(fastifyCors, { origin: '*' })
+
+		this.#fastifyApp.register(fastifySwagger, {
+			openapi: {
+				openapi: '3.0.0',
+				info: { title: this.settings.appId, version: this.settings.swaggerDocsVersion },
+			},
+		})
+		this.#fastifyApp.register(fastifySwaggerUi, { routePrefix: this.settings.swaggerDocsUrl })
+
 		this.#fastifyApp.register(fastifyMultipart, {
 			attachFieldsToBody: 'keyValues',
 			throwFileSizeLimit: false,
@@ -84,19 +98,26 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		})
 	}
 
+	async onLoad() {
+		await this.#fastifyApp.ready()
+	}
+
 	registerRoute (route: Route) {
-		const { method, path, middlewares = [], handler, schema } = route
-		const controllers = [parseAuthUser, ...middlewares].map((m) => this.makeMiddleware(m))
-		this.#fastifyApp[method](formatPath(path), {
-			handler: this.makeController(handler),
-			preHandler: controllers,
-			schema: schema ? {
-				body: schema.body,
-				querystring: schema.query,
-				params: schema.params,
-				headers: schema.headers,
-				response: schema.response
-			} : undefined
+		this.#fastifyApp.register(async (inst) => {
+			const { method, path, middlewares = [], handler, schema, tags = [] } = route
+			const controllers = [parseAuthUser, ...middlewares].map((m) => this.makeMiddleware(m))
+			inst[method](formatPath(path), {
+				handler: this.makeController(handler),
+				preHandler: controllers,
+				schema: {
+					body: schema?.body,
+					querystring: schema?.query,
+					params: schema?.params,
+					headers: schema?.headers,
+					response: schema?.response,
+					tags: [tags.join(' > ') || 'default'],
+				},
+			})
 		})
 	}
 

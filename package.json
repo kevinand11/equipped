@@ -46,6 +46,8 @@
 		"@fastify/multipart": "^8.2.0",
 		"@fastify/rate-limit": "^9.1.0",
 		"@fastify/static": "^7.0.4",
+		"@fastify/swagger": "^8.14.0",
+		"@fastify/swagger-ui": "^3.0.0",
 		"amqp-connection-manager": "^4.1.14",
 		"amqplib": "^0.10.3",
 		"axios": "^1.6.8",

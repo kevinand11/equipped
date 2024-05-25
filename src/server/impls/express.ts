@@ -88,6 +88,8 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})
 	}
 
+	async onLoad() {}
+
 	async parse (req: express.Request, res: express.Response) {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {

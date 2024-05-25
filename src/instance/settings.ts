@@ -25,6 +25,8 @@ export type Settings = {
 	hashSaltRounds: number
 	paginationDefaultLimit: number
 	server: ServerTypes
+	swaggerDocsVersion: string
+	swaggerDocsUrl: string
 }
 
 export const defaulInstanceSetting: Settings = {
@@ -52,4 +54,6 @@ export const defaulInstanceSetting: Settings = {
 	hashSaltRounds: 10,
 	paginationDefaultLimit: 100,
 	server: 'express',
+	swaggerDocsVersion: '1.0.0',
+	swaggerDocsUrl: '/__docs'
 }

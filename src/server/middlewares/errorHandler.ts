@@ -5,16 +5,15 @@ import { makeErrorMiddleware } from '../routes'
 import { StatusCodes } from '../statusCodes'
 
 export const errorHandler = makeErrorMiddleware(
-	async (_, err) => {
-		const error = err as CustomError
-		if (error.isCustomError) return new Response({
+	async (_, error) => {
+		if (error instanceof CustomError) return new Response({
 			body: error.serializedErrors,
 			status: error.statusCode
 		})
 		else {
-			await Instance.get().logger.error(err)
+			await Instance.get().logger.error(error)
 			return new Response({
-				body: [{ message: 'Something went wrong', data: err.message }],
+				body: [{ message: 'Something went wrong', data: error.message }],
 				status: StatusCodes.BadRequest
 			})
 		}
