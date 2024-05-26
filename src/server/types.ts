@@ -34,7 +34,7 @@ export type SupportedStatusCodes = Enum<typeof StatusCodes>
 
 type ApiErrors = Record<Exclude<SupportedStatusCodes, 200>, CustomError['serializedErrors']>
 
-export type ApiResponse<TResponse, StatusCode extends SupportedStatusCodes = 200> = Omit<ApiErrors, StatusCode> & Record<StatusCode, TResponse>
+export type ApiResponse<T, StatusCode extends SupportedStatusCodes = 200> = Partial<Omit<ApiErrors, StatusCode>> | Record<StatusCode, T>
 
 type Api<Key extends string> = {
     readonly key: Key
@@ -62,7 +62,7 @@ export type ErrorHandler = (req: Request, err: Error) => Res<CustomError['serial
 export type RouteMiddlewareHandler = (req: Request) => Awaitable<void>
 export type HandlerSetup = (route: Route) => void
 
-type Schema = Omit<FastifySchema, 'tags' | 'security'>
+export type RouteSchema = Omit<FastifySchema, 'tags' | 'security'>
 
 export type Route<Def extends ApiDef<any> = any> = {
 	key?: Def['path']
@@ -71,7 +71,7 @@ export type Route<Def extends ApiDef<any> = any> = {
 	handler: ReturnType<typeof makeController<Def['responses'] extends ApiResponse<infer R> ? R : never>>
 	middlewares?: ReturnType<typeof makeMiddleware>[]
 	onError?: ReturnType<typeof makeErrorMiddleware>
-	schema?: Schema
+	schema?: RouteSchema
 	tags?: string[]
 	security?: Record<string, string[]>[]
 }

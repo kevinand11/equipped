@@ -95,6 +95,7 @@ export abstract class Server<Req = any, Res = any> {
 			onError,
 			schema: {
 				...scheme,
+				operationId: scheme.operationId ?? handler.cb.name,
 				tags: [tags.join(' > ') || 'default'],
 				security,
 			}

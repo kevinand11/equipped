@@ -80,7 +80,9 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 
 	protected registerRoute (route: FullRoute) {
 		this.#fastifyApp.register(async (inst) => {
-			inst[route.method](route.path, {
+			inst.route({
+				url: route.path,
+				method: route.method as any,
 				handler: this.makeController(route.handler.cb),
 				preHandler: route.middlewares.map((m) => this.makeMiddleware(m.cb)),
 				errorHandler: route.onError ? this.makeErrorMiddleware(route.onError.cb) : undefined,
