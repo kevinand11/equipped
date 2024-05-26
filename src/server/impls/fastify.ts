@@ -12,7 +12,7 @@ import fastifySlowDown from 'fastify-slow-down'
 
 import http from 'http'
 import { Listener } from '../../listeners'
-import { Defined, Server } from './base'
+import { Defined, FullRoute, Server } from './base'
 
 import path from 'path'
 import io from 'socket.io'
@@ -20,10 +20,8 @@ import io from 'socket.io'
 import qs from 'qs'
 import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
-import { Instance } from '../../instance'
 import { StorageFile } from '../../storage'
 import { getMediaDuration } from '../../utils/media'
-import { generateSwaggerDocument } from '../../utils/swagger'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../request'
 import { Route } from '../routes'
@@ -50,7 +48,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		this.#fastifyApp.register(fastifyCookie, {})
 		this.#fastifyApp.register(fastifyCors, { origin: '*' })
 
-		this.#fastifyApp.register(fastifySwagger, { openapi: generateSwaggerDocument() })
+		this.#fastifyApp.register(fastifySwagger, { openapi: this.baseSwaggerDoc })
 		this.#fastifyApp.register(fastifySwaggerUi, { routePrefix: this.settings.swaggerDocsUrl })
 
 		this.#fastifyApp.register(fastifyMultipart, {
@@ -98,21 +96,13 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		await this.#fastifyApp.ready()
 	}
 
-	protected registerRoute (route: Required<Route>) {
+	protected registerRoute (route: FullRoute) {
 		this.#fastifyApp.register(async (inst) => {
-			const { method, path, middlewares, handler, schema, tags, security } = route
+			const { method, path, middlewares, handler, schema } = route
 			inst[method](path, {
 				handler: this.makeController(handler.cb),
 				preHandler: middlewares.map((m) => this.makeMiddleware(m.cb)),
-				schema: {
-					body: schema?.body,
-					querystring: schema?.query,
-					params: schema?.params,
-					headers: schema?.headers,
-					response: schema?.response,
-					tags: [tags.join(' > ') || 'default'],
-					security,
-				},
+				schema,
 			})
 		})
 	}
@@ -120,9 +110,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	protected async startServer (port: number) {
 		this.#fastifyApp.setNotFoundHandler(this.makeController(notFoundHandler.cb))
 		this.#fastifyApp.setErrorHandler(this.makeErrorMiddleware(errorHandler.cb))
-
 		await this.#fastifyApp.listen({ port })
-		await Instance.get().logger.success(`${Instance.get().settings.appId} service listening on port`, port)
 		addWaitBeforeExit(this.#fastifyApp.close)
 		return true
 	}

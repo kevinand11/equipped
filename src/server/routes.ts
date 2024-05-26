@@ -1,3 +1,4 @@
+import { FastifySchema } from 'fastify'
 import { Request, Response } from './request'
 
 type MethodTypes = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'all'
@@ -7,13 +8,7 @@ type ErrorHandler<T> = (req: Request, err: Error) => Promise<Response<T>>
 type RouteMiddlewareHandler = (req: Request) => Promise<void>
 type HandlerSetup = (route: Route) => void
 
-export type Schema = {
-  body?: any;
-  query?: any;
-  params?: any;
-  headers?: any;
-  response?: Record<string, any>;
-}
+export type Schema = Omit<FastifySchema, 'tags' | 'security' | 'querystring'> & { query?: FastifySchema['querystring'] }
 
 export type Route<T = unknown> = {
 	path: string

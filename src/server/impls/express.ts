@@ -1,20 +1,23 @@
 import express from 'express'
 import http from 'http'
 import { Listener } from '../../listeners'
-import { Defined, Server } from './base'
+import { Defined, FullRoute, Server } from './base'
 
+import { prepareOpenapiMethod } from '@fastify/swagger/lib/spec/openapi/utils'
+import openapi from '@wesleytodd/openapi'
 import cookie from 'cookie-parser'
 import cors from 'cors'
 import fileUpload from 'express-fileupload'
 import rateLimit from 'express-rate-limit'
 import slowDown from 'express-slow-down'
 import helmet from 'helmet'
+// @ts-ignore
+import resolver from 'json-schema-resolver'
 import morgan from 'morgan'
 import path from 'path'
 import io from 'socket.io'
 
 import { addWaitBeforeExit } from '../../exit'
-import { Instance } from '../../instance'
 import { StorageFile } from '../../storage'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
@@ -24,6 +27,8 @@ import { StatusCodes } from '../statusCodes'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express
+	#oapi = openapi(`${this.settings.swaggerDocsUrl}/json`, this.baseSwaggerDoc, { coerce: false })
+	#ref = resolver({ clone: true })
 	server: http.Server
 	listener: Listener
 
@@ -42,6 +47,8 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		this.#expressApp.use(cors({ origin: '*' }))
 		this.#expressApp.use(express.urlencoded({ extended: false }))
 		this.#expressApp.use(express.static(path.join(process.cwd(), 'public')))
+		this.#expressApp.use( this.#oapi)
+		this.#expressApp.use(this.settings.swaggerDocsUrl, this.#oapi.swaggerui())
 		if (this.settings.useRateLimit) this.#expressApp.use(rateLimit({
 			windowMs: this.settings.rateLimitPeriodInMs,
 			limit: this.settings.rateLimit,
@@ -65,9 +72,15 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})
 	}
 
-	protected registerRoute (route: Required<Route>) {
-		const { method, path, middlewares, handler } = route
-		this.#expressApp[method]?.(path, ...middlewares.map((m) => this.makeMiddleware(m.cb)), this.makeController(handler.cb))
+	protected registerRoute (route: FullRoute) {
+		const { method, path, middlewares, handler, schema } = route
+		const openapi = prepareOpenapiMethod(schema, this.#ref, this.baseSwaggerDoc, path)
+		this.#expressApp[method]?.(
+			path,
+			this.#oapi.validPath(openapi),
+			...middlewares.map((m) => this.makeMiddleware(m.cb)),
+			this.makeController(handler.cb)
+		)
 	}
 
 	protected async startServer (port: number) {
@@ -76,10 +89,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 		return await new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
 			try {
-				const app = this.server.listen(port, async () => {
-					await Instance.get().logger.success(`${this.settings.appId} service listening on port`, port)
-					resolve(true)
-				})
+				const app = this.server.listen(port, async () => resolve(true))
 				addWaitBeforeExit(app.close)
 			} catch (err) {
 				reject(err as Error)
@@ -87,7 +97,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})
 	}
 
-	protected async onLoad() {}
+	protected async onLoad () {}
 
 	protected async parse (req: express.Request, res: express.Response) {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
