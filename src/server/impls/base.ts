@@ -5,17 +5,20 @@ import io from 'socket.io'
 import supertest from 'supertest'
 
 import { FastifySchema } from 'fastify'
+import path from 'path'
 import { Instance } from '../../instance'
 import { Listener } from '../../listeners'
+import { Defined } from '../../types'
 import { parseAuthUser } from '../middlewares'
 import { Request } from '../requests'
 import { Router } from '../routes'
 import { Route } from '../types'
-import path from 'path'
 
 export type FullRoute = Required<Omit<Route, 'schema' | 'tags' | 'security' | 'onError'>> & { schema: FastifySchema; onError?: Route['onError'] }
+type Schemas = Record<string, Defined<Route['schema']>>
 
 export abstract class Server<Req = any, Res = any> {
+	#schemas: Schemas = {}
 	#listener: Listener | null = null
 	protected server: http.Server
 	protected staticPath = path.join(process.cwd(), 'public')
@@ -64,6 +67,10 @@ export abstract class Server<Req = any, Res = any> {
 		routes.forEach((route) => this.#regRoute(route))
 	}
 
+	addSchema (schemas: Schemas) {
+		Object.assign(this.#schemas, schemas)
+	}
+
 	async load () {
 		await this.onLoad()
 	}
@@ -74,18 +81,20 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	#regRoute (route: Route) {
-		const { method, key, path, middlewares = [], handler, schema, tags = [], security = [], onError } = route
+		const { method, path, middlewares = [], handler, schema, tags = [], security = [], onError } = route
+		const { key = `${method.toLowerCase()} ${path}` } = route
 		const allMiddlewares = [parseAuthUser, ...middlewares]
 		allMiddlewares.forEach((m) => m.onSetup?.(route))
 		handler.onSetup?.(route)
 		onError?.onSetup?.(route)
+
+		const scheme = schema ?? this.#schemas[key] ?? {}
 		const fullRoute: FullRoute = {
-			method, middlewares, handler, key: key ?? `${method.toLowerCase()} ${path}`,
+			method, middlewares, handler, key,
 			path: path.replace(/(\/\s*)+/g, '/'),
 			onError,
 			schema: {
-				...schema,
-				querystring: schema?.query,
+				...scheme,
 				tags: [tags.join(' > ') || 'default'],
 				security,
 			}
@@ -99,7 +108,14 @@ export abstract class Server<Req = any, Res = any> {
 
 	async start (port: number) {
 		const postRoutesRouter = new Router()
-		postRoutesRouter.get({ path: '__health' })(async () => `${Instance.get().settings.appId} service running`)
+		postRoutesRouter.get({
+			path: '__health',
+			schema: {
+				response: {
+					200: { type: 'string' },
+				}
+			}
+		})(async () => `${this.settings.appId} service running`)
 		this.register(postRoutesRouter)
 
 		const started = await this.startServer(port)

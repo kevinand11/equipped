@@ -62,7 +62,7 @@ export type ErrorHandler = (req: Request, err: Error) => Res<CustomError['serial
 export type RouteMiddlewareHandler = (req: Request) => Awaitable<void>
 export type HandlerSetup = (route: Route) => void
 
-type Schema = Omit<FastifySchema, 'tags' | 'security' | 'querystring'> & { query?: FastifySchema['querystring'] }
+type Schema = Omit<FastifySchema, 'tags' | 'security'>
 
 export type Route<Def extends ApiDef<any> = any> = {
 	key?: Def['path']
