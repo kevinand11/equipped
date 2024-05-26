@@ -1,7 +1,7 @@
 import express from 'express'
 import http from 'http'
 import { Listener } from '../../listeners'
-import { Defined, FullRoute, Server } from './base'
+import { FullRoute, Server } from './base'
 
 import { prepareOpenapiMethod } from '@fastify/swagger/lib/spec/openapi/utils'
 import openapi from '@wesleytodd/openapi'
@@ -19,6 +19,7 @@ import io from 'socket.io'
 
 import { addWaitBeforeExit } from '../../exit'
 import { StorageFile } from '../../storage'
+import { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../request'
@@ -73,14 +74,14 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 	}
 
 	protected registerRoute (route: FullRoute) {
-		const { method, path, middlewares, handler, schema } = route
-		const openapi = prepareOpenapiMethod(schema, this.#ref, this.baseSwaggerDoc, path)
-		this.#expressApp[method]?.(
-			path,
+		const openapi = prepareOpenapiMethod(route.schema, this.#ref, this.baseSwaggerDoc, route.path)
+		const controllers = [
 			this.#oapi.validPath(openapi),
-			...middlewares.map((m) => this.makeMiddleware(m.cb)),
-			this.makeController(handler.cb)
-		)
+			...route.middlewares.map((m) => this.makeMiddleware(m.cb)),
+			this.makeController(route.handler.cb)
+		]
+		if (route.onError) controllers.push(this.makeErrorMiddleware(route.onError.cb))
+		this.#expressApp[route.method]?.(route.path, ...controllers)
 	}
 
 	protected async startServer (port: number) {
@@ -167,7 +168,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		}
 	}
 
-	makeErrorMiddleware(cb: (req: Request, err: Error) => Promise<Response<unknown>>) {
+	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
 		return async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
 			const rawResponse = await cb(await this.parse(req, res), err)
 			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest })

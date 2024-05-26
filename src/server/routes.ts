@@ -3,9 +3,9 @@ import { Request, Response } from './request'
 
 type MethodTypes = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'all'
 type Res<T> = Response<T> | T
-type RouteHandler<T> = (req: Request) => Promise<Res<T>>
-type ErrorHandler<T> = (req: Request, err: Error) => Promise<Response<T>>
-type RouteMiddlewareHandler = (req: Request) => Promise<void>
+type RouteHandler<T> = (req: Request) => Promise<Res<T>> | Res<T>
+type ErrorHandler<T> = (req: Request, err: Error) => Promise<Res<T>> | Res<T>
+type RouteMiddlewareHandler = (req: Request) => Promise<void> | void
 type HandlerSetup = (route: Route) => void
 
 export type Schema = Omit<FastifySchema, 'tags' | 'security' | 'querystring'> & { query?: FastifySchema['querystring'] }
@@ -15,6 +15,7 @@ export type Route<T = unknown> = {
 	method: MethodTypes
 	handler: ReturnType<typeof makeController<T>>
 	middlewares?: ReturnType<typeof makeMiddleware>[]
+	onError?: ReturnType<typeof makeErrorMiddleware<T>>
 	schema?: Schema
 	tags?: string[]
 	security?: Record<string, string[]>[]

@@ -12,7 +12,7 @@ import fastifySlowDown from 'fastify-slow-down'
 
 import http from 'http'
 import { Listener } from '../../listeners'
-import { Defined, FullRoute, Server } from './base'
+import { FullRoute, Server } from './base'
 
 import path from 'path'
 import io from 'socket.io'
@@ -21,6 +21,7 @@ import qs from 'qs'
 import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
 import { StorageFile } from '../../storage'
+import { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../request'
@@ -98,11 +99,11 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 
 	protected registerRoute (route: FullRoute) {
 		this.#fastifyApp.register(async (inst) => {
-			const { method, path, middlewares, handler, schema } = route
-			inst[method](path, {
-				handler: this.makeController(handler.cb),
-				preHandler: middlewares.map((m) => this.makeMiddleware(m.cb)),
-				schema,
+			inst[route.method](route.path, {
+				handler: this.makeController(route.handler.cb),
+				preHandler: route.middlewares.map((m) => this.makeMiddleware(m.cb)),
+				errorHandler: route.onError ? this.makeErrorMiddleware(route.onError.cb) : undefined,
+				schema: route.schema,
 			})
 		})
 	}
@@ -158,7 +159,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		return handler
 	}
 
-	makeErrorMiddleware(cb: (req: Request, err: Error) => Promise<Response<unknown>>) {
+	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
 		const handler: Parameters<FastifyInstance['setErrorHandler']>[0] = async (error, req, reply)=> {
 			const rawResponse = await cb(await this.parse(req, reply), error)
 			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest })

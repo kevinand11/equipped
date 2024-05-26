@@ -10,9 +10,7 @@ import { parseAuthUser } from '../middlewares'
 import { Request } from '../request'
 import { Route, Router } from '../routes'
 
-export type Defined<T> = T extends undefined ? never : T
-
-export type FullRoute = Required<Omit<Route, 'schema'> & { schema: FastifySchema }>
+export type FullRoute = Required<Omit<Route, 'schema' | 'tags' | 'security' | 'onError'>> & { schema: FastifySchema; onError?: Route['onError'] }
 
 export abstract class Server<Req = any, Res = any> {
 	protected settings = Instance.get().settings
@@ -57,13 +55,15 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	#regRoute (route: Route) {
-		const { method, path, middlewares = [], handler, schema, tags = [], security = [] } = route
+		const { method, path, middlewares = [], handler, schema, tags = [], security = [], onError } = route
 		const allMiddlewares = [parseAuthUser, ...middlewares]
 		allMiddlewares.forEach((m) => m.onSetup?.(route))
 		handler.onSetup?.(route)
+		onError?.onSetup?.(route)
 		const fullRoute: FullRoute = {
-			method, middlewares, handler, tags, security,
+			method, middlewares, handler,
 			path: path.replace(/(\/\s*)+/g, '/'),
+			onError,
 			schema: {
 				...schema,
 				querystring: schema?.query,
