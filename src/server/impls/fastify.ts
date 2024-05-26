@@ -13,20 +13,21 @@ import qs from 'qs'
 
 import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
+import { Instance } from '../../instance'
 import { StorageFile } from '../../storage'
 import { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../requests'
 import { Route, StatusCodes } from '../types'
-import { FullRoute, Server } from './base'
+import { FullRoute, getLoggerOptions, Server } from './base'
 
 export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	#fastifyApp: FastifyInstance
 
 	constructor () {
 		const app = Fastify({
-			logger: true,
+			logger: Instance.get().settings.logRequests ? getLoggerOptions() : false,
 			ajv: { customOptions: { coerceTypes: false } },
 			schemaErrorFormatter: (errors, data) => new ValidationError(errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })))
 		})

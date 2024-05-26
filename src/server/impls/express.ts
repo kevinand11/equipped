@@ -10,7 +10,7 @@ import helmet from 'helmet'
 import http from 'http'
 // @ts-ignore
 import resolver from 'json-schema-resolver'
-import morgan from 'morgan'
+import { pinoHttp } from 'pino-http'
 
 import { addWaitBeforeExit } from '../../exit'
 import { StorageFile } from '../../storage'
@@ -19,7 +19,7 @@ import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../requests'
 import { Route, StatusCodes } from '../types'
-import { FullRoute, Server } from './base'
+import { FullRoute, Server, getLoggerOptions } from './base'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express
@@ -32,9 +32,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		this.#expressApp = app
 
 		app.disable('x-powered-by')
-		app.use(morgan((tokens, req, res) =>
-			`${tokens.method(req, res)}(${tokens.status(req, res)}) ${tokens.url(req, res)} ${tokens.res(req, res, 'content-length')}b - ${tokens['response-time'](req, res)}ms`
-		))
+		if (this.settings.logRequests) app.use(pinoHttp(getLoggerOptions()))
 		app.use(express.json())
 		app.use(express.text())
 		app.use(cookie())

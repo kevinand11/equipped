@@ -1,3 +1,4 @@
+import { Level } from 'pino'
 import type { ServerTypes } from '../server'
 
 export type Settings = {
@@ -27,6 +28,8 @@ export type Settings = {
 	server: ServerTypes
 	swaggerDocsVersion: string
 	swaggerDocsUrl: string
+	logLevel: Level
+	logRequests: boolean
 }
 
 export const defaulInstanceSetting: Settings = {
@@ -56,4 +59,6 @@ export const defaulInstanceSetting: Settings = {
 	server: 'express',
 	swaggerDocsVersion: '1.0.0',
 	swaggerDocsUrl: '/__docs',
+	logLevel: 'info',
+	logRequests: true,
 }
