@@ -64,11 +64,11 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 	protected registerRoute (route: FullRoute) {
 		const openapi = prepareOpenapiMethod(route.schema, this.#ref, this.baseSwaggerDoc, route.path)
-		const controllers = [
-			this.#oapi.validPath(openapi),
+		const controllers: (express.RequestHandler | express.ErrorRequestHandler)[] = [
 			...route.middlewares.map((m) => this.makeMiddleware(m.cb)),
 			this.makeController(route.handler.cb)
 		]
+		if (!route.schema.hide) controllers.unshift(this.#oapi.validPath(openapi))
 		if (route.onError) controllers.push(this.makeErrorMiddleware(route.onError.cb))
 		this.#expressApp[route.method]?.(route.path, ...controllers)
 	}

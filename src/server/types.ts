@@ -58,7 +58,7 @@ export type ErrorHandler = (req: Request, err: Error) => Res<CustomError['serial
 export type RouteMiddlewareHandler = (req: Request) => Awaitable<void>
 export type HandlerSetup = (route: Route) => void
 
-export type RouteSchema = Omit<FastifySchema, 'tags' | 'security'>
+export type RouteSchema = Omit<FastifySchema, 'tags' | 'security' | 'hide'>
 
 export type Route<Def extends ApiDef<any> = any> = {
 	key?: Def['path']
@@ -69,6 +69,7 @@ export type Route<Def extends ApiDef<any> = any> = {
 	onError?: ReturnType<typeof makeErrorMiddleware>
 	schema?: RouteSchema
 	tags?: string[]
+	hideSchema?: boolean
 	security?: Record<string, string[]>[]
 }
 
