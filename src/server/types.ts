@@ -23,11 +23,7 @@ export const StatusCodes = {
 	NotFound: 404,
 	ValidationError: 422,
 	TooManyRequests: 429,
-	ServerError: 500,
-	AccountNotVerified: 460,
 	AccessTokenExpired: 461,
-	RefreshTokenMisused: 462,
-	InvalidToken: 463
 } as const
 
 export type SupportedStatusCodes = Enum<typeof StatusCodes>
@@ -37,7 +33,7 @@ type ApiErrors = Record<Exclude<SupportedStatusCodes, 200>, CustomError['seriali
 export type ApiResponse<T, StatusCode extends SupportedStatusCodes = 200> = Partial<Omit<ApiErrors, StatusCode>> | Record<StatusCode, T>
 
 type Api<Key extends string> = {
-    readonly key: Key
+    key: Key
     method: MethodTypes
     body?: Record<string, any>
     params?: Record<string, any>
