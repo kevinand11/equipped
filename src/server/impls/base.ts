@@ -4,22 +4,23 @@ import supertest from 'supertest'
 
 import { Instance } from '../../instance'
 import { Listener } from '../../listeners'
+import { parseAuthUser } from '../middlewares'
 import { Request } from '../request'
-import { Route, Router } from '../routes'
+import { Route, Router, formatPath } from '../routes'
 
 export type Defined<T> = T extends undefined ? never : T
 
 export abstract class Server<Req = any, Res = any> {
-	abstract server: http.Server
+	protected settings = Instance.get().settings
 	abstract listener: Listener
-	settings = Instance.get().settings
-	abstract onLoad (): Promise<void>
-	abstract startServer (port: number): Promise<boolean>
+	protected abstract server: http.Server
+	protected abstract onLoad (): Promise<void>
+	protected abstract startServer (port: number): Promise<boolean>
 	protected abstract parse(req: Req, res: Res): Promise<Request>
-	abstract registerRoute (route: Route): void
+	protected abstract registerRoute (route: Required<Route>): void
 
 	set routes (routes: Route[]) {
-		routes.forEach((route) => this.registerRoute(route))
+		routes.forEach((route) => this.#regRoute(route))
 	}
 
 	async load () {
@@ -27,7 +28,17 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	register (router: Router) {
-		router.routes.forEach((route) => this.registerRoute(route))
+		router.routes.forEach((route) => this.#regRoute(route))
+	}
+
+	#regRoute (route: Route) {
+		const { method, path, middlewares = [], handler, schema = {}, tags = [], security = [] } = route
+		const allMiddlewares = [parseAuthUser, ...middlewares]
+		allMiddlewares.forEach((m) => m.onSetup?.(route))
+		this.registerRoute({
+			method, middlewares, handler, schema, tags, security,
+			path: formatPath(path),
+		})
 	}
 
 	test () {

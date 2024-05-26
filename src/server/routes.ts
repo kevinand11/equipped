@@ -17,24 +17,32 @@ export type Route = {
 	path: string
 	method: MethodTypes
 	handler: RouteHandler<any>
-	middlewares?: RouteMiddlewareHandler[]
+	middlewares?: ReturnType<typeof makeMiddleware>[]
 	schema?: Schema
 	tags?: string[]
+	security?: Record<string, string[]>[]
 }
 
-type RouteConfig = Partial<Omit<Route, 'method'>>
+type RouteConfig = Omit<Route, 'method' | 'handler'>
 type GeneralConfig = Omit<RouteConfig, 'schema'>
 
-export const makeController = <T>(cb: RouteHandler<T>) => cb
-export const makeMiddleware = (cb: RouteMiddlewareHandler) => cb
-export const makeErrorMiddleware = <T>(cb: (req: Request, err: Error) => Promise<Response<T>>) => cb
+export const makeController = <T>(cb: RouteHandler<T>) => ({ cb })
+export const makeMiddleware = (cb: RouteMiddlewareHandler, onSetup?: (route: Route) => void) => ({ cb, onSetup })
+export const makeErrorMiddleware = <T>(cb: (req: Request, err: Error) => Promise<Response<T>>) => ({ cb })
 
 export const formatPath = (path: string) => `/${path}`
 	.replaceAll('///', '/')
 	.replaceAll('//', '/')
 
-export const groupRoutes = (parent: string, routes: Route[]): Route[] => routes
-	.map((route) => ({ ...route, path: formatPath(`${parent}/${route.path}`) }))
+export const groupRoutes = (parent: string, routes: Route[], config?: GeneralConfig): Route[] => routes
+	.map((route) => ({
+		...(config ?? {}),
+		...route,
+		path: formatPath(`${parent}/${route.path}`),
+		tags: [...(config?.tags ?? []), ...(route.tags ?? [])],
+		middlewares: [...(config?.middlewares ?? []), ...(route.middlewares ?? [])],
+		security: [...(config?.security ?? []), ...(route.security ?? [])],
+	}))
 
 
 export class Router {
@@ -47,16 +55,9 @@ export class Router {
 	}
 
 	#addRoute (method: Route['method'], route: RouteConfig, collection: Route[] = this.#routes) {
-		return <T>(handler: RouteHandler<T>) => {
-			collection.push({
-				...this.#config,
-				...route,
-				tags: [...(this.#config?.tags ?? []), ...(route.tags ?? [])],
-				middlewares: [...(this.#config?.middlewares ?? []), ...(route.middlewares ?? [])],
-				handler,
-				method,
-				path: formatPath(`${this.#config?.path ?? ''}/${route.path ?? ''}`),
-			})
+		return <T> (handler: RouteHandler<T>) => {
+			const grouped = groupRoutes(this.#config?.path ?? '', [{ ...route, method, handler }], this.#config)
+			collection.push(grouped[0])
 		}
 	}
 

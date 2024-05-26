@@ -23,9 +23,10 @@ import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { StorageFile } from '../../storage'
 import { getMediaDuration } from '../../utils/media'
-import { errorHandler, notFoundHandler, parseAuthUser } from '../middlewares'
+import { generateSwaggerDocument } from '../../utils/swagger'
+import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../request'
-import { formatPath, Route } from '../routes'
+import { Route } from '../routes'
 import { StatusCodes } from '../statusCodes'
 
 export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
@@ -49,12 +50,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		this.#fastifyApp.register(fastifyCookie, {})
 		this.#fastifyApp.register(fastifyCors, { origin: '*' })
 
-		this.#fastifyApp.register(fastifySwagger, {
-			openapi: {
-				openapi: '3.0.0',
-				info: { title: this.settings.appId, version: this.settings.swaggerDocsVersion },
-			},
-		})
+		this.#fastifyApp.register(fastifySwagger, { openapi: generateSwaggerDocument() })
 		this.#fastifyApp.register(fastifySwaggerUi, { routePrefix: this.settings.swaggerDocsUrl })
 
 		this.#fastifyApp.register(fastifyMultipart, {
@@ -98,17 +94,16 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		})
 	}
 
-	async onLoad() {
+	protected async onLoad() {
 		await this.#fastifyApp.ready()
 	}
 
-	registerRoute (route: Route) {
+	protected registerRoute (route: Required<Route>) {
 		this.#fastifyApp.register(async (inst) => {
-			const { method, path, middlewares = [], handler, schema, tags = [] } = route
-			const controllers = [parseAuthUser, ...middlewares].map((m) => this.makeMiddleware(m))
-			inst[method](formatPath(path), {
+			const { method, path, middlewares, handler, schema, tags, security } = route
+			inst[method](path, {
 				handler: this.makeController(handler),
-				preHandler: controllers,
+				preHandler: middlewares.map((m) => this.makeMiddleware(m.cb)),
 				schema: {
 					body: schema?.body,
 					querystring: schema?.query,
@@ -116,14 +111,15 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 					headers: schema?.headers,
 					response: schema?.response,
 					tags: [tags.join(' > ') || 'default'],
+					security,
 				},
 			})
 		})
 	}
 
-	async startServer (port: number) {
-		this.#fastifyApp.setNotFoundHandler(this.makeController(notFoundHandler))
-		this.#fastifyApp.setErrorHandler(this.makeErrorMiddleware(errorHandler))
+	protected async startServer (port: number) {
+		this.#fastifyApp.setNotFoundHandler(this.makeController(notFoundHandler.cb))
+		this.#fastifyApp.setErrorHandler(this.makeErrorMiddleware(errorHandler.cb))
 
 		await this.#fastifyApp.listen({ port })
 		await Instance.get().logger.success(`${Instance.get().settings.appId} service listening on port`, port)
@@ -131,7 +127,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		return true
 	}
 
-	async parse (req: FastifyRequest, res: FastifyReply) {
+	protected async parse (req: FastifyRequest, res: FastifyReply) {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
@@ -167,7 +163,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		return handler
 	}
 
-	makeMiddleware(cb: Defined<Route['middlewares']>[number]) {
+	makeMiddleware(cb: Defined<Route['middlewares']>[number]['cb']) {
 		const handler: preHandlerHookHandler = async (req, reply) => {
 			await cb(await this.parse(req, reply))
 		}

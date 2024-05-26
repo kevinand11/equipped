@@ -17,9 +17,9 @@ import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { StorageFile } from '../../storage'
 import { getMediaDuration } from '../../utils/media'
-import { errorHandler, notFoundHandler, parseAuthUser } from '../middlewares'
+import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../request'
-import { Route, formatPath } from '../routes'
+import { Route } from '../routes'
 import { StatusCodes } from '../statusCodes'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
@@ -65,15 +65,14 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})
 	}
 
-	registerRoute (route: Route) {
-		const { method, path, middlewares = [], handler } = route
-		const controllers: express.RequestHandler[] = [parseAuthUser, ...middlewares].map((m) => this.makeMiddleware(m))
-		this.#expressApp[method]?.(formatPath(path), ...controllers, this.makeController(handler))
+	protected registerRoute (route: Required<Route>) {
+		const { method, path, middlewares, handler } = route
+		this.#expressApp[method]?.(path, ...middlewares.map((m) => this.makeMiddleware(m.cb)), this.makeController(handler))
 	}
 
-	async startServer (port: number) {
-		this.#expressApp.use(this.makeMiddleware(notFoundHandler))
-		this.#expressApp.use(this.makeErrorMiddleware(errorHandler))
+	protected async startServer (port: number) {
+		this.#expressApp.use(this.makeMiddleware(notFoundHandler.cb))
+		this.#expressApp.use(this.makeErrorMiddleware(errorHandler.cb))
 
 		return await new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
 			try {
@@ -88,9 +87,9 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})
 	}
 
-	async onLoad() {}
+	protected async onLoad() {}
 
-	async parse (req: express.Request, res: express.Response) {
+	protected async parse (req: express.Request, res: express.Response) {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
@@ -147,7 +146,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		}
 	}
 
-	makeMiddleware(cb: Defined<Route['middlewares']>[number]) {
+	makeMiddleware(cb: Defined<Route['middlewares']>[number]['cb']) {
 		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
 				await cb(await this.parse(req, res))

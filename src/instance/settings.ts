@@ -55,5 +55,5 @@ export const defaulInstanceSetting: Settings = {
 	paginationDefaultLimit: 100,
 	server: 'express',
 	swaggerDocsVersion: '1.0.0',
-	swaggerDocsUrl: '/__docs'
+	swaggerDocsUrl: '/__docs',
 }

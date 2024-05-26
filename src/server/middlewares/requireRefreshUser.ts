@@ -4,7 +4,10 @@ import { makeMiddleware } from '../routes'
 
 export const requireRefreshUser = makeMiddleware(async (request) => {
 	const refreshToken = request.headers.RefreshToken
-	if (!refreshToken) throw new NotAuthorizedError()
+	if (!refreshToken) throw new NotAuthorizedError('Refresh-Token header missing')
 	request.refreshUser = await verifyRefreshToken(refreshToken)
 	if (!request.refreshUser) throw new NotAuthorizedError()
+}, (route) => {
+	route.security ??= []
+	route.security.push({ RefreshToken: [] })
 })
