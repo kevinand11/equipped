@@ -1,6 +1,6 @@
 export * from './middlewares'
 export * from './request'
-export { Router, groupRoutes, makeController, makeMiddleware } from './routes'
+export { Router, groupRoutes, makeController, makeErrorMiddleware, makeMiddleware } from './routes'
 export type { Route } from './routes'
 export * from './statusCodes'
 

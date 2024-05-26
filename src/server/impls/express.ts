@@ -67,7 +67,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 	protected registerRoute (route: Required<Route>) {
 		const { method, path, middlewares, handler } = route
-		this.#expressApp[method]?.(path, ...middlewares.map((m) => this.makeMiddleware(m.cb)), this.makeController(handler))
+		this.#expressApp[method]?.(path, ...middlewares.map((m) => this.makeMiddleware(m.cb)), this.makeController(handler.cb))
 	}
 
 	protected async startServer (port: number) {
@@ -130,7 +130,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		}, res)
 	}
 
-	makeController(cb: Defined<Route['handler']>) {
+	makeController(cb: Defined<Route['handler']['cb']>) {
 		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
 				const rawResponse = await cb(await this.parse(req, res))
