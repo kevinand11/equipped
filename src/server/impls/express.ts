@@ -1,76 +1,65 @@
-import express from 'express'
-import http from 'http'
-import { Listener } from '../../listeners'
-import { FullRoute, Server } from './base'
-
 import { prepareOpenapiMethod } from '@fastify/swagger/lib/spec/openapi/utils'
 import openapi from '@wesleytodd/openapi'
 import cookie from 'cookie-parser'
 import cors from 'cors'
+import express from 'express'
 import fileUpload from 'express-fileupload'
 import rateLimit from 'express-rate-limit'
 import slowDown from 'express-slow-down'
 import helmet from 'helmet'
+import http from 'http'
 // @ts-ignore
 import resolver from 'json-schema-resolver'
 import morgan from 'morgan'
-import path from 'path'
-import io from 'socket.io'
 
 import { addWaitBeforeExit } from '../../exit'
 import { StorageFile } from '../../storage'
 import { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
-import { Request, Response } from '../request'
-import { Route } from '../routes'
-import { StatusCodes } from '../statusCodes'
+import { Request, Response } from '../requests'
+import { Route, StatusCodes } from '../types'
+import { FullRoute, Server } from './base'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express
 	#oapi = openapi(`${this.settings.swaggerDocsUrl}/json`, this.baseSwaggerDoc, { coerce: false })
 	#ref = resolver({ clone: true })
-	server: http.Server
-	listener: Listener
 
 	constructor () {
-		super()
-		this.#expressApp = express()
-		this.#expressApp.disable('x-powered-by')
-		this.server = http.createServer(this.#expressApp)
-		this.#expressApp.use(morgan((tokens, req, res) =>
+		const app = express()
+		super(http.createServer(app))
+		this.#expressApp = app
+
+		app.disable('x-powered-by')
+		app.use(morgan((tokens, req, res) =>
 			`${tokens.method(req, res)}(${tokens.status(req, res)}) ${tokens.url(req, res)} ${tokens.res(req, res, 'content-length')}b - ${tokens['response-time'](req, res)}ms`
 		))
-		this.#expressApp.use(express.json())
-		this.#expressApp.use(express.text())
-		this.#expressApp.use(cookie())
-		this.#expressApp.use(helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }))
-		this.#expressApp.use(cors({ origin: '*' }))
-		this.#expressApp.use(express.urlencoded({ extended: false }))
-		this.#expressApp.use(express.static(path.join(process.cwd(), 'public')))
-		this.#expressApp.use( this.#oapi)
-		this.#expressApp.use(this.settings.swaggerDocsUrl, this.#oapi.swaggerui())
-		if (this.settings.useRateLimit) this.#expressApp.use(rateLimit({
+		app.use(express.json())
+		app.use(express.text())
+		app.use(cookie())
+		app.use(helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }))
+		app.use(cors({ origin: '*' }))
+		app.use(express.urlencoded({ extended: false }))
+		app.use(express.static(this.staticPath))
+		app.use( this.#oapi)
+		app.use(this.settings.swaggerDocsUrl, this.#oapi.swaggerui())
+		app.use(
+			fileUpload({
+				limits: { fileSize: this.settings.maxFileUploadSizeInMb * 1024 * 1024 },
+				useTempFiles: false
+			})
+		)
+		if (this.settings.useRateLimit) app.use(rateLimit({
 			windowMs: this.settings.rateLimitPeriodInMs,
 			limit: this.settings.rateLimit,
 			handler: (_: express.Request, res: express.Response) => res.status(StatusCodes.TooManyRequests).json([{ message: 'Too Many Requests' }])
 		}))
-		if (this.settings.useSlowDown) this.#expressApp.use(slowDown({
+		if (this.settings.useSlowDown) app.use(slowDown({
 			windowMs: this.settings.slowDownPeriodInMs,
 			delayAfter: this.settings.slowDownAfter,
 			delayMs: this.settings.slowDownDelayInMs
 		}))
-		this.#expressApp.use(
-			fileUpload({
-				limits: { fileSize: this.settings.maxFileUploadSizeInMb * 1024 * 1024 },
-				useTempFiles: false
-			}) as any
-		)
-		const socket = new io.Server(this.server, { cors: { origin: '*' } })
-		this.listener = new Listener(socket, {
-			onConnect: async () => { },
-			onDisconnect: async () => { }
-		})
 	}
 
 	protected registerRoute (route: FullRoute) {

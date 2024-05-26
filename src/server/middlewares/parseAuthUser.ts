@@ -1,6 +1,6 @@
 import { CustomError } from '../../errors'
 import { verifyAccessToken } from '../../utils/tokens'
-import { makeMiddleware } from '../routes'
+import { makeMiddleware } from '../types'
 
 export const parseAuthUser = makeMiddleware(
 	async (request) => {

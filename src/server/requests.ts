@@ -3,7 +3,7 @@ import { CustomError } from '../errors'
 import { StorageFile } from '../storage'
 import { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
-import { StatusCodes, SupportedStatusCodes } from './statusCodes'
+import { StatusCodes, SupportedStatusCodes } from './types'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 

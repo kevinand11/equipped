@@ -1,8 +1,7 @@
 import { CustomError } from '../../errors'
 import { Instance } from '../../instance'
-import { Response } from '../request'
-import { makeErrorMiddleware } from '../routes'
-import { StatusCodes } from '../statusCodes'
+import { Response } from '../requests'
+import { makeErrorMiddleware, StatusCodes } from '../types'
 
 export const errorHandler = makeErrorMiddleware(
 	async (_, error) => {

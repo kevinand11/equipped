@@ -1,36 +1,5 @@
-import { FastifySchema } from 'fastify'
-import { Request, Response } from './request'
-
-type MethodTypes = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'all'
-type Res<T> = Response<T> | T
-type RouteHandler<T> = (req: Request) => Promise<Res<T>> | Res<T>
-type ErrorHandler<T> = (req: Request, err: Error) => Promise<Res<T>> | Res<T>
-type RouteMiddlewareHandler = (req: Request) => Promise<void> | void
-type HandlerSetup = (route: Route) => void
-
-export type Schema = Omit<FastifySchema, 'tags' | 'security' | 'querystring'> & { query?: FastifySchema['querystring'] }
-
-export type Route<T = unknown> = {
-	path: string
-	method: MethodTypes
-	handler: ReturnType<typeof makeController<T>>
-	middlewares?: ReturnType<typeof makeMiddleware>[]
-	onError?: ReturnType<typeof makeErrorMiddleware<T>>
-	schema?: Schema
-	tags?: string[]
-	security?: Record<string, string[]>[]
-}
-
-type RouteConfig = Omit<Route, 'method' | 'handler'>
-type GeneralConfig = Omit<RouteConfig, 'schema'>
-
-class Handler<Cb extends Function> {
-	constructor (public cb: Cb, public onSetup?: (route: Route) => void) {}
-}
-
-export const makeController = <T>(cb: RouteHandler<T>, onSetup?: HandlerSetup) => new Handler<RouteHandler<T>>(cb, onSetup)
-export const makeMiddleware = (cb: RouteMiddlewareHandler, onSetup?: HandlerSetup) => new Handler<RouteMiddlewareHandler>(cb, onSetup)
-export const makeErrorMiddleware = <T>(cb: ErrorHandler<T>) => new Handler<ErrorHandler<T>>(cb)
+import { ClassPropertiesWrapper } from 'valleyed'
+import { AddMethodImpls, GeneralConfig, Methods, Route, RouteConfig, makeController } from './types'
 
 export const groupRoutes = (parent: string, routes: Route[], config?: GeneralConfig): Route[] => routes
 	.map((route) => ({
@@ -43,12 +12,14 @@ export const groupRoutes = (parent: string, routes: Route[], config?: GeneralCon
 	}))
 
 
-export class Router {
+export class Router extends ClassPropertiesWrapper<AddMethodImpls> {
 	#config?: GeneralConfig
 	#routes: Route[] = []
 	#children: Router[] = []
 
 	constructor (config?: GeneralConfig) {
+		const methodImpls = Object.fromEntries(Object.values(Methods).map((method) => [method, (route: RouteConfig) => this.#addRoute(method, route)])) as AddMethodImpls
+		super(methodImpls)
 		this.#config = config
 	}
 
@@ -57,30 +28,6 @@ export class Router {
 			const grouped = groupRoutes(this.#config?.path ?? '', [{ ...route, method, handler: makeController(...args) }], this.#config)
 			collection.push(grouped[0])
 		}
-	}
-
-	get (route: RouteConfig) {
-		return this.#addRoute('get', route)
-	}
-
-	post (route: RouteConfig) {
-		return this.#addRoute('post', route)
-	}
-
-	put (route: RouteConfig) {
-		return this.#addRoute('put', route)
-	}
-
-	patch (route: RouteConfig) {
-		return this.#addRoute('patch', route)
-	}
-
-	delete (route: RouteConfig) {
-		return this.#addRoute('delete', route)
-	}
-
-	all (route: RouteConfig) {
-		return this.#addRoute('all', route)
 	}
 
 	include (router: Router) {

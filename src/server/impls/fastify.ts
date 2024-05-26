@@ -9,50 +9,39 @@ import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 import Fastify, { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler, RouteHandlerMethod } from 'fastify'
 import fastifySlowDown from 'fastify-slow-down'
-
-import http from 'http'
-import { Listener } from '../../listeners'
-import { FullRoute, Server } from './base'
-
-import path from 'path'
-import io from 'socket.io'
-
 import qs from 'qs'
+
 import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
 import { StorageFile } from '../../storage'
 import { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
-import { Request, Response } from '../request'
-import { Route } from '../routes'
-import { StatusCodes } from '../statusCodes'
+import { Request, Response } from '../requests'
+import { Route, StatusCodes } from '../types'
+import { FullRoute, Server } from './base'
 
 export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	#fastifyApp: FastifyInstance
-	server: http.Server
-	listener: Listener
 
 	constructor () {
-		super()
-
-		this.#fastifyApp = Fastify({
+		const app = Fastify({
 			logger: true,
 			ajv: { customOptions: { coerceTypes: false } },
 			schemaErrorFormatter: (errors, data) => new ValidationError(errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })))
 		})
-		this.server = this.#fastifyApp.server
+		super(app.server)
+		this.#fastifyApp = app
 
-		this.#fastifyApp.decorateRequest('savedReq', null)
-
-		this.#fastifyApp.register(fastifyStatic, { root: path.join(process.cwd(), 'public') })
-		this.#fastifyApp.register(fastifyCookie, {})
-		this.#fastifyApp.register(fastifyCors, { origin: '*' })
-
-		this.#fastifyApp.register(fastifySwagger, { openapi: this.baseSwaggerDoc })
-		this.#fastifyApp.register(fastifySwaggerUi, { routePrefix: this.settings.swaggerDocsUrl })
-
-		this.#fastifyApp.register(fastifyMultipart, {
+		app.decorateRequest('savedReq', null)
+		app.register(fastifyStatic, { root: this.staticPath })
+		app.register(fastifyCookie, {})
+		app.register(fastifyCors, { origin: '*' })
+		app.register(fastifySwagger, { openapi: this.baseSwaggerDoc })
+		app.register(fastifySwaggerUi, { routePrefix: this.settings.swaggerDocsUrl })
+		app.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
+		app.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' } })
+		app.register(fastifyMultipart, {
 			attachFieldsToBody: 'keyValues',
 			throwFileSizeLimit: false,
 			limits: { fileSize: this.settings.maxFileUploadSizeInMb * 1024 * 1024 },
@@ -70,26 +59,18 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 				f.value = parsed
 			}
 		})
-		this.#fastifyApp.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
-		this.#fastifyApp.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' } })
-		if (this.settings.useSlowDown) this.#fastifyApp.register(fastifySlowDown, {
+		if (this.settings.useSlowDown) app.register(fastifySlowDown, {
 			timeWindow: this.settings.slowDownPeriodInMs,
 			delayAfter: this.settings.slowDownAfter,
 			delay: this.settings.slowDownDelayInMs
 		})
-		if (this.settings.useRateLimit) this.#fastifyApp.register(fastifyRateLimit, {
+		if (this.settings.useRateLimit) app.register(fastifyRateLimit, {
 			max: this.settings.rateLimit,
 			timeWindow: this.settings.rateLimitPeriodInMs,
 			errorResponseBuilder: (_, context) => ({
 				statusCode: StatusCodes.TooManyRequests,
 				message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }])
 			})
-		})
-
-		const socket = new io.Server(this.#fastifyApp.server, { cors: { origin: '*' } })
-		this.listener = new Listener(socket, {
-			onConnect: async () => { },
-			onDisconnect: async () => { }
 		})
 	}
 

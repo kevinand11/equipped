@@ -1,18 +1,24 @@
 
 import http from 'http'
 import { OpenAPIV3_1 } from 'openapi-types'
+import io from 'socket.io'
 import supertest from 'supertest'
 
 import { FastifySchema } from 'fastify'
 import { Instance } from '../../instance'
 import { Listener } from '../../listeners'
 import { parseAuthUser } from '../middlewares'
-import { Request } from '../request'
-import { Route, Router } from '../routes'
+import { Request } from '../requests'
+import { Router } from '../routes'
+import { Route } from '../types'
+import path from 'path'
 
 export type FullRoute = Required<Omit<Route, 'schema' | 'tags' | 'security' | 'onError'>> & { schema: FastifySchema; onError?: Route['onError'] }
 
 export abstract class Server<Req = any, Res = any> {
+	#listener: Listener | null = null
+	protected server: http.Server
+	protected staticPath = path.join(process.cwd(), 'public')
 	protected settings = Instance.get().settings
 	protected baseSwaggerDoc: OpenAPIV3_1.Document = {
 		openapi: '3.0.0',
@@ -34,12 +40,25 @@ export abstract class Server<Req = any, Res = any> {
 			},
 		}
 	}
-	abstract listener: Listener
-	protected abstract server: http.Server
 	protected abstract onLoad (): Promise<void>
 	protected abstract startServer (port: number): Promise<boolean>
 	protected abstract parse(req: Req, res: Res): Promise<Request>
 	protected abstract registerRoute (route: FullRoute): void
+
+	constructor (server: http.Server) {
+		this.server = server
+	}
+
+	get listener () {
+		if (!this.#listener) {
+			const socket = new io.Server(this.server, { cors: { origin: '*' } })
+			this.#listener = new Listener(socket, {
+				onConnect: async () => { },
+				onDisconnect: async () => { }
+			})
+		}
+		return this.#listener
+	}
 
 	addRoutes (routes: Route[]) {
 		routes.forEach((route) => this.#regRoute(route))
@@ -55,13 +74,13 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	#regRoute (route: Route) {
-		const { method, path, middlewares = [], handler, schema, tags = [], security = [], onError } = route
+		const { method, key, path, middlewares = [], handler, schema, tags = [], security = [], onError } = route
 		const allMiddlewares = [parseAuthUser, ...middlewares]
 		allMiddlewares.forEach((m) => m.onSetup?.(route))
 		handler.onSetup?.(route)
 		onError?.onSetup?.(route)
 		const fullRoute: FullRoute = {
-			method, middlewares, handler,
+			method, middlewares, handler, key: key ?? `${method.toLowerCase()} ${path}`,
 			path: path.replace(/(\/\s*)+/g, '/'),
 			onError,
 			schema: {

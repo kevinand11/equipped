@@ -1,8 +1,7 @@
 export * from './middlewares'
-export * from './request'
-export { Router, groupRoutes, makeController, makeErrorMiddleware, makeMiddleware } from './routes'
-export type { Route } from './routes'
-export * from './statusCodes'
+export * from './requests'
+export * from './routes'
+export * from './types'
 
 import { Server } from './impls/base'
 import { ExpressServer } from './impls/express'

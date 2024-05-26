@@ -1,6 +1,6 @@
 import { NotAuthorizedError } from '../../errors'
 import { verifyRefreshToken } from '../../utils/tokens'
-import { makeMiddleware } from '../routes'
+import { makeMiddleware } from '../types'
 
 export const requireRefreshUser = makeMiddleware(async (request) => {
 	const refreshToken = request.headers.RefreshToken
