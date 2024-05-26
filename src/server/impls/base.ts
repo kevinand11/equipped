@@ -35,9 +35,9 @@ export abstract class Server<Req = any, Res = any> {
 	protected server: http.Server
 	protected staticPath = path.join(process.cwd(), 'public')
 	protected settings = Instance.get().settings
-	protected baseSwaggerDoc: OpenAPIV3_1.Document = {
+	protected baseOpenapiDoc: OpenAPIV3_1.Document = {
 		openapi: '3.0.0',
-		info: { title: this.settings.appId, version: this.settings.swaggerDocsVersion },
+		info: { title: this.settings.appId, version: this.settings.openapiDocsVersion },
 		paths: {},
 		components: {
 			schemas: {},

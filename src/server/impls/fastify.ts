@@ -38,8 +38,8 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		app.register(fastifyStatic, { root: this.staticPath })
 		app.register(fastifyCookie, {})
 		app.register(fastifyCors, { origin: '*' })
-		app.register(fastifySwagger, { openapi: this.baseSwaggerDoc })
-		app.register(fastifySwaggerUi, { routePrefix: this.settings.swaggerDocsUrl })
+		app.register(fastifySwagger, { openapi: this.baseOpenapiDoc })
+		app.register(fastifySwaggerUi, { routePrefix: this.settings.openapiDocsUrl })
 		app.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
 		app.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' } })
 		app.register(fastifyMultipart, {

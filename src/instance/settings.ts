@@ -26,8 +26,8 @@ export type Settings = {
 	hashSaltRounds: number
 	paginationDefaultLimit: number
 	server: ServerTypes
-	swaggerDocsVersion: string
-	swaggerDocsUrl: string
+	openapiDocsVersion: string
+	openapiDocsUrl: string
 	logLevel: Level
 	logRequests: boolean
 }
@@ -57,8 +57,8 @@ export const defaulInstanceSetting: Settings = {
 	hashSaltRounds: 10,
 	paginationDefaultLimit: 100,
 	server: 'express',
-	swaggerDocsVersion: '1.0.0',
-	swaggerDocsUrl: '/__docs',
+	openapiDocsVersion: '1.0.0',
+	openapiDocsUrl: '/__docs',
 	logLevel: 'info',
 	logRequests: true,
 }
