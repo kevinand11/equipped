@@ -6,12 +6,14 @@ import express from 'express'
 import fileUpload from 'express-fileupload'
 import rateLimit from 'express-rate-limit'
 import slowDown from 'express-slow-down'
+import { FastifySchemaValidationError } from 'fastify/types/schema'
 import helmet from 'helmet'
 import http from 'http'
 // @ts-ignore
 import resolver from 'json-schema-resolver'
 import { pinoHttp } from 'pino-http'
 
+import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { StorageFile } from '../../storage'
@@ -67,7 +69,19 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			...route.middlewares.map((m) => this.makeMiddleware(m.cb)),
 			this.makeController(route.handler.cb)
 		]
-		if (!route.schema.hide) controllers.unshift(this.#oapi.validPath(openapi))
+		if (!route.schema.hide) controllers.unshift(
+			this.#oapi.validPath(openapi),
+			(error: Error, _, __, next) => {
+				if ('validationErrors' in error) {
+					const validationErrors = error.validationErrors as FastifySchemaValidationError[]
+					throw new ValidationError(validationErrors.map((error) => ({
+						messages: [error.message ?? ''],
+						field: error.instancePath.replaceAll('/', '.').split('.').filter(Boolean).join('.')
+					})))
+				}
+				next()
+			}
+		)
 		if (route.onError) controllers.push(this.makeErrorMiddleware(route.onError.cb))
 		this.#expressApp[route.method]?.(route.path, ...controllers)
 	}
