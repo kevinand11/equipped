@@ -13,13 +13,14 @@ import resolver from 'json-schema-resolver'
 import { pinoHttp } from 'pino-http'
 
 import { addWaitBeforeExit } from '../../exit'
+import { Instance } from '../../instance'
 import { StorageFile } from '../../storage'
 import { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../requests'
 import { Route, StatusCodes } from '../types'
-import { FullRoute, Server, getLoggerOptions } from './base'
+import { FullRoute, Server } from './base'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express
@@ -32,7 +33,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		this.#expressApp = app
 
 		app.disable('x-powered-by')
-		if (this.settings.logRequests) app.use(pinoHttp(getLoggerOptions()))
+		if (this.settings.logRequests) app.use(pinoHttp({ logger: Instance.get().logger }))
 		app.use(express.json())
 		app.use(express.text())
 		app.use(cookie())

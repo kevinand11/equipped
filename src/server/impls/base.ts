@@ -1,7 +1,6 @@
 
 import http from 'http'
 import { OpenAPIV3_1 } from 'openapi-types'
-import pino from 'pino'
 import io from 'socket.io'
 import supertest from 'supertest'
 
@@ -17,17 +16,6 @@ import { Route } from '../types'
 
 export type FullRoute = Required<Omit<Route, 'schema' | 'tags' | 'security' | 'hideSchema' | 'onError'>> & { schema: FastifySchema; onError?: Route['onError'] }
 type Schemas = Record<string, Defined<Route['schema']>>
-
-export function getLoggerOptions(): pino.LoggerOptions {
-	return {
-		level: Instance.get().settings.logLevel,
-		serializers: {
-			err: pino.stdSerializers.err,
-			req: pino.stdSerializers.req,
-			res: pino.stdSerializers.res,
-		},
-	}
-}
 
 export abstract class Server<Req = any, Res = any> {
 	#schemas: Schemas = {}
@@ -133,7 +121,7 @@ export abstract class Server<Req = any, Res = any> {
 		this.register(postRoutesRouter)
 
 		const started = await this.startServer(port)
-		if (started) await Instance.get().logger.success(`${this.settings.appId} service listening on port`, port)
+		if (started) await Instance.get().logger.info(`${this.settings.appId} service listening on port`, port)
 		return started
 	}
 }

@@ -7,7 +7,7 @@ import fastifyRateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
-import Fastify, { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler, RouteHandlerMethod } from 'fastify'
+import Fastify, { FastifyReply, FastifyRequest, preHandlerHookHandler, RouteHandlerMethod } from 'fastify'
 import fastifySlowDown from 'fastify-slow-down'
 import qs from 'qs'
 
@@ -20,17 +20,22 @@ import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../requests'
 import { Route, StatusCodes } from '../types'
-import { FullRoute, getLoggerOptions, Server } from './base'
+import { FullRoute, Server } from './base'
+
+function getFastifyApp () {
+	return Fastify({
+		logger: Instance.get().settings.logRequests ? Instance.get().logger : false,
+		ajv: { customOptions: { coerceTypes: false } },
+		schemaErrorFormatter: (errors, data) => new ValidationError(errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })))
+	})
+}
+type FastifyInstance = ReturnType<typeof getFastifyApp>
 
 export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	#fastifyApp: FastifyInstance
 
 	constructor () {
-		const app = Fastify({
-			logger: Instance.get().settings.logRequests ? getLoggerOptions() : false,
-			ajv: { customOptions: { coerceTypes: false } },
-			schemaErrorFormatter: (errors, data) => new ValidationError(errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })))
-		})
+		const app = getFastifyApp()
 		super(app.server)
 		this.#fastifyApp = app
 
@@ -144,7 +149,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	}
 
 	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
-		const handler: Parameters<FastifyInstance['setErrorHandler']>[0] = async (error, req, reply)=> {
+		const handler: FastifyInstance['errorHandler'] = async (error, req, reply)=> {
 			const rawResponse = await cb(await this.parse(req, reply), error)
 			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest })
 			if (!response.piped) reply.status(response.status).headers(response.headers).send(response.body)

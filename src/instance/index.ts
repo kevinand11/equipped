@@ -1,3 +1,4 @@
+import pino from 'pino'
 import { BullJob } from '../bull'
 import { Cache } from '../cache/cache'
 import { RedisCache } from '../cache/types/redis-cache'
@@ -5,15 +6,14 @@ import { MongoDb } from '../db/mongoose'
 import { EventBus } from '../events/'
 import { KafkaEventBus } from '../events/kafka'
 import { addWaitBeforeExit, exit } from '../exit'
-import { ConsoleLogger, Logger } from '../logger'
-import { serverTypes, Server } from '../server'
-import { defaulInstanceSetting, Settings } from './settings'
+import { Server, serverTypes } from '../server'
+import { Settings, defaulInstanceSetting } from './settings'
 
 export class Instance {
 	static #initialized = false
 	static #instance: Instance
 	#settings: Settings = { ...defaulInstanceSetting }
-	#logger: Logger | null = null
+	#logger: pino.Logger<any> | null = null
 	#job: BullJob | null = null
 	#cache: Cache | null = null
 	#eventBus: EventBus | null = null
@@ -24,7 +24,14 @@ export class Instance {
 	}
 
 	get logger () {
-		return this.#logger ||= new ConsoleLogger()
+		return this.#logger ||= pino<any>({
+			level: Instance.get().settings.logLevel,
+			serializers: {
+				err: pino.stdSerializers.err,
+				req: pino.stdSerializers.req,
+				res: pino.stdSerializers.res,
+			},
+		})
 	}
 
 	get job () {
