@@ -30,6 +30,7 @@ export type Settings = {
 	openapiDocsUrl: string
 	logLevel: Level
 	logRequests: boolean
+	requestSchemaValidation: boolean
 }
 
 export const defaulInstanceSetting: Settings = {
@@ -61,4 +62,5 @@ export const defaulInstanceSetting: Settings = {
 	openapiDocsUrl: '/__docs',
 	logLevel: 'info',
 	logRequests: true,
+	requestSchemaValidation: false,
 }

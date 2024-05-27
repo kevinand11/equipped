@@ -23,8 +23,9 @@ import { Route, StatusCodes } from '../types'
 import { FullRoute, Server } from './base'
 
 function getFastifyApp () {
+	const instance = Instance.get()
 	return Fastify({
-		logger: Instance.get().settings.logRequests ? Instance.get().logger : false,
+		logger: instance.settings.logRequests ? instance.logger : false,
 		ajv: { customOptions: { coerceTypes: false } },
 		schemaErrorFormatter: (errors, data) => new ValidationError(errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })))
 	})
@@ -78,6 +79,10 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 				message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }])
 			})
 		})
+		if (!this.settings.requestSchemaValidation) {
+			app.setValidatorCompiler(() => () => true)
+			app.setSerializerCompiler(() => (data) => JSON.stringify(data))
+		}
 	}
 
 	protected async onLoad() {

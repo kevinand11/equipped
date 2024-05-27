@@ -70,7 +70,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			this.makeController(route.handler.cb)
 		]
 		if (!route.schema.hide) controllers.unshift(
-			this.#oapi.validPath(openapi),
+			this.#oapi[this.settings.requestSchemaValidation ? 'validPath' : 'path'](openapi),
 			(error: Error, _, __, next) => {
 				if ('validationErrors' in error) {
 					const validationErrors = error.validationErrors as FastifySchemaValidationError[]
