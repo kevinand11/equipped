@@ -24,7 +24,7 @@ export enum Conditions {
 }
 
 export type QueryWhere<T> = { field: Paths<T, string>, value: any, condition?: Conditions }
-export type QueryWhereBlock<T> = { condition: QueryKeys, value: (QueryWhere<T> | QueryWhereBlock<T>)[] }
+export type QueryWhereBlock<T> = { condition: QueryKeys, value: QueryWhere<T>[] }
 export type QueryWhereClause<T> = QueryWhere<T> | QueryWhereBlock<T>
 
 export type QueryParams<T = unknown> = {
