@@ -31,7 +31,7 @@ export class MongoDb extends Db {
 		return conn
 	}
 
-	change<Model, Entity extends BaseEntity<any>> (
+	change<Model, Entity extends BaseEntity> (
 		model: mongoose.Model<Model>,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null

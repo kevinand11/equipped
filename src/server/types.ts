@@ -1,8 +1,8 @@
-import { ApiMapper } from 'ts-oas'
 import { Enum } from '../enums/types'
 import { CustomError } from '../errors'
 
 import { FastifySchema } from 'fastify'
+import { JSONPrimitives, JSONValue } from '../types'
 import type { Request, Response } from './requests'
 
 export const Methods = {
@@ -30,25 +30,30 @@ export type SupportedStatusCodes = Enum<typeof StatusCodes>
 
 type ApiErrors = Record<Exclude<SupportedStatusCodes, 200>, CustomError['serializedErrors']>
 
-export type ApiResponse<T, StatusCode extends SupportedStatusCodes = 200> = Partial<Omit<ApiErrors, StatusCode>> | Record<StatusCode, T>
+export type ApiResponse<T, StatusCode extends SupportedStatusCodes = 200> = Record<StatusCode, T> & Omit<ApiErrors, StatusCode>
 
-type Api<Key extends string> = {
+type Any = object
+type Arrayable<T> = T | T[]
+type AllowedResponses = Arrayable<JSONPrimitives | Any>
+type Api<Res = AllowedResponses, Key extends string = string, Method extends MethodTypes = MethodTypes, Body extends Any = Any, Params extends Any = Any, Query extends Any = Any> = {
     key: Key
-    method: MethodTypes
-    body?: Record<string, any>
-    params?: Record<string, any>
-    query?: Record<string, any>
-    response: any
+    method: Method
+    response: Res
+    body?: Body
+    params?: Params
+    query?: Query
 }
 
-export type ApiDef<T extends Api<any>> = ApiMapper<{
-  path: T['key']
-  method: Uppercase<T['method']>
-  body?: T['body']
-  params?: T['params']
-  query?: T['query']
-  responses: T['response'] extends ApiResponse<any> ? T['response'] : ApiResponse<T['response']>
-}>
+type ApiReponseWrapper<T> = JSONValue<T extends ApiResponse<any> ? T : ApiResponse<T>>
+
+export type ApiDef<T extends Api = Api> = {
+	path: T['key']
+	method: Uppercase<T['method']>
+	body?: Exclude<T['body'], unknown>
+	params?: Exclude<T['params'], unknown>
+	query?: Exclude<T['query'], unknown>
+	responses: ApiReponseWrapper<T['response']>
+}
 
 type Awaitable<T> = Promise<T> | T
 type Res<T> = Awaitable<Response<T> | T>
@@ -56,11 +61,11 @@ type Res<T> = Awaitable<Response<T> | T>
 export type RouteHandler<T> = (req: Request) => Res<T>
 export type ErrorHandler = (req: Request, err: Error) => Res<CustomError['serializedErrors']>
 export type RouteMiddlewareHandler = (req: Request) => Awaitable<void>
-export type HandlerSetup = (route: Route) => void
+export type HandlerSetup = (route: Route<any>) => void
 
 export type RouteSchema = Omit<FastifySchema, 'tags' | 'security' | 'hide'>
 
-export type Route<Def extends ApiDef<any> = any> = {
+export type Route<Def extends ApiDef<Api> = ApiDef<Api>> = {
 	key?: Def['path']
 	path: string
 	method: Lowercase<Def['method']>
@@ -73,10 +78,11 @@ export type Route<Def extends ApiDef<any> = any> = {
 	security?: Record<string, string[]>[]
 }
 
-export type RouteConfig<T extends ApiDef<any> = any> = Omit<Route<T>, 'method' | 'handler'>
-export type GeneralConfig = Omit<RouteConfig<any>, 'schema' | 'key'>
+export type RouteConfig<T extends ApiDef = ApiDef> = Omit<Route<T>, 'method' | 'handler'>
+export type GeneralConfig = Omit<RouteConfig, 'schema' | 'key'>
 export type AddMethodImpls = {
-	[Method in MethodTypes]: <T extends ApiDef<{ method: Method; key: any; response: any }>>(route: RouteConfig<T>) => <T>(...args: Parameters<typeof makeController<T>>) => void
+	// @ts-ignore
+	[Method in MethodTypes]: <T extends ApiDef<Api<AllowedResponses, string, Method>>>(route: RouteConfig<T>) => <T>(...args: Parameters<typeof makeController<T>>) => void
 }
 
 class Handler<Cb extends Function> {

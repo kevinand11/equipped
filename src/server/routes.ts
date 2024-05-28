@@ -18,14 +18,15 @@ export class Router extends ClassPropertiesWrapper<AddMethodImpls> {
 	#children: Router[] = []
 
 	constructor (config?: GeneralConfig) {
-		const methodImpls = Object.fromEntries(Object.values(Methods).map((method) => [method, (route: RouteConfig) => this.#addRoute(method, route)])) as AddMethodImpls
+		// @ts-ignore
+		const methodImpls = Object.fromEntries(Object.values(Methods).map((method) => [method, (route: RouteConfig<any>) => this.#addRoute(method, route)])) as AddMethodImpls
 		super(methodImpls)
 		this.#config = config
 	}
 
 	#addRoute (method: Route['method'], route: RouteConfig, collection: Route[] = this.#routes) {
 		return <T> (...args: Parameters<typeof makeController<T>>) => {
-			const grouped = groupRoutes(this.#config?.path ?? '', [{ ...route, method, handler: makeController(...args) }], this.#config)
+			const grouped = groupRoutes(this.#config?.path ?? '', [{ ...route, method, handler: makeController(...args) as any }], this.#config)
 			collection.push(grouped[0])
 		}
 	}

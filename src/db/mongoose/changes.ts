@@ -7,7 +7,7 @@ import { Validation } from '../../validations'
 import { DbChange, DbChangeCallbacks } from '../_instance'
 import { TopicPrefix } from '../debezium'
 
-export class MongoDbChange<Model, Entity extends BaseEntity<any>> extends DbChange<Model, Entity> {
+export class MongoDbChange<Model, Entity extends BaseEntity> extends DbChange<Model, Entity> {
 	#started = false
 	#model: mongoose.Model<Model>
 
