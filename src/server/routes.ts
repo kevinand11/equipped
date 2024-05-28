@@ -1,5 +1,5 @@
 import { ClassPropertiesWrapper } from 'valleyed'
-import { AddMethodImpls, GeneralConfig, Methods, Route, RouteConfig, makeController } from './types'
+import { AddMethodImpls, GeneralConfig, Methods, Route, RouteConfig, RouteHandler } from './types'
 
 export const groupRoutes = (config: GeneralConfig, routes: Route[]): Route[] => routes
 	.map((route) => ({
@@ -23,10 +23,11 @@ export class Router extends ClassPropertiesWrapper<AddMethodImpls> {
 		if (config) this.#config = config
 	}
 
-	#addRoute (method: Route['method'], route: RouteConfig, collection: Route[] = this.#routes) {
-		return (...args: Parameters<typeof makeController>) => {
-			const grouped = groupRoutes(this.#config, [{ ...route, method, handler: makeController(...args) }])
-			collection.push(grouped[0])
+	#addRoute (method: Route['method'], routeConfig: RouteConfig, collection: Route[] = this.#routes) {
+		return (handler: RouteHandler) => {
+			const route = groupRoutes(this.#config, [{ ...routeConfig, method, handler }])[0]
+			collection.push(route)
+			return route
 		}
 	}
 
@@ -38,7 +39,7 @@ export class Router extends ClassPropertiesWrapper<AddMethodImpls> {
 		const routes = this.#routes
 		this.#children.forEach((child) => {
 			child.routes.forEach((route) => {
-				this.#addRoute(route.method, route, routes)(route.handler.cb, route.handler.onSetup)
+				this.#addRoute(route.method, route, routes)(route.handler)
 			})
 		})
 		return routes

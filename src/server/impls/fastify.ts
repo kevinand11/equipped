@@ -94,7 +94,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			inst.route({
 				url: route.path,
 				method: route.method as any,
-				handler: this.makeController(route.handler.cb),
+				handler: this.makeController(route.handler),
 				preHandler: route.middlewares.map((m) => this.makeMiddleware(m.cb)),
 				errorHandler: route.onError ? this.makeErrorMiddleware(route.onError.cb) : undefined,
 				schema: route.schema,
@@ -135,7 +135,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		}, res.raw)
 	}
 
-	makeController(cb: Defined<Route['handler']>['cb']) {
+	makeController(cb: Defined<Route['handler']>) {
 		const handler: RouteHandlerMethod = async (req, reply) => {
 			const rawResponse = await cb(await this.parse(req, reply))
 			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse })

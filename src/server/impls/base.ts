@@ -14,7 +14,7 @@ import { Request } from '../requests'
 import { Router } from '../routes'
 import { Route } from '../types'
 
-export type FullRoute = Required<Omit<Route, 'schema' | 'tags' | 'security' | 'hideSchema' | 'onError'>> & { schema: FastifySchema; onError?: Route['onError'] }
+export type FullRoute = Required<Omit<Route, 'schema' | 'tags' | 'security' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>> & { schema: FastifySchema; onError?: Route['onError'] }
 type Schemas = Record<string, Defined<Route['schema']>>
 
 export abstract class Server<Req = any, Res = any> {
@@ -85,7 +85,7 @@ export abstract class Server<Req = any, Res = any> {
 		const { key = `${method.toLowerCase()} ${path}` } = route
 		const allMiddlewares = [parseAuthUser, ...middlewares]
 		allMiddlewares.forEach((m) => m.onSetup?.(route))
-		handler.onSetup?.(route)
+		route.onSetupHandler?.(route)
 		onError?.onSetup?.(route)
 
 		const scheme = schema ?? this.#schemas[key] ?? {}
@@ -96,7 +96,7 @@ export abstract class Server<Req = any, Res = any> {
 			schema: {
 				...scheme,
 				hide: hideSchema,
-				operationId: scheme.operationId ?? handler.cb.name,
+				operationId: scheme.operationId ?? handler.name,
 				tags: [tags.join(' > ') || 'default'],
 				security,
 			}

@@ -67,7 +67,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		const openapi = prepareOpenapiMethod(route.schema, this.#ref, this.baseOpenapiDoc, route.path)
 		const controllers: (express.RequestHandler | express.ErrorRequestHandler)[] = [
 			...route.middlewares.map((m) => this.makeMiddleware(m.cb)),
-			this.makeController(route.handler.cb)
+			this.makeController(route.handler)
 		]
 		if (!route.schema.hide) controllers.unshift(
 			this.#oapi[this.settings.requestSchemaValidation ? 'validPath' : 'path'](openapi),
@@ -142,7 +142,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		}, res)
 	}
 
-	makeController(cb: Defined<Route['handler']['cb']>) {
+	makeController(cb: Defined<Route['handler']>) {
 		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
 				const rawResponse = await cb(await this.parse(req, res))

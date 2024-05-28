@@ -47,7 +47,7 @@ export class Request<Def extends Api = Api> {
 		this.cookies = cookies
 		this.params = params as any
 		this.query = Object.fromEntries(
-			Object.entries(query ?? {})
+			Object.entries(query && typeof body === 'object' ? query : {})
 				.map(([key, val]) => [key, this.#parseQueryStrings(val)])
 		) as any
 		if (this.query?.['auth']) delete this.query['auth']
@@ -56,9 +56,10 @@ export class Request<Def extends Api = Api> {
 		this.files = files
 	}
 
-	#parseQueryStrings (value: string | string[]) {
+	#parseQueryStrings (value: unknown) {
 		if (Array.isArray(value)) return value.map(this.#parseQueryStrings)
-		return parseJSONValue(value)
+		if (typeof value === 'string') return parseJSONValue(value)
+		return value
 	}
 
 	pipe (cb: (stream: Writable) => void) {
@@ -67,20 +68,20 @@ export class Request<Def extends Api = Api> {
 	}
 }
 
-export class Response<T> {
+export class Response<T, S extends SupportedStatusCodes = SupportedStatusCodes> {
 	readonly body: T | undefined
-	readonly status: SupportedStatusCodes
+	readonly status: S
 	readonly headers: Record<string, any>
 	readonly piped: boolean
 
 	constructor ({
 		body,
-		status = StatusCodes.Ok,
+		status = StatusCodes.Ok as any,
 		headers = { 'Content-Type': 'application/json' },
 		piped = false
 	}: {
 		body?: T,
-		status?: SupportedStatusCodes,
+		status?: S,
 		headers?: Record<string, any>
 		piped?: boolean
 	}) {
