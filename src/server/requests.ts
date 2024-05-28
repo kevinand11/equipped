@@ -3,19 +3,19 @@ import { CustomError } from '../errors'
 import { StorageFile } from '../storage'
 import { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
-import { StatusCodes, SupportedStatusCodes } from './types'
+import { Api, StatusCodes, SupportedStatusCodes } from './types'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
-export class Request {
+export class Request<Def extends Api = Api> {
 	readonly ip: string | undefined
-	readonly method: string
+	readonly method: Def['method']
 	readonly path: string
-	readonly body: Record<string, any>
+	readonly body: Def['body']
+	readonly params: Def['params']
+	readonly query: Def['query']
 	readonly cookies: Record<string, any>
-	readonly rawBody: Record<string, any>
-	readonly params: Record<string, string>
-	readonly query: Record<string, any>
+	readonly rawBody: unknown
 	readonly headers: Record<HeaderKeys, string | null> & Record<string, string | string[] | null>
 	readonly files: Record<string, StorageFile[]>
 	authUser: null | AuthUser = null
@@ -24,39 +24,36 @@ export class Request {
 
 	constructor ({
 		ip, body, cookies, params, query,
-		method, path, headers, files, data
+		method, path, headers, files
 	}: {
 		ip: string | undefined
-		body: Record<string, any>
+		body: unknown
+		params: Def['params']
+		query: Def['query']
 		cookies: Record<string, any>
-		params: Record<string, any>
-		query: Record<string, any>
 		headers: Record<HeaderKeys, string | null> & Record<string, string | string[] | null>
 		files: Record<string, StorageFile[]>
-		method: string
+		method: Def['method']
 		path: string,
-		data: Record<string, any>
 	}, private readonly response: Writable) {
 		this.ip = ip
 		this.method = method
 		this.path = path
 		this.rawBody = body
 		this.body =  Object.fromEntries(
-			Object.entries(typeof body === 'object' ? body : { raw: body })
+			Object.entries(body && typeof body === 'object' ? body : { raw: body })
 				.map(([key, value]) => [key, parseJSONValue(value)])
-		)
+		) as any
 		this.cookies = cookies
-		this.params = params
+		this.params = params as any
 		this.query = Object.fromEntries(
 			Object.entries(query ?? {})
 				.map(([key, val]) => [key, this.#parseQueryStrings(val)])
-		)
-		if (this.query['auth']) delete this.query['auth']
-		if (this.query['authType']) delete this.query['authType']
+		) as any
+		if (this.query?.['auth']) delete this.query['auth']
+		if (this.query?.['authType']) delete this.query['authType']
 		this.headers = headers
 		this.files = files
-		this.authUser = data.authUser ?? null
-		this.refreshUser = data.refreshUser ?? null
 	}
 
 	#parseQueryStrings (value: string | string[]) {

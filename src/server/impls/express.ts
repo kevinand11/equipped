@@ -136,10 +136,9 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			cookies: req.cookies ?? {},
 			params: req.params ?? {},
 			query: req.query ?? {},
-			method: req.method,
+			method: req.method as any,
 			path: req.path,
 			headers, files,
-			data: {}
 		}, res)
 	}
 

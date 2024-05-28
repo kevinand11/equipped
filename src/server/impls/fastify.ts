@@ -128,11 +128,10 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			cookies: req.cookies ?? {},
 			params: req.params ?? {},
 			query: req.query ?? {},
-			method: req.method,
+			method: req.method as any,
 			path: req.url,
 			headers,
 			files,
-			data: {}
 		}, res.raw)
 	}
 

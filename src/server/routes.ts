@@ -1,32 +1,31 @@
 import { ClassPropertiesWrapper } from 'valleyed'
 import { AddMethodImpls, GeneralConfig, Methods, Route, RouteConfig, makeController } from './types'
 
-export const groupRoutes = (parent: string, routes: Route[], config?: GeneralConfig): Route[] => routes
+export const groupRoutes = (config: GeneralConfig, routes: Route[]): Route[] => routes
 	.map((route) => ({
-		...(config ?? {}),
+		...config,
 		...route,
-		path: `${parent}/${route.path}`,
-		tags: [...(config?.tags ?? []), ...(route.tags ?? [])],
-		middlewares: [...(config?.middlewares ?? []), ...(route.middlewares ?? [])],
-		security: [...(config?.security ?? []), ...(route.security ?? [])],
+		path: `${config.path}/${route.path}`,
+		tags: [...(config.tags ?? []), ...(route.tags ?? [])],
+		middlewares: [...(config.middlewares ?? []), ...(route.middlewares ?? [])],
+		security: [...(config.security ?? []), ...(route.security ?? [])],
 	}))
 
 
 export class Router extends ClassPropertiesWrapper<AddMethodImpls> {
-	#config?: GeneralConfig
+	#config: GeneralConfig = { path: '' }
 	#routes: Route[] = []
 	#children: Router[] = []
 
 	constructor (config?: GeneralConfig) {
-		// @ts-ignore
-		const methodImpls = Object.fromEntries(Object.values(Methods).map((method) => [method, (route: RouteConfig<any>) => this.#addRoute(method, route)])) as AddMethodImpls
+		const methodImpls = Object.fromEntries(Object.values(Methods).map((method) => [method, (route) => this.#addRoute(method, route)])) as AddMethodImpls
 		super(methodImpls)
-		this.#config = config
+		if (config) this.#config = config
 	}
 
 	#addRoute (method: Route['method'], route: RouteConfig, collection: Route[] = this.#routes) {
-		return <T> (...args: Parameters<typeof makeController<T>>) => {
-			const grouped = groupRoutes(this.#config?.path ?? '', [{ ...route, method, handler: makeController(...args) as any }], this.#config)
+		return (...args: Parameters<typeof makeController>) => {
+			const grouped = groupRoutes(this.#config, [{ ...route, method, handler: makeController(...args) }])
 			collection.push(grouped[0])
 		}
 	}

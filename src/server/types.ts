@@ -28,48 +28,57 @@ export const StatusCodes = {
 
 export type SupportedStatusCodes = Enum<typeof StatusCodes>
 
-type ApiErrors = Record<Exclude<SupportedStatusCodes, 200>, CustomError['serializedErrors']>
-
-export type ApiResponse<T, StatusCode extends SupportedStatusCodes = 200> = Record<StatusCode, T> & Omit<ApiErrors, StatusCode>
+type GoodStatusCodes = 200
+type ApiErrors = Record<Exclude<SupportedStatusCodes, GoodStatusCodes>, CustomError['serializedErrors']>
+type ApiResponse<T, StatusCode extends SupportedStatusCodes> = Record<StatusCode, T> & Omit<ApiErrors, StatusCode>
 
 type Any = object
 type Arrayable<T> = T | T[]
 type AllowedResponses = Arrayable<JSONPrimitives | Any>
-type Api<Res = AllowedResponses, Key extends string = string, Method extends MethodTypes = MethodTypes, Body extends Any = Any, Params extends Any = Any, Query extends Any = Any> = {
+export type Api<
+	Res = AllowedResponses,
+	Key extends string = string,
+	Method extends MethodTypes = MethodTypes,
+	Body extends Any = Any,
+	Params extends Any = Any,
+	Query extends Any = Any,
+	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
+> = {
     key: Key
     method: Method
     response: Res
     body?: Body
     params?: Params
     query?: Query
+	defaultStatusCode?: DefaultStatus
 }
-
-type ApiReponseWrapper<T> = JSONValue<T extends ApiResponse<any> ? T : ApiResponse<T>>
-
+type StripUndefined<T> = T // T extends undefined ? never : Exclude<T, undefined>
 export type ApiDef<T extends Api = Api> = {
-	path: T['key']
-	method: Uppercase<T['method']>
-	body?: Exclude<T['body'], unknown>
-	params?: Exclude<T['params'], unknown>
-	query?: Exclude<T['query'], unknown>
-	responses: ApiReponseWrapper<T['response']>
+	key: T['key']
+	method: T['method']
+	body: StripUndefined<T['body']>
+	params: StripUndefined<T['params']>
+	query: StripUndefined<T['query']>
+	responses: JSONValue<ApiResponse<T['response'], T['defaultStatusCode'] extends SupportedStatusCodes ? T['defaultStatusCode'] : 200>>
+	__api: T
 }
 
 type Awaitable<T> = Promise<T> | T
 type Res<T> = Awaitable<Response<T> | T>
+type InferApiFromApiDef<T> = T extends ApiDef<infer A> ? A : never
 
-export type RouteHandler<T> = (req: Request) => Res<T>
-export type ErrorHandler = (req: Request, err: Error) => Res<CustomError['serializedErrors']>
-export type RouteMiddlewareHandler = (req: Request) => Awaitable<void>
-export type HandlerSetup = (route: Route<any>) => void
+export type RouteHandler<Def extends Api = Api> = (req: Request<Def>) => Res<Def['response']>
+export type ErrorHandler<Def extends Api = Api> = (req: Request<Def>, err: Error) => Res<CustomError['serializedErrors']>
+export type RouteMiddlewareHandler<Def extends Api = Api> = (req: Request<Def>) => Awaitable<void>
+export type HandlerSetup = (route: Route) => void
 
 export type RouteSchema = Omit<FastifySchema, 'tags' | 'security' | 'hide'>
 
-export type Route<Def extends ApiDef<Api> = ApiDef<Api>> = {
-	key?: Def['path']
+export type Route<Def extends ApiDef = ApiDef> = {
+	key?: Def['key']
 	path: string
-	method: Lowercase<Def['method']>
-	handler: ReturnType<typeof makeController<Def['responses'] extends ApiResponse<infer R> ? R : never>>
+	method: Def['method']
+	handler: ReturnType<typeof makeController<InferApiFromApiDef<Def>>>
 	middlewares?: ReturnType<typeof makeMiddleware>[]
 	onError?: ReturnType<typeof makeErrorMiddleware>
 	schema?: RouteSchema
@@ -82,13 +91,17 @@ export type RouteConfig<T extends ApiDef = ApiDef> = Omit<Route<T>, 'method' | '
 export type GeneralConfig = Omit<RouteConfig, 'schema' | 'key'>
 export type AddMethodImpls = {
 	// @ts-ignore
-	[Method in MethodTypes]: <T extends ApiDef<Api<AllowedResponses, string, Method>>>(route: RouteConfig<T>) => <T>(...args: Parameters<typeof makeController<T>>) => void
+	[Method in MethodTypes]: <T extends ApiDef<Api<AllowedResponses, string, Method>>>(route: RouteConfig<T>) => (...args: Parameters<typeof makeController<InferApiFromApiDef<T>>>) => void
 }
 
 class Handler<Cb extends Function> {
-	constructor (public cb: Cb, public onSetup?: HandlerSetup) {}
+	private constructor (public cb: Cb, public onSetup?: HandlerSetup) { }
+
+	static make<Cb extends Function> (cb: Cb, onSetup?: HandlerSetup) {
+		return new Handler(cb, onSetup)
+	}
 }
 
-export const makeController = <T>(cb: RouteHandler<T>, onSetup?: HandlerSetup) => new Handler<RouteHandler<T>>(cb, onSetup)
-export const makeMiddleware = (cb: RouteMiddlewareHandler, onSetup?: HandlerSetup) => new Handler<RouteMiddlewareHandler>(cb, onSetup)
-export const makeErrorMiddleware = (cb: ErrorHandler) => new Handler<ErrorHandler>(cb)
+export const makeController = <Def extends Api = Api>(...args: Parameters<typeof Handler.make<RouteHandler<Def>>>) => Handler.make(...args)
+export const makeMiddleware = <Def extends Api = Api>(...args: Parameters<typeof Handler.make<RouteMiddlewareHandler<Def>>>) => Handler.make(...args)
+export const makeErrorMiddleware = <Def extends Api = Api> (...args: Parameters<typeof Handler.make<ErrorHandler<Def>>>) => Handler.make(...args)

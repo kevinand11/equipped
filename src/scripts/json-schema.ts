@@ -9,8 +9,8 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 
 	return Object.entries(jsonSchema)
 		.map(([name, { properties: def }]) => {
-			const path: string = def?.path?.enum?.at(0) ?? name
-			if (!def) return [path, undefined] as const
+			const key: string = def?.key?.enum?.at(0) ?? name
+			if (!def) return [key, undefined] as const
 			const response = def.responses.properties ?? def.responses.allOf?.reduce((acc, cur) => {
 				if (cur.properties) return { ...acc, ...cur.properties }
 				return acc
@@ -20,12 +20,12 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 					body: def.body,
 					params: def.params,
 					querystring: def.query,
-					headers: def.headers ?? {},
+					headers: def.headers,
 					response,
-					operationId: path,
+					operationId: key,
 				}
 				: undefined
-			return [path, schema] as const
+			return [key, schema] as const
 		})
 		.reduce(
 			(acc, [path, schema]) => {
