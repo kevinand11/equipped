@@ -23,15 +23,8 @@ export class Instance {
 	private constructor () {
 	}
 
-	get logger () {
-		return this.#logger ||= pino<any>({
-			level: Instance.get().settings.logLevel,
-			serializers: {
-				err: pino.stdSerializers.err,
-				req: pino.stdSerializers.req,
-				res: pino.stdSerializers.res,
-			},
-		})
+	get logger() {
+		return this.#logger ||= Instance.createLogger()
 	}
 
 	get job () {
@@ -60,6 +53,17 @@ export class Instance {
 
 	get settings () {
 		return this.#settings
+	}
+
+	static createLogger () {
+		return pino<any>({
+			level: Instance.get()?.settings?.logLevel ?? 'info',
+			serializers: {
+				err: pino.stdSerializers.err,
+				req: pino.stdSerializers.req,
+				res: pino.stdSerializers.res,
+			},
+		})
 	}
 
 	static initialize (settings: Partial<Settings>) {
