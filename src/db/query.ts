@@ -23,7 +23,7 @@ export enum Conditions {
     eq = 'eq', ne = 'ne', in = 'in', nin = 'nin', exists = 'exists'
 }
 
-export type QueryWhere<T> = { field: Paths<T, string>, value: any, condition?: Conditions }
+export type QueryWhere<T> = { field: Paths<T, string>, value: unknown, condition?: Conditions }
 export type QueryWhereBlock<T> = { condition: QueryKeys, value: QueryWhere<T>[] }
 export type QueryWhereClause<T> = QueryWhere<T> | QueryWhereBlock<T>
 

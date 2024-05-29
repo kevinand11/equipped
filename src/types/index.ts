@@ -2,7 +2,7 @@ import { BaseEntity } from '../structure'
 
 export type DeepPartial<T> = { [P in keyof T]?: DeepPartial<T[P]> }
 
-type DeepOmit<T, K, A = never> = T extends any[] ? DeepOmit<T[number], K, A>[]
+export type DeepOmit<T, K, A = never> = T extends any[] ? DeepOmit<T[number], K, A>[]
     : T extends (...args: any[]) => any ? never
     : T extends Array<infer U> ? DeepOmit<U, K, A>[]
     : {
@@ -32,5 +32,6 @@ export type JSONValue<T> = T extends JSONPrimitives ? T
     : T extends object ? {
 	    [K in keyof T & (number | string) as JSONValue<T[K]> extends never ? never : JSONValue<T[K]> extends undefined ? never : K]: JSONValue<T[K]>
     }
+    : T extends unknown ? unknown
     : undefined extends T ? JSONValue<Exclude<T, undefined>> | undefined
     : never

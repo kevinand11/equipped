@@ -63,7 +63,7 @@ export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<Mode
 
 const buildWhereQuery = (params: QueryWhereClause<unknown>[], key: QueryKeys = QueryKeys.and) => {
 	const where = (Array.isArray(params) ? params : []).map((param) => {
-		if (Object.values(QueryKeys).includes(param.condition as QueryKeys)) return buildWhereQuery(param.value, param.condition as QueryKeys)
+		if (Object.values(QueryKeys).includes(param.condition as QueryKeys)) return buildWhereQuery(param.value as any, param.condition as QueryKeys)
 		const { field } = param as QueryWhere<unknown>
 		const checkedField = field === 'id' ? '_id' : (field ?? '')
 		const checkedValue = param.value === undefined ? '' : param.value
