@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta-1](https://github.com/kevinand11/equipped/compare/v4.4.6...v5.0.0-beta-1) (2024-05-29)
+
+
+### Features
+
+* add request type details on Request class ([d6c3752](https://github.com/kevinand11/equipped/commit/d6c37529e7eeac5a3c2ac20e0a205de49cb0465e))
+* error handler per route ([0eccc21](https://github.com/kevinand11/equipped/commit/0eccc2129c559353efc65ae7ddf6bd0368e4031e))
+* express server swagger ([95c811b](https://github.com/kevinand11/equipped/commit/95c811ba7a1086116c4327c37e1723b08b85059d))
+* fastify swagger and custom schema validation error ([17b8710](https://github.com/kevinand11/equipped/commit/17b8710324c5c515daa8928d7028ef0150a6c30d))
+* hide routes from schema ([304df23](https://github.com/kevinand11/equipped/commit/304df23a413f13cbd77f2eeeae00032d57dcea2c))
+* new JsonValue and Ignored types ([ba73af4](https://github.com/kevinand11/equipped/commit/ba73af440f54549d10a974fd530c35ac912ec4dd))
+* regustere schemas in server and reference by key ([7298bb0](https://github.com/kevinand11/equipped/commit/7298bb0ae6a908325bbef3cd308e2a7787147387))
+* route securities ([a7b91a1](https://github.com/kevinand11/equipped/commit/a7b91a17acf15cc9013fe971b0adf2b96cd129da))
+* schema for fastify ([990529c](https://github.com/kevinand11/equipped/commit/990529ce777d5fcfb6f4c11d634ecdc31aa2ea81))
+* script to generate schemas ([2736ffa](https://github.com/kevinand11/equipped/commit/2736ffa68da13fb0b3ef96809a06be74754257ba))
+* settings to toggle whether to schema validate ([6f64313](https://github.com/kevinand11/equipped/commit/6f643133632963cc5418259d3f97a9cf172bcdaf))
+* throw ValidationError for failed schema validation in express app ([be30a5e](https://github.com/kevinand11/equipped/commit/be30a5e1ff7fe7016bf6effa9566a3a48acafd0e))
+
+
+### Bug Fixes
+
+* catch errors in json schema ([02f4b0b](https://github.com/kevinand11/equipped/commit/02f4b0bb4c8eaa3fc0e1a25b14e2f531101d3d08))
+* fix mongo createCollection command ([f0bfbfa](https://github.com/kevinand11/equipped/commit/f0bfbfa945d48741fbc56b6766483f12b35e0f7c))
+* remove recursive type for QueryWhereBlock to prevent recursive errors in schema gen ([31e3af6](https://github.com/kevinand11/equipped/commit/31e3af64e6ead4b67e5a787df3c0b39671f8e39b))
+
 ### [4.4.6](https://github.com/kevinand11/equipped/compare/v4.4.5...v4.4.6) (2024-04-07)
 
 ### [4.4.5](https://github.com/kevinand11/equipped/compare/v4.4.4...v4.4.5) (2024-04-06)
