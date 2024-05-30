@@ -2,7 +2,7 @@ import { Enum } from '../enums/types'
 import { CustomError } from '../errors'
 
 import { FastifySchema } from 'fastify'
-import { JSONPrimitives, JSONValue } from '../types'
+import { JSONValue } from '../types'
 import type { Request, Response } from './requests'
 
 export const Methods = {
@@ -32,14 +32,11 @@ type GoodStatusCodes = 200
 type ApiErrors = Record<Exclude<SupportedStatusCodes, GoodStatusCodes>, JSONValue<CustomError['serializedErrors']>>
 type ApiResponse<T, StatusCode extends SupportedStatusCodes> = Record<StatusCode, JSONValue<T>> | Omit<ApiErrors, StatusCode>
 
-type Any = unknown
-type Arrayable<T> = T | T[]
-type AllowedResponses = Arrayable<JSONPrimitives | Any>
 export interface Api<
-	Res = AllowedResponses,
+	Res = any,
 	Key extends string = string,
 	Method extends MethodTypes = MethodTypes,
-	Body extends Any = Any,
+	Body = any,
 	Params extends Record<string, string> = Record<string, string>,
 	Query extends Record<string, any> = Record<string, any>,
 	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
@@ -93,8 +90,7 @@ export interface Route<Def extends ApiDef = ApiDef> {
 export type RouteConfig<T extends ApiDef = ApiDef> = Omit<Route<T>, 'method' | 'handler'>
 export type GeneralConfig = Omit<RouteConfig, 'schema' | 'key'>
 export type AddMethodImpls = {
-	// @ts-ignore
-	[Method in MethodTypes]: <T extends ApiDef<Api<AllowedResponses, string, Method>>>(route: RouteConfig<T>) => (handler: RouteHandler<InferApiFromApiDef<T>>) => Route<T>
+	[Method in MethodTypes]: <T extends ApiDef<Api<any, string, Method>>>(route: RouteConfig<T>) => (handler: RouteHandler<InferApiFromApiDef<T>>) => Route<T>
 }
 
 class MiddlewareHandler<Cb extends Function> {
