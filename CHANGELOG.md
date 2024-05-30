@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta-5](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-4...v5.0.0-beta-5) (2024-05-30)
+
+
+### Bug Fixes
+
+* more graceful defaults for Api ([a2d23f9](https://github.com/kevinand11/equipped/commit/a2d23f9ffcd0d4bcce73c7e3f8346afaea9baf55))
+
 ## [5.0.0-beta-4](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-3...v5.0.0-beta-4) (2024-05-30)
 
 ## [5.0.0-beta-3](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-2...v5.0.0-beta-3) (2024-05-30)
