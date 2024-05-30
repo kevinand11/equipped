@@ -35,7 +35,7 @@ type ApiResponse<T, StatusCode extends SupportedStatusCodes> = Record<StatusCode
 type Any = object | unknown
 type Arrayable<T> = T | T[]
 type AllowedResponses = Arrayable<JSONPrimitives | Any>
-export type Api<
+export interface Api<
 	Res = AllowedResponses,
 	Key extends string = string,
 	Method extends MethodTypes = MethodTypes,
@@ -43,7 +43,7 @@ export type Api<
 	Params extends Any = Any,
 	Query extends Any = Any,
 	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
-> = {
+> {
     key: Key
     method: Method
     response: Res
@@ -52,7 +52,7 @@ export type Api<
     query?: Query
 	defaultStatusCode?: DefaultStatus
 }
-export type ApiDef<T extends Api = Api> = {
+export interface ApiDef<T extends Api = Api> {
 	key: T['key']
 	method: T['method']
 	body: T['body']
@@ -74,7 +74,7 @@ export type HandlerSetup = (route: Route) => void
 
 export type RouteSchema = Omit<FastifySchema, 'tags' | 'security' | 'hide'>
 
-export type Route<Def extends ApiDef = ApiDef> = {
+export interface Route<Def extends ApiDef = ApiDef> {
 	key?: Def['key']
 	path: string
 	method: Def['method']
