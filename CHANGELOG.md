@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta-6](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-5...v5.0.0-beta-6) (2024-05-30)
+
+
+### Bug Fixes
+
+* res body defaults to any ([534b3a4](https://github.com/kevinand11/equipped/commit/534b3a4d20e832733a18b5f4735f9132d09669ad))
+
 ## [5.0.0-beta-5](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-4...v5.0.0-beta-5) (2024-05-30)
 
 
