@@ -28,7 +28,7 @@ Validate.v.file = (...args: Parameters<typeof file>) => file(...args).addRule(is
 export const Schema = Validate.v
 export const Validation = { ...Validate, isNotTruncated, isValidPhone }
 
-export const validate = <T extends Record<string, VCore<any>>> (schema: T, value: Record<string, any>) => {
+export const validate = <T extends Record<string, VCore<any>>> (schema: T, value: unknown) => {
 	const validity = Validation.v.object(schema).parse(value)
 	if (validity.valid) return validity.value
 	const errorsObject = validity.errors
