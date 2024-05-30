@@ -126,7 +126,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			ip: req.ip,
 			body,
 			cookies: req.cookies ?? {},
-			params: req.params ?? {},
+			params: req.params ?? {} as any,
 			query: req.query ?? {},
 			method: req.method as any,
 			path: req.url,

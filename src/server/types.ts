@@ -32,7 +32,7 @@ type GoodStatusCodes = 200
 type ApiErrors = Record<Exclude<SupportedStatusCodes, GoodStatusCodes>, JSONValue<CustomError['serializedErrors']>>
 type ApiResponse<T, StatusCode extends SupportedStatusCodes> = Record<StatusCode, JSONValue<T>> | Omit<ApiErrors, StatusCode>
 
-type Any = object | unknown
+type Any = unknown
 type Arrayable<T> = T | T[]
 type AllowedResponses = Arrayable<JSONPrimitives | Any>
 export interface Api<
@@ -40,8 +40,8 @@ export interface Api<
 	Key extends string = string,
 	Method extends MethodTypes = MethodTypes,
 	Body extends Any = Any,
-	Params extends Any = Any,
-	Query extends Any = Any,
+	Params extends Record<string, string> = Record<string, string>,
+	Query extends Record<string, any> = Record<string, any>,
 	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
 > {
     key: Key
@@ -52,12 +52,13 @@ export interface Api<
     query?: Query
 	defaultStatusCode?: DefaultStatus
 }
+type UnknownToAny<T, D = any> = T extends unknown ? D : T
 export interface ApiDef<T extends Api = Api> {
-	key: T['key']
-	method: T['method']
-	body: T['body']
-	params: T['params']
-	query: T['query']
+	key: UnknownToAny<T['key']>
+	method: UnknownToAny<T['method']>
+	body: UnknownToAny<T['body'], unknown>
+	params: UnknownToAny<T['params'], unknown>
+	query: UnknownToAny<T['query']>
 	responses: ApiResponse<T['response'], GetDefaultStatusCode<T['defaultStatusCode']>>
 	__api?: T
 }

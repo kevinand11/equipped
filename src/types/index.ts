@@ -18,6 +18,7 @@ type ExcludedTypes = (...args: any[]) => any
 type Dot<T extends string, U extends string> = '' extends U ? T : `${T}.${U}`
 export type Paths<T, D = never> = T extends StopTypes ? ''
     : T extends readonly unknown[] ? Paths<T[number]>
+    : T extends unknown ? D
     : {
         [K in keyof T & string]: T[K] extends StopTypes ? K
             : T[K] extends ExcludedTypes ? D

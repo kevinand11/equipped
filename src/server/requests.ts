@@ -12,8 +12,8 @@ export class Request<Def extends Api = Api> {
 	readonly method: Def['method']
 	readonly path: string
 	readonly body: Def['body']
-	readonly params: Def['params']
-	readonly query: Def['query']
+	readonly params: Exclude<Def['params'], undefined>
+	readonly query: Exclude<Def['query'], undefined>
 	readonly cookies: Record<string, any>
 	readonly rawBody: unknown
 	readonly headers: Record<HeaderKeys, string | null> & Record<string, string | string[] | null>
