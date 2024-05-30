@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta-3](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-2...v5.0.0-beta-3) (2024-05-30)
+
+
+### Features
+
+* allow custom validator in validate ([24a1d7a](https://github.com/kevinand11/equipped/commit/24a1d7a7cf69eabc73148dd9d36324d32ba95fc3))
+
 ## [5.0.0-beta-2](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-1...v5.0.0-beta-2) (2024-05-30)
 
 
