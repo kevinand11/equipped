@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta-2](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-1...v5.0.0-beta-2) (2024-05-30)
+
+
+### Bug Fixes
+
+* validate expects value of unknown not Record ([f3773f9](https://github.com/kevinand11/equipped/commit/f3773f905f6ccb5713fd30a0870d34fbd40c36fc))
+
 ## [5.0.0-beta-1](https://github.com/kevinand11/equipped/compare/v4.4.6...v5.0.0-beta-1) (2024-05-29)
 
 
