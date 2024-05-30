@@ -105,7 +105,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	protected async startServer (port: number) {
 		this.#fastifyApp.setNotFoundHandler(this.makeController(notFoundHandler.cb as any))
 		this.#fastifyApp.setErrorHandler(this.makeErrorMiddleware(errorHandler.cb))
-		await this.#fastifyApp.listen({ port })
+		await this.#fastifyApp.listen({ port, host: '0.0.0.0' })
 		addWaitBeforeExit(this.#fastifyApp.close)
 		return true
 	}

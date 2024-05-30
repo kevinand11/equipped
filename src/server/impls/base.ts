@@ -121,7 +121,7 @@ export abstract class Server<Req = any, Res = any> {
 		this.register(postRoutesRouter)
 
 		const started = await this.startServer(port)
-		if (started) await Instance.get().logger.info(`${this.settings.appId} service listening on port`, port)
+		if (started) await Instance.get().logger.info(`${this.settings.appId} service listening on port ${port}`)
 		return started
 	}
 }

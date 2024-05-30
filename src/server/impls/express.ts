@@ -92,7 +92,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 		return await new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
 			try {
-				const app = this.server.listen(port, async () => resolve(true))
+				const app = this.server.listen({ host: '0.0.0.0', port }, async () => resolve(true))
 				addWaitBeforeExit(app.close)
 			} catch (err) {
 				reject(err as Error)
