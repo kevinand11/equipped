@@ -9,7 +9,7 @@ const deleteKeyFromObject = (obj: Record<string, any>, keys: string[]) => {
 	return deleteKeyFromObject(obj[keys[0]], keys.slice(1))
 }
 
-export class BaseEntity<Keys extends object = object, Ignored extends string = string> extends ClassPropertiesWrapper<Keys>{
+export class BaseEntity<Keys extends object = object, Ignored extends string = never> extends ClassPropertiesWrapper<Keys>{
 	public __hash: string = Random.string()
 	public __type = this.constructor.name
 	public readonly __ignoreInJSON: Ignored[] = []

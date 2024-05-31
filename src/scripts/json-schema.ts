@@ -1,20 +1,29 @@
-import TypescriptOAS, { Definition, createProgram } from 'ts-oas'
+import TypescriptOAS, { Definition, Options, createProgram } from 'ts-oas'
 import { Instance } from '../instance'
 import { RouteSchema } from '../server'
 
 const fileSchema = { type: 'string', format: 'binary' }
 
-export function generateJSONSchema (patterns: (string | RegExp)[], paths: string[]) {
-	const tsProgram = createProgram(paths, { strictNullChecks: true })
+export function generateJSONSchema (patterns: (string | RegExp)[], paths: string[], options?: {
+	tsConfigPath?: string | Record<string, unknown>
+	options?: Options
+}) {
+	const tsProgram = createProgram(paths, options?.tsConfigPath)
 
-	const tsoas = new TypescriptOAS(tsProgram, { ref: false, ignoreErrors: true })
+	const logger = Instance.createLogger()
+
+	const tsoas = new TypescriptOAS(tsProgram, {
+		ref: false,
+		nullableKeyword: false,
+		...(options?.options ?? {})
+	})
 	const jsonSchema = tsoas.getSchemas(patterns)
 
 	return Object.entries(jsonSchema)
 		.map(([name, { properties: def }]) => {
 			try {
 				const key: string = def?.key?.enum?.at(0) ?? name
-				if (!def || !key || !def.method) throw new Error()
+				if (!def || !key || !def.method) return [undefined, undefined] as const
 				const response = def.responses.properties ?? def.responses.anyOf?.reduce((acc, cur) => {
 					if (cur.properties) return { ...acc, ...cur.properties }
 					return acc
@@ -33,26 +42,27 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 					})
 				}
 
-				const schema: RouteSchema | undefined = def
-					? {
-						body,
-						params: def.params,
-						querystring: def.query,
-						headers: def.headers,
-						response,
-						operationId: key,
-						summary: name,
-					}
-					: undefined
+				const schema: RouteSchema | undefined = {
+					body,
+					params: def.params,
+					querystring: def.query,
+					headers: def.headers,
+					response,
+					operationId: key,
+					summary: name,
+				}
+
 				return [key, schema] as const
 			} catch (err) {
-				Instance.createLogger().warn(`Error parsing ${name}: ${(err as Error).message}. Skipping route`)
+				logger.warn(`Error parsing ${name}: ${(err as Error).message}. Skipping route`)
 				return [undefined, undefined] as const
 			}
 		})
 		.reduce(
 			(acc, [path, schema]) => {
-				if (path && schema) acc[path] = stripEmptyObjects(schema)
+				if (!path || !schema) return acc
+				if (acc[path]) logger.warn(`Duplicate route key '${path}' found for '${acc[path].summary}' & '${schema.summary}'. Make sure to use unique keys for all routes because only the last one will be used.`)
+				acc[path] = stripEmptyObjects(schema)
 				return acc
 			},
       {} as Record<string, RouteSchema>

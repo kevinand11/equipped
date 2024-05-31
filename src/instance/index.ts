@@ -56,8 +56,9 @@ export class Instance {
 	}
 
 	static createLogger () {
+		const defaultLogLevel = 'info'
 		return pino<any>({
-			level: Instance.get()?.settings?.logLevel ?? 'info',
+			level: Instance.#initialized ? Instance.get().settings?.logLevel ?? defaultLogLevel : defaultLogLevel,
 			serializers: {
 				err: pino.stdSerializers.err,
 				req: pino.stdSerializers.req,
