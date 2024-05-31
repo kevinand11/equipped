@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta.10](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.9...v5.0.0-beta.10) (2024-05-31)
+
+
+### Bug Fixes
+
+* generateJSONSchema ([062360b](https://github.com/kevinand11/equipped/commit/062360bb92ccdaa1ae8fa3d167f9bbb71f156f7c))
+
 ## [5.0.0-beta.9](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.8...v5.0.0-beta.9) (2024-05-31)
 
 
