@@ -72,7 +72,7 @@ export type ErrorHandler<Def extends Api = Api> = (req: Request<Def>, err: Error
 export type RouteMiddlewareHandler<Def extends Api = Api> = (req: Request<Def>) => Awaitable<void>
 export type HandlerSetup = (route: Route) => void
 
-export type RouteSchema = Omit<FastifySchema, 'tags' | 'security' | 'hide'>
+export type RouteSchema = Omit<FastifySchema, 'tags' | 'security' | 'hide' | 'description'> & { descriptions?: string[] }
 
 export interface Route<Def extends ApiDef<AnyApi> = ApiDef<Api>> {
 	key?: Def['key']
@@ -84,6 +84,7 @@ export interface Route<Def extends ApiDef<AnyApi> = ApiDef<Api>> {
 	onError?: ReturnType<typeof makeErrorMiddleware>
 	schema?: RouteSchema
 	tags?: string[]
+	descriptions?: string[]
 	hideSchema?: boolean
 	security?: Record<string, string[]>[]
 }

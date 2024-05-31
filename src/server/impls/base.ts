@@ -14,7 +14,7 @@ import { Request } from '../requests'
 import { Router } from '../routes'
 import { Route } from '../types'
 
-export type FullRoute = Required<Omit<Route, 'schema' | 'tags' | 'security' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>> & { schema: FastifySchema; onError?: Route['onError'] }
+export type FullRoute = Required<Omit<Route, 'schema' | 'tags' | 'security' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>> & { schema: FastifySchema; onError?: Route['onError'] }
 type Schemas = Record<string, Defined<Route['schema']>>
 
 export abstract class Server<Req = any, Res = any> {
@@ -81,7 +81,7 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	#regRoute (route: Route) {
-		const { method, path, middlewares = [], handler, schema, tags = [], security = [], onError, hideSchema = false } = route
+		const { method, path, middlewares = [], handler, schema, tags, security, descriptions, onError, hideSchema = false } = route
 		const { key = `${method.toLowerCase()} ${path}` } = route
 		const allMiddlewares = [parseAuthUser, ...middlewares]
 		allMiddlewares.forEach((m) => m.onSetup?.(route))
@@ -97,7 +97,8 @@ export abstract class Server<Req = any, Res = any> {
 				...scheme,
 				hide: hideSchema,
 				operationId: scheme.operationId ?? handler.name,
-				tags: [tags.join(' > ') || 'default'],
+				tags: tags?.length ? [tags.join(' > ')] : undefined,
+				description: descriptions?.join(' | '),
 				security,
 			}
 		}

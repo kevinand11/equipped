@@ -8,4 +8,6 @@ export const requireAuthUser = makeMiddleware(async (request) => {
 }, (route) => {
 	route.security ??= []
 	route.security.push({ AccessToken: [] })
+	route.descriptions ??= []
+	route.descriptions.push('Requires a valid Access-Token header.')
 })

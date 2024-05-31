@@ -10,4 +10,6 @@ export const requireRefreshUser = makeMiddleware(async (request) => {
 }, (route) => {
 	route.security ??= []
 	route.security.push({ RefreshToken: [] })
+	route.descriptions ??= []
+	route.descriptions.push('Requires a valid Refresh-Token header.')
 })
