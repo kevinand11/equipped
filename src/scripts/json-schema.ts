@@ -37,8 +37,11 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 					if (!body.required) body.required = []
 					Object.entries(files.properties ?? {}).forEach(([key, value]) => {
 						const isMultiple = !!value.enum?.at(0)
-						body.properties![key] = isMultiple ? { type: 'array', items: fileSchema } : fileSchema
-						if (files.required?.includes(key)) body.required!.push(key)
+						const fileValue = isMultiple ? { type: 'array', items: fileSchema } : fileSchema
+						body.properties![key] = {
+							anyOf: [fileValue, body.properties![key]].filter(Boolean)
+						}
+						if (files.required?.includes(key) && !body.required?.includes(key)) body.required!.push(key)
 					})
 				}
 
