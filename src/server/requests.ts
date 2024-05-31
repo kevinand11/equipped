@@ -1,23 +1,28 @@
 import { Writable } from 'stream'
 import { CustomError } from '../errors'
 import { StorageFile } from '../storage'
+import { Defined } from '../types'
 import { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
 import { Api, StatusCodes, SupportedStatusCodes } from './types'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
+type ApiToFiles<Def extends Api> = {
+	[K in keyof Defined<Def['files']>]: StorageFile[]
+}
+
 export class Request<Def extends Api = Api> {
 	readonly ip: string | undefined
 	readonly method: Def['method']
 	readonly path: string
 	readonly body: Def['body']
-	readonly params: Exclude<Def['params'], undefined>
-	readonly query: Exclude<Def['query'], undefined>
+	readonly params: Defined<Def['params']>
+	readonly query: Defined<Def['query']>
 	readonly cookies: Record<string, any>
 	readonly rawBody: unknown
 	readonly headers: Record<HeaderKeys, string | null> & Record<string, string | string[] | null>
-	readonly files: Record<string, StorageFile[]>
+	readonly files: ApiToFiles<Def>
 	authUser: null | AuthUser = null
 	refreshUser: null | RefreshUser = null
 	pendingError: null | CustomError = null
@@ -32,7 +37,7 @@ export class Request<Def extends Api = Api> {
 		query: Def['query']
 		cookies: Record<string, any>
 		headers: Record<HeaderKeys, string | null> & Record<string, string | string[] | null>
-		files: Record<string, StorageFile[]>
+		files: ApiToFiles<Def>
 		method: Def['method']
 		path: string,
 	}, private readonly response: Writable) {

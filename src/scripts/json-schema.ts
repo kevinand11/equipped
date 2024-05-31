@@ -2,6 +2,8 @@ import TypescriptOAS, { Definition, createProgram } from 'ts-oas'
 import { Instance } from '../instance'
 import { RouteSchema } from '../server'
 
+const fileSchema = { type: 'string', format: 'binary' }
+
 export function generateJSONSchema (patterns: (string | RegExp)[], paths: string[]) {
 	const tsProgram = createProgram(paths, { strictNullChecks: true })
 
@@ -17,9 +19,23 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 					if (cur.properties) return { ...acc, ...cur.properties }
 					return acc
 				}, {} as Definition) ?? undefined
+
+				const body = def.body ?? {}
+				if (def.files?.properties) {
+					const files = def.files ?? {}
+					if (!body.type) body.type = 'object'
+					if (!body.properties) body.properties = {}
+					if (!body.required) body.required = []
+					Object.entries(files.properties ?? {}).forEach(([key, value]) => {
+						const isMultiple = !!value.enum?.at(0)
+						body.properties![key] = isMultiple ? { type: 'array', items: fileSchema } : fileSchema
+						if (files.required?.includes(key)) body.required!.push(key)
+					})
+				}
+
 				const schema: RouteSchema | undefined = def
 					? {
-						body: def.body,
+						body,
 						params: def.params,
 						querystring: def.query,
 						headers: def.headers,

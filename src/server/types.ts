@@ -2,7 +2,7 @@ import { Enum } from '../enums/types'
 import { CustomError } from '../errors'
 
 import { FastifySchema } from 'fastify'
-import { JSONValue } from '../types'
+import { Defined, JSONValue } from '../types'
 import type { Request, Response } from './requests'
 
 export const Methods = {
@@ -37,6 +37,7 @@ export interface Api<
 	Key extends string = string,
 	Method extends MethodTypes = MethodTypes,
 	Body = any,
+	Files extends Record<string, boolean> = Record<string, boolean>,
 	Params extends Record<string, string> = Record<string, string>,
 	Query extends Record<string, any> = Record<string, any>,
 	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
@@ -45,21 +46,22 @@ export interface Api<
     method: Method
     response: Res
     body?: Body
+	files?: Files
     params?: Params
     query?: Query
 	defaultStatusCode?: DefaultStatus
 }
-type UnknownToAny<T, D = any> = T extends unknown ? D : T
-export interface ApiDef<T extends Api = Api> {
-	key: UnknownToAny<T['key']>
-	method: UnknownToAny<T['method']>
-	body: UnknownToAny<T['body'], unknown>
-	params: UnknownToAny<T['params'], unknown>
-	query: UnknownToAny<T['query']>
+export interface ApiDef<T extends AnyApi> {
+	key: Defined<T['key']>
+	method: Defined<T['method']>
+	body: Defined<T['body']>
+	params: Defined<T['params']>
+	query: Defined<T['query']>
+	files: Defined<T['files']>
 	responses: ApiResponse<T['response'], GetDefaultStatusCode<T['defaultStatusCode']>>
-	__api?: T
 }
 
+type AnyApi<Method extends MethodTypes = MethodTypes> = Api<any, any, Method, any, any, any, any, any>
 type Awaitable<T> = Promise<T> | T
 type Res<T, S extends SupportedStatusCodes> = Awaitable<Response<T, S> | T>
 type InferApiFromApiDef<T> = T extends ApiDef<infer A> ? A : never
@@ -72,7 +74,7 @@ export type HandlerSetup = (route: Route) => void
 
 export type RouteSchema = Omit<FastifySchema, 'tags' | 'security' | 'hide'>
 
-export interface Route<Def extends ApiDef = ApiDef> {
+export interface Route<Def extends ApiDef<AnyApi> = ApiDef<Api>> {
 	key?: Def['key']
 	path: string
 	method: Def['method']
@@ -84,13 +86,12 @@ export interface Route<Def extends ApiDef = ApiDef> {
 	tags?: string[]
 	hideSchema?: boolean
 	security?: Record<string, string[]>[]
-	__def?: Def
 }
 
-export type RouteConfig<T extends ApiDef = ApiDef> = Omit<Route<T>, 'method' | 'handler'>
+export type RouteConfig<T extends ApiDef<AnyApi> = ApiDef<Api>> = Omit<Route<T>, 'method' | 'handler'>
 export type GeneralConfig = Omit<RouteConfig, 'schema' | 'key'>
 export type AddMethodImpls = {
-	[Method in MethodTypes]: <T extends ApiDef<Api<any, string, Method>>>(route: RouteConfig<T>) => (handler: RouteHandler<InferApiFromApiDef<T>>) => Route<T>
+	[Method in MethodTypes]: <T extends ApiDef<AnyApi<Method>> = ApiDef<AnyApi<Method>>>(route: RouteConfig<T>) => (handler: RouteHandler<InferApiFromApiDef<T>>) => Route<T>
 }
 
 class MiddlewareHandler<Cb extends Function> {
@@ -101,5 +102,5 @@ class MiddlewareHandler<Cb extends Function> {
 	}
 }
 
-export const makeMiddleware = <Def extends Api = Api>(...args: Parameters<typeof MiddlewareHandler.make<RouteMiddlewareHandler<Def>>>) => MiddlewareHandler.make(...args)
-export const makeErrorMiddleware = <Def extends Api = Api> (...args: Parameters<typeof MiddlewareHandler.make<ErrorHandler<Def>>>) => MiddlewareHandler.make(...args)
+export const makeMiddleware = <Def extends AnyApi = Api>(...args: Parameters<typeof MiddlewareHandler.make<RouteMiddlewareHandler<Def>>>) => MiddlewareHandler.make(...args)
+export const makeErrorMiddleware = <Def extends AnyApi = Api> (...args: Parameters<typeof MiddlewareHandler.make<ErrorHandler<Def>>>) => MiddlewareHandler.make(...args)
