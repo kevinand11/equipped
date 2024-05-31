@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta.7](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-6...v5.0.0-beta.7) (2024-05-31)
+
+
+### Features
+
+* schema for files ([13e8b80](https://github.com/kevinand11/equipped/commit/13e8b80d7893392994331416f769f4c50bc9b975))
+
+
+### Bug Fixes
+
+* start server on 0.0.0.0 ([b654ee8](https://github.com/kevinand11/equipped/commit/b654ee88d1940fa5c89da8824240a62e727e99b8))
+
 ## [5.0.0-beta-6](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-5...v5.0.0-beta-6) (2024-05-30)
 
 
