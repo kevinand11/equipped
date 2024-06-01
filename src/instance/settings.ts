@@ -2,7 +2,6 @@ import { Level } from 'pino'
 import type { ServerTypes } from '../server'
 
 export type Settings = {
-	isDev: boolean
 	accessTokenKey: string
 	accessTokenTTL: number
 	refreshTokenKey: string
@@ -34,7 +33,6 @@ export type Settings = {
 }
 
 export const defaulInstanceSetting: Settings = {
-	isDev: false,
 	accessTokenKey: 'accessTokenKey',
 	accessTokenTTL: 60 * 60,
 	refreshTokenKey: 'refreshTokenKey',

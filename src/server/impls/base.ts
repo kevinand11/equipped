@@ -64,24 +64,25 @@ export abstract class Server<Req = any, Res = any> {
 		return this.#listener
 	}
 
-	addRoutes (routes: Route[]) {
+	addRouter (...routers: Router[]) {
+		routers.map((router) => router.routes).forEach((routes) => this.addRoute(...routes))
+	}
+
+	addRoute (...routes: Route[]) {
 		routes.forEach((route) => this.#regRoute(route))
 	}
 
-	addSchema (schemas: Schemas) {
-		Object.assign(this.#schemas, schemas)
+	addSchema (...schemas: Schemas[]) {
+		schemas.forEach((schema) => Object.assign(this.#schemas, schema))
 	}
 
 	async load () {
 		await this.onLoad()
 	}
 
-	register (router: Router | Router[]) {
-		const routers = Array.isArray(router) ? router : [router]
-		routers.map((router) => router.routes).forEach((routes) => this.addRoutes(routes))
-	}
-
 	#regRoute (route: Route) {
+		if (!route.path.startsWith('/')) route.path = `/${route.path}`
+
 		const middlewares = [parseAuthUser, ...(route.middlewares ?? [])]
 		middlewares.forEach((m) => m.onSetup?.(route))
 		route.onSetupHandler?.(route)
@@ -116,16 +117,16 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	async start (port: number) {
-		const postRoutesRouter = new Router()
-		postRoutesRouter.get({
+		this.addRoute({
+			method: 'get',
 			path: '__health',
+			handler: async () => `${this.settings.appId} service running`,
 			schema: {
 				response: {
-					200: { type: 'string' },
+					200: { type: 'string' }
 				}
-			}
-		})(async () => `${this.settings.appId} service running`)
-		this.register(postRoutesRouter)
+			},
+		})
 
 		const started = await this.startServer(port)
 		if (started) await Instance.get().logger.info(`${this.settings.appId} service listening on port ${port}`)

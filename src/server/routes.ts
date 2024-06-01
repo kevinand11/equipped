@@ -36,12 +36,12 @@ export class Router extends ClassPropertiesWrapper<AddMethodImpls> {
 		this.#routes.push(...mapped)
 	}
 
-	include (...routers: Router[]) {
+	nest (...routers: Router[]) {
 		routers.forEach((router) => this.#children.push(router))
 	}
 
 	get routes () {
-		const routes = this.#routes
+		const routes = [...this.#routes]
 		this.#children.forEach((child) => {
 			child.routes.forEach((route) => {
 				this.#addRoute(route.method, route, routes)(route.handler)
