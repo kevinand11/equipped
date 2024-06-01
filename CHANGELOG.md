@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta.12](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.11...v5.0.0-beta.12) (2024-06-01)
+
+
+### Bug Fixes
+
+* function overloading for validate function ([e1209ab](https://github.com/kevinand11/equipped/commit/e1209ab10f435514d7ac84c3c0af1788d7f3699d))
+* references to BaseEntity ([071a07a](https://github.com/kevinand11/equipped/commit/071a07a827e6c4f73b5cf43ae462541c4518df21))
+
 ## [5.0.0-beta.11](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.10...v5.0.0-beta.11) (2024-06-01)
 
 
