@@ -114,11 +114,11 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
-			AccessToken: req.headers['Access-Token']?.toString() ?? null,
-			RefreshToken: req.headers['Refresh-Token']?.toString() ?? null,
-			ContentType: req.headers['Content-Type']?.toString() ?? null,
+			AccessToken: req.headers['access-token']?.toString() ?? null,
+			RefreshToken: req.headers['refresh-token']?.toString() ?? null,
+			ContentType: req.headers['content-type']?.toString() ?? null,
 			Referer: req.headers['referer']?.toString() ?? null,
-			UserAgent: req.headers['User-Agent']?.toString() ?? null
+			UserAgent: req.headers['user-agent']?.toString() ?? null
 		}
 		const { body, files } = excludeBufferKeys(req.body ?? {})
 

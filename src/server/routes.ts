@@ -5,7 +5,7 @@ export const groupRoutes = (config: GeneralConfig, routes: Route[]): Route[] => 
 	.map((route) => ({
 		...config,
 		...route,
-		path: `${config.path}/${route.path}`,
+		path: `${config.path}/${route.path}`.replace(/(\/\s*)+/g, '/'),
 		tags: [...(config.tags ?? []), ...(route.tags ?? [])],
 		middlewares: [...(config.middlewares ?? []), ...(route.middlewares ?? [])],
 		security: [...(config.security ?? []), ...(route.security ?? [])],
@@ -31,8 +31,13 @@ export class Router extends ClassPropertiesWrapper<AddMethodImpls> {
 		}
 	}
 
-	include (router: Router) {
-		this.#children.push(router)
+	add (...routes: Route[]) {
+		const mapped = groupRoutes(this.#config, routes)
+		this.#routes.push(...mapped)
+	}
+
+	include (...routers: Router[]) {
+		routers.forEach((router) => this.#children.push(router))
 	}
 
 	get routes () {

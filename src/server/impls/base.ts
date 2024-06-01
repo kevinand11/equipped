@@ -18,6 +18,7 @@ export type FullRoute = Required<Omit<Route, 'schema' | 'tags' | 'security' | 'd
 type Schemas = Record<string, Defined<Route['schema']>>
 
 export abstract class Server<Req = any, Res = any> {
+	#routes: FullRoute[] = []
 	#schemas: Schemas = {}
 	#listener: Listener | null = null
 	protected server: http.Server
@@ -81,13 +82,13 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	#regRoute (route: Route) {
-		const { method, path, middlewares = [], handler, schema, tags, security, descriptions, onError, hideSchema = false } = route
-		const { key = `${method.toLowerCase()} ${path}` } = route
-		const allMiddlewares = [parseAuthUser, ...middlewares]
-		allMiddlewares.forEach((m) => m.onSetup?.(route))
+		const middlewares = [parseAuthUser, ...(route.middlewares ?? [])]
+		middlewares.forEach((m) => m.onSetup?.(route))
 		route.onSetupHandler?.(route)
-		onError?.onSetup?.(route)
+		route.onError?.onSetup?.(route)
 
+		const { method, path, handler, schema, security, onError, hideSchema = false } = route
+		const { key = `${method.toLowerCase()} ${path}` } = route
 		const scheme = schema ?? this.#schemas[key] ?? {}
 		const fullRoute: FullRoute = {
 			method, middlewares, handler, key,
@@ -97,11 +98,16 @@ export abstract class Server<Req = any, Res = any> {
 				...scheme,
 				hide: hideSchema,
 				operationId: scheme.operationId ?? handler.name,
-				tags: tags?.length ? [tags.join(' > ')] : undefined,
-				description: descriptions?.join(' | '),
+				tags: route.tags?.length ? [route.tags.join(' > ')] : undefined,
+				description: route.descriptions?.join(' | '),
 				security,
 			}
 		}
+		const existingKey = this.#routes.find((r) => r.key === fullRoute.key)
+		const existingPath = this.#routes.find((r) => r.path === fullRoute.path && r.method === fullRoute.method)
+		if (existingKey) throw new Error(`Route key ${fullRoute.key} already registered. All route keys must be unique`)
+		if (existingPath) throw new Error(`Route path ${fullRoute.path}(${fullRoute.method.toUpperCase()}) already registered. All route paths and methods combinations must be unique`)
+		this.#routes.push(fullRoute)
 		this.registerRoute(fullRoute)
 	}
 
