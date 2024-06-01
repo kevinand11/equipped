@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta.11](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.10...v5.0.0-beta.11) (2024-06-01)
+
+
+### Features
+
+* unique paths and keys for routes ([36d1776](https://github.com/kevinand11/equipped/commit/36d17762b6d31497e9f15883cc05073ff29a886e))
+
 ## [5.0.0-beta.10](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.9...v5.0.0-beta.10) (2024-05-31)
 
 
