@@ -9,7 +9,7 @@ import { QueryParams, QueryResults } from './query'
 export abstract class Db {
 	#dbChanges = [] as DbChange<any, any>[]
 
-	abstract change<Model, Entity extends BaseEntity> (
+	abstract change<Model, Entity extends BaseEntity<any, any>> (
 		collection: any,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
@@ -35,7 +35,7 @@ export abstract class Db {
 	abstract close (): Promise<void>
 }
 
-export abstract class DbChange<Model, Entity extends BaseEntity> {
+export abstract class DbChange<Model, Entity extends BaseEntity<any, any>> {
 	#callbacks: DbChangeCallbacks<Model, Entity> = {}
 	#mapper: (model: Model | null) => Entity | null
 
