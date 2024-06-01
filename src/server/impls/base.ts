@@ -14,7 +14,7 @@ import { Request } from '../requests'
 import { Router } from '../routes'
 import { Route } from '../types'
 
-export type FullRoute = Required<Omit<Route, 'schema' | 'tags' | 'security' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>> & { schema: FastifySchema; onError?: Route['onError'] }
+export type FullRoute = Required<Omit<Route, 'schema' | 'groups' | 'security' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>> & { schema: FastifySchema; onError?: Route['onError'] }
 type Schemas = Record<string, Defined<Route['schema']>>
 
 export abstract class Server<Req = any, Res = any> {
@@ -99,7 +99,7 @@ export abstract class Server<Req = any, Res = any> {
 				...scheme,
 				hide: hideSchema,
 				operationId: scheme.operationId ?? handler.name,
-				tags: route.tags?.length ? [route.tags.join(' > ')] : undefined,
+				tags: route.groups?.length ? [route.groups.join(' > ')] : undefined,
 				description: route.descriptions?.join(' | '),
 				security,
 			}

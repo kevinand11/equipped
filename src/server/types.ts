@@ -83,7 +83,7 @@ export interface Route<Def extends ApiDef<AnyApi> = ApiDef<Api>> {
 	middlewares?: ReturnType<typeof makeMiddleware>[]
 	onError?: ReturnType<typeof makeErrorMiddleware>
 	schema?: RouteSchema
-	tags?: string[]
+	groups?: string[]
 	descriptions?: string[]
 	hideSchema?: boolean
 	security?: Record<string, string[]>[]

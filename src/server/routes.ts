@@ -6,7 +6,7 @@ export const groupRoutes = (config: GeneralConfig, routes: Route[]): Route[] => 
 		...config,
 		...route,
 		path: `${config.path}/${route.path}`.replace(/(\/\s*)+/g, '/'),
-		tags: [...(config.tags ?? []), ...(route.tags ?? [])],
+		groups: [...(config.groups ?? []), ...(route.groups ?? [])],
 		middlewares: [...(config.middlewares ?? []), ...(route.middlewares ?? [])],
 		security: [...(config.security ?? []), ...(route.security ?? [])],
 	}))
