@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta.13](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.12...v5.0.0-beta.13) (2024-06-01)
+
+
+### Features
+
+* add description for each status code ([064a686](https://github.com/kevinand11/equipped/commit/064a68647ea91a5791aad75b1b95988accc38b32))
+
 ## [5.0.0-beta.12](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.11...v5.0.0-beta.12) (2024-06-01)
 
 
