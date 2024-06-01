@@ -1,8 +1,10 @@
 import TypescriptOAS, { Definition, Options, createProgram } from 'ts-oas'
 import { Instance } from '../instance'
-import { RouteSchema } from '../server'
+import { RouteSchema, StatusCodes } from '../server'
 
 const fileSchema = { type: 'string', format: 'binary' }
+
+const statusCodes = Object.entries(StatusCodes)
 
 export function generateJSONSchema (patterns: (string | RegExp)[], paths: string[], options?: {
 	tsConfigPath?: string | Record<string, unknown>
@@ -28,6 +30,13 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 					if (cur.properties) return { ...acc, ...cur.properties }
 					return acc
 				}, {} as Definition) ?? undefined
+
+				if (response) {
+					for (const [key, value] of Object.entries(response)) {
+						const status = statusCodes.find(([_, code]) => code.toString() === key)
+						if (status) value['description'] = `${status[0]} Response`
+					}
+				}
 
 				const body = def.body ?? {}
 				if (def.files?.properties) {
