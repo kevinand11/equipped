@@ -18,7 +18,8 @@ export type FullRoute = Required<Omit<Route, 'schema' | 'groups' | 'security' | 
 type Schemas = Record<string, Defined<Route['schema']>>
 
 export abstract class Server<Req = any, Res = any> {
-	#routes: FullRoute[] = []
+	#routesByPath = new Map<string, FullRoute>()
+	#routesByKey = new Map<string, FullRoute>()
 	#schemas: Schemas = {}
 	#listener: Listener | null = null
 	protected server: http.Server
@@ -89,7 +90,8 @@ export abstract class Server<Req = any, Res = any> {
 		route.onError?.onSetup?.(route)
 
 		const { method, path, handler, schema, security, onError, hideSchema = false } = route
-		const { key = `${method.toLowerCase()} ${path}` } = route
+		const pathKey = `(${method.toUpperCase()}) ${path}`
+		const { key = pathKey } = route
 		const scheme = schema ?? this.#schemas[key] ?? {}
 		const fullRoute: FullRoute = {
 			method, middlewares, handler, key,
@@ -104,11 +106,10 @@ export abstract class Server<Req = any, Res = any> {
 				security,
 			}
 		}
-		const existingKey = this.#routes.find((r) => r.key === fullRoute.key)
-		const existingPath = this.#routes.find((r) => r.path === fullRoute.path && r.method === fullRoute.method)
-		if (existingKey) throw new Error(`Route key ${fullRoute.key} already registered. All route keys must be unique`)
-		if (existingPath) throw new Error(`Route path ${fullRoute.path}(${fullRoute.method.toUpperCase()}) already registered. All route paths and methods combinations must be unique`)
-		this.#routes.push(fullRoute)
+		if (this.#routesByPath.get(pathKey)) throw new Error(`Route path ${pathKey} already registered. All route paths and methods combinations must be unique`)
+		if (this.#routesByKey.get(key)) throw new Error(`Route key ${fullRoute.key} already registered. All route keys must be unique`)
+		this.#routesByPath.set(pathKey, fullRoute)
+		this.#routesByKey.set(key, fullRoute)
 		this.registerRoute(fullRoute)
 	}
 
