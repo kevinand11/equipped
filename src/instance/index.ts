@@ -1,3 +1,4 @@
+import pino from 'pino'
 import { BullJob } from '../bull'
 import { Cache } from '../cache/cache'
 import { RedisCache } from '../cache/types/redis-cache'
@@ -5,15 +6,14 @@ import { MongoDb } from '../db/mongoose'
 import { EventBus } from '../events/'
 import { KafkaEventBus } from '../events/kafka'
 import { addWaitBeforeExit, exit } from '../exit'
-import { ConsoleLogger, Logger } from '../logger'
-import { Server } from '../server/app'
-import { defaulInstanceSetting, Settings } from './settings'
+import { Server, serverTypes } from '../server'
+import { Settings, defaulInstanceSetting } from './settings'
 
 export class Instance {
 	static #initialized = false
 	static #instance: Instance
 	#settings: Settings = { ...defaulInstanceSetting }
-	#logger: Logger | null = null
+	#logger: pino.Logger<any> | null = null
 	#job: BullJob | null = null
 	#cache: Cache | null = null
 	#eventBus: EventBus | null = null
@@ -23,8 +23,8 @@ export class Instance {
 	private constructor () {
 	}
 
-	get logger () {
-		return this.#logger ||= new ConsoleLogger()
+	get logger() {
+		return this.#logger ||= Instance.createLogger()
 	}
 
 	get job () {
@@ -40,7 +40,7 @@ export class Instance {
 	}
 
 	get server () {
-		return this.#server ||= new Server()
+		return this.#server ||= serverTypes[this.settings.server]()
 	}
 
 	get dbs () {
@@ -53,6 +53,18 @@ export class Instance {
 
 	get settings () {
 		return this.#settings
+	}
+
+	static createLogger () {
+		const defaultLogLevel = 'info'
+		return pino<any>({
+			level: Instance.#initialized ? Instance.get().settings?.logLevel ?? defaultLogLevel : defaultLogLevel,
+			serializers: {
+				err: pino.stdSerializers.err,
+				req: pino.stdSerializers.req,
+				res: pino.stdSerializers.res,
+			},
+		})
 	}
 
 	static initialize (settings: Partial<Settings>) {

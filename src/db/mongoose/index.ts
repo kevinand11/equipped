@@ -4,8 +4,8 @@ import getters from 'mongoose-lean-getters'
 import virtuals from 'mongoose-lean-virtuals'
 import { Instance } from '../../instance'
 import { BaseEntity } from '../../structure'
-import { QueryParams, QueryResults } from '../query'
 import { Db, DbChangeCallbacks } from '../_instance'
+import { QueryParams, QueryResults } from '../query'
 import { MongoDbChange } from './changes'
 import { parseMongodbQueryParams } from './query'
 
@@ -31,7 +31,7 @@ export class MongoDb extends Db {
 		return conn
 	}
 
-	change<Model, Entity extends BaseEntity<any>> (
+	change<Model, Entity extends BaseEntity<any, any>> (
 		model: mongoose.Model<Model>,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null

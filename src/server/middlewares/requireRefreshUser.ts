@@ -1,10 +1,15 @@
 import { NotAuthorizedError } from '../../errors'
 import { verifyRefreshToken } from '../../utils/tokens'
-import { Request } from '../controllers/request'
+import { makeMiddleware } from '../types'
 
-export const requireRefreshUser = async (request: Request) => {
+export const requireRefreshUser = makeMiddleware(async (request) => {
 	const refreshToken = request.headers.RefreshToken
-	if (!refreshToken) throw new NotAuthorizedError()
+	if (!refreshToken) throw new NotAuthorizedError('Refresh-Token header missing')
 	request.refreshUser = await verifyRefreshToken(refreshToken)
 	if (!request.refreshUser) throw new NotAuthorizedError()
-}
+}, (route) => {
+	route.security ??= []
+	route.security.push({ RefreshToken: [] })
+	route.descriptions ??= []
+	route.descriptions.push('Requires a valid Refresh-Token header.')
+})

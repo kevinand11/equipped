@@ -1,3 +1,5 @@
+import { Paths } from '../types'
+
 export type QueryResults<Model> = {
     pages: {
         start: number,
@@ -21,18 +23,18 @@ export enum Conditions {
     eq = 'eq', ne = 'ne', in = 'in', nin = 'nin', exists = 'exists'
 }
 
-export type QueryWhere = { field: string, value: any, condition?: Conditions }
-export type QueryWhereBlock = { condition: QueryKeys, value: (QueryWhere | QueryWhereBlock)[] }
-export type QueryWhereClause = QueryWhere | QueryWhereBlock
+export type QueryWhere<T> = { field: Paths<T, string>, value: unknown, condition?: Conditions }
+export type QueryWhereBlock<T> = { condition: QueryKeys, value: QueryWhere<T>[] }
+export type QueryWhereClause<T> = QueryWhere<T> | QueryWhereBlock<T>
 
-export type QueryParams = {
-    where?: QueryWhereClause[]
-    auth?: QueryWhereClause[]
+export type QueryParams<T = unknown> = {
+    where?: QueryWhereClause<T>[]
+    auth?: QueryWhereClause<T>[]
     whereType?: QueryKeys
     authType?: QueryKeys
-    sort?: { field: string, desc?: boolean }[]
+    sort?: { field: Paths<T, string>, desc?: boolean }[]
     limit?: number
     all?: boolean
     page?: number
-    search?: { value: string, fields: string[] }
+    search?: { value: string, fields: Paths<T, string>[] }
 }

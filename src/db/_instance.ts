@@ -2,13 +2,14 @@ import axios from 'axios'
 import { exit } from '../exit'
 import { Instance } from '../instance'
 import { BaseEntity } from '../structure'
+import { DeepPartial } from '../types'
 import { DebeziumSetup, DefaultDebeziumSetup } from './debezium'
 import { QueryParams, QueryResults } from './query'
 
 export abstract class Db {
 	#dbChanges = [] as DbChange<any, any>[]
 
-	abstract change<Model, Entity extends BaseEntity<any>> (
+	abstract change<Model, Entity extends BaseEntity<any, any>> (
 		collection: any,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model | null) => Entity | null
@@ -34,7 +35,7 @@ export abstract class Db {
 	abstract close (): Promise<void>
 }
 
-export abstract class DbChange<Model, Entity extends BaseEntity<any>> {
+export abstract class DbChange<Model, Entity extends BaseEntity<any, any>> {
 	#callbacks: DbChangeCallbacks<Model, Entity> = {}
 	#mapper: (model: Model | null) => Entity | null
 
@@ -71,7 +72,6 @@ export abstract class DbChange<Model, Entity extends BaseEntity<any>> {
 	}
 }
 
-type DeepPartial<T> = { [P in keyof T]?: DeepPartial<T[P]> }
 export type DbChangeCallbacks<Model, Entity> = {
 	created?: (data: { before: null, after: Entity }) => Promise<void>
 	updated?: (data: { before: Entity, after: Entity, changes: DeepPartial<Model> }) => Promise<void>

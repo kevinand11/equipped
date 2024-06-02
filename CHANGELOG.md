@@ -2,6 +2,123 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta.14](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.13...v5.0.0-beta.14) (2024-06-02)
+
+
+### Bug Fixes
+
+* use maps for registered maps for speed ([1882a24](https://github.com/kevinand11/equipped/commit/1882a24d02d666e7779212dbeb67e1022761c823))
+
+## [5.0.0-beta.13](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.12...v5.0.0-beta.13) (2024-06-01)
+
+
+### Features
+
+* add description for each status code ([064a686](https://github.com/kevinand11/equipped/commit/064a68647ea91a5791aad75b1b95988accc38b32))
+
+## [5.0.0-beta.12](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.11...v5.0.0-beta.12) (2024-06-01)
+
+
+### Bug Fixes
+
+* function overloading for validate function ([e1209ab](https://github.com/kevinand11/equipped/commit/e1209ab10f435514d7ac84c3c0af1788d7f3699d))
+* references to BaseEntity ([071a07a](https://github.com/kevinand11/equipped/commit/071a07a827e6c4f73b5cf43ae462541c4518df21))
+
+## [5.0.0-beta.11](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.10...v5.0.0-beta.11) (2024-06-01)
+
+
+### Features
+
+* unique paths and keys for routes ([36d1776](https://github.com/kevinand11/equipped/commit/36d17762b6d31497e9f15883cc05073ff29a886e))
+
+## [5.0.0-beta.10](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.9...v5.0.0-beta.10) (2024-05-31)
+
+
+### Bug Fixes
+
+* generateJSONSchema ([062360b](https://github.com/kevinand11/equipped/commit/062360bb92ccdaa1ae8fa3d167f9bbb71f156f7c))
+
+## [5.0.0-beta.9](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.8...v5.0.0-beta.9) (2024-05-31)
+
+
+### Bug Fixes
+
+* generateJSONSchema ([39031fd](https://github.com/kevinand11/equipped/commit/39031fd7c8d0f18a93c55b3fc542fd33042e4e44))
+
+## [5.0.0-beta.8](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.7...v5.0.0-beta.8) (2024-05-31)
+
+
+### Features
+
+* route descriptions ([26b7323](https://github.com/kevinand11/equipped/commit/26b7323b523f83aedacd55096ae01f285fff1398))
+
+## [5.0.0-beta.7](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-6...v5.0.0-beta.7) (2024-05-31)
+
+
+### Features
+
+* schema for files ([13e8b80](https://github.com/kevinand11/equipped/commit/13e8b80d7893392994331416f769f4c50bc9b975))
+
+
+### Bug Fixes
+
+* start server on 0.0.0.0 ([b654ee8](https://github.com/kevinand11/equipped/commit/b654ee88d1940fa5c89da8824240a62e727e99b8))
+
+## [5.0.0-beta-6](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-5...v5.0.0-beta-6) (2024-05-30)
+
+
+### Bug Fixes
+
+* res body defaults to any ([534b3a4](https://github.com/kevinand11/equipped/commit/534b3a4d20e832733a18b5f4735f9132d09669ad))
+
+## [5.0.0-beta-5](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-4...v5.0.0-beta-5) (2024-05-30)
+
+
+### Bug Fixes
+
+* more graceful defaults for Api ([a2d23f9](https://github.com/kevinand11/equipped/commit/a2d23f9ffcd0d4bcce73c7e3f8346afaea9baf55))
+
+## [5.0.0-beta-4](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-3...v5.0.0-beta-4) (2024-05-30)
+
+## [5.0.0-beta-3](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-2...v5.0.0-beta-3) (2024-05-30)
+
+
+### Features
+
+* allow custom validator in validate ([24a1d7a](https://github.com/kevinand11/equipped/commit/24a1d7a7cf69eabc73148dd9d36324d32ba95fc3))
+
+## [5.0.0-beta-2](https://github.com/kevinand11/equipped/compare/v5.0.0-beta-1...v5.0.0-beta-2) (2024-05-30)
+
+
+### Bug Fixes
+
+* validate expects value of unknown not Record ([f3773f9](https://github.com/kevinand11/equipped/commit/f3773f905f6ccb5713fd30a0870d34fbd40c36fc))
+
+## [5.0.0-beta-1](https://github.com/kevinand11/equipped/compare/v4.4.6...v5.0.0-beta-1) (2024-05-29)
+
+
+### Features
+
+* add request type details on Request class ([d6c3752](https://github.com/kevinand11/equipped/commit/d6c37529e7eeac5a3c2ac20e0a205de49cb0465e))
+* error handler per route ([0eccc21](https://github.com/kevinand11/equipped/commit/0eccc2129c559353efc65ae7ddf6bd0368e4031e))
+* express server swagger ([95c811b](https://github.com/kevinand11/equipped/commit/95c811ba7a1086116c4327c37e1723b08b85059d))
+* fastify swagger and custom schema validation error ([17b8710](https://github.com/kevinand11/equipped/commit/17b8710324c5c515daa8928d7028ef0150a6c30d))
+* hide routes from schema ([304df23](https://github.com/kevinand11/equipped/commit/304df23a413f13cbd77f2eeeae00032d57dcea2c))
+* new JsonValue and Ignored types ([ba73af4](https://github.com/kevinand11/equipped/commit/ba73af440f54549d10a974fd530c35ac912ec4dd))
+* regustere schemas in server and reference by key ([7298bb0](https://github.com/kevinand11/equipped/commit/7298bb0ae6a908325bbef3cd308e2a7787147387))
+* route securities ([a7b91a1](https://github.com/kevinand11/equipped/commit/a7b91a17acf15cc9013fe971b0adf2b96cd129da))
+* schema for fastify ([990529c](https://github.com/kevinand11/equipped/commit/990529ce777d5fcfb6f4c11d634ecdc31aa2ea81))
+* script to generate schemas ([2736ffa](https://github.com/kevinand11/equipped/commit/2736ffa68da13fb0b3ef96809a06be74754257ba))
+* settings to toggle whether to schema validate ([6f64313](https://github.com/kevinand11/equipped/commit/6f643133632963cc5418259d3f97a9cf172bcdaf))
+* throw ValidationError for failed schema validation in express app ([be30a5e](https://github.com/kevinand11/equipped/commit/be30a5e1ff7fe7016bf6effa9566a3a48acafd0e))
+
+
+### Bug Fixes
+
+* catch errors in json schema ([02f4b0b](https://github.com/kevinand11/equipped/commit/02f4b0bb4c8eaa3fc0e1a25b14e2f531101d3d08))
+* fix mongo createCollection command ([f0bfbfa](https://github.com/kevinand11/equipped/commit/f0bfbfa945d48741fbc56b6766483f12b35e0f7c))
+* remove recursive type for QueryWhereBlock to prevent recursive errors in schema gen ([31e3af6](https://github.com/kevinand11/equipped/commit/31e3af64e6ead4b67e5a787df3c0b39671f8e39b))
+
 ### [4.4.6](https://github.com/kevinand11/equipped/compare/v4.4.5...v4.4.6) (2024-04-07)
 
 ### [4.4.5](https://github.com/kevinand11/equipped/compare/v4.4.4...v4.4.5) (2024-04-06)
