@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta.14](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.13...v5.0.0-beta.14) (2024-06-02)
+
+
+### Bug Fixes
+
+* use maps for registered maps for speed ([1882a24](https://github.com/kevinand11/equipped/commit/1882a24d02d666e7779212dbeb67e1022761c823))
+
 ## [5.0.0-beta.13](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.12...v5.0.0-beta.13) (2024-06-01)
 
 
