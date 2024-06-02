@@ -8,7 +8,7 @@ import fastifyStatic from '@fastify/static'
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 import Fastify, { FastifyReply, FastifyRequest, preHandlerHookHandler, RouteHandlerMethod } from 'fastify'
-import fastifySlowDown from 'fastify-slow-down'
+// import fastifySlowDown from 'fastify-slow-down'
 import qs from 'qs'
 
 import { ValidationError } from '../../errors'
@@ -66,11 +66,11 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 				f.value = parsed
 			}
 		})
-		if (this.settings.useSlowDown) app.register(fastifySlowDown, {
+		/* if (this.settings.useSlowDown) app.register(fastifySlowDown, {
 			timeWindow: this.settings.slowDownPeriodInMs,
 			delayAfter: this.settings.slowDownAfter,
 			delay: this.settings.slowDownDelayInMs
-		})
+		}) */
 		if (this.settings.useRateLimit) app.register(fastifyRateLimit, {
 			max: this.settings.rateLimit,
 			timeWindow: this.settings.rateLimitPeriodInMs,

@@ -5,7 +5,7 @@ import cors from 'cors'
 import express from 'express'
 import fileUpload from 'express-fileupload'
 import rateLimit from 'express-rate-limit'
-import slowDown from 'express-slow-down'
+// import slowDown from 'express-slow-down'
 import { FastifySchemaValidationError } from 'fastify/types/schema'
 import helmet from 'helmet'
 import http from 'http'
@@ -56,11 +56,11 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			limit: this.settings.rateLimit,
 			handler: (_: express.Request, res: express.Response) => res.status(StatusCodes.TooManyRequests).json([{ message: 'Too Many Requests' }])
 		}))
-		if (this.settings.useSlowDown) app.use(slowDown({
+		/* if (this.settings.useSlowDown) app.use(slowDown({
 			windowMs: this.settings.slowDownPeriodInMs,
 			delayAfter: this.settings.slowDownAfter,
 			delayMs: this.settings.slowDownDelayInMs
-		}))
+		})) */
 	}
 
 	protected registerRoute (route: FullRoute) {
