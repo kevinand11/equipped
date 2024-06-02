@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta.15](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.14...v5.0.0-beta.15) (2024-06-02)
+
+
+### Bug Fixes
+
+* remove slowdown to avoid esm ([414b2ef](https://github.com/kevinand11/equipped/commit/414b2ef3c047a0c9843ae828b21a1aeaa10925b9))
+
 ## [5.0.0-beta.14](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.13...v5.0.0-beta.14) (2024-06-02)
 
 
