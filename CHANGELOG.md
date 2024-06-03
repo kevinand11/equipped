@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-beta.16](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.15...v5.0.0-beta.16) (2024-06-03)
+
+
+### Features
+
+* support headers in schema ([85a9319](https://github.com/kevinand11/equipped/commit/85a93195ffb9b97927dc22a61d5f118f49598926))
+
+
+### Bug Fixes
+
+* error when cloning objects in toJSON ([1f4cf25](https://github.com/kevinand11/equipped/commit/1f4cf252a6924f0b2c329c11b41f5ac71c68f87b))
+
 ## [5.0.0-beta.15](https://github.com/kevinand11/equipped/compare/v5.0.0-beta.14...v5.0.0-beta.15) (2024-06-02)
 
 
