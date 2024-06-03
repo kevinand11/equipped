@@ -11,7 +11,7 @@ import { Listener } from '../../listeners'
 import { Defined } from '../../types'
 import { parseAuthUser } from '../middlewares'
 import { Request } from '../requests'
-import { Router } from '../routes'
+import { Router, cleanPath } from '../routes'
 import { Route } from '../types'
 
 export type FullRoute = Required<Omit<Route, 'schema' | 'groups' | 'security' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>> & { schema: FastifySchema; onError?: Route['onError'] }
@@ -82,8 +82,6 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	#regRoute (route: Route) {
-		if (!route.path.startsWith('/')) route.path = `/${route.path}`
-
 		const middlewares = [parseAuthUser, ...(route.middlewares ?? [])]
 		middlewares.forEach((m) => m.onSetup?.(route))
 		route.onSetupHandler?.(route)
@@ -95,7 +93,7 @@ export abstract class Server<Req = any, Res = any> {
 		const scheme = schema ?? this.#schemas[key] ?? {}
 		const fullRoute: FullRoute = {
 			method, middlewares, handler, key,
-			path: path.replace(/(\/\s*)+/g, '/'),
+			path: cleanPath(path),
 			onError,
 			schema: {
 				...scheme,

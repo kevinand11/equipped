@@ -1,11 +1,18 @@
 import { ClassPropertiesWrapper } from 'valleyed'
 import { AddMethodImpls, GeneralConfig, Methods, Route, RouteConfig, RouteHandler } from './types'
 
+export const cleanPath = (path: string) => {
+	let cleaned = path.replace(/(\/\s*)+/g, '/')
+	if (!cleaned.startsWith('/')) cleaned = `/${cleaned}`
+	if (cleaned !== '/' && cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1)
+	return cleaned
+}
+
 export const groupRoutes = (config: GeneralConfig, routes: Route[]): Route[] => routes
 	.map((route) => ({
 		...config,
 		...route,
-		path: `${config.path}/${route.path}`.replace(/(\/\s*)+/g, '/'),
+		path: cleanPath(`${config.path}/${route.path}`),
 		groups: [...(config.groups ?? []), ...(route.groups ?? [])],
 		middlewares: [...(config.middlewares ?? []), ...(route.middlewares ?? [])],
 		security: [...(config.security ?? []), ...(route.security ?? [])],
