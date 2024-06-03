@@ -40,6 +40,7 @@ export interface Api<
 	Files extends Record<string, boolean> = Record<string, boolean>,
 	Params extends Record<string, string> = Record<string, string>,
 	Query extends Record<string, any> = Record<string, any>,
+	Headers extends Record<string, string | string[]> = Record<string, string | string[]>,
 	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
 > {
     key: Key
@@ -48,20 +49,22 @@ export interface Api<
     body?: Body
 	files?: Files
     params?: Params
-    query?: Query
+	query?: Query
+	headers?: Headers
 	defaultStatusCode?: DefaultStatus
 }
-export interface ApiDef<T extends AnyApi> {
+export interface ApiDef<T extends Api> {
 	key: Defined<T['key']>
 	method: Defined<T['method']>
 	body: Defined<T['body']>
 	params: Defined<T['params']>
 	query: Defined<T['query']>
 	files: Defined<T['files']>
+	headers: Defined<T['headers']>
 	responses: ApiResponse<T['response'], GetDefaultStatusCode<T['defaultStatusCode']>>
 }
 
-type AnyApi<Method extends MethodTypes = MethodTypes> = Api<any, any, Method, any, any, any, any, any>
+type AnyApi<Method extends MethodTypes = MethodTypes> = Api<any, any, Method, any, any, any, any, any, any>
 type Awaitable<T> = Promise<T> | T
 type Res<T, S extends SupportedStatusCodes> = Awaitable<Response<T, S> | T>
 type InferApiFromApiDef<T> = T extends ApiDef<infer A> ? A : never
@@ -103,5 +106,5 @@ class MiddlewareHandler<Cb extends Function> {
 	}
 }
 
-export const makeMiddleware = <Def extends AnyApi = Api>(...args: Parameters<typeof MiddlewareHandler.make<RouteMiddlewareHandler<Def>>>) => MiddlewareHandler.make(...args)
-export const makeErrorMiddleware = <Def extends AnyApi = Api> (...args: Parameters<typeof MiddlewareHandler.make<ErrorHandler<Def>>>) => MiddlewareHandler.make(...args)
+export const makeMiddleware = <Def extends Api = Api>(...args: Parameters<typeof MiddlewareHandler.make<RouteMiddlewareHandler<Def>>>) => MiddlewareHandler.make(...args)
+export const makeErrorMiddleware = <Def extends Api = Api> (...args: Parameters<typeof MiddlewareHandler.make<ErrorHandler<Def>>>) => MiddlewareHandler.make(...args)
