@@ -1,5 +1,5 @@
 import { ClassPropertiesWrapper } from 'valleyed'
-import { Random } from '../utils/utils'
+import { Random, clone } from '../utils/utils'
 
 const deleteKeyFromObject = (obj: Record<string, any>, keys: string[]) => {
 	if (obj === undefined || obj === null) return
@@ -18,10 +18,10 @@ export class BaseEntity<Keys extends object = object, Ignored extends string = n
 		const json: Record<string, any> = {}
 		Object.keys(this)
 			.concat(Object.getOwnPropertyNames(Object.getPrototypeOf(this)))
-			.filter((k) => k !== 'constructor')
 			.forEach((key) => {
 				const value = this[key]
-				json[key] = value?.toJSON?.(includeIgnored) ?? structuredClone(value)
+				if (typeof value === 'function') return
+				json[key] = value?.toJSON?.(includeIgnored) ?? clone(value)
 			})
 		if (!includeIgnored) this.__ignoreInJSON.concat('__ignoreInJSON' as any).forEach((k: string) => deleteKeyFromObject(json, k.split('.')))
 		return json

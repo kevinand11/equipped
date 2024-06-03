@@ -9,3 +9,11 @@ export class Random {
 		return crypto.randomInt(min, max)
 	}
 }
+
+export function clone<T>(value: T): T {
+	try {
+		return structuredClone(value)
+	} catch (err) {
+		return value
+	}
+}
