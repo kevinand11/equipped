@@ -26,7 +26,7 @@ import { FullRoute, Server } from './base'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express
-	#oapi = openapi(`${this.settings.openapiDocsUrl}/json`, this.baseOpenapiDoc, { coerce: false })
+	#oapi = openapi(`${this.settings.openapiDocsPath}/json`, this.baseOpenapiDoc, { coerce: false })
 	#ref = resolver({ clone: true })
 
 	constructor () {
@@ -44,7 +44,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		app.use(express.urlencoded({ extended: false }))
 		app.use(express.static(this.staticPath))
 		app.use( this.#oapi)
-		app.use(this.settings.openapiDocsUrl, this.#oapi.swaggerui())
+		app.use(this.settings.openapiDocsPath, this.#oapi.swaggerui())
 		app.use(
 			fileUpload({
 				limits: { fileSize: this.settings.maxFileUploadSizeInMb * 1024 * 1024 },

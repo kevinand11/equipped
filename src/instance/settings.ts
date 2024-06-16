@@ -26,7 +26,8 @@ export type Settings = {
 	paginationDefaultLimit: number
 	server: ServerTypes
 	openapiDocsVersion: string
-	openapiDocsUrl: string
+	openapiDocsBaseUrl: string[]
+	openapiDocsPath: string
 	logLevel: Level
 	logRequests: boolean
 	requestSchemaValidation: boolean
@@ -57,7 +58,8 @@ export const defaulInstanceSetting: Settings = {
 	paginationDefaultLimit: 100,
 	server: 'express',
 	openapiDocsVersion: '1.0.0',
-	openapiDocsUrl: '/__docs',
+	openapiDocsBaseUrl: ['/'],
+	openapiDocsPath: '/__docs',
 	logLevel: 'info',
 	logRequests: true,
 	requestSchemaValidation: false,

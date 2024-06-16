@@ -25,6 +25,7 @@ import { FullRoute, Server } from './base'
 function getFastifyApp () {
 	const instance = Instance.get()
 	return Fastify({
+		caseSensitive: false,
 		logger: instance.settings.logRequests ? instance.logger : false,
 		ajv: { customOptions: { coerceTypes: false } },
 		schemaErrorFormatter: (errors, data) => new ValidationError(errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })))
@@ -45,7 +46,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		app.register(fastifyCookie, {})
 		app.register(fastifyCors, { origin: '*' })
 		app.register(fastifySwagger, { openapi: this.baseOpenapiDoc })
-		app.register(fastifySwaggerUi, { routePrefix: this.settings.openapiDocsUrl })
+		app.register(fastifySwaggerUi, { routePrefix: this.settings.openapiDocsPath })
 		app.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
 		app.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' } })
 		app.register(fastifyMultipart, {
