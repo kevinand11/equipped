@@ -14,7 +14,7 @@ enum EmitTypes {
 }
 
 const EmitterEvent = '__listener_emitter'
-type EmitData = { channel: string, type: EmitTypes, data: any }
+type EmitData = { channel: string, type: EmitTypes, after: any, before: any }
 type LeaveRoomParams = { channel: string }
 type JoinRoomParams = { channel: string, token?: string, query: Record<string, any> }
 type Callback = (params: { code: Enum<typeof StatusCodes>, message: string, channel: string }) => void
@@ -44,15 +44,15 @@ export class Listener {
 	}
 
 	async created<T extends BaseEntity<any, any>>(channels: string[], data: T) {
-		await this.#emit(channels, EmitTypes.created, data.toJSON())
+		await this.#emit(channels, EmitTypes.created, { after: data.toJSON(), before: null })
 	}
 
-	async updated<T extends BaseEntity<any, any>>(channels: string[], data: T) {
-		await this.#emit(channels, EmitTypes.updated, data.toJSON())
+	async updated<T extends BaseEntity<any, any>>(channels: string[], after: T, before: T) {
+		await this.#emit(channels, EmitTypes.updated, { after: after.toJSON(), before: before.toJSON() })
 	}
 
 	async deleted<T extends BaseEntity<any, any>>(channels: string[], data: T) {
-		await this.#emit(channels, EmitTypes.deleted, data.toJSON())
+		await this.#emit(channels, EmitTypes.deleted, { before: data.toJSON(), after: null })
 	}
 
 	set callers (callers: SocketCallers) {
@@ -79,9 +79,9 @@ export class Listener {
 		}
 	}
 
-	async #emit (channels: string[], type: EmitTypes, data: any) {
+	async #emit (channels: string[], type: EmitTypes, { before, after }: { after: any, before: any }) {
 		await Promise.all(channels.map(async (channel) => {
-			const emitData: EmitData = { channel, type, data }
+			const emitData: EmitData = { channel, type, before, after }
 			await this.#publisher.publish(emitData as never)
 		}))
 	}
