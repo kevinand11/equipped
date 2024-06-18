@@ -47,7 +47,7 @@ export class Listener {
 		await this.#emit(channels, EmitTypes.created, { after: data.toJSON(), before: null })
 	}
 
-	async updated<T extends BaseEntity<any, any>>(channels: string[], after: T, before: T) {
+	async updated<T extends BaseEntity<any, any>> (channels: string[], { after, before }: { after: T, before: T }) {
 		await this.#emit(channels, EmitTypes.updated, { after: after.toJSON(), before: before.toJSON() })
 	}
 
