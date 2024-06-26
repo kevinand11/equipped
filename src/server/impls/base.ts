@@ -139,7 +139,7 @@ export abstract class Server<Req = any, Res = any> {
 			handler: () => new Response({
 				body: openapiHtml
 					.replaceAll('__API_TITLE__', this.settings.appId)
-					.replaceAll('__OPENAPI_JSON_URL__', this.openapiJsonUrl),
+					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 				headers: { 'Content-Type': 'text/html' },
 			}),
 			hideSchema: true,
