@@ -135,7 +135,7 @@ export abstract class Server<Req = any, Res = any> {
 	async start (port: number) {
 		this.addRoute({
 			method: 'get',
-			path: this.settings.openapiDocsPath,
+			path: `${this.settings.openapiDocsPath}/index.html`,
 			handler: () => new Response({
 				body: openapiHtml
 					.replaceAll('__API_TITLE__', this.settings.appId)
@@ -175,12 +175,8 @@ const openapiHtml = `
   <body>
     <script id="api-reference" data-url="__OPENAPI_JSON_URL__"></script>
     <script>
-      const configuration = {
-        theme: 'purple',
-      };
-
-      document.getElementById('api-reference').dataset.configuration =
-        JSON.stringify(configuration);
+      const configuration = { theme: 'purple' };
+      document.getElementById('api-reference').dataset.configuration = JSON.stringify(configuration);
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   </body>
