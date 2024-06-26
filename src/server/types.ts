@@ -76,6 +76,10 @@ export type RouteMiddlewareHandler<Def extends Api = Api> = (req: Request<Def>) 
 export type HandlerSetup = (route: Route) => void
 
 export type RouteSchema = Omit<FastifySchema, 'tags' | 'security' | 'hide' | 'description'> & { descriptions?: string[]; title?: string }
+type RouteGroup = {
+	name: string
+	description?: string
+}
 
 export interface Route<Def extends ApiDef<AnyApi> = ApiDef<Api>> {
 	key?: Def['key']
@@ -86,7 +90,7 @@ export interface Route<Def extends ApiDef<AnyApi> = ApiDef<Api>> {
 	middlewares?: ReturnType<typeof makeMiddleware>[]
 	onError?: ReturnType<typeof makeErrorMiddleware>
 	schema?: RouteSchema
-	groups?: string[]
+	groups?: (RouteGroup | RouteGroup['name'])[]
 	descriptions?: string[]
 	hideSchema?: boolean
 	security?: Record<string, string[]>[]

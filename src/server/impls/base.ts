@@ -22,6 +22,7 @@ export abstract class Server<Req = any, Res = any> {
 	#routesByKey = new Map<string, FullRoute>()
 	#schemas: Schemas = {}
 	#listener: Listener | null = null
+	#registeredTags: Record<string, boolean>  = {}
 	protected server: http.Server
 	protected staticPath = path.join(process.cwd(), 'public')
 	protected settings = Instance.get().settings
@@ -46,6 +47,7 @@ export abstract class Server<Req = any, Res = any> {
 				}
 			},
 		},
+		tags: [],
 	}
 	protected abstract onLoad (): Promise<void>
 	protected abstract startServer (port: number): Promise<boolean>
@@ -83,6 +85,13 @@ export abstract class Server<Req = any, Res = any> {
 		await this.onLoad()
 	}
 
+	#registerTag (name: string, description: string) {
+		if (this.#registeredTags[name]) return
+		this.#registeredTags[name] = true
+		this.baseOpenapiDoc.tags ??= []
+		this.baseOpenapiDoc.tags.push({ name, description })
+	}
+
 	#regRoute (route: Route) {
 		const middlewares = [parseAuthUser, ...(route.middlewares ?? [])]
 		route.onSetupHandler?.(route)
@@ -92,6 +101,11 @@ export abstract class Server<Req = any, Res = any> {
 		const { method, path, handler, schema, security, onError, hideSchema = false } = route
 		const pathKey = `(${method.toUpperCase()}) ${path}`
 		const { key = pathKey } = route
+
+		const groups = route.groups?.map((g) => typeof g === 'string' ? { name: g } : g) ?? []
+		const groupName = groups.map((g) => g.name).join(' > ')
+		const groupDescription = groups.map((g) => g.description?.trim() ?? '').filter(Boolean).join('\n\n\n\n')
+
 		const scheme = Object.assign({}, schema, this.#schemas[key])
 		const fullRoute: FullRoute = {
 			method, middlewares, handler, key,
@@ -101,7 +115,7 @@ export abstract class Server<Req = any, Res = any> {
 				...scheme,
 				...(scheme.title ? { summary: scheme.title } : {}),
 				hide: hideSchema,
-				tags: route.groups?.length ? [route.groups.join(' > ')] : undefined,
+				tags: groups.length ? [groupName] : undefined,
 				description: route.descriptions?.join('\n\n'),
 				security,
 			}
@@ -111,6 +125,7 @@ export abstract class Server<Req = any, Res = any> {
 		this.#routesByPath.set(pathKey, fullRoute)
 		this.#routesByKey.set(key, fullRoute)
 		this.registerRoute(fullRoute)
+		this.#registerTag(groupName, groupDescription)
 	}
 
 	test () {
@@ -134,11 +149,7 @@ export abstract class Server<Req = any, Res = any> {
 			method: 'get',
 			path: '__health',
 			handler: async () => `${this.settings.appId} service running`,
-			schema: {
-				response: {
-					200: { type: 'string' }
-				}
-			},
+			hideSchema: true,
 		})
 
 		const started = await this.startServer(port)
