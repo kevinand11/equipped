@@ -45,7 +45,7 @@ export abstract class Server<Req = any, Res = any> {
 					in: 'header',
 				}
 			},
-		}
+		},
 	}
 	protected abstract onLoad (): Promise<void>
 	protected abstract startServer (port: number): Promise<boolean>
@@ -85,24 +85,24 @@ export abstract class Server<Req = any, Res = any> {
 
 	#regRoute (route: Route) {
 		const middlewares = [parseAuthUser, ...(route.middlewares ?? [])]
-		middlewares.forEach((m) => m.onSetup?.(route))
 		route.onSetupHandler?.(route)
+		middlewares.forEach((m) => m.onSetup?.(route))
 		route.onError?.onSetup?.(route)
 
 		const { method, path, handler, schema, security, onError, hideSchema = false } = route
 		const pathKey = `(${method.toUpperCase()}) ${path}`
 		const { key = pathKey } = route
-		const scheme = schema ?? this.#schemas[key] ?? {}
+		const scheme = Object.assign({}, schema, this.#schemas[key])
 		const fullRoute: FullRoute = {
 			method, middlewares, handler, key,
 			path: cleanPath(path),
 			onError,
 			schema: {
 				...scheme,
+				...(scheme.title ? { summary: scheme.title } : {}),
 				hide: hideSchema,
-				operationId: scheme.operationId ?? handler.name,
 				tags: route.groups?.length ? [route.groups.join(' > ')] : undefined,
-				description: route.descriptions?.join(' | '),
+				description: route.descriptions?.join('\n\n'),
 				security,
 			}
 		}
@@ -155,12 +155,17 @@ const openapiHtml = `
     <title>__API_TITLE__</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+	<style>
+      .darklight-reference {
+        display: none;
+      }
+    </style>
   </head>
   <body>
     <script id="api-reference" data-url="__OPENAPI_JSON_URL__"></script>
     <script>
       const configuration = {
-        theme: 'default',
+        theme: 'purple',
       };
 
       document.getElementById('api-reference').dataset.configuration =
