@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-alpha.6](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.5...v5.0.0-alpha.6) (2024-06-26)
+
+
+### Bug Fixes
+
+* openapi.json relative to index html ([31658f9](https://github.com/kevinand11/equipped/commit/31658f924263ff88dfe2ac757e032e9412598665))
+
 ## [5.0.0-alpha.5](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.4...v5.0.0-alpha.5) (2024-06-26)
 
 
