@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-alpha.5](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.4...v5.0.0-alpha.5) (2024-06-26)
+
+
+### Features
+
+* route tag descriptions ([644ef9f](https://github.com/kevinand11/equipped/commit/644ef9f5f929b738aabc99f55d3c61af8a85266e))
+
 ## [5.0.0-alpha.4](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.3...v5.0.0-alpha.4) (2024-06-18)
 
 ## [5.0.0-alpha.3](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.2...v5.0.0-alpha.3) (2024-06-18)
