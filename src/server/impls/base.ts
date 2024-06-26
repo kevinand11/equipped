@@ -10,7 +10,7 @@ import { Instance } from '../../instance'
 import { Listener } from '../../listeners'
 import { Defined } from '../../types'
 import { parseAuthUser } from '../middlewares'
-import { Request } from '../requests'
+import { Request, Response } from '../requests'
 import { Router, cleanPath } from '../routes'
 import { Route } from '../types'
 
@@ -25,6 +25,7 @@ export abstract class Server<Req = any, Res = any> {
 	protected server: http.Server
 	protected staticPath = path.join(process.cwd(), 'public')
 	protected settings = Instance.get().settings
+	protected openapiJsonUrl = `${this.settings.openapiDocsPath}/openapi.json`
 	protected baseOpenapiDoc: OpenAPIV3_1.Document = {
 		openapi: '3.0.0',
 		info: { title: this.settings.appId, version: this.settings.openapiDocsVersion },
@@ -119,6 +120,18 @@ export abstract class Server<Req = any, Res = any> {
 	async start (port: number) {
 		this.addRoute({
 			method: 'get',
+			path: this.settings.openapiDocsPath,
+			handler: () => new Response({
+				body: openapiHtml
+					.replaceAll('__API_TITLE__', this.settings.appId)
+					.replaceAll('__OPENAPI_JSON_URL__', this.openapiJsonUrl),
+				headers: { 'Content-Type': 'text/html' },
+			}),
+			hideSchema: true,
+		})
+
+		this.addRoute({
+			method: 'get',
 			path: '__health',
 			handler: async () => `${this.settings.appId} service running`,
 			schema: {
@@ -133,3 +146,27 @@ export abstract class Server<Req = any, Res = any> {
 		return started
 	}
 }
+
+
+const openapiHtml = `
+<!doctype html>
+<html>
+  <head>
+    <title>__API_TITLE__</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <script id="api-reference" data-url="__OPENAPI_JSON_URL__"></script>
+    <script>
+      const configuration = {
+        theme: 'default',
+      };
+
+      document.getElementById('api-reference').dataset.configuration =
+        JSON.stringify(configuration);
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>
+`

@@ -46,7 +46,6 @@
 		"@fastify/rate-limit": "^9.1.0",
 		"@fastify/static": "^7.0.4",
 		"@fastify/swagger": "^8.14.0",
-		"@fastify/swagger-ui": "^3.1.0",
 		"@wesleytodd/openapi": "^1.0.0",
 		"amqp-connection-manager": "^4.1.14",
 		"amqplib": "^0.10.4",

@@ -6,7 +6,6 @@ import fastifyMultipart from '@fastify/multipart'
 import fastifyRateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
 import fastifySwagger from '@fastify/swagger'
-import fastifySwaggerUi from '@fastify/swagger-ui'
 import Fastify, { FastifyReply, FastifyRequest, preHandlerHookHandler, RouteHandlerMethod } from 'fastify'
 // import fastifySlowDown from 'fastify-slow-down'
 import qs from 'qs'
@@ -46,9 +45,11 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		app.register(fastifyCookie, {})
 		app.register(fastifyCors, { origin: '*' })
 		app.register(fastifySwagger, { openapi: this.baseOpenapiDoc })
-		app.register(fastifySwaggerUi, { routePrefix: this.settings.openapiDocsPath })
+		app.get(this.openapiJsonUrl, (_, res) => {
+			res.code(200).send(app.swagger({}))
+		})
 		app.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
-		app.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' } })
+		app.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' },  contentSecurityPolicy: false })
 		app.register(fastifyMultipart, {
 			attachFieldsToBody: 'keyValues',
 			throwFileSizeLimit: false,

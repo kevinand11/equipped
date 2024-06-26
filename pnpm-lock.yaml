@@ -29,9 +29,6 @@ dependencies:
   '@fastify/swagger':
     specifier: ^8.14.0
     version: 8.14.0
-  '@fastify/swagger-ui':
-    specifier: ^3.1.0
-    version: 3.1.0
   '@wesleytodd/openapi':
     specifier: ^1.0.0
     version: 1.0.0(openapi-types@12.1.3)
@@ -617,16 +614,6 @@ packages:
       fastify-plugin: 4.5.1
       fastq: 1.17.1
       glob: 10.4.1
-    dev: false
-
-  /@fastify/swagger-ui@3.1.0:
-    resolution: {integrity: sha512-68jm6k8VzvHXkEBT4Dakm/kkzUlPO4POIi0agWJSWxsYichPBqzjo+IpfqPl4pSJR1zCToQhEOo+cv+yJL2qew==}
-    dependencies:
-      '@fastify/static': 7.0.4
-      fastify-plugin: 4.5.1
-      openapi-types: 12.1.3
-      rfdc: 1.3.1
-      yaml: 2.4.2
     dev: false
 
   /@fastify/swagger@8.14.0:
