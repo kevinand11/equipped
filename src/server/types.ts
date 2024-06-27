@@ -40,7 +40,8 @@ export interface Api<
 	Files extends Record<string, boolean> = Record<string, boolean>,
 	Params extends Record<string, string> = Record<string, string>,
 	Query extends Record<string, any> = Record<string, any>,
-	Headers extends Record<string, string | string[]> = Record<string, string | string[]>,
+	RequestHeaders extends Record<string, string | string[]> = Record<string, string | string[]>,
+	ResponeHeaders extends Record<string, string | string[]> = Record<string, string | string[]>,
 	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
 > {
     key: Key
@@ -50,7 +51,8 @@ export interface Api<
 	files?: Files
     params?: Params
 	query?: Query
-	headers?: Headers
+	requestHeaders?: RequestHeaders
+	responseHeaders?: ResponeHeaders
 	defaultStatusCode?: DefaultStatus
 }
 export interface ApiDef<T extends Api> {
@@ -60,7 +62,8 @@ export interface ApiDef<T extends Api> {
 	params: Defined<T['params']>
 	query: Defined<T['query']>
 	files: Defined<T['files']>
-	headers: Defined<T['headers']>
+	requestHeaders: Defined<T['requestHeaders']>
+	responseHeaders: Defined<T['responseHeaders']>
 	responses: ApiResponse<T['response'], GetDefaultStatusCode<T['defaultStatusCode']>>
 	__apiDef: true
 }

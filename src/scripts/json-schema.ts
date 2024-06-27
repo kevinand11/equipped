@@ -58,7 +58,7 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 					body,
 					params: def.params,
 					querystring: def.query,
-					headers: def.headers,
+					headers: def.requestHeaders,
 					response,
 					operationId: key,
 					summary: name,
