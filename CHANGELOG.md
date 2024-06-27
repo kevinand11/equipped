@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-alpha.7](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.6...v5.0.0-alpha.7) (2024-06-27)
+
+
+### Bug Fixes
+
+* typing of AuthRoles ([8c6ad91](https://github.com/kevinand11/equipped/commit/8c6ad911c8c0b668d53c0c3269414c3b6bdf30aa))
+
 ## [5.0.0-alpha.6](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.5...v5.0.0-alpha.6) (2024-06-26)
 
 
