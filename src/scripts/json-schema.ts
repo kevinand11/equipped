@@ -1,4 +1,5 @@
 import TypescriptOAS, { Definition, Options, createProgram } from 'ts-oas'
+import type { CompilerOptions } from 'typescript'
 import { Instance } from '../instance'
 import { RouteSchema, StatusCodes } from '../server'
 
@@ -7,10 +8,10 @@ const fileSchema = { type: 'string', format: 'binary' }
 const statusCodes = Object.entries(StatusCodes)
 
 export function generateJSONSchema (patterns: (string | RegExp)[], paths: string[], options?: {
-	tsConfigPath?: string | Record<string, unknown>
+	tsConfig?: string | CompilerOptions
 	options?: Options
 }) {
-	const tsProgram = createProgram(paths, options?.tsConfigPath)
+	const tsProgram = createProgram(paths, options?.tsConfig)
 
 	const logger = Instance.createLogger()
 
@@ -25,7 +26,8 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 		.map(([name, { properties: def }]) => {
 			try {
 				const key: string = def?.key?.enum?.at(0) ?? name
-				if (!def || !key || !def.method || !def.__apiDef) return [undefined, undefined] as const
+				const isApiDef = def?.__apiDef?.type === 'boolean' && def?.__apiDef?.enum?.[0] === true
+				if (!def || !isApiDef || !key || !def.method) return [undefined, undefined] as const
 				const response = def.responses.properties ?? def.responses.anyOf?.reduce((acc, cur) => {
 					if (cur.properties) return { ...acc, ...cur.properties }
 					return acc
