@@ -31,8 +31,6 @@ export type JSONValue<T> = T extends JSONPrimitives ? T
     : T extends BaseEntity<infer _M, infer I> ? JSONValue<DeepOmit<T, I, '__ignoreInJSON'>>
     : T extends Function ? never
     : T extends object ? {
-	    [K in keyof T & (number | string) as JSONValue<T[K]> extends never ? never : JSONValue<T[K]> extends undefined ? never : K]: JSONValue<T[K]>
+        [K in keyof T as JSONValue<T[K]> extends never ? never : JSONValue<T[K]> extends undefined ? never : K]: JSONValue<T[K]>
     }
-    : T extends unknown ? unknown
-    : undefined extends T ? JSONValue<Exclude<T, undefined>> | undefined
     : never

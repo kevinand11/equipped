@@ -25,7 +25,7 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 		.map(([name, { properties: def }]) => {
 			try {
 				const key: string = def?.key?.enum?.at(0) ?? name
-				if (!def || !key || !def.method) return [undefined, undefined] as const
+				if (!def || !key || !def.method || !def.__apiDef) return [undefined, undefined] as const
 				const response = def.responses.properties ?? def.responses.anyOf?.reduce((acc, cur) => {
 					if (cur.properties) return { ...acc, ...cur.properties }
 					return acc

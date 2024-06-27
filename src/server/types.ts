@@ -62,6 +62,7 @@ export interface ApiDef<T extends Api> {
 	files: Defined<T['files']>
 	headers: Defined<T['headers']>
 	responses: ApiResponse<T['response'], GetDefaultStatusCode<T['defaultStatusCode']>>
+	__apiDef: true
 }
 
 type AnyApi<Method extends MethodTypes = MethodTypes> = Api<any, any, Method, any, any, any, any, any, any>
