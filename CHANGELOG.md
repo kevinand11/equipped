@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-alpha.8](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.7...v5.0.0-alpha.8) (2024-06-27)
+
+
+### Bug Fixes
+
+* apiDef key for api definition ([29608b9](https://github.com/kevinand11/equipped/commit/29608b98ff9c1e6eab1061fdc03deb95fed4b023))
+
 ## [5.0.0-alpha.7](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.6...v5.0.0-alpha.7) (2024-06-27)
 
 
