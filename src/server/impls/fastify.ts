@@ -24,6 +24,7 @@ import { FullRoute, Server } from './base'
 function getFastifyApp () {
 	const instance = Instance.get()
 	return Fastify({
+		ignoreTrailingSlash: true,
 		caseSensitive: false,
 		logger: instance.settings.logRequests ? instance.logger : false,
 		ajv: { customOptions: { coerceTypes: false } },
