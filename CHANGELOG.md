@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-alpha.9](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.8...v5.0.0-alpha.9) (2024-06-29)
+
+
+### Bug Fixes
+
+* ignoreTrailingSlash for fastify ([dc42565](https://github.com/kevinand11/equipped/commit/dc425659c472d1b8c8e3b899036077c4aa520e00))
+
 ## [5.0.0-alpha.8](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.7...v5.0.0-alpha.8) (2024-06-27)
 
 
