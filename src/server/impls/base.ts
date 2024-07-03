@@ -17,12 +17,24 @@ import { Route } from '../types'
 export type FullRoute = Required<Omit<Route, 'schema' | 'groups' | 'security' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>> & { schema: FastifySchema; onError?: Route['onError'] }
 type Schemas = Record<string, Defined<Route['schema']>>
 
+declare module 'openapi-types' {
+	namespace OpenAPIV3 {
+		interface Document {
+			'x-tagGroups': { name: string; tags: string[] }[]
+		}
+		interface TagObject {
+			'x-displayName': string
+		}
+	}
+}
+
 export abstract class Server<Req = any, Res = any> {
 	#routesByPath = new Map<string, FullRoute>()
 	#routesByKey = new Map<string, FullRoute>()
 	#schemas: Schemas = {}
 	#listener: Listener | null = null
 	#registeredTags: Record<string, boolean>  = {}
+	#registeredTagGroups: Record<string, { name: string; tags: string[] }>  = {}
 	protected server: http.Server
 	protected staticPath = path.join(process.cwd(), 'public')
 	protected settings = Instance.get().settings
@@ -48,6 +60,7 @@ export abstract class Server<Req = any, Res = any> {
 			},
 		},
 		tags: [],
+		'x-tagGroups': [],
 	}
 	protected abstract onLoad (): Promise<void>
 	protected abstract startServer (port: number): Promise<boolean>
@@ -85,11 +98,28 @@ export abstract class Server<Req = any, Res = any> {
 		await this.onLoad()
 	}
 
-	#registerTag (name: string, description: string) {
-		if (this.#registeredTags[name]) return
-		this.#registeredTags[name] = true
-		this.baseOpenapiDoc.tags ??= []
-		this.baseOpenapiDoc.tags.push({ name, description })
+	#buildTag (groups: Defined<Route['groups']>) {
+		if (!groups.length) return undefined
+		const parsed = groups.map((g) => typeof g === 'string' ? { name: g } : g)
+		const name = parsed.map((g) => g.name).join(' > ')
+		const displayName = parsed.at(-1)?.name ?? ''
+		const description = parsed.map((g) => g.description?.trim() ?? '').filter(Boolean).join('\n\n\n\n')
+
+		if (!this.#registeredTags[name]) {
+			this.#registeredTags[name] = true
+			this.baseOpenapiDoc.tags!.push({ name, 'x-displayName': displayName, description })
+
+			const tagGroups = parsed.slice(0, -1)
+			const groupName = tagGroups.map((g) => g.name).join(' > ') || 'default'
+			if (!this.#registeredTagGroups[groupName]) {
+				const group = { name: groupName, tags: [] }
+				this.baseOpenapiDoc['x-tagGroups'].push(group)
+				this.#registeredTagGroups[groupName] = group
+			}
+			this.#registeredTagGroups[groupName].tags = [...new Set([...this.#registeredTagGroups[groupName].tags, name])]
+		}
+
+		return name
 	}
 
 	#regRoute (route: Route) {
@@ -102,9 +132,7 @@ export abstract class Server<Req = any, Res = any> {
 		const pathKey = `(${method.toUpperCase()}) ${path}`
 		const { key = pathKey } = route
 
-		const groups = route.groups?.map((g) => typeof g === 'string' ? { name: g } : g) ?? []
-		const groupName = groups.map((g) => g.name).join(' > ')
-		const groupDescription = groups.map((g) => g.description?.trim() ?? '').filter(Boolean).join('\n\n\n\n')
+		const tag = this.#buildTag(route.groups ?? [])
 
 		const scheme = Object.assign({}, schema, this.#schemas[key])
 		const fullRoute: FullRoute = {
@@ -114,8 +142,9 @@ export abstract class Server<Req = any, Res = any> {
 			schema: {
 				...scheme,
 				...(scheme.title ? { summary: scheme.title } : {}),
+				summary: scheme.title ?? scheme.summary ?? cleanPath(path),
 				hide: hideSchema,
-				tags: groups.length ? [groupName] : undefined,
+				tags: tag ? [tag] : undefined,
 				description: route.descriptions?.join('\n\n'),
 				security,
 			}
@@ -125,7 +154,6 @@ export abstract class Server<Req = any, Res = any> {
 		this.#routesByPath.set(pathKey, fullRoute)
 		this.#routesByKey.set(key, fullRoute)
 		this.registerRoute(fullRoute)
-		this.#registerTag(groupName, groupDescription)
 	}
 
 	test () {
@@ -178,7 +206,7 @@ const openapiHtml = `
       const configuration = { theme: 'purple' };
       document.getElementById('api-reference').dataset.configuration = JSON.stringify(configuration);
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.24.30"></script>
   </body>
 </html>
 `
