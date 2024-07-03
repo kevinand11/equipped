@@ -3,8 +3,6 @@ import type { CompilerOptions } from 'typescript'
 import { Instance } from '../instance'
 import { RouteSchema, StatusCodes } from '../server'
 
-const fileSchema = { type: 'string', format: 'binary' }
-
 const statusCodes = Object.entries(StatusCodes)
 
 export function generateJSONSchema (patterns: (string | RegExp)[], paths: string[], options?: {
@@ -18,6 +16,10 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 	const tsoas = new TypescriptOAS(tsProgram, {
 		ref: false,
 		nullableKeyword: false,
+		schemaProcessor: (schema) => {
+			if (schema.type === 'string' && schema.enum?.at(0) === 'equipped-file-schema') return { type: 'string', format: 'binary' }
+			return schema
+		},
 		...(options?.options ?? {})
 	})
 	const jsonSchema = tsoas.getSchemas(patterns)
@@ -40,24 +42,8 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 					}
 				}
 
-				const body = def.body ?? {}
-				if (def.files?.properties) {
-					const files = def.files ?? {}
-					if (!body.type) body.type = 'object'
-					if (!body.properties) body.properties = {}
-					if (!body.required) body.required = []
-					Object.entries(files.properties ?? {}).forEach(([key, value]) => {
-						const isMultiple = !!value.enum?.at(0)
-						const fileValue = isMultiple ? { type: 'array', items: fileSchema } : fileSchema
-						body.properties![key] = {
-							anyOf: [fileValue, body.properties![key]].filter(Boolean)
-						}
-						if (files.required?.includes(key) && !body.required?.includes(key)) body.required!.push(key)
-					})
-				}
-
 				const schema: RouteSchema | undefined = {
-					body,
+					body: def.body,
 					params: def.params,
 					querystring: def.query,
 					headers: def.requestHeaders,

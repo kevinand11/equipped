@@ -55,13 +55,18 @@ export interface Api<
 	responseHeaders?: ResponeHeaders
 	defaultStatusCode?: DefaultStatus
 }
+
+type FileSchema = 'equipped-file-schema'
+type Files<T extends Record<string, boolean>> = {
+	[key in keyof T]: T[key] extends true ? FileSchema[] : FileSchema
+}
+
 export interface ApiDef<T extends Api> {
 	key: Defined<T['key']>
 	method: Defined<T['method']>
-	body: Defined<T['body']>
+	body: Defined<T['body']> & Files<Defined<T['files']>>
 	params: Defined<T['params']>
 	query: Defined<T['query']>
-	files: Defined<T['files']>
 	requestHeaders: Defined<T['requestHeaders']>
 	responseHeaders: Defined<T['responseHeaders']>
 	responses: ApiResponse<T['response'], GetDefaultStatusCode<T['defaultStatusCode']>>
