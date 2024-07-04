@@ -4,12 +4,13 @@ import { StorageFile } from '../storage'
 import { Defined } from '../types'
 import { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
-import { Api, StatusCodes, SupportedStatusCodes } from './types'
+import { Api, FileSchema, StatusCodes, SupportedStatusCodes } from './types'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
+type IsFileOrFileArray<T> = T extends FileSchema ? T : T extends FileSchema[] ? T : never
 type ApiToFiles<Def extends Api> = {
-	[K in keyof Defined<Def['files']>]: StorageFile[]
+	[K in keyof Def['body'] as IsFileOrFileArray<Def['body'][K]> extends never ? never : K]: StorageFile[]
 }
 
 export class Request<Def extends Api = Api> {

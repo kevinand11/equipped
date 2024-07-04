@@ -37,7 +37,6 @@ export interface Api<
 	Key extends string = string,
 	Method extends MethodTypes = MethodTypes,
 	Body = any,
-	Files extends Record<string, boolean> = Record<string, boolean>,
 	Params extends Record<string, string> = Record<string, string>,
 	Query extends Record<string, any> = Record<string, any>,
 	RequestHeaders extends Record<string, string | string[]> = Record<string, string | string[]>,
@@ -48,7 +47,6 @@ export interface Api<
     method: Method
     response: Res
     body?: Body
-	files?: Files
     params?: Params
 	query?: Query
 	requestHeaders?: RequestHeaders
@@ -56,15 +54,16 @@ export interface Api<
 	defaultStatusCode?: DefaultStatus
 }
 
-type FileSchema = 'equipped-file-schema'
-type Files<T extends Record<string, boolean>> = {
-	[key in keyof T]: T[key] extends true ? FileSchema[] : FileSchema
-}
+/**
+ * @format binary
+ * @example uploaded binary file
+ */
+export type FileSchema = string
 
 export interface ApiDef<T extends Api> {
 	key: Defined<T['key']>
 	method: Defined<T['method']>
-	body: Defined<T['body']> & Files<Defined<T['files']>>
+	body: Defined<T['body']>
 	params: Defined<T['params']>
 	query: Defined<T['query']>
 	requestHeaders: Defined<T['requestHeaders']>

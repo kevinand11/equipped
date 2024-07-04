@@ -16,10 +16,6 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 	const tsoas = new TypescriptOAS(tsProgram, {
 		ref: false,
 		nullableKeyword: false,
-		schemaProcessor: (schema) => {
-			if (schema.type === 'string' && schema.enum?.at(0) === 'equipped-file-schema') return { type: 'string', format: 'binary' }
-			return schema
-		},
 		...(options?.options ?? {})
 	})
 	const jsonSchema = tsoas.getSchemas(patterns)
