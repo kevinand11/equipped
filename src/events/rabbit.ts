@@ -1,6 +1,6 @@
 import amqp, { ChannelWrapper } from 'amqp-connection-manager'
 import { ConfirmChannel } from 'amqplib'
-import { addWaitBeforeExit } from 'src/exit'
+import { addWaitBeforeExit } from '../exit'
 import { DefaultSubscribeOptions, EventBus, Events, SubscribeOptions } from '.'
 import { Instance } from '../instance'
 import { parseJSONValue } from '../utils/json'
