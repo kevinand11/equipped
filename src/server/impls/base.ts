@@ -170,11 +170,24 @@ export abstract class Server<Req = any, Res = any> {
 			}),
 			hideSchema: true,
 		})
+
 		this.addRoute({
 			method: 'get',
 			path: `${this.settings.openapiDocsPath}/index.html`,
 			handler: () => new Response({
-				body: openapiHtml
+				body: scalarHtml
+					.replaceAll('__API_TITLE__', this.settings.appId)
+					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
+				headers: { 'Content-Type': 'text/html' },
+			}),
+			hideSchema: true,
+		})
+
+		this.addRoute({
+			method: 'get',
+			path: `${this.settings.openapiDocsPath}/redoc.html`,
+			handler: () => new Response({
+				body: redocHtml
 					.replaceAll('__API_TITLE__', this.settings.appId)
 					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 				headers: { 'Content-Type': 'text/html' },
@@ -196,7 +209,7 @@ export abstract class Server<Req = any, Res = any> {
 }
 
 
-const openapiHtml = `
+const scalarHtml = `
 <!doctype html>
 <html>
   <head>
@@ -215,7 +228,28 @@ const openapiHtml = `
       const configuration = { theme: 'purple' };
       document.getElementById('api-reference').dataset.configuration = JSON.stringify(configuration);
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.24.30"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.24.36"></script>
+  </body>
+</html>
+`
+
+const redocHtml = `
+<!doctype html>
+<html>
+  <head>
+    <title>__API_TITLE__</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+	<style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <redoc spec-url="__OPENAPI_JSON_URL__"></redoc>
+    <script src="https://cdn.redoc.ly/redoc/v2.1.5/bundles/redoc.standalone.js"> </script>
   </body>
 </html>
 `
