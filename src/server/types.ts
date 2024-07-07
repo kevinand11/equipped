@@ -54,11 +54,7 @@ export interface Api<
 	responseHeaders?: ResponeHeaders
 	defaultStatusCode?: DefaultStatus
 }
-/**
- * @type string
- * @format binary
- * @description uploaded binary file 
- */
+
 export type FileSchema = 'equipped-file-schema'
 
 export interface ApiDef<T extends Api> {

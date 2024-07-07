@@ -4,6 +4,11 @@ import { Instance } from '../instance'
 import { RouteSchema, StatusCodes } from '../server'
 
 const statusCodes = Object.entries(StatusCodes)
+const fileSchema = { type: 'string', format: 'binary', example: 'uploaded binary file' }
+
+function isFile (schema: Definition) {
+	return schema.type === 'string' && schema.enum?.at(0) === 'equipped-file-schema'
+}
 
 export function generateJSONSchema (patterns: (string | RegExp)[], paths: string[], options?: {
 	tsConfig?: string | CompilerOptions
@@ -17,7 +22,15 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 		ref: false,
 		nullableKeyword: false,
 		schemaProcessor: (schema) => {
-			if (schema.type === 'string' && schema.enum?.at(0) === 'equipped-file-schema') return { type: 'string', format: 'binary', example: 'uploaded binary file' }
+			if (isFile(schema)) return fileSchema
+			if (schema.anyOf) {
+				const index = schema.anyOf.findIndex(isFile)
+				if (index !== -1) schema.anyOf[index] = fileSchema
+			}
+			if (schema.allOf) {
+				const index = schema.allOf.findIndex(isFile)
+				if (index !== -1) schema.allOf[index] = fileSchema
+			}
 			return schema
 		},
 		...(options?.options ?? {})
