@@ -17,6 +17,7 @@ export type MethodTypes = Enum<typeof Methods>
 
 export const StatusCodes = {
 	Ok: 200,
+	Found: 302,
 	BadRequest: 400,
 	NotAuthenticated: 401,
 	NotAuthorized: 403,
@@ -28,7 +29,7 @@ export const StatusCodes = {
 
 export type SupportedStatusCodes = Enum<typeof StatusCodes>
 
-type GoodStatusCodes = 200
+type GoodStatusCodes = 200 | 302
 type ApiErrors = Record<Exclude<SupportedStatusCodes, GoodStatusCodes>, JSONValue<CustomError['serializedErrors']>>
 type ApiResponse<T, StatusCode extends SupportedStatusCodes> = Record<StatusCode, JSONValue<T>> | Omit<ApiErrors, StatusCode>
 
@@ -53,7 +54,11 @@ export interface Api<
 	responseHeaders?: ResponeHeaders
 	defaultStatusCode?: DefaultStatus
 }
-
+/**
+ * @type string
+ * @format binary
+ * @description uploaded binary file 
+ */
 export type FileSchema = 'equipped-file-schema'
 
 export interface ApiDef<T extends Api> {

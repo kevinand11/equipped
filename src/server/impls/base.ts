@@ -12,7 +12,7 @@ import { Defined } from '../../types'
 import { parseAuthUser } from '../middlewares'
 import { Request, Response } from '../requests'
 import { Router, cleanPath } from '../routes'
-import { Route } from '../types'
+import { Route, StatusCodes } from '../types'
 
 export type FullRoute = Required<Omit<Route, 'schema' | 'groups' | 'security' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>> & { schema: FastifySchema; onError?: Route['onError'] }
 type Schemas = Record<string, Defined<Route['schema']>>
@@ -161,6 +161,15 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	async start (port: number) {
+		this.addRoute({
+			method: 'get',
+			path: `${this.settings.openapiDocsPath}/`,
+			handler: () => new Response({
+				status: StatusCodes.Found,
+				headers: { 'Location': './index.html' },
+			}),
+			hideSchema: true,
+		})
 		this.addRoute({
 			method: 'get',
 			path: `${this.settings.openapiDocsPath}/index.html`,

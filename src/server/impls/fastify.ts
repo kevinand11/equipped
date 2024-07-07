@@ -142,8 +142,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		const handler: RouteHandlerMethod = async (req, reply) => {
 			const rawResponse = await cb(await this.parse(req, reply))
 			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse })
-			const type = response.shouldJSONify ? 'json' : 'send'
-			if (!response.piped) reply.status(response.status).headers(response.headers)[type](response.body)
+			if (!response.piped) reply.status(response.status).headers(response.headers).send(response.body)
 		}
 		return handler
 	}
