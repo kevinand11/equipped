@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-alpha.14](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.13...v5.0.0-alpha.14) (2024-07-07)
+
+
+### Features
+
+* add redocs doc ([f98347e](https://github.com/kevinand11/equipped/commit/f98347e5b815467a9c2a8bff97bdbfa166bc4c7d))
+* redirect to scalar doc ([884f271](https://github.com/kevinand11/equipped/commit/884f271910d4bc2b1f2d50a6bbcf76f6889db85e))
+
 ## [5.0.0-alpha.13](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.12...v5.0.0-alpha.13) (2024-07-04)
 
 ## [5.0.0-alpha.12](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.11...v5.0.0-alpha.12) (2024-07-04)
