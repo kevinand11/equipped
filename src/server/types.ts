@@ -54,11 +54,7 @@ export interface Api<
 	defaultStatusCode?: DefaultStatus
 }
 
-/**
- * @format binary
- * @example uploaded binary file
- */
-export type FileSchema = string
+export type FileSchema = 'equipped-file-schema'
 
 export interface ApiDef<T extends Api> {
 	key: Defined<T['key']>

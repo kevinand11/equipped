@@ -8,22 +8,29 @@ import { Api, FileSchema, StatusCodes, SupportedStatusCodes } from './types'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
-type IsFileOrFileArray<T> = T extends FileSchema ? T : T extends FileSchema[] ? T : never
-type ApiToFiles<Def extends Api> = {
-	[K in keyof Def['body'] as IsFileOrFileArray<Def['body'][K]> extends never ? never : K]: StorageFile[]
+type IsFileOrFileArray<T> = T extends FileSchema ? StorageFile[] : T extends FileSchema[] ? StorageFile[] : T
+type ApiToBody<Def extends Api> = MappedUnion<Def['body']>
+type UnionMapper<T> = {
+    [K in T extends infer P ? keyof P : never]: T extends infer P
+        ? K extends keyof P
+    ? {
+        [Q in keyof T]: IsFileOrFileArray<T[Q]>
+	}
+	: never
+: never
 }
+type MappedUnion<T> = UnionMapper<T>[keyof UnionMapper<T>]
 
 export class Request<Def extends Api = Api> {
 	readonly ip: string | undefined
 	readonly method: Def['method']
 	readonly path: string
-	readonly body: Def['body']
+	readonly body: ApiToBody<Def>
 	readonly params: Defined<Def['params']>
 	readonly query: Defined<Def['query']>
 	readonly cookies: Record<string, any>
 	readonly rawBody: unknown
 	readonly headers: Record<HeaderKeys, string | null> & Record<string, string | string[] | null>
-	readonly files: ApiToFiles<Def>
 	authUser: null | AuthUser = null
 	refreshUser: null | RefreshUser = null
 	pendingError: null | CustomError = null
@@ -38,7 +45,7 @@ export class Request<Def extends Api = Api> {
 		query: Def['query']
 		cookies: Record<string, any>
 		headers: Record<HeaderKeys, string | null> & Record<string, string | string[] | null>
-		files: ApiToFiles<Def>
+		files: Record<string, StorageFile[]>
 		method: Def['method']
 		path: string,
 	}, private readonly response: Writable) {
@@ -46,10 +53,10 @@ export class Request<Def extends Api = Api> {
 		this.method = method
 		this.path = path
 		this.rawBody = body
-		this.body =  Object.fromEntries(
+		this.body =  Object.assign(Object.fromEntries(
 			Object.entries(body && typeof body === 'object' ? body : { raw: body })
 				.map(([key, value]) => [key, parseJSONValue(value)])
-		) as any
+		), files) as any
 		this.cookies = cookies
 		this.params = params as any
 		this.query = Object.fromEntries(
@@ -59,7 +66,6 @@ export class Request<Def extends Api = Api> {
 		if (this.query?.['auth']) delete this.query['auth']
 		if (this.query?.['authType']) delete this.query['authType']
 		this.headers = headers
-		this.files = files
 	}
 
 	#parseQueryStrings (value: unknown) {
