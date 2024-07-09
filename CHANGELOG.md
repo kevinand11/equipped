@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-alpha.16](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.15...v5.0.0-alpha.16) (2024-07-09)
+
+
+### Bug Fixes
+
+* to json on BaseEntity ([9196906](https://github.com/kevinand11/equipped/commit/919690689694823ccce6515e41df98fee3012666))
+
 ## [5.0.0-alpha.15](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.14...v5.0.0-alpha.15) (2024-07-09)
 
 
