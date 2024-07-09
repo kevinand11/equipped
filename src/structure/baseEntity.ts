@@ -23,11 +23,11 @@ export class BaseEntity<Keys extends object = object, Ignored extends string = n
 				if (typeof value === 'function') return
 				json[key] = value?.toJSON?.(includeIgnored) ?? clone(value)
 			})
-		if (!includeIgnored) this.__ignoreInJSON.concat('__ignoreInJSON' as any).forEach((k: string) => deleteKeyFromObject(json, k.split('.')))
+		if (includeIgnored !== true) this.__ignoreInJSON.concat('__ignoreInJSON' as any).forEach((k: string) => deleteKeyFromObject(json, k.split('.')))
 		return json
 	}
 
-	toString (includeIgnored = false) {
+	toString (includeIgnored = true) {
 		return JSON.stringify(this.toJSON(includeIgnored), null, 2)
 	}
 }
