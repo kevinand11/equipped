@@ -27,7 +27,7 @@ export class BaseEntity<Keys extends object = object, Ignored extends string = n
 		return json
 	}
 
-	toString (includeIgnored = true) {
+	toString (includeIgnored = false) {
 		return JSON.stringify(this.toJSON(includeIgnored), null, 2)
 	}
 }
