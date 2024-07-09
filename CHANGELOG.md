@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-alpha.15](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.14...v5.0.0-alpha.15) (2024-07-09)
+
+
+### Bug Fixes
+
+* excludeIgnored by default ([983caac](https://github.com/kevinand11/equipped/commit/983caac977ccd2c5eeca17c144384bc057286440))
+
 ## [5.0.0-alpha.14](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.13...v5.0.0-alpha.14) (2024-07-07)
 
 
