@@ -35,7 +35,7 @@ export function validate<T extends Record<string, VCore<any>>>(schema: T, value:
 export function validate<T extends VCore<any>>(schema: T, value: unknown) :ExtractI<T>
 // eslint-disable-next-line no-redeclare
 export function validate(schema, value) {
-	const validator = /* schema instanceof Validate.VCore ? schema :  */Validate.v.object(schema)
+	const validator = schema instanceof Validate.VCore ? schema : Validate.v.object(schema)
 	const validity = validator.parse(value)
 	if (validity.valid) return validity.value
 	const errorsObject = validity.errors
