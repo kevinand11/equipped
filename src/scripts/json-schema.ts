@@ -23,14 +23,8 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 		nullableKeyword: false,
 		schemaProcessor: (schema) => {
 			if (isFile(schema)) return fileSchema
-			if (schema.anyOf) {
-				const index = schema.anyOf.findIndex(isFile)
-				if (index !== -1) schema.anyOf[index] = fileSchema
-			}
-			if (schema.allOf) {
-				const index = schema.allOf.findIndex(isFile)
-				if (index !== -1) schema.allOf[index] = fileSchema
-			}
+			if (schema.anyOf) schema.anyOf = schema.anyOf.map((s) => isFile(s) ? fileSchema : s)
+			if (schema.allOf) schema.allOf = schema.allOf.map((s) => isFile(s) ? fileSchema : s)
 			return schema
 		},
 		...(options?.options ?? {})

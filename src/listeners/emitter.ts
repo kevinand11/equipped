@@ -68,7 +68,7 @@ export class Listener {
 	}
 
 	#getJoinCb (channel: string) {
-		const matcher = (key: string) => Match(key, { encode: encodeURI, decode: decodeURIComponent })(channel)
+		const matcher = (key: string) => Match(key)(channel)
 		const matchedChannel = Object.keys(this.#routes).find(matcher) ?? null
 		if (!matchedChannel) return null
 		const match = matcher(matchedChannel)
