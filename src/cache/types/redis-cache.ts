@@ -34,4 +34,12 @@ export class RedisCache extends Cache {
 		if (ttlInSecs > 0) await this.client.setEx(key, ttlInSecs, data)
 		else this.client.set(key, data)
 	}
+
+	async getOrSet<T> (key: string, fn: () => Promise<T>, ttlInSecs: number) {
+		const cached = await this.get(key)
+		if (cached) return JSON.parse(cached)
+
+		const result = await fn()
+		await this.set(key, JSON.stringify(result), ttlInSecs)
+	}
 }
