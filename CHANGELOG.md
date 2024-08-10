@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.2](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.1...v5.0.0-rc.2) (2024-08-10)
+
+
+### Features
+
+* getOrSet in cache ([f21f132](https://github.com/kevinand11/equipped/commit/f21f1326221a5169c84de6b26483dc2cf6dd98c4))
+
 ## [5.0.0-rc.1](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.17...v5.0.0-rc.1) (2024-07-31)
 
 ## [5.0.0-alpha.17](https://github.com/kevinand11/equipped/compare/v5.0.0-alpha.16...v5.0.0-alpha.17) (2024-07-12)
