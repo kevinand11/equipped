@@ -75,7 +75,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			this.#oapi[this.settings.requestSchemaValidation ? 'validPath' : 'path'](openapi),
 			(error: Error, _, __, next) => {
 				if ('validationErrors' in error) {
-					const validationErrors = error.validationErrors as FastifySchemaValidationError[]
+					const validationErrors = <FastifySchemaValidationError[]>error.validationErrors
 					throw new ValidationError(validationErrors.map((error) => ({
 						messages: [error.message ?? ''],
 						field: error.instancePath.replaceAll('/', '.').split('.').filter(Boolean).join('.')
@@ -97,7 +97,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 				const app = this.server.listen({ host: '0.0.0.0', port }, async () => resolve(true))
 				addWaitBeforeExit(app.close)
 			} catch (err) {
-				reject(err as Error)
+				reject(<Error>err)
 			}
 		})
 	}
@@ -108,11 +108,11 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
-			AccessToken: req.get('Access-Token') ?? null,
-			RefreshToken: req.get('Refresh-Token') ?? null,
-			ContentType: req.get('Content-Type') ?? null,
-			Referer: req.get('referer') ?? null,
-			UserAgent: req.get('User-Agent') ?? null
+			AccessToken: req.get('Access-Token'),
+			RefreshToken: req.get('Refresh-Token'),
+			ContentType: req.get('Content-Type'),
+			Referer: req.get('referer'),
+			UserAgent: req.get('User-Agent')
 		}
 		const files = Object.fromEntries(
 			await Promise.all(
@@ -126,7 +126,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 						data: f.data,
 						duration: await getMediaDuration(f.data),
 					})))
-					return [key, fileArray] as const
+					return <const>[key, fileArray]
 				})
 			)
 		)
@@ -138,9 +138,10 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			cookies: req.cookies ?? {},
 			params: req.params ?? {},
 			query: req.query ?? {},
-			method: req.method as any,
+			method: <any>req.method,
 			path: req.path,
-			headers, files,
+			headers,
+			files,
 		}, res)
 	}
 
@@ -148,9 +149,9 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
 				const rawResponse = await cb(await this.parse(req, res))
-				const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse })
+				const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.Ok, headers: {} })
 				if (!response.piped) {
-					Object.entries(response.headers).forEach(([key, value]) => res.header(key, value))
+					Object.entries(response.headers).forEach(([key, value]) => res.header(key, <any>value))
 					const type = response.shouldJSONify ? 'json' : 'send'
 					res.status(response.status)[type](response.body).end()
 				}
@@ -174,9 +175,9 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
 		return async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
 			const rawResponse = await cb(await this.parse(req, res), err)
-			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest })
+			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
 			if (!response.piped) {
-				Object.entries(response.headers).forEach(([key, value]) => res.header(key, value))
+				Object.entries(response.headers).forEach(([key, value]) => value && res.header(key, value))
 				res.status(response.status).send(response.body).end()
 			}
 		}

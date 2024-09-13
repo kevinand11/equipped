@@ -40,8 +40,8 @@ export interface Api<
 	Body = any,
 	Params extends Record<string, string> = Record<string, string>,
 	Query extends Record<string, any> = Record<string, any>,
-	RequestHeaders extends Record<string, string | string[]> = Record<string, string | string[]>,
-	ResponeHeaders extends Record<string, string | string[]> = Record<string, string | string[]>,
+	RequestHeaders extends HeadersType = HeadersType,
+	ResponseHeaders extends HeadersType = HeadersType,
 	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
 > {
     key: Key
@@ -51,10 +51,11 @@ export interface Api<
     params?: Params
 	query?: Query
 	requestHeaders?: RequestHeaders
-	responseHeaders?: ResponeHeaders
+	responseHeaders?: ResponseHeaders
 	defaultStatusCode?: DefaultStatus
 }
 
+export type HeadersType = Record<string, string | string[] | undefined>
 export type FileSchema = 'equipped-file-schema'
 
 export interface ApiDef<T extends Api> {
@@ -71,12 +72,12 @@ export interface ApiDef<T extends Api> {
 
 type AnyApi<Method extends MethodTypes = MethodTypes> = Api<any, any, Method, any, any, any, any, any, any>
 type Awaitable<T> = Promise<T> | T
-type Res<T, S extends SupportedStatusCodes> = Awaitable<Response<T, S> | T>
+type Res<T, S extends SupportedStatusCodes, H extends HeadersType> = Awaitable<Response<T, S, H> | T>
 type InferApiFromApiDef<T> = T extends ApiDef<infer A> ? A : never
 type GetDefaultStatusCode<T extends Api['defaultStatusCode']> = T extends SupportedStatusCodes ? T : 200
 
-export type RouteHandler<Def extends Api = Api> = (req: Request<Def>) => Res<Def['response'], GetDefaultStatusCode<Def['defaultStatusCode']>>
-export type ErrorHandler<Def extends Api = Api> = (req: Request<Def>, err: Error) => Res<CustomError['serializedErrors'], GetDefaultStatusCode<Def['defaultStatusCode']>>
+export type RouteHandler<Def extends Api = Api> = (req: Request<Def>) => Res<Def['response'], GetDefaultStatusCode<Def['defaultStatusCode']>, Defined<Def['responseHeaders'], HeadersType>>
+export type ErrorHandler<Def extends Api = Api> = (req: Request<Def>, err: Error) => Res<CustomError['serializedErrors'], GetDefaultStatusCode<Def['defaultStatusCode']>, Defined<Def['responseHeaders'], HeadersType>>
 export type RouteMiddlewareHandler<Def extends Api = Api> = (req: Request<Def>) => Awaitable<void>
 export type HandlerSetup = (route: Route) => void
 

@@ -165,6 +165,7 @@ export abstract class Server<Req = any, Res = any> {
 			method: 'get',
 			path: `${this.settings.openapiDocsPath}/`,
 			handler: () => new Response({
+				body: '',
 				status: StatusCodes.Found,
 				headers: { 'Location': './index.html' },
 			}),
@@ -179,6 +180,7 @@ export abstract class Server<Req = any, Res = any> {
 					.replaceAll('__API_TITLE__', this.settings.appId)
 					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 				headers: { 'Content-Type': 'text/html' },
+				status: StatusCodes.Ok,
 			}),
 			hideSchema: true,
 		})
@@ -191,6 +193,7 @@ export abstract class Server<Req = any, Res = any> {
 					.replaceAll('__API_TITLE__', this.settings.appId)
 					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 				headers: { 'Content-Type': 'text/html' },
+				status: StatusCodes.Ok,
 			}),
 			hideSchema: true,
 		})

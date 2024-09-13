@@ -96,7 +96,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		this.#fastifyApp.register(async (inst) => {
 			inst.route({
 				url: route.path,
-				method: route.method as any,
+				method: <any>route.method,
 				handler: this.makeController(route.handler),
 				preHandler: route.middlewares.map((m) => this.makeMiddleware(m.cb)),
 				errorHandler: route.onError ? this.makeErrorMiddleware(route.onError.cb) : undefined,
@@ -106,7 +106,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	}
 
 	protected async startServer (port: number) {
-		this.#fastifyApp.setNotFoundHandler(this.makeController(notFoundHandler.cb as any))
+		this.#fastifyApp.setNotFoundHandler(this.makeController(<any>notFoundHandler.cb))
 		this.#fastifyApp.setErrorHandler(this.makeErrorMiddleware(errorHandler.cb))
 		await this.#fastifyApp.listen({ port, host: '0.0.0.0' })
 		addWaitBeforeExit(this.#fastifyApp.close)
@@ -117,11 +117,11 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
-			AccessToken: req.headers['access-token']?.toString() ?? null,
-			RefreshToken: req.headers['refresh-token']?.toString() ?? null,
-			ContentType: req.headers['content-type']?.toString() ?? null,
-			Referer: req.headers['referer']?.toString() ?? null,
-			UserAgent: req.headers['user-agent']?.toString() ?? null
+			AccessToken: req.headers['access-token']?.toString(),
+			RefreshToken: req.headers['refresh-token']?.toString(),
+			ContentType: req.headers['content-type']?.toString(),
+			Referer: req.headers['referer']?.toString(),
+			UserAgent: req.headers['user-agent']?.toString()
 		}
 		const { body, files } = excludeBufferKeys(req.body ?? {})
 
@@ -129,9 +129,9 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			ip: req.ip,
 			body,
 			cookies: req.cookies ?? {},
-			params: req.params ?? {} as any,
+			params: req.params ?? <any>{},
 			query: req.query ?? {},
-			method: req.method as any,
+			method: <any>req.method,
 			path: req.url,
 			headers,
 			files,
@@ -141,7 +141,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	makeController(cb: Defined<Route['handler']>) {
 		const handler: RouteHandlerMethod = async (req, reply) => {
 			const rawResponse = await cb(await this.parse(req, reply))
-			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse })
+			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.Ok, headers: {} })
 			if (!response.piped) reply.status(response.status).headers(response.headers).send(response.body)
 		}
 		return handler
@@ -157,7 +157,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
 		const handler: FastifyInstance['errorHandler'] = async (error, req, reply)=> {
 			const rawResponse = await cb(await this.parse(req, reply), error)
-			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest })
+			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
 			if (!response.piped) reply.status(response.status).headers(response.headers).send(response.body)
 		}
 		return handler
@@ -171,13 +171,13 @@ declare module 'fastify' {
 }
 
 function excludeBufferKeys<T> (body: T) {
-	if (typeof body !== 'object') return { body: body as T, files: {} }
+	if (typeof body !== 'object') return { body, files: {} }
 	const entries = Object.entries(body ?? {})
 	const isFile = (val: any) => Array.isArray(val) ? isFile(val.at(0)) : Buffer.isBuffer(val?.data)
 	const fileEntries = entries.filter(([_, value]) => isFile(value)).map(([key, value]) => [key, Array.isArray(value) ? value : [value]])
 	const nonFileEntries = entries.filter(([_, value]) => !isFile(value))
 	return {
-		body: Object.fromEntries(nonFileEntries) as T,
-		files: Object.fromEntries(fileEntries) as Record<string, StorageFile[]>
+		body: <T>Object.fromEntries(nonFileEntries),
+		files: <Record<string, StorageFile[]>>Object.fromEntries(fileEntries)
 	}
 }

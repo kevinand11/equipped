@@ -4,7 +4,7 @@ import { StorageFile } from '../storage'
 import { Defined } from '../types'
 import { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
-import { Api, FileSchema, StatusCodes, SupportedStatusCodes } from './types'
+import { Api, FileSchema, HeadersType, StatusCodes, SupportedStatusCodes } from './types'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
@@ -30,7 +30,7 @@ export class Request<Def extends Api = Api> {
 	readonly query: Defined<Def['query']>
 	readonly cookies: Record<string, any>
 	readonly rawBody: unknown
-	readonly headers: Record<HeaderKeys, string | null> & Record<string, string | string[] | null>
+	readonly headers: Record<HeaderKeys, string | undefined> & Defined<Def['requestHeaders'], {}> & HeadersType
 	authUser: null | AuthUser = null
 	refreshUser: null | RefreshUser = null
 	pendingError: null | CustomError = null
@@ -44,7 +44,7 @@ export class Request<Def extends Api = Api> {
 		params: Def['params']
 		query: Def['query']
 		cookies: Record<string, any>
-		headers: Record<HeaderKeys, string | null> & Record<string, string | string[] | null>
+		headers: Record<HeaderKeys, string | undefined> & Defined<Def['requestHeaders'], {}> & HeadersType
 		files: Record<string, StorageFile[]>
 		method: Def['method']
 		path: string,
@@ -53,16 +53,16 @@ export class Request<Def extends Api = Api> {
 		this.method = method
 		this.path = path
 		this.rawBody = body
-		this.body =  Object.assign(Object.fromEntries(
+		this.body = <any>Object.assign(Object.fromEntries(
 			Object.entries(body && typeof body === 'object' ? body : { raw: body })
 				.map(([key, value]) => [key, parseJSONValue(value)])
-		), files) as any
+		), files)
 		this.cookies = cookies
-		this.params = params as any
-		this.query = Object.fromEntries(
+		this.params = <any>params
+		this.query = <any>Object.fromEntries(
 			Object.entries(query && typeof body === 'object' ? query : {})
 				.map(([key, val]) => [key, this.#parseQueryStrings(val)])
-		) as any
+		)
 		if (this.query?.['auth']) delete this.query['auth']
 		if (this.query?.['authType']) delete this.query['authType']
 		this.headers = headers
@@ -76,31 +76,35 @@ export class Request<Def extends Api = Api> {
 
 	pipe (cb: (stream: Writable) => void) {
 		cb(this.response)
-		return new Response({ piped: true, status: StatusCodes.Ok, body: this.response })
+		return new Response({ piped: true, status: StatusCodes.Ok, body: this.response, headers: {} })
 	}
 }
 
-export class Response<T, S extends SupportedStatusCodes = SupportedStatusCodes> {
+export class Response<T, S extends SupportedStatusCodes = SupportedStatusCodes, H extends HeadersType = HeadersType> {
 	readonly body: T | undefined
 	readonly status: S
-	readonly headers: Record<string, any>
+	readonly headers: H
 	readonly piped: boolean
 
 	constructor ({
 		body,
-		status = StatusCodes.Ok as any,
-		headers = { 'Content-Type': 'application/json' },
+		status,
+		headers,
 		piped = false
 	}: {
-		body?: T,
-		status?: S,
-		headers?: Record<string, any>
+		body: T,
+		status: S,
+		headers: H
 		piped?: boolean
 	}) {
 		this.body = body
 		this.status = status
 		this.headers = headers
 		this.piped = piped
+
+		const contentType = Object.keys(this.headers).find((key) => key.toLowerCase() === 'content-type')
+		// @ts-expect-error generic headers
+		if (!contentType) this.headers['Content-Type'] = 'application/json'
 	}
 
 	get shouldJSONify () {
