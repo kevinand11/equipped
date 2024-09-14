@@ -201,7 +201,11 @@ export abstract class Server<Req = any, Res = any> {
 		this.addRoute({
 			method: 'get',
 			path: '__health',
-			handler: async () => `${this.settings.appId} service running`,
+			handler: async () => new Response({
+				body: `${this.settings.appId} service running`,
+				headers: { 'Content-Type': 'text/plain' },
+				status: StatusCodes.Ok,
+			}),
 			hideSchema: true,
 		})
 

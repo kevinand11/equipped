@@ -71,7 +71,9 @@ export interface ApiDef<T extends Api> {
 }
 
 type Awaitable<T> = Promise<T> | T
-type Res<T, S extends SupportedStatusCodes, H extends HeadersType> = Awaitable<Response<T, S, H> | T>
+type Res<T, S extends SupportedStatusCodes, H extends HeadersType> = Awaitable<
+	S extends typeof StatusCodes.Ok ? unknown extends H ? Response<T, S, H> | T : Response<T, S, H> : Response<T, S, H>
+>
 type InferApiFromApiDef<T> = T extends ApiDef<infer A> ? A : never
 type GetDefaultStatusCode<T extends Api['defaultStatusCode']> = T extends SupportedStatusCodes ? T : 200
 
