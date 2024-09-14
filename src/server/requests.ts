@@ -1,7 +1,7 @@
 import { Writable } from 'stream'
 import { CustomError } from '../errors'
 import { StorageFile } from '../storage'
-import { Defined } from '../types'
+import { ExcludeUnknown } from '../types'
 import { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
 import { Api, FileSchema, HeadersType, StatusCodes, SupportedStatusCodes } from './types'
@@ -26,11 +26,11 @@ export class Request<Def extends Api = Api> {
 	readonly method: Def['method']
 	readonly path: string
 	readonly body: ApiToBody<Def>
-	readonly params: Defined<Def['params']>
-	readonly query: Defined<Def['query']>
+	readonly params: ExcludeUnknown<Def['params'], Record<string, string>>
+	readonly query: ExcludeUnknown<Def['query'], Record<string, any>>
 	readonly cookies: Record<string, any>
 	readonly rawBody: unknown
-	readonly headers: Record<HeaderKeys, string | undefined> & Defined<Def['requestHeaders'], {}> & HeadersType
+	readonly headers: Record<HeaderKeys, string | undefined> & ExcludeUnknown<Def['requestHeaders'], {}> & HeadersType
 	authUser: null | AuthUser = null
 	refreshUser: null | RefreshUser = null
 	pendingError: null | CustomError = null
@@ -44,7 +44,7 @@ export class Request<Def extends Api = Api> {
 		params: Def['params']
 		query: Def['query']
 		cookies: Record<string, any>
-		headers: Record<HeaderKeys, string | undefined> & Defined<Def['requestHeaders'], {}> & HeadersType
+		headers: Record<HeaderKeys, string | undefined> & ExcludeUnknown<Def['requestHeaders'], {}> & HeadersType
 		files: Record<string, StorageFile[]>
 		method: Def['method']
 		path: string,

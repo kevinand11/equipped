@@ -96,7 +96,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		this.#fastifyApp.register(async (inst) => {
 			inst.route({
 				url: route.path,
-				method: <any>route.method,
+				method: route.method,
 				handler: this.makeController(route.handler),
 				preHandler: route.middlewares.map((m) => this.makeMiddleware(m.cb)),
 				errorHandler: route.onError ? this.makeErrorMiddleware(route.onError.cb) : undefined,
@@ -106,7 +106,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	}
 
 	protected async startServer (port: number) {
-		this.#fastifyApp.setNotFoundHandler(this.makeController(<any>notFoundHandler.cb))
+		this.#fastifyApp.setNotFoundHandler(this.makeController(notFoundHandler.cb))
 		this.#fastifyApp.setErrorHandler(this.makeErrorMiddleware(errorHandler.cb))
 		await this.#fastifyApp.listen({ port, host: '0.0.0.0' })
 		addWaitBeforeExit(this.#fastifyApp.close)

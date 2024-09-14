@@ -11,7 +11,8 @@ export type DeepOmit<T, K, A = never> = T extends any[] ? DeepOmit<T[number], K,
 
 export type DistributiveOmit<T, K extends PropertyKey> = T extends any ? Omit<T, K> : never
 
-export type Defined<T, D = never> = Exclude<T, undefined> extends never ? D : Exclude<T, undefined>
+export type ExcludeUnknown<T, D> = unknown extends T ? T extends unknown ? D : D : T
+export type Defined<T> = Exclude<T, undefined>
 
 type StopTypes = number | string | boolean | symbol | bigint | Date
 type ExcludedTypes = (...args: any[]) => any

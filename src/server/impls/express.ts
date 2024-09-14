@@ -151,7 +151,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 				const rawResponse = await cb(await this.parse(req, res))
 				const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.Ok, headers: {} })
 				if (!response.piped) {
-					Object.entries(response.headers).forEach(([key, value]) => res.header(key, <any>value))
+					Object.entries(<object>response.headers).forEach(([key, value]) => res.header(key, value))
 					const type = response.shouldJSONify ? 'json' : 'send'
 					res.status(response.status)[type](response.body).end()
 				}
