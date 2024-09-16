@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.3](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.2...v5.0.0-rc.3) (2024-09-16)
+
+
+### Features
+
+* flatten route definition to simplify ([466e51f](https://github.com/kevinand11/equipped/commit/466e51fcbbab24f6dc11e6de2aae8330b403a5df))
+* json schema base path ([77fb309](https://github.com/kevinand11/equipped/commit/77fb309e635f8ab2ffc1883db14da04ec048a2fa))
+* must return Response class if defaultStatusCode or responseHeaders is set ([7d4877e](https://github.com/kevinand11/equipped/commit/7d4877e2e85dac6844cafd0c63fca0048567c33e))
+
+
+### Bug Fixes
+
+* types back to interface ([fdf7457](https://github.com/kevinand11/equipped/commit/fdf7457d0383112728af4214dd4798f533022962))
+* use scalar and redoc latest version ([7a6f937](https://github.com/kevinand11/equipped/commit/7a6f937876474230da47229d94c8f04aa19df9ba))
+
 ## [5.0.0-rc.2](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.1...v5.0.0-rc.2) (2024-08-10)
 
 
