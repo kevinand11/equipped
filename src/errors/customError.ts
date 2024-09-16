@@ -1,7 +1,7 @@
-import { SupportedStatusCodes } from '../server'
+import { BadStatusCodes } from '../server'
 
 export abstract class CustomError extends Error {
-	abstract readonly statusCode: SupportedStatusCodes
+	abstract readonly statusCode: BadStatusCodes
 	readonly message: string
 	readonly serializedErrors: { message: string; field?: string }[]
 

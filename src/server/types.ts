@@ -29,11 +29,12 @@ export const StatusCodes = {
 
 export type SupportedStatusCodes = Enum<typeof StatusCodes>
 
-type GoodStatusCodes = 200 | 302
-type ApiErrors = Record<Exclude<SupportedStatusCodes, GoodStatusCodes>, JSONValue<CustomError['serializedErrors']>>
+export type GoodStatusCodes = 200 | 302
+export type BadStatusCodes = Exclude<SupportedStatusCodes, GoodStatusCodes>
+type ApiErrors = Record<BadStatusCodes, JSONValue<CustomError['serializedErrors']>>
 type ApiResponse<T, StatusCode extends SupportedStatusCodes> = Record<StatusCode, JSONValue<T>> | Omit<ApiErrors, StatusCode>
 
-export type Api<
+export interface Api<
 	Res = any,
 	Key extends string = string,
 	Method extends MethodTypes = MethodTypes,
@@ -43,7 +44,7 @@ export type Api<
 	RequestHeaders extends HeadersType = HeadersType,
 	ResponseHeaders extends HeadersType = HeadersType,
 	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
-> = {
+> {
     key: Key
     method: Method
     response: Res
@@ -58,17 +59,17 @@ export type Api<
 export type HeadersType = Record<string, string | string[] | undefined>
 export type FileSchema = 'equipped-file-schema'
 
-export type ApiDef<T extends Api> = Flatten<{
+export interface ApiDef<T extends Api> {
 	key: T['key']
 	method: T['method']
-	body: ExcludeUnknown<T['body'], any>
-	params: ExcludeUnknown<T['params'], Record<string, string>>
-	query: ExcludeUnknown<T['query'], Record<string, any>>
-	requestHeaders: ExcludeUnknown<T['requestHeaders'], HeadersType>
-	responseHeaders: ExcludeUnknown<T['responseHeaders'], HeadersType>
-	responses: ApiResponse<T['response'], GetDefaultStatusCode<T['defaultStatusCode']>>
+	body: Flatten<ExcludeUnknown<T['body'], any>>
+	params: Flatten<ExcludeUnknown<T['params'], Record<string, string>>>
+	query: Flatten<ExcludeUnknown<T['query'], Record<string, any>>>
+	requestHeaders: Flatten<ExcludeUnknown<T['requestHeaders'], HeadersType>>
+	responseHeaders: Flatten<ExcludeUnknown<T['responseHeaders'], HeadersType>>
+	responses: Flatten<ApiResponse<T['response'], GetDefaultStatusCode<T['defaultStatusCode']>>>
 	__apiDef: true
-}>
+}
 
 type Awaitable<T> = Promise<T> | T
 type Res<T, S extends SupportedStatusCodes, H extends HeadersType> = Awaitable<
@@ -78,7 +79,7 @@ type InferApiFromApiDef<T> = T extends ApiDef<infer A> ? A : never
 type GetDefaultStatusCode<T extends Api['defaultStatusCode']> = T extends SupportedStatusCodes ? T : 200
 
 export type RouteHandler<Def extends Api = Api> = (req: Request<Def>) => Res<Def['response'], GetDefaultStatusCode<Def['defaultStatusCode']>, Defined<Def['responseHeaders']>>
-export type ErrorHandler<Def extends Api = Api> = (req: Request<Def>, err: Error) => Res<CustomError['serializedErrors'], GetDefaultStatusCode<Def['defaultStatusCode']>, Defined<Def['responseHeaders']>>
+export type ErrorHandler<Def extends Api = Api> = (req: Request<Def>, err: Error) => Res<CustomError['serializedErrors'], CustomError['statusCode'], HeadersType>
 export type RouteMiddlewareHandler<Def extends Api = Api> = (req: Request<Def>) => Awaitable<void>
 export type HandlerSetup = (route: Route) => void
 
