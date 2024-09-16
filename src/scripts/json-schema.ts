@@ -4,7 +4,7 @@ import { Instance } from '../instance'
 import { RouteSchema, StatusCodes } from '../server'
 
 const statusCodes = Object.entries(StatusCodes)
-const fileSchema = { type: 'string', format: 'binary', example: 'uploaded binary file' }
+const fileSchema = { type: 'string', format: 'binary', example: 'binary file' }
 
 function isFile (schema: Definition) {
 	return schema.type === 'string' && schema.enum?.at(0) === 'equipped-file-schema'
@@ -13,8 +13,9 @@ function isFile (schema: Definition) {
 export function generateJSONSchema (patterns: (string | RegExp)[], paths: string[], options?: {
 	tsConfig?: string | CompilerOptions
 	options?: Options
+	basePath?: string
 }) {
-	const tsProgram = createProgram(paths, options?.tsConfig)
+	const tsProgram = createProgram(paths, options?.tsConfig, options?.basePath)
 
 	const logger = Instance.createLogger()
 
