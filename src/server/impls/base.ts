@@ -235,7 +235,7 @@ const scalarHtml = `
       const configuration = { theme: 'purple' };
       document.getElementById('api-reference').dataset.configuration = JSON.stringify(configuration);
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.24.36"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   </body>
 </html>
 `
@@ -256,7 +256,7 @@ const redocHtml = `
   </head>
   <body>
     <redoc spec-url="__OPENAPI_JSON_URL__"></redoc>
-    <script src="https://cdn.redoc.ly/redoc/v2.1.5/bundles/redoc.standalone.js"> </script>
+    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"> </script>
   </body>
 </html>
 `
