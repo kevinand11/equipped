@@ -1,7 +1,7 @@
 import amqp, { ChannelWrapper } from 'amqp-connection-manager'
 import { ConfirmChannel } from 'amqplib'
-import { addWaitBeforeExit } from '../exit'
 import { DefaultSubscribeOptions, EventBus, Events, SubscribeOptions } from '.'
+import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
 import { parseJSONValue } from '../utils/json'
 import { Random } from '../utils/utils'
@@ -48,7 +48,7 @@ export class RabbitEventBus extends EventBus {
 						try {
 							await onMessage(parseJSONValue(msg.content.toString()))
 							channel.ack(msg)
-						} catch (err) {
+						} catch {
 							channel.nack(msg)
 						}
 					})())

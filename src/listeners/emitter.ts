@@ -75,7 +75,7 @@ export class Listener {
 		if (!match) return null
 		return {
 			onJoin: this.#routes[matchedChannel],
-			params: JSON.parse(JSON.stringify(match.params))
+			params: match.params
 		}
 	}
 

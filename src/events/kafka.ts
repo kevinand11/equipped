@@ -26,7 +26,7 @@ export class KafkaEventBus extends EventBus {
 					messages: [{ value: JSON.stringify(data) }],
 				})
 				return true
-			} catch (e) {
+			} catch {
 				return false
 			}
 		}

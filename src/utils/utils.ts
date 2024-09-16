@@ -13,7 +13,7 @@ export class Random {
 export function clone<T>(value: T): T {
 	try {
 		return structuredClone(value)
-	} catch (err) {
+	} catch {
 		return value
 	}
 }

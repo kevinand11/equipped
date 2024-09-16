@@ -22,8 +22,7 @@ Object.entries(signals).forEach(([signal, code]) => {
 			try {
 				await typeof l === 'function' ? l() : l
 				// eslint-disable-next-line no-empty
-			} catch (err) {
-			}
+			} catch {}
 		}))
 		process.exit(128 + code)
 	})

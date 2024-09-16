@@ -59,7 +59,7 @@ export class MongoDb extends Db {
 			[mongoose.connection, ...this.#connections].map((conn) => {
 				return Object.values(conn.models)
 					.map(async (model) => {
-						await conn.db.createCollection(model.collection.name, {
+						await conn.db?.createCollection(model.collection.name, {
 							changeStreamPreAndPostImages: { enabled: true }
 						})
 					})

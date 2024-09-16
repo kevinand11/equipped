@@ -38,7 +38,7 @@ export const verifyRefreshToken = async (token: string) => {
 		const user = jwt.verify(token, Instance.get().settings.refreshTokenKey) as RefreshUser
 		if (!user) throw new NotAuthenticatedError()
 		return user
-	} catch (err) {
+	} catch {
 		throw new NotAuthenticatedError()
 	}
 }
