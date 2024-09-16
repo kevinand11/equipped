@@ -23,7 +23,9 @@ export function generateJSONSchema (patterns: (string | RegExp)[], paths: string
 		nullableKeyword: false,
 		schemaProcessor: (schema) => {
 			if (isFile(schema)) return fileSchema
+			if (Array.isArray(schema.items)) schema.items = schema.items.map((s) => isFile(s) ? fileSchema : s)
 			if (schema.anyOf) schema.anyOf = schema.anyOf.map((s) => isFile(s) ? fileSchema : s)
+			if (schema.oneOf) schema.oneOf = schema.oneOf.map((s) => isFile(s) ? fileSchema : s)
 			if (schema.allOf) schema.allOf = schema.allOf.map((s) => isFile(s) ? fileSchema : s)
 			return schema
 		},

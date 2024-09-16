@@ -2,7 +2,7 @@ import { Enum } from '../enums/types'
 import { CustomError } from '../errors'
 
 import { FastifySchema } from 'fastify'
-import { Defined, ExcludeUnknown, JSONValue } from '../types'
+import { Defined, ExcludeUnknown, Flatten, JSONValue } from '../types'
 import type { Request, Response } from './requests'
 
 export const Methods = {
@@ -33,7 +33,7 @@ type GoodStatusCodes = 200 | 302
 type ApiErrors = Record<Exclude<SupportedStatusCodes, GoodStatusCodes>, JSONValue<CustomError['serializedErrors']>>
 type ApiResponse<T, StatusCode extends SupportedStatusCodes> = Record<StatusCode, JSONValue<T>> | Omit<ApiErrors, StatusCode>
 
-export interface Api<
+export type Api<
 	Res = any,
 	Key extends string = string,
 	Method extends MethodTypes = MethodTypes,
@@ -43,7 +43,7 @@ export interface Api<
 	RequestHeaders extends HeadersType = HeadersType,
 	ResponseHeaders extends HeadersType = HeadersType,
 	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
-> {
+> = {
     key: Key
     method: Method
     response: Res
@@ -58,7 +58,7 @@ export interface Api<
 export type HeadersType = Record<string, string | string[] | undefined>
 export type FileSchema = 'equipped-file-schema'
 
-export interface ApiDef<T extends Api> {
+export type ApiDef<T extends Api> = Flatten<{
 	key: T['key']
 	method: T['method']
 	body: ExcludeUnknown<T['body'], any>
@@ -68,7 +68,7 @@ export interface ApiDef<T extends Api> {
 	responseHeaders: ExcludeUnknown<T['responseHeaders'], HeadersType>
 	responses: ApiResponse<T['response'], GetDefaultStatusCode<T['defaultStatusCode']>>
 	__apiDef: true
-}
+}>
 
 type Awaitable<T> = Promise<T> | T
 type Res<T, S extends SupportedStatusCodes, H extends HeadersType> = Awaitable<
