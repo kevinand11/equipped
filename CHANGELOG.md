@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.4](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.3...v5.0.0-rc.4) (2024-09-17)
+
+
+### Features
+
+* req.res helper ([ceedbb4](https://github.com/kevinand11/equipped/commit/ceedbb43c33954c123265ca20640684c842f194e))
+
+
+### Bug Fixes
+
+* typings of Request ([fb3773a](https://github.com/kevinand11/equipped/commit/fb3773a37829fa89f45210c2501da881c058094c))
+
 ## [5.0.0-rc.3](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.2...v5.0.0-rc.3) (2024-09-16)
 
 
