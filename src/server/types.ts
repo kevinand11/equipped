@@ -78,7 +78,7 @@ type Res<T, S extends SupportedStatusCodes, H extends HeadersType> = Awaitable<
 type InferApiFromApiDef<T> = T extends ApiDef<infer A> ? A : never
 type GetDefaultStatusCode<T extends Api['defaultStatusCode']> = T extends SupportedStatusCodes ? T : 200
 
-export type RouteHandler<Def extends Api = Api> = (req: Request<Def>) => Res<Def['response'], GetDefaultStatusCode<Def['defaultStatusCode']>, ExcludeUnknown<Defined<Def['responseHeaders']>, HeadersType>>
+export type RouteHandler<Def extends Api = Api> = (req: Request<Def>) => Res<Def['response'], ExcludeUnknown<Defined<Def['defaultStatusCode']>, SupportedStatusCodes>, ExcludeUnknown<Defined<Def['responseHeaders']>, HeadersType>>
 export type ErrorHandler<Def extends Api = Api> = (req: Request<Def>, err: Error) => Res<CustomError['serializedErrors'], CustomError['statusCode'], HeadersType>
 export type RouteMiddlewareHandler<Def extends Api = Api> = (req: Request<Def>) => Awaitable<void>
 export type HandlerSetup = (route: Route) => void

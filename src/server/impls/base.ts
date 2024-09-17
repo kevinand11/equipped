@@ -180,7 +180,6 @@ export abstract class Server<Req = any, Res = any> {
 					.replaceAll('__API_TITLE__', this.settings.appId)
 					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 				headers: { 'Content-Type': 'text/html' },
-				status: StatusCodes.Ok,
 			}),
 			hideSchema: true,
 		})
@@ -193,7 +192,6 @@ export abstract class Server<Req = any, Res = any> {
 					.replaceAll('__API_TITLE__', this.settings.appId)
 					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 				headers: { 'Content-Type': 'text/html' },
-				status: StatusCodes.Ok,
 			}),
 			hideSchema: true,
 		})
@@ -204,7 +202,6 @@ export abstract class Server<Req = any, Res = any> {
 			handler: async () => new Response({
 				body: `${this.settings.appId} service running`,
 				headers: { 'Content-Type': 'text/plain' },
-				status: StatusCodes.Ok,
 			}),
 			hideSchema: true,
 		})

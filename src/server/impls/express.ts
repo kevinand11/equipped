@@ -149,7 +149,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
 				const rawResponse = await cb(await this.parse(req, res))
-				const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.Ok, headers: {} })
+				const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse })
 				if (!response.piped) {
 					Object.entries(<object>response.headers).forEach(([key, value]) => res.header(key, value))
 					const type = response.shouldJSONify ? 'json' : 'send'
@@ -175,7 +175,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
 		return async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
 			const rawResponse = await cb(await this.parse(req, res), err)
-			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
+			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest })
 			if (!response.piped) {
 				Object.entries(response.headers).forEach(([key, value]) => value && res.header(key, value))
 				res.status(response.status).send(response.body).end()

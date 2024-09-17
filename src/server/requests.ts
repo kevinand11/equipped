@@ -1,10 +1,10 @@
 import { Writable } from 'stream'
 import { CustomError } from '../errors'
 import { StorageFile } from '../storage'
-import { ExcludeUnknown } from '../types'
+import { ExcludeUnknown, IsInTypeList } from '../types'
 import { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
-import { Api, FileSchema, HeadersType, StatusCodes, SupportedStatusCodes } from './types'
+import { Api, FileSchema, HeadersType, SupportedStatusCodes } from './types'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
@@ -76,11 +76,11 @@ export class Request<Def extends Api = Api> {
 
 	pipe (cb: (stream: Writable) => void) {
 		cb(this.response)
-		return new Response({ piped: true, status: StatusCodes.Ok, body: this.response, headers: {} })
+		return new Response({ piped: true, body: this.response })
 	}
 }
 
-export class Response<T, S extends SupportedStatusCodes = SupportedStatusCodes, H extends HeadersType = HeadersType> {
+export class Response<T, S extends SupportedStatusCodes, H extends HeadersType> {
 	readonly body: T | undefined
 	readonly status: S
 	readonly headers: H
@@ -88,15 +88,13 @@ export class Response<T, S extends SupportedStatusCodes = SupportedStatusCodes, 
 
 	constructor ({
 		body,
-		status,
-		headers,
+		status = <S>200,
+		headers = <H>{},
 		piped = false
-	}: {
-		body: T,
-		status: S,
-		headers: H
-		piped?: boolean
-	}) {
+	}: { body: T, piped?: boolean } &
+		(IsInTypeList<S, [SupportedStatusCodes, 200]> extends true ? { status?: S } : { status: S }) &
+		(IsInTypeList<H, [HeadersType]> extends true ? { headers?: H } : { headers: H })
+	) {
 		this.body = body
 		this.status = status
 		this.headers = headers
