@@ -11,7 +11,6 @@ export type DeepOmit<T, K, A = never> = T extends any[] ? DeepOmit<T[number], K,
 
 export type DistributiveOmit<T, K extends PropertyKey> = T extends any ? Omit<T, K> : never
 
-export type ExcludeUnknown<T, D> = unknown extends T ? T extends unknown ? D : D : T
 export type Defined<T> = Exclude<T, undefined>
 export type Flatten<T> = T extends object ? { [K in keyof T]: Flatten<T[K]> } : T
 

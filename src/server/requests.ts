@@ -1,10 +1,10 @@
 import { Writable } from 'stream'
 import { CustomError } from '../errors'
 import { StorageFile } from '../storage'
-import { Defined, DistributiveOmit, ExcludeUnknown, IsInTypeList } from '../types'
+import { DistributiveOmit, IsInTypeList } from '../types'
 import { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
-import { Api, FileSchema, HeadersType, SupportedStatusCodes } from './types'
+import { Api, FileSchema, GetApiPart, HeadersType, SupportedStatusCodes } from './types'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
 
@@ -26,11 +26,11 @@ export class Request<Def extends Api = Api> {
 	readonly method: Def['method']
 	readonly path: string
 	readonly body: ApiToBody<Def>
-	readonly params: ExcludeUnknown<Def['params'], Record<string, string>>
-	readonly query: ExcludeUnknown<Def['query'], Record<string, any>>
+	readonly params: GetApiPart<Def, 'params'>
+	readonly query: GetApiPart<Def, 'query'>
 	readonly cookies: Record<string, any>
 	readonly rawBody: unknown
-	readonly headers: Record<HeaderKeys, string | undefined> & ExcludeUnknown<Def['requestHeaders'], {}> & HeadersType
+	readonly headers: Record<HeaderKeys, string | undefined> & GetApiPart<Def, 'requestHeaders', true, {}> & HeadersType
 	authUser: null | AuthUser = null
 	refreshUser: null | RefreshUser = null
 	pendingError: null | CustomError = null
@@ -44,7 +44,7 @@ export class Request<Def extends Api = Api> {
 		params: Def['params']
 		query: Def['query']
 		cookies: Record<string, any>
-		headers: Record<HeaderKeys, string | undefined> & ExcludeUnknown<Def['requestHeaders'], {}> & HeadersType
+		headers: Record<HeaderKeys, string | undefined> & GetApiPart<Def, 'requestHeaders', true, {}> & HeadersType
 		files: Record<string, StorageFile[]>
 		method: Def['method']
 		path: string,
@@ -79,11 +79,11 @@ export class Request<Def extends Api = Api> {
 		return new Response({ piped: true, body: this.response })
 	}
 
-	res (params: DistributiveOmit<RequestParams<Def['response'], ExcludeUnknown<Defined<Def['defaultStatusCode']>, SupportedStatusCodes>, ExcludeUnknown<Defined<Def['responseHeaders']>, HeadersType>>, 'piped'>) {
+	res (params: DistributiveOmit<RequestParams<Def['response'], GetApiPart<Def,'defaultStatusCode'>, GetApiPart<Def, 'responseHeaders'>>, 'piped'>) {
 		return new Response<
 			Def['response'],
-			ExcludeUnknown<Defined<Def['defaultStatusCode']>, SupportedStatusCodes>,
-			ExcludeUnknown<Defined<Def['responseHeaders']>, HeadersType>
+			GetApiPart<Def, 'defaultStatusCode'>,
+			GetApiPart<Def, 'responseHeaders'>
 		>(<any>{ ...params, piped: false })
 	}
 

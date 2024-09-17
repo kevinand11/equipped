@@ -2,7 +2,7 @@ import { Enum } from '../enums/types'
 import { CustomError } from '../errors'
 
 import { FastifySchema } from 'fastify'
-import { Defined, ExcludeUnknown, Flatten, IsInTypeList, JSONValue } from '../types'
+import { Defined, Flatten, IsInTypeList, IsType, JSONValue } from '../types'
 import type { Request, Response } from './requests'
 
 export const Methods = {
@@ -62,12 +62,12 @@ export type FileSchema = 'equipped-file-schema'
 export interface ApiDef<T extends Api> {
 	key: T['key']
 	method: T['method']
-	body: Flatten<ExcludeUnknown<T['body'], any>>
-	params: Flatten<ExcludeUnknown<T['params'], Record<string, string>>>
-	query: Flatten<ExcludeUnknown<T['query'], Record<string, any>>>
-	requestHeaders: Flatten<ExcludeUnknown<T['requestHeaders'], HeadersType>>
-	responseHeaders: Flatten<ExcludeUnknown<T['responseHeaders'], HeadersType>>
-	responses: Flatten<ApiResponse<T['response'], GetDefaultStatusCode<T['defaultStatusCode']>>>
+	body: Flatten<GetApiPart<T, 'body', false>>
+	params: Flatten<GetApiPart<T, 'params', false>>
+	query: Flatten<GetApiPart<T, 'query', false>>
+	requestHeaders: Flatten<GetApiPart<T, 'requestHeaders', false>>
+	responseHeaders: Flatten<GetApiPart<T, 'responseHeaders', false>>
+	responses: Flatten<ApiResponse<T['response'], GetApiPart<T, 'defaultStatusCode', true, 200>>>
 	__apiDef: true
 }
 
@@ -76,18 +76,16 @@ type Res<T, S extends SupportedStatusCodes, H extends HeadersType> = Awaitable<
 	IsInTypeList<S, [SupportedStatusCodes, 200, unknown]> extends true ? IsInTypeList<H, [HeadersType, unknown]> extends true ? Response<T, S, H> | T : Response<T, S, H> : Response<T, S, H>
 >
 type InferApiFromApiDef<T> = T extends ApiDef<infer A> ? A : never
-type GetDefaultStatusCode<T extends Api['defaultStatusCode']> = T extends SupportedStatusCodes ? T : 200
+type ExcludeUnknown<T, D> = IsType<T, unknown> extends true ? D : T
+export type GetApiPart<T extends Api, K extends keyof Api, Def extends boolean = true, Default extends Api[K] = Def extends true ? Defined<Api[K]> : Api[K]> = IsInTypeList<K, ['key', 'method', 'body']> extends true ? T[K] : Def extends true ? ExcludeUnknown<Defined<T[K]>, Default> : ExcludeUnknown<T[K], Default>
 
-export type RouteHandler<Def extends Api = Api> = (req: Request<Def>) => Res<Def['response'], ExcludeUnknown<Defined<Def['defaultStatusCode']>, SupportedStatusCodes>, ExcludeUnknown<Defined<Def['responseHeaders']>, HeadersType>>
+export type RouteHandler<Def extends Api = Api> = (req: Request<Def>) => Res<Def['response'], GetApiPart<Def, 'defaultStatusCode'>, GetApiPart<Def, 'responseHeaders'>>
 export type ErrorHandler<Def extends Api = Api> = (req: Request<Def>, err: Error) => Res<CustomError['serializedErrors'], CustomError['statusCode'], HeadersType>
 export type RouteMiddlewareHandler<Def extends Api = Api> = (req: Request<Def>) => Awaitable<void>
 export type HandlerSetup = (route: Route) => void
 
 export type RouteSchema = Omit<FastifySchema, 'tags' | 'security' | 'hide' | 'description'> & { descriptions?: string[]; title?: string }
-type RouteGroup = {
-	name: string
-	description?: string
-}
+type RouteGroup = { name: string, description?: string }
 
 export interface Route<Def extends ApiDef<Api> = ApiDef<Api>> {
 	key?: Def['key']
