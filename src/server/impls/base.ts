@@ -10,7 +10,7 @@ import { Instance } from '../../instance'
 import { Listener } from '../../listeners'
 import { Defined } from '../../types'
 import { parseAuthUser } from '../middlewares'
-import { Request, Response } from '../requests'
+import { Request } from '../requests'
 import { Router, cleanPath } from '../routes'
 import { Route, StatusCodes } from '../types'
 
@@ -164,7 +164,7 @@ export abstract class Server<Req = any, Res = any> {
 		this.addRoute({
 			method: 'get',
 			path: `${this.settings.openapiDocsPath}/`,
-			handler: () => new Response({
+			handler: (req) => req.res({
 				body: '',
 				status: StatusCodes.Found,
 				headers: { 'Location': './index.html' },
@@ -175,7 +175,7 @@ export abstract class Server<Req = any, Res = any> {
 		this.addRoute({
 			method: 'get',
 			path: `${this.settings.openapiDocsPath}/index.html`,
-			handler: () => new Response({
+			handler: (req) => req.res({
 				body: scalarHtml
 					.replaceAll('__API_TITLE__', this.settings.appId)
 					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
@@ -187,7 +187,7 @@ export abstract class Server<Req = any, Res = any> {
 		this.addRoute({
 			method: 'get',
 			path: `${this.settings.openapiDocsPath}/redoc.html`,
-			handler: () => new Response({
+			handler: (req) => req.res({
 				body: redocHtml
 					.replaceAll('__API_TITLE__', this.settings.appId)
 					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
@@ -199,7 +199,7 @@ export abstract class Server<Req = any, Res = any> {
 		this.addRoute({
 			method: 'get',
 			path: '__health',
-			handler: async () => new Response({
+			handler: async (req) => req.res({
 				body: `${this.settings.appId} service running`,
 				headers: { 'Content-Type': 'text/plain' },
 			}),

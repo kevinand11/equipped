@@ -1,7 +1,7 @@
 import { Writable } from 'stream'
 import { CustomError } from '../errors'
 import { StorageFile } from '../storage'
-import { ExcludeUnknown, IsInTypeList } from '../types'
+import { Defined, DistributiveOmit, ExcludeUnknown, IsInTypeList } from '../types'
 import { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
 import { Api, FileSchema, HeadersType, SupportedStatusCodes } from './types'
@@ -78,7 +78,28 @@ export class Request<Def extends Api = Api> {
 		cb(this.response)
 		return new Response({ piped: true, body: this.response })
 	}
+
+	res (params: DistributiveOmit<RequestParams<Def['response'], ExcludeUnknown<Defined<Def['defaultStatusCode']>, SupportedStatusCodes>, ExcludeUnknown<Defined<Def['responseHeaders']>, HeadersType>>, 'piped'>) {
+		return new Response<
+			Def['response'],
+			ExcludeUnknown<Defined<Def['defaultStatusCode']>, SupportedStatusCodes>,
+			ExcludeUnknown<Defined<Def['responseHeaders']>, HeadersType>
+		>(<any>{ ...params, piped: false })
+	}
+
+	error (params: DistributiveOmit<RequestParams<CustomError['serializedErrors'], CustomError['statusCode'], HeadersType>, 'piped'>) {
+		return new Response<
+			CustomError['serializedErrors'],
+			CustomError['statusCode'],
+			HeadersType
+		>(<any>{ ...params, piped: false })
+	}
 }
+
+type RequestParams<T, S extends SupportedStatusCodes, H extends HeadersType> =
+	{ body: T, piped?: boolean } &
+	(IsInTypeList<S, [SupportedStatusCodes, 200]> extends true ? { status?: S } : { status: S }) &
+	(IsInTypeList<H, [HeadersType]> extends true ? { headers?: H } : { headers: H })
 
 export class Response<T, S extends SupportedStatusCodes, H extends HeadersType> {
 	readonly body: T | undefined
@@ -91,10 +112,7 @@ export class Response<T, S extends SupportedStatusCodes, H extends HeadersType> 
 		status = <S>200,
 		headers = <H>{},
 		piped = false
-	}: { body: T, piped?: boolean } &
-		(IsInTypeList<S, [SupportedStatusCodes, 200]> extends true ? { status?: S } : { status: S }) &
-		(IsInTypeList<H, [HeadersType]> extends true ? { headers?: H } : { headers: H })
-	) {
+	}: RequestParams<T, S, H>) {
 		this.body = body
 		this.status = status
 		this.headers = headers

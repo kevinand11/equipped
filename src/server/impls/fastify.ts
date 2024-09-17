@@ -140,8 +140,9 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 
 	makeController(cb: Defined<Route['handler']>) {
 		const handler: RouteHandlerMethod = async (req, reply) => {
-			const rawResponse = await cb(await this.parse(req, reply))
-			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse })
+			const request = await this.parse(req, reply)
+			const rawResponse = await cb(request)
+			const response = rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse })
 			if (!response.piped) reply.status(response.status).headers(response.headers).send(response.body)
 		}
 		return handler
@@ -155,9 +156,10 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	}
 
 	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
-		const handler: FastifyInstance['errorHandler'] = async (error, req, reply)=> {
-			const rawResponse = await cb(await this.parse(req, reply), error)
-			const response = rawResponse instanceof Response ? rawResponse : new Response({ body: rawResponse, status: StatusCodes.BadRequest })
+		const handler: FastifyInstance['errorHandler'] = async (error, req, reply) => {
+			const request = await this.parse(req, reply)
+			const rawResponse = await cb(request, error)
+			const response = rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.BadRequest })
 			if (!response.piped) reply.status(response.status).headers(response.headers).send(response.body)
 		}
 		return handler
