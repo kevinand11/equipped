@@ -15,6 +15,9 @@ export type ExcludeUnknown<T, D> = unknown extends T ? T extends unknown ? D : D
 export type Defined<T> = Exclude<T, undefined>
 export type Flatten<T> = T extends object ? { [K in keyof T]: Flatten<T[K]> } : T
 
+export type IsType<A, B> = (Exclude<A, B> | Exclude<B, A>) extends never ? true : false
+export type IsInTypeList<T, L extends any[]> = L extends [infer First, ...infer Remaining] ? IsType<First, T> extends true ? true : IsInTypeList<T, Remaining> : false
+
 type StopTypes = number | string | boolean | symbol | bigint | Date
 type ExcludedTypes = (...args: any[]) => any
 type Dot<T extends string, U extends string> = '' extends U ? T : `${T}.${U}`
