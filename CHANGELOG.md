@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.6](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.5...v5.0.0-rc.6) (2024-09-19)
+
+
+### Bug Fixes
+
+* fix scalar and redoc version ([7b0aa4a](https://github.com/kevinand11/equipped/commit/7b0aa4a7dcb8494afebb35e2a4cdb375dcc9724c))
+
 ## [5.0.0-rc.5](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.4...v5.0.0-rc.5) (2024-09-17)
 
 ## [5.0.0-rc.4](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.3...v5.0.0-rc.4) (2024-09-17)
