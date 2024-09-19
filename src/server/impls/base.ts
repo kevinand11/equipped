@@ -253,7 +253,7 @@ const redocHtml = `
   </head>
   <body>
     <redoc spec-url="__OPENAPI_JSON_URL__"></redoc>
-    <script src="https://cdn.redoc.ly/redoc/v2.1.5/bundles/redoc.standalone.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/redoc@2.1.5/bundles/redoc.standalone.js"></script>
   </body>
 </html>
 `
