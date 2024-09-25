@@ -74,8 +74,8 @@ export class Request<Def extends Api = Api> {
 		return value
 	}
 
-	pipe (stream: Readable) {
-		return new Response({ piped: true, body: stream })
+	pipe (stream: Readable, opts: { headers?: GetApiPart<Def, 'responseHeaders'>, status?: GetApiPart<Def,'defaultStatusCode'> } = {}) {
+		return new Response({ ...opts, piped: true, body: stream })
 	}
 
 	res (params: DistributiveOmit<RequestParams<Def['response'], GetApiPart<Def,'defaultStatusCode'>, GetApiPart<Def, 'responseHeaders'>>, 'piped'>) {
