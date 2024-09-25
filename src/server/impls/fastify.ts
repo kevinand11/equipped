@@ -113,7 +113,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		return true
 	}
 
-	protected async parse (req: FastifyRequest, res: FastifyReply) {
+	protected async parse (req: FastifyRequest) {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
@@ -135,32 +135,32 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			path: req.url,
 			headers,
 			files,
-		}, res.raw)
+		})
 	}
 
 	makeController(cb: Defined<Route['handler']>) {
 		const handler: RouteHandlerMethod = async (req, reply) => {
-			const request = await this.parse(req, reply)
+			const request = await this.parse(req)
 			const rawResponse = await cb(request)
 			const response = rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse })
-			if (!response.piped) reply.status(response.status).headers(response.headers).send(response.body)
+			return reply.status(response.status).headers(response.headers).send(response.body)
 		}
 		return handler
 	}
 
 	makeMiddleware(cb: Defined<Route['middlewares']>[number]['cb']) {
-		const handler: preHandlerHookHandler = async (req, reply) => {
-			await cb(await this.parse(req, reply))
+		const handler: preHandlerHookHandler = async (req) => {
+			await cb(await this.parse(req))
 		}
 		return handler
 	}
 
 	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
 		const handler: FastifyInstance['errorHandler'] = async (error, req, reply) => {
-			const request = await this.parse(req, reply)
+			const request = await this.parse(req)
 			const rawResponse = await cb(request, error)
 			const response = rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.BadRequest })
-			if (!response.piped) reply.status(response.status).headers(response.headers).send(response.body)
+			return reply.status(response.status).headers(response.headers).send(response.body)
 		}
 		return handler
 	}

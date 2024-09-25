@@ -1,4 +1,4 @@
-import { Writable } from 'stream'
+import { Readable } from 'stream'
 import { CustomError } from '../errors'
 import { StorageFile } from '../storage'
 import { DistributiveOmit, IsInTypeList } from '../types'
@@ -48,7 +48,7 @@ export class Request<Def extends Api = Api> {
 		files: Record<string, StorageFile[]>
 		method: Def['method']
 		path: string,
-	}, private readonly response: Writable) {
+	}) {
 		this.ip = ip
 		this.method = method
 		this.path = path
@@ -74,9 +74,8 @@ export class Request<Def extends Api = Api> {
 		return value
 	}
 
-	pipe (cb: (stream: Writable) => void) {
-		cb(this.response)
-		return new Response({ piped: true, body: this.response })
+	pipe (stream: Readable) {
+		return new Response({ piped: true, body: stream })
 	}
 
 	res (params: DistributiveOmit<RequestParams<Def['response'], GetApiPart<Def,'defaultStatusCode'>, GetApiPart<Def, 'responseHeaders'>>, 'piped'>) {
@@ -109,8 +108,8 @@ export class Response<T, S extends SupportedStatusCodes, H extends HeadersType> 
 
 	constructor ({
 		body,
-		status = <S>200,
-		headers = <H>{},
+		status = <S> 200,
+		headers = <H> {},
 		piped = false
 	}: RequestParams<T, S, H>) {
 		this.body = body
@@ -118,9 +117,13 @@ export class Response<T, S extends SupportedStatusCodes, H extends HeadersType> 
 		this.headers = headers
 		this.piped = piped
 
-		const contentType = Object.keys(this.headers).find((key) => key.toLowerCase() === 'content-type')
-		// @ts-expect-error generic headers
-		if (!contentType) this.headers['Content-Type'] = 'application/json'
+		if (!this.piped) {
+			const contentType = Object.keys(this.headers).find((key) => key.toLowerCase() === 'content-type')
+			// @ts-expect-error generic headers
+			if (!contentType) this.headers['Content-Type'] = 'application/json'
+		}
+
+		console.log(this)
 	}
 
 	get shouldJSONify () {

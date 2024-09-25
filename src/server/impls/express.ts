@@ -104,7 +104,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 	protected async onLoad () {}
 
-	protected async parse (req: express.Request, res: express.Response): Promise<Request> {
+	protected async parse (req: express.Request): Promise<Request> {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
@@ -142,19 +142,21 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			path: req.path,
 			headers,
 			files,
-		}, res)
+		})
 	}
 
 	makeController(cb: Defined<Route['handler']>) {
 		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
-				const request = await this.parse(req, res)
+				const request = await this.parse(req)
 				const rawResponse = await cb(request)
 				const response = rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse })
 				if (!response.piped) {
 					Object.entries(<object>response.headers).forEach(([key, value]) => res.header(key, value))
 					const type = response.shouldJSONify ? 'json' : 'send'
 					res.status(response.status)[type](response.body).end()
+				} else {
+					response.body.pipe(res)
 				}
 			} catch (e) {
 				next(e)
@@ -163,9 +165,9 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 	}
 
 	makeMiddleware(cb: Defined<Route['middlewares']>[number]['cb']) {
-		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+		return async (req: express.Request, _res: express.Response, next: express.NextFunction) => {
 			try {
-				await cb(await this.parse(req, res))
+				await cb(await this.parse(req))
 				return next()
 			} catch (e) {
 				return next(e)
@@ -175,12 +177,14 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
 		return async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-			const request = await this.parse(req, res)
+			const request = await this.parse(req)
 			const rawResponse = await cb(request, err)
 			const response = rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.BadRequest })
 			if (!response.piped) {
 				Object.entries(response.headers).forEach(([key, value]) => value && res.header(key, value))
 				res.status(response.status).send(response.body).end()
+			} else {
+				response.body.pipe(res)
 			}
 		}
 	}
