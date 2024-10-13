@@ -5,6 +5,9 @@
 	"description": "",
 	"main": "lib/index.js",
 	"type": "commonjs",
+	"engines": {
+		"node": ">= 20.0.0"
+	},
 	"scripts": {
 		"dev": "tsc -watch",
 		"build": "tsc --project tsconfig.json",
