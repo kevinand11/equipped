@@ -122,8 +122,6 @@ export class Response<T, S extends SupportedStatusCodes, H extends HeadersType> 
 			// @ts-expect-error generic headers
 			if (!contentType) this.headers['Content-Type'] = 'application/json'
 		}
-
-		console.log(this)
 	}
 
 	get shouldJSONify () {
