@@ -26,7 +26,8 @@ function getFastifyApp () {
 	return Fastify({
 		ignoreTrailingSlash: true,
 		caseSensitive: false,
-		logger: instance.settings.logRequests ? instance.logger : false,
+		disableRequestLogging: !instance.settings.logRequests,
+		loggerInstance: instance.settings.logRequests ? instance.logger : undefined,
 		ajv: { customOptions: { coerceTypes: false } },
 		schemaErrorFormatter: (errors, data) => new ValidationError(errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })))
 	})
