@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.9](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.8...v5.0.0-rc.9) (2024-10-13)
+
 ## [5.0.0-rc.8](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.7...v5.0.0-rc.8) (2024-09-25)
 
 
