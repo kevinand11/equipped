@@ -21,13 +21,13 @@ type StopTypes = number | string | boolean | symbol | bigint | Date
 type ExcludedTypes = (...args: any[]) => any
 type Dot<T extends string, U extends string> = '' extends U ? T : `${T}.${U}`
 export type Paths<T, D = never> = T extends StopTypes ? ''
-    : T extends readonly unknown[] ? Paths<T[number]>
-    : T extends unknown ? D
-    : {
+    : T extends object ? {
         [K in keyof T & string]: T[K] extends StopTypes ? K
             : T[K] extends ExcludedTypes ? D
             : K | Dot<K, Paths<T[K]>>
-    }[keyof T & string]
+	}[keyof T & string]
+	: T extends readonly any[] ? Paths<T[number]>
+    : D
 
 export type JSONPrimitives = string | number | boolean | null
 export type JSONValue<T> = T extends JSONPrimitives ? T
