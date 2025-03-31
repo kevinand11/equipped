@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.11](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.10...v5.0.0-rc.11) (2025-03-31)
+
+
+### Bug Fixes
+
+* hydrate issue ([dd4adde](https://github.com/kevinand11/equipped/commit/dd4added5cfaa667f775f3601897956b7c776981))
+* type Paths defintion ([4a5a3f6](https://github.com/kevinand11/equipped/commit/4a5a3f6823c1bce8c7616b0428137b96d9fdd5ee))
+
 ## [5.0.0-rc.10](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.9...v5.0.0-rc.10) (2024-10-13)
 
 
