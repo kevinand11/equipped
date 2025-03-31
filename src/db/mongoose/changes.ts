@@ -48,9 +48,9 @@ export class MongoDbChange<Model, Entity extends BaseEntity<any, any>> extends D
 			const hexId = '5f5f65717569707065645f5f' // __equipped__
 			const TestId = new mongoose.Types.ObjectId(hexId)
 
-			const hydrate = (data: any) => model.hydrate({
+			const hydrate = (data: any) => data._id ? model.hydrate({
 				...data, _id: makeId(data._id['$oid'] ?? data._id)
-			}).toObject({ getters: true, virtuals: true })
+			}).toObject({ getters: true, virtuals: true }) : undefined
 
 			Instance.get().eventBus.createSubscriber(topic as never, async (data: DbDocumentChange) => {
 				const op = data.op
