@@ -1,4 +1,5 @@
 import { ClassPropertiesWrapper } from 'valleyed'
+
 import { Random, clone } from '../utils/utils'
 
 const deleteKeyFromObject = (obj: Record<string, any>, keys: string[]) => {
@@ -9,12 +10,12 @@ const deleteKeyFromObject = (obj: Record<string, any>, keys: string[]) => {
 	return deleteKeyFromObject(obj[keys[0]], keys.slice(1))
 }
 
-export class BaseEntity<Keys extends object = object, Ignored extends string = never> extends ClassPropertiesWrapper<Keys>{
+export class BaseEntity<Keys extends object = object, Ignored extends string = never> extends ClassPropertiesWrapper<Keys> {
 	public __hash: string = Random.string()
 	public __type = this.constructor.name
 	public readonly __ignoreInJSON: Ignored[] = []
 
-	toJSON (includeIgnored = false) {
+	toJSON(includeIgnored = false) {
 		const json: Record<string, any> = {}
 		Object.keys(this)
 			.concat(Object.getOwnPropertyNames(Object.getPrototypeOf(this)))
@@ -23,11 +24,12 @@ export class BaseEntity<Keys extends object = object, Ignored extends string = n
 				if (typeof value === 'function') return
 				json[key] = value?.toJSON?.(includeIgnored) ?? clone(value)
 			})
-		if (includeIgnored !== true) this.__ignoreInJSON.concat('__ignoreInJSON' as any).forEach((k: string) => deleteKeyFromObject(json, k.split('.')))
+		if (includeIgnored !== true)
+			this.__ignoreInJSON.concat('__ignoreInJSON' as any).forEach((k: string) => deleteKeyFromObject(json, k.split('.')))
 		return json
 	}
 
-	toString (includeIgnored = true) {
+	toString(includeIgnored = true) {
 		return JSON.stringify(this.toJSON(includeIgnored), null, 2)
 	}
 }

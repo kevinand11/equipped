@@ -1,6 +1,8 @@
 import path from 'path'
+
 import pug from 'pug'
-import { Enum, IEmailsList } from '../enums/types'
+
+import type { Enum, IEmailsList } from '../enums/types'
 
 export type PhoneText = {
 	to: string

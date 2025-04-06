@@ -1,5 +1,7 @@
 import { ClassPropertiesWrapper } from 'valleyed'
-import { AddMethodImpls, GeneralConfig, Methods, Route, RouteConfig, RouteHandler } from './types'
+
+import type { AddMethodImpls, GeneralConfig, Route, RouteConfig, RouteHandler } from './types'
+import { Methods } from './types'
 
 export const cleanPath = (path: string) => {
 	let cleaned = path.replace(/(\/\s*)+/g, '/')
@@ -8,8 +10,8 @@ export const cleanPath = (path: string) => {
 	return cleaned
 }
 
-export const groupRoutes = (config: GeneralConfig, routes: Route[]): Route[] => routes
-	.map((route) => ({
+export const groupRoutes = (config: GeneralConfig, routes: Route[]): Route[] =>
+	routes.map((route) => ({
 		...config,
 		...route,
 		path: cleanPath(`${config.path}/${route.path}`),
@@ -18,19 +20,20 @@ export const groupRoutes = (config: GeneralConfig, routes: Route[]): Route[] => 
 		security: [...(config.security ?? []), ...(route.security ?? [])],
 	}))
 
-
 export class Router extends ClassPropertiesWrapper<AddMethodImpls> {
 	#config: GeneralConfig = { path: '' }
 	#routes: Route[] = []
 	#children: Router[] = []
 
-	constructor (config?: GeneralConfig) {
-		const methodImpls = Object.fromEntries(Object.values(Methods).map((method) => [method, (route) => this.#addRoute(method, route)])) as AddMethodImpls
+	constructor(config?: GeneralConfig) {
+		const methodImpls = Object.fromEntries(
+			Object.values(Methods).map((method) => [method, (route) => this.#addRoute(method, route)]),
+		) as AddMethodImpls
 		super(methodImpls)
 		if (config) this.#config = config
 	}
 
-	#addRoute (method: Route['method'], routeConfig: RouteConfig, collection: Route[] = this.#routes) {
+	#addRoute(method: Route['method'], routeConfig: RouteConfig, collection: Route[] = this.#routes) {
 		return (handler: RouteHandler) => {
 			const route = groupRoutes(this.#config, [{ ...routeConfig, method, handler }])[0]
 			collection.push(route)
@@ -38,16 +41,16 @@ export class Router extends ClassPropertiesWrapper<AddMethodImpls> {
 		}
 	}
 
-	add (...routes: Route[]) {
+	add(...routes: Route[]) {
 		const mapped = groupRoutes(this.#config, routes)
 		this.#routes.push(...mapped)
 	}
 
-	nest (...routers: Router[]) {
+	nest(...routers: Router[]) {
 		routers.forEach((router) => this.#children.push(router))
 	}
 
-	get routes () {
+	get routes() {
 		const routes = [...this.#routes]
 		this.#children.forEach((child) => {
 			child.routes.forEach((route) => {

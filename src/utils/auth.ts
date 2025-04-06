@@ -27,7 +27,9 @@ export const signinWithApple = async (idToken: string) => {
 		if (!json?.header) throw new Error('')
 		const { kid, alg } = json.header
 		const publicKey = await jwksClient({ jwksUri: `${APPLE_BASE}/auth/keys`, cache: true })
-			.getSigningKey(kid).then((key) => key.getPublicKey()).catch(() => null)
+			.getSigningKey(kid)
+			.then((key) => key.getPublicKey())
+			.catch(() => null)
 		if (!publicKey) throw new Error('')
 		const data = jwt.verify(idToken, publicKey, { algorithms: [alg as any] }) as Record<string, any>
 		if (!data) throw new Error('')
@@ -47,17 +49,19 @@ export const signinWithApple = async (idToken: string) => {
 
 export const signinWithFacebook = async (accessToken: string, fields = [] as string[]) => {
 	fields = [...new Set([...fields, 'name', 'picture', 'email'])]
-	const { data } = await axios.request({
-		method: 'get',
-		url: 'https://graph.facebook.com/v15.0/me',
-		params: {
-			fields: fields.join(','),
-			access_token: accessToken
-		}
-	}).catch((err) => {
-		const message = err?.response?.data?.error?.message
-		throw new Error(message ? 'Invalid access token' : 'Something unexpected happened')
-	})
+	const { data } = await axios
+		.request({
+			method: 'get',
+			url: 'https://graph.facebook.com/v15.0/me',
+			params: {
+				fields: fields.join(','),
+				access_token: accessToken,
+			},
+		})
+		.catch((err) => {
+			const message = err?.response?.data?.error?.message
+			throw new Error(message ? 'Invalid access token' : 'Something unexpected happened')
+		})
 	const isValidData = fields.every((key) => key in data)
 	if (!isValidData) throw new Error('Incomplete scope for access token')
 	data.email_verified = 'true'
@@ -67,7 +71,7 @@ export const signinWithFacebook = async (accessToken: string, fields = [] as str
 		email_verified: 'true' | 'false'
 		name: string
 		picture: {
-			data: { height: number, is_silhouette: boolean, url: string, width: number }
+			data: { height: number; is_silhouette: boolean; url: string; width: number }
 		}
 	} & Record<string, any>
 }

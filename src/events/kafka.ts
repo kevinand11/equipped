@@ -1,5 +1,7 @@
 import { Kafka, logLevel } from 'kafkajs'
-import { DefaultSubscribeOptions, EventBus, Events, SubscribeOptions } from '.'
+
+import type { Events, SubscribeOptions } from '.'
+import { DefaultSubscribeOptions, EventBus } from '.'
 import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
 import { parseJSONValue } from '../utils/json'
@@ -9,14 +11,14 @@ export class KafkaEventBus extends EventBus {
 	#client = new Kafka({
 		clientId: Instance.get().settings.eventColumnName,
 		brokers: Instance.get().settings.kafkaURIs,
-		logLevel: logLevel.NOTHING
+		logLevel: logLevel.NOTHING,
 	})
 
-	constructor () {
+	constructor() {
 		super()
 	}
 
-	createPublisher<Event extends Events[keyof Events]> (topic: Event['topic']) {
+	createPublisher<Event extends Events[keyof Events]>(topic: Event['topic']) {
 		const publish = async (data: Event['data']) => {
 			try {
 				const producer = this.#client.producer()
@@ -34,7 +36,11 @@ export class KafkaEventBus extends EventBus {
 		return { publish }
 	}
 
-	createSubscriber<Event extends Events[keyof Events]> (topic: Event['topic'], onMessage: (data: Event['data']) => Promise<void>, options: Partial<SubscribeOptions> = {}) {
+	createSubscriber<Event extends Events[keyof Events]>(
+		topic: Event['topic'],
+		onMessage: (data: Event['data']) => Promise<void>,
+		options: Partial<SubscribeOptions> = {},
+	) {
 		options = { ...DefaultSubscribeOptions, ...options }
 		let started = false
 		const subscribe = async () => {
@@ -51,32 +57,37 @@ export class KafkaEventBus extends EventBus {
 
 			await consumer.run({
 				eachMessage: async ({ message }) => {
-					addWaitBeforeExit((async () => {
-						if (!message.value) return
-						await onMessage(parseJSONValue(message.value.toString())).catch()
-					})())
+					addWaitBeforeExit(
+						(async () => {
+							if (!message.value) return
+							await onMessage(parseJSONValue(message.value.toString())).catch(() => {})
+						})(),
+					)
 				},
 			})
 
-			if (options.fanout) addWaitBeforeExit(async () => {
-				await consumer.disconnect()
-				await this.#deleteGroup(groupId)
-			})
+			if (options.fanout)
+				addWaitBeforeExit(async () => {
+					await consumer.disconnect()
+					await this.#deleteGroup(groupId)
+				})
 		}
 		this._subscribers.push(subscribe)
 
 		return { subscribe }
 	}
 
-	async #createTopic (topic: string) {
+	async #createTopic(topic: string) {
 		const admin = this.#client.admin()
-		await admin.createTopics({
-			topics: [{ topic, numPartitions: 5 }],
-		}).catch()
+		await admin
+			.createTopics({
+				topics: [{ topic, numPartitions: 5 }],
+			})
+			.catch(() => {})
 	}
 
-	async #deleteGroup (groupId: string) {
+	async #deleteGroup(groupId: string) {
 		const admin = this.#client.admin()
-		await admin.deleteGroups([groupId]).catch()
+		await admin.deleteGroups([groupId]).catch(() => {})
 	}
 }

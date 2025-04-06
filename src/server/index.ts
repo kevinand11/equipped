@@ -3,7 +3,7 @@ export * from './requests'
 export * from './routes'
 export * from './types'
 
-import { Server } from './impls/base'
+import type { Server } from './impls/base'
 import { ExpressServer } from './impls/express'
 import { FastifyServer } from './impls/fastify'
 

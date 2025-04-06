@@ -1,8 +1,8 @@
-import { Enum } from '../enums/types'
-import { CustomError } from '../errors'
+import type { FastifySchema } from 'fastify'
 
-import { FastifySchema } from 'fastify'
-import { Defined, Flatten, IsInTypeList, IsType, JSONValue } from '../types'
+import type { Enum } from '../enums/types'
+import type { CustomError } from '../errors'
+import type { Defined, Flatten, IsInTypeList, IsType, JSONValue } from '../types'
 import type { Request, Response } from './requests'
 
 export const Methods = {
@@ -43,13 +43,13 @@ export interface Api<
 	Query extends Record<string, any> = Record<string, any>,
 	RequestHeaders extends HeadersType = HeadersType,
 	ResponseHeaders extends HeadersType = HeadersType,
-	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes
+	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes,
 > {
-    key: Key
-    method: Method
-    response: Res
-    body?: Body
-    params?: Params
+	key: Key
+	method: Method
+	response: Res
+	body?: Body
+	params?: Params
 	query?: Query
 	requestHeaders?: RequestHeaders
 	responseHeaders?: ResponseHeaders
@@ -73,19 +73,38 @@ export interface ApiDef<T extends Api> {
 
 type Awaitable<T> = Promise<T> | T
 type Res<T, S extends SupportedStatusCodes, H extends HeadersType> = Awaitable<
-	IsInTypeList<S, [SupportedStatusCodes, 200, unknown]> extends true ? IsInTypeList<H, [HeadersType, unknown]> extends true ? Response<T, S, H> | T : Response<T, S, H> : Response<T, S, H>
+	IsInTypeList<S, [SupportedStatusCodes, 200, unknown]> extends true
+		? IsInTypeList<H, [HeadersType, unknown]> extends true
+			? Response<T, S, H> | T
+			: Response<T, S, H>
+		: Response<T, S, H>
 >
 type InferApiFromApiDef<T> = T extends ApiDef<infer A> ? A : never
 type ExcludeUnknown<T, D> = IsType<T, unknown> extends true ? D : T
-export type GetApiPart<T extends Api, K extends keyof Api, Def extends boolean = true, Default extends Api[K] = Def extends true ? Defined<Api[K]> : Api[K]> = IsInTypeList<K, ['key', 'method', 'body']> extends true ? T[K] : Def extends true ? ExcludeUnknown<Defined<T[K]>, Default> : ExcludeUnknown<T[K], Default>
+export type GetApiPart<
+	T extends Api,
+	K extends keyof Api,
+	Def extends boolean = true,
+	Default extends Api[K] = Def extends true ? Defined<Api[K]> : Api[K],
+> =
+	IsInTypeList<K, ['key', 'method', 'body']> extends true
+		? T[K]
+		: Def extends true
+			? ExcludeUnknown<Defined<T[K]>, Default>
+			: ExcludeUnknown<T[K], Default>
 
-export type RouteHandler<Def extends Api = Api> = (req: Request<Def>) => Res<Def['response'], GetApiPart<Def, 'defaultStatusCode'>, GetApiPart<Def, 'responseHeaders'>>
-export type ErrorHandler<Def extends Api = Api> = (req: Request<Def>, err: Error) => Res<CustomError['serializedErrors'], CustomError['statusCode'], HeadersType>
+export type RouteHandler<Def extends Api = Api> = (
+	req: Request<Def>,
+) => Res<Def['response'], GetApiPart<Def, 'defaultStatusCode'>, GetApiPart<Def, 'responseHeaders'>>
+export type ErrorHandler<Def extends Api = Api> = (
+	req: Request<Def>,
+	err: Error,
+) => Res<CustomError['serializedErrors'], CustomError['statusCode'], HeadersType>
 export type RouteMiddlewareHandler<Def extends Api = Api> = (req: Request<Def>) => Awaitable<void>
 export type HandlerSetup = (route: Route) => void
 
 export type RouteSchema = Omit<FastifySchema, 'tags' | 'security' | 'hide' | 'description'> & { descriptions?: string[]; title?: string }
-type RouteGroup = { name: string, description?: string }
+type RouteGroup = { name: string; description?: string }
 
 export interface Route<Def extends ApiDef<Api> = ApiDef<Api>> {
 	key?: Def['key']
@@ -109,12 +128,17 @@ export type AddMethodImpls = {
 }
 
 class MiddlewareHandler<Cb extends Function> {
-	private constructor (public cb: Cb, public onSetup?: HandlerSetup) { }
+	private constructor(
+		public cb: Cb,
+		public onSetup?: HandlerSetup,
+	) {}
 
-	static make<Cb extends Function> (cb: Cb, onSetup?: HandlerSetup) {
+	static make<Cb extends Function>(cb: Cb, onSetup?: HandlerSetup) {
 		return new MiddlewareHandler(cb, onSetup)
 	}
 }
 
-export const makeMiddleware = <Def extends Api = Api>(...args: Parameters<typeof MiddlewareHandler.make<RouteMiddlewareHandler<Def>>>) => MiddlewareHandler.make(...args)
-export const makeErrorMiddleware = <Def extends Api = Api> (...args: Parameters<typeof MiddlewareHandler.make<ErrorHandler<Def>>>) => MiddlewareHandler.make(...args)
+export const makeMiddleware = <Def extends Api = Api>(...args: Parameters<typeof MiddlewareHandler.make<RouteMiddlewareHandler<Def>>>) =>
+	MiddlewareHandler.make(...args)
+export const makeErrorMiddleware = <Def extends Api = Api>(...args: Parameters<typeof MiddlewareHandler.make<ErrorHandler<Def>>>) =>
+	MiddlewareHandler.make(...args)

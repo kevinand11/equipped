@@ -6,22 +6,25 @@ import fastifyMultipart from '@fastify/multipart'
 import fastifyRateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
 import fastifySwagger from '@fastify/swagger'
-import Fastify, { FastifyReply, FastifyRequest, preHandlerHookHandler, RouteHandlerMethod } from 'fastify'
+import type { FastifyReply, FastifyRequest, preHandlerHookHandler, RouteHandlerMethod } from 'fastify'
+import Fastify from 'fastify'
 // import fastifySlowDown from 'fastify-slow-down'
 import qs from 'qs'
 
 import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
-import { StorageFile } from '../../storage'
-import { Defined } from '../../types'
+import type { StorageFile } from '../../storage'
+import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../requests'
-import { Route, StatusCodes } from '../types'
-import { FullRoute, Server } from './base'
+import type { Route } from '../types'
+import { StatusCodes } from '../types'
+import type { FullRoute } from './base'
+import { Server } from './base'
 
-function getFastifyApp () {
+function getFastifyApp() {
 	const instance = Instance.get()
 	return Fastify({
 		ignoreTrailingSlash: true,
@@ -29,7 +32,10 @@ function getFastifyApp () {
 		disableRequestLogging: !instance.settings.logRequests,
 		loggerInstance: instance.settings.logRequests ? instance.logger : undefined,
 		ajv: { customOptions: { coerceTypes: false } },
-		schemaErrorFormatter: (errors, data) => new ValidationError(errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })))
+		schemaErrorFormatter: (errors, data) =>
+			new ValidationError(
+				errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })),
+			),
 	})
 }
 type FastifyInstance = ReturnType<typeof getFastifyApp>
@@ -37,7 +43,7 @@ type FastifyInstance = ReturnType<typeof getFastifyApp>
 export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	#fastifyApp: FastifyInstance
 
-	constructor () {
+	constructor() {
 		const app = getFastifyApp()
 		super(app.server)
 		this.#fastifyApp = app
@@ -51,7 +57,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			res.code(200).send(app.swagger({}))
 		})
 		app.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
-		app.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' },  contentSecurityPolicy: false })
+		app.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' }, contentSecurityPolicy: false })
 		app.register(fastifyMultipart, {
 			attachFieldsToBody: 'keyValues',
 			throwFileSizeLimit: false,
@@ -68,21 +74,22 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 				}
 				// @ts-ignore
 				f.value = parsed
-			}
+			},
 		})
 		/* if (this.settings.useSlowDown) app.register(fastifySlowDown, {
 			timeWindow: this.settings.slowDownPeriodInMs,
 			delayAfter: this.settings.slowDownAfter,
 			delay: this.settings.slowDownDelayInMs
 		}) */
-		if (this.settings.useRateLimit) app.register(fastifyRateLimit, {
-			max: this.settings.rateLimit,
-			timeWindow: this.settings.rateLimitPeriodInMs,
-			errorResponseBuilder: (_, context) => ({
-				statusCode: StatusCodes.TooManyRequests,
-				message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }])
+		if (this.settings.useRateLimit)
+			app.register(fastifyRateLimit, {
+				max: this.settings.rateLimit,
+				timeWindow: this.settings.rateLimitPeriodInMs,
+				errorResponseBuilder: (_, context) => ({
+					statusCode: StatusCodes.TooManyRequests,
+					message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }]),
+				}),
 			})
-		})
 		if (!this.settings.requestSchemaValidation) {
 			app.setValidatorCompiler(() => () => true)
 			app.setSerializerCompiler(() => (data) => JSON.stringify(data))
@@ -93,7 +100,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		await this.#fastifyApp.ready()
 	}
 
-	protected registerRoute (route: FullRoute) {
+	protected registerRoute(route: FullRoute) {
 		this.#fastifyApp.register(async (inst) => {
 			inst.route({
 				url: route.path,
@@ -106,7 +113,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		})
 	}
 
-	protected async startServer (port: number) {
+	protected async startServer(port: number) {
 		this.#fastifyApp.setNotFoundHandler(this.makeController(<any>notFoundHandler.cb))
 		this.#fastifyApp.setErrorHandler(this.makeErrorMiddleware(errorHandler.cb))
 		await this.#fastifyApp.listen({ port, host: '0.0.0.0' })
@@ -114,7 +121,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		return true
 	}
 
-	protected async parse (req: FastifyRequest) {
+	protected async parse(req: FastifyRequest) {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
@@ -122,11 +129,11 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			RefreshToken: req.headers['refresh-token']?.toString(),
 			ContentType: req.headers['content-type']?.toString(),
 			Referer: req.headers['referer']?.toString(),
-			UserAgent: req.headers['user-agent']?.toString()
+			UserAgent: req.headers['user-agent']?.toString(),
 		}
 		const { body, files } = excludeBufferKeys(req.body ?? {})
 
-		return req.savedReq ||= new Request({
+		return (req.savedReq ||= new Request({
 			ip: req.ip,
 			body,
 			cookies: req.cookies ?? {},
@@ -136,7 +143,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			path: req.url,
 			headers,
 			files,
-		})
+		}))
 	}
 
 	makeController(cb: Defined<Route['handler']>) {
@@ -160,7 +167,8 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		const handler: FastifyInstance['errorHandler'] = async (error, req, reply) => {
 			const request = await this.parse(req)
 			const rawResponse = await cb(request, error)
-			const response = rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.BadRequest })
+			const response =
+				rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.BadRequest })
 			return reply.status(response.status).headers(response.headers).send(response.body)
 		}
 		return handler
@@ -168,19 +176,19 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 }
 
 declare module 'fastify' {
-  interface FastifyRequest {
-    savedReq: Request | null
-  }
+	interface FastifyRequest {
+		savedReq: Request | null
+	}
 }
 
-function excludeBufferKeys<T> (body: T) {
+function excludeBufferKeys<T>(body: T) {
 	if (typeof body !== 'object') return { body, files: {} }
 	const entries = Object.entries(body ?? {})
-	const isFile = (val: any) => Array.isArray(val) ? isFile(val.at(0)) : Buffer.isBuffer(val?.data)
+	const isFile = (val: any) => (Array.isArray(val) ? isFile(val.at(0)) : Buffer.isBuffer(val?.data))
 	const fileEntries = entries.filter(([_, value]) => isFile(value)).map(([key, value]) => [key, Array.isArray(value) ? value : [value]])
 	const nonFileEntries = entries.filter(([_, value]) => !isFile(value))
 	return {
 		body: <T>Object.fromEntries(nonFileEntries),
-		files: <Record<string, StorageFile[]>>Object.fromEntries(fileEntries)
+		files: <Record<string, StorageFile[]>>Object.fromEntries(fileEntries),
 	}
 }

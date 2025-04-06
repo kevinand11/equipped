@@ -9,7 +9,10 @@ type Error = {
 export class ValidationError extends CustomError {
 	statusCode = StatusCodes.ValidationError
 
-	constructor (errors: Error[]) {
-		super('Invalid request parameters', errors.map((e) => ({ field: e.field, message: e.messages.join('\n') })))
+	constructor(errors: Error[]) {
+		super(
+			'Invalid request parameters',
+			errors.map((e) => ({ field: e.field, message: e.messages.join('\n') })),
+		)
 	}
 }

@@ -1,2 +1,2 @@
+export type { DbChangeCallbacks } from './_instance'
 export * from './query'
-export { DbChangeCallbacks } from './_instance'

@@ -1,4 +1,5 @@
 import dotenv from 'dotenv'
+
 import { exit } from './exit'
 
 dotenv.config()
@@ -6,9 +7,9 @@ dotenv.config()
 export * from './db'
 export * from './emails'
 export * from './enums'
-export { Enum } from './enums/types'
+export type { Enum } from './enums/types'
 export * from './errors'
-export { Events } from './events/'
+export type { Events } from './events/'
 export * from './exit'
 export * from './instance'
 export * from './listeners'

@@ -1,8 +1,10 @@
 import jwt from 'jsonwebtoken'
-import { AccessTokenExpired, CustomError, NotAuthenticatedError } from '../errors'
+
+import type { CustomError } from '../errors'
+import { AccessTokenExpired, NotAuthenticatedError } from '../errors'
 import { Instance } from '../instance'
 import { StatusCodes } from '../server'
-import { AuthUser, RefreshUser } from './authUser'
+import type { AuthUser, RefreshUser } from './authUser'
 
 const getAccessTokenKey = (userId: string) => `${userId}-access-token`
 const getRefreshTokenKey = (userId: string) => `${userId}-refresh-token`
@@ -55,7 +57,7 @@ type Tokens = {
 
 export const exchangeOldForNewTokens = async (
 	{ accessToken, refreshToken }: Tokens,
-	makeTokens: (id: string) => Promise<Tokens>
+	makeTokens: (id: string) => Promise<Tokens>,
 ): Promise<Tokens> => {
 	const authUser = await verifyAccessToken(accessToken).catch((err) => {
 		const error = err as CustomError

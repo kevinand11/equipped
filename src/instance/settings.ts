@@ -1,4 +1,5 @@
-import { Level } from 'pino'
+import type { Level } from 'pino'
+
 import type { ServerTypes } from '../server'
 
 export type Settings = {

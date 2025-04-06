@@ -1,40 +1,11 @@
 {
+	"extends": "@k11/ts-config/lib",
 	"compilerOptions": {
-		"skipLibCheck": true,
-		"noImplicitReturns": true,
-		"noUnusedLocals": true,
-		"noUnusedParameters": true,
-		"removeComments": true,
-		"noImplicitAny": false,
-		"target": "ES2023",
-		"module": "commonjs",
-		"rootDir": "src",
-		"baseUrl": ".",
+		"baseUrl": "src",
 		"outDir": "lib",
-		"declaration": true,
-		"moduleResolution": "Node",
-		"lib": [
-			"ESNext",
-			"ESNext.AsyncIterable",
-			"DOM"
-		],
-		"esModuleInterop": true,
-		"allowJs": false,
-		"sourceMap": false,
-		"strict": true,
-		"noEmit": false,
-		"experimentalDecorators": true,
-		"paths": {},
-		"types": [
-			"@types/node"
-		]
+		"types": ["@types/node"],
+		"target": "ES2021",
 	},
-	"include": [
-		"src"
-	],
-	"exclude": [
-		"node_modules",
-		"lib",
-		"links"
-	]
+	"include": ["src"],
+	"exclude": ["node_modules", "lib"]
 }

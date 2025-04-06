@@ -4,7 +4,7 @@ import { CustomError } from '../customError'
 export class NotFoundError extends CustomError {
 	statusCode = StatusCodes.NotFound
 
-	constructor (message = 'Not found') {
+	constructor(message = 'Not found') {
 		super(message, [{ message }])
 	}
 }

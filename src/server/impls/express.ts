@@ -1,14 +1,15 @@
+import http from 'http'
+
 import { prepareOpenapiMethod } from '@fastify/swagger/lib/spec/openapi/utils'
 import openapi from '@wesleytodd/openapi'
 import cookie from 'cookie-parser'
 import cors from 'cors'
 import express from 'express'
 import fileUpload from 'express-fileupload'
-import rateLimit from 'express-rate-limit'
+import { rateLimit } from 'express-rate-limit'
 // import slowDown from 'express-slow-down'
-import { FastifySchemaValidationError } from 'fastify/types/schema'
+import type { FastifySchemaValidationError } from 'fastify/types/schema'
 import helmet from 'helmet'
-import http from 'http'
 // @ts-ignore
 import resolver from 'json-schema-resolver'
 import { pinoHttp } from 'pino-http'
@@ -16,20 +17,22 @@ import { pinoHttp } from 'pino-http'
 import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
-import { StorageFile } from '../../storage'
-import { Defined } from '../../types'
+import type { StorageFile } from '../../storage'
+import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../requests'
-import { Route, StatusCodes } from '../types'
-import { FullRoute, Server } from './base'
+import type { Route } from '../types'
+import { StatusCodes } from '../types'
+import type { FullRoute } from './base'
+import { Server } from './base'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express
 	#oapi = openapi(this.openapiJsonUrl.replace('.json', ''), this.baseOpenapiDoc, { coerce: false })
 	#ref = resolver({ clone: true })
 
-	constructor () {
+	constructor() {
 		const app = express()
 		super(http.createServer(app))
 		this.#expressApp = app
@@ -39,10 +42,12 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		app.use(express.json())
 		app.use(express.text())
 		app.use(cookie())
-		app.use(helmet({
-			crossOriginResourcePolicy: { policy: 'cross-origin' },
-			contentSecurityPolicy: false
-		}))
+		app.use(
+			helmet({
+				crossOriginResourcePolicy: { policy: 'cross-origin' },
+				contentSecurityPolicy: false,
+			}),
+		)
 		app.use(cors({ origin: '*' }))
 		app.use(express.urlencoded({ extended: false }))
 		app.use(express.static(this.staticPath))
@@ -50,14 +55,18 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		app.use(
 			fileUpload({
 				limits: { fileSize: this.settings.maxFileUploadSizeInMb * 1024 * 1024 },
-				useTempFiles: false
-			})
+				useTempFiles: false,
+			}),
 		)
-		if (this.settings.useRateLimit) app.use(rateLimit({
-			windowMs: this.settings.rateLimitPeriodInMs,
-			limit: this.settings.rateLimit,
-			handler: (_: express.Request, res: express.Response) => res.status(StatusCodes.TooManyRequests).json([{ message: 'Too Many Requests' }])
-		}))
+		if (this.settings.useRateLimit)
+			app.use(
+				rateLimit({
+					windowMs: this.settings.rateLimitPeriodInMs,
+					limit: this.settings.rateLimit,
+					handler: (_: express.Request, res: express.Response) =>
+						res.status(StatusCodes.TooManyRequests).json([{ message: 'Too Many Requests' }]),
+				}),
+			)
 		/* if (this.settings.useSlowDown) app.use(slowDown({
 			windowMs: this.settings.slowDownPeriodInMs,
 			delayAfter: this.settings.slowDownAfter,
@@ -65,30 +74,33 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})) */
 	}
 
-	protected registerRoute (route: FullRoute) {
+	protected registerRoute(route: FullRoute) {
 		const openapi = prepareOpenapiMethod(route.schema, this.#ref, this.baseOpenapiDoc, route.path)
 		const controllers: (express.RequestHandler | express.ErrorRequestHandler)[] = [
 			...route.middlewares.map((m) => this.makeMiddleware(m.cb)),
-			this.makeController(route.handler)
+			this.makeController(route.handler),
 		]
-		if (!route.schema.hide) controllers.unshift(
-			this.#oapi[this.settings.requestSchemaValidation ? 'validPath' : 'path'](openapi),
-			(error: Error, _, __, next) => {
-				if ('validationErrors' in error) {
-					const validationErrors = <FastifySchemaValidationError[]>error.validationErrors
-					throw new ValidationError(validationErrors.map((error) => ({
-						messages: [error.message ?? ''],
-						field: error.instancePath.replaceAll('/', '.').split('.').filter(Boolean).join('.')
-					})))
-				}
-				next()
-			}
-		)
+		if (!route.schema.hide)
+			controllers.unshift(
+				this.#oapi[this.settings.requestSchemaValidation ? 'validPath' : 'path'](openapi),
+				(error: Error, _, __, next) => {
+					if ('validationErrors' in error) {
+						const validationErrors = <FastifySchemaValidationError[]>error.validationErrors
+						throw new ValidationError(
+							validationErrors.map((error) => ({
+								messages: [error.message ?? ''],
+								field: error.instancePath.replaceAll('/', '.').split('.').filter(Boolean).join('.'),
+							})),
+						)
+					}
+					next()
+				},
+			)
 		if (route.onError) controllers.push(this.makeErrorMiddleware(route.onError.cb))
 		this.#expressApp[route.method]?.(route.path, ...controllers)
 	}
 
-	protected async startServer (port: number) {
+	protected async startServer(port: number) {
 		this.#expressApp.use(this.makeMiddleware(notFoundHandler.cb))
 		this.#expressApp.use(this.makeErrorMiddleware(errorHandler.cb))
 
@@ -102,9 +114,9 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})
 	}
 
-	protected async onLoad () {}
+	protected async onLoad() {}
 
-	protected async parse (req: express.Request): Promise<Request> {
+	protected async parse(req: express.Request): Promise<Request> {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
@@ -112,27 +124,29 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			RefreshToken: req.get('Refresh-Token'),
 			ContentType: req.get('Content-Type'),
 			Referer: req.get('referer'),
-			UserAgent: req.get('User-Agent')
+			UserAgent: req.get('User-Agent'),
 		}
 		const files = Object.fromEntries(
 			await Promise.all(
 				Object.entries(req.files ?? {}).map(async ([key, file]) => {
 					const uploads = Array.isArray(file) ? file : [file]
-					const fileArray: StorageFile[] = await Promise.all(uploads.map(async (f) => ({
-						name: f.name,
-						type: f.mimetype,
-						size: f.size,
-						isTruncated: f.truncated,
-						data: f.data,
-						duration: await getMediaDuration(f.data),
-					})))
+					const fileArray: StorageFile[] = await Promise.all(
+						uploads.map(async (f) => ({
+							name: f.name,
+							type: f.mimetype,
+							size: f.size,
+							isTruncated: f.truncated,
+							data: f.data,
+							duration: await getMediaDuration(f.data),
+						})),
+					)
 					return <const>[key, fileArray]
-				})
-			)
+				}),
+			),
 		)
 
 		// @ts-ignore
-		return req.savedReq ||= new Request({
+		return (req.savedReq ||= new Request({
 			ip: req.ip,
 			body: req.body ?? {},
 			cookies: req.cookies ?? {},
@@ -142,7 +156,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			path: req.path,
 			headers,
 			files,
-		})
+		}))
 	}
 
 	makeController(cb: Defined<Route['handler']>) {
@@ -179,7 +193,8 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		return async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
 			const request = await this.parse(req)
 			const rawResponse = await cb(request, err)
-			const response = rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.BadRequest })
+			const response =
+				rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.BadRequest })
 			if (!response.piped) {
 				Object.entries(response.headers).forEach(([key, value]) => value && res.header(key, value))
 				res.status(response.status).send(response.body).end()

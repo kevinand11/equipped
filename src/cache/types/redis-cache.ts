@@ -1,4 +1,5 @@
 import { createClient } from 'redis'
+
 import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { Cache } from '../cache'
@@ -6,7 +7,7 @@ import { Cache } from '../cache'
 export class RedisCache extends Cache {
 	client: ReturnType<typeof createClient>
 
-	constructor () {
+	constructor() {
 		super()
 		this.client = createClient({ url: Instance.get().settings.redisURI })
 		this.client.on('error', async (error) => {
@@ -14,28 +15,28 @@ export class RedisCache extends Cache {
 		})
 	}
 
-	async start () {
+	async start() {
 		await this.client.connect()
 	}
 
-	async close () {
+	async close() {
 		this.client.quit()
 	}
 
-	async delete (key: string) {
+	async delete(key: string) {
 		await this.client.del(key)
 	}
 
-	async get (key: string) {
+	async get(key: string) {
 		return await this.client.get(key)
 	}
 
-	async set (key: string, data: string, ttlInSecs: number) {
+	async set(key: string, data: string, ttlInSecs: number) {
 		if (ttlInSecs > 0) await this.client.setEx(key, ttlInSecs, data)
 		else this.client.set(key, data)
 	}
 
-	async getOrSet<T> (key: string, fn: () => Promise<T>, ttlInSecs: number) {
+	async getOrSet<T>(key: string, fn: () => Promise<T>, ttlInSecs: number) {
 		const cached = await this.get(key)
 		if (cached) return JSON.parse(cached)
 

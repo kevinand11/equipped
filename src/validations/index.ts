@@ -1,38 +1,45 @@
 import * as bcrypt from 'bcryptjs'
 import * as Validate from 'valleyed'
-import { ExtractI } from 'valleyed/lib/api/base'
-import { VCore } from 'valleyed/lib/api/core'
-import { VObject } from 'valleyed/lib/api/objects'
+import type { ExtractI } from 'valleyed/lib/api/base'
+import type { VCore } from 'valleyed/lib/api/core'
+import type { VObject } from 'valleyed/lib/api/objects'
+
 import { ValidationError } from '../errors'
 import { Instance } from '../instance'
-import { StorageFile } from '../storage'
+import type { StorageFile } from '../storage'
 
-const isNotTruncated = (error?: string) => Validate.makeRule<StorageFile>((file) => {
-	const val = file as StorageFile
-	error = error ?? `is larger than allowed limit of ${Instance.get().settings.maxFileUploadSizeInMb}mb`
-	const valid = val ? !val.isTruncated : true
-	return valid ? Validate.isValid(val) : Validate.isInvalid([error], val)
-})
+const isNotTruncated = (error?: string) =>
+	Validate.makeRule<StorageFile>((file) => {
+		const val = file as StorageFile
+		error = error ?? `is larger than allowed limit of ${Instance.get().settings.maxFileUploadSizeInMb}mb`
+		const valid = val ? !val.isTruncated : true
+		return valid ? Validate.isValid(val) : Validate.isInvalid([error], val)
+	})
 
-type Phone = { code: string, number: string }
-const isValidPhone = (error?: string) => Validate.makeRule<Phone>((value) => {
-	return Validate.v.object({
-		code: Validate.v.string().custom((val) => {
-			return val.startsWith('+') &&
-				Validate.v.force.number(val.slice(1)).parse(val).valid
-		}, error ?? 'invalid phone code'),
-		number: Validate.v.force.number(error ?? 'invalid phone number').transform((val) => val.toString())
-	}).parse(value)
-})
+type Phone = { code: string; number: string }
+const isValidPhone = (error?: string) =>
+	Validate.makeRule<Phone>((value) =>
+		Validate.v
+			.object({
+				code: Validate.v
+					.string()
+					.custom(
+						(val) => val.startsWith('+') && Validate.v.force.number(val.slice(1)).parse(val).valid,
+						error ?? 'invalid phone code',
+					),
+				number: Validate.v.force.number(error ?? 'invalid phone number').transform((val) => val.toString()),
+			})
+			.parse(value),
+	)
 
 const file = Validate.v.file
 Validate.v.file = (...args: Parameters<typeof file>) => file(...args).addRule(isNotTruncated())
 export const Schema = Validate.v
 export const Validation = { ...Validate, isNotTruncated, isValidPhone }
 
-export function validate<T extends Record<string, VCore<any>>>(schema: T, value: unknown) :ExtractI<VObject<T>>
+export function validate<T extends Record<string, VCore<any>>>(schema: T, value: unknown): ExtractI<VObject<T>>
 // eslint-disable-next-line no-redeclare
-export function validate<T extends VCore<any>>(schema: T, value: unknown) :ExtractI<T>
+export function validate<T extends VCore<any>>(schema: T, value: unknown): ExtractI<T>
 // eslint-disable-next-line no-redeclare
 export function validate(schema, value) {
 	const validator = schema instanceof Validate.VCore ? schema : Validate.v.object(schema)
@@ -43,16 +50,17 @@ export function validate(schema, value) {
 			const splitKey = ': '
 			const [field, ...rest] = error.split(splitKey)
 			return { field, message: rest.join(splitKey) }
-		}).reduce(((acc, cur) => {
-			if (acc[cur.field]) acc[cur.field].push(cur.message)
-			else acc[cur.field] = [cur.message]
-			return acc
-		}), {} as Record<string, string[]>)
+		})
+		.reduce(
+			(acc, cur) => {
+				if (acc[cur.field]) acc[cur.field].push(cur.message)
+				else acc[cur.field] = [cur.message]
+				return acc
+			},
+			{} as Record<string, string[]>,
+		)
 
-	throw new ValidationError(
-		Object.entries(errorsObject)
-			.map(([key, value]) => ({ field: key, messages: value }))
-	)
+	throw new ValidationError(Object.entries(errorsObject).map(([key, value]) => ({ field: key, messages: value })))
 }
 
 const hash = async (password: string) => {
@@ -70,5 +78,5 @@ const compare = async (plainPassword: string, hashed: string) => {
 export const Hash = { hash, compare }
 
 declare module 'valleyed/lib/types' {
-    interface File extends StorageFile {}
+	interface File extends StorageFile {}
 }

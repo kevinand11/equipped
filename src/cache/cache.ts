@@ -1,12 +1,12 @@
 export abstract class Cache {
-	abstract start (): Promise<void>
-	abstract close (): Promise<void>
+	abstract start(): Promise<void>
+	abstract close(): Promise<void>
 
-	abstract set (key: string, data: string, ttlInSecs: number): Promise<void>
+	abstract set(key: string, data: string, ttlInSecs: number): Promise<void>
 
-	abstract get (key: string): Promise<string | null>
+	abstract get(key: string): Promise<string | null>
 
-	abstract delete (key: string): Promise<void>
+	abstract delete(key: string): Promise<void>
 
-	abstract getOrSet<T> (key: string, fn: () => Promise<T>, ttlInSecs: number): Promise<T>
+	abstract getOrSet<T>(key: string, fn: () => Promise<T>, ttlInSecs: number): Promise<T>
 }

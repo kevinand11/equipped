@@ -1,20 +1,24 @@
+import type http from 'http'
+import path from 'path'
 
-import http from 'http'
-import { OpenAPIV3_1 } from 'openapi-types'
+import type { FastifySchema } from 'fastify'
+import type { OpenAPIV3_1 } from 'openapi-types'
 import io from 'socket.io'
 import supertest from 'supertest'
 
-import { FastifySchema } from 'fastify'
-import path from 'path'
 import { Instance } from '../../instance'
 import { Listener } from '../../listeners'
-import { Defined } from '../../types'
+import type { Defined } from '../../types'
 import { parseAuthUser } from '../middlewares'
-import { Request } from '../requests'
-import { Router, cleanPath } from '../routes'
-import { Route, StatusCodes } from '../types'
+import type { Request } from '../requests'
+import type { Router } from '../routes'
+import { cleanPath } from '../routes'
+import type { Route } from '../types'
+import { StatusCodes } from '../types'
 
-export type FullRoute = Required<Omit<Route, 'schema' | 'groups' | 'security' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>> & { schema: FastifySchema; onError?: Route['onError'] }
+export type FullRoute = Required<
+	Omit<Route, 'schema' | 'groups' | 'security' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>
+> & { schema: FastifySchema; onError?: Route['onError'] }
 type Schemas = Record<string, Defined<Route['schema']>>
 
 declare module 'openapi-types' {
@@ -33,8 +37,8 @@ export abstract class Server<Req = any, Res = any> {
 	#routesByKey = new Map<string, FullRoute>()
 	#schemas: Schemas = {}
 	#listener: Listener | null = null
-	#registeredTags: Record<string, boolean>  = {}
-	#registeredTagGroups: Record<string, { name: string; tags: string[] }>  = {}
+	#registeredTags: Record<string, boolean> = {}
+	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
 	protected server: http.Server
 	protected staticPath = path.join(process.cwd(), 'public')
 	protected settings = Instance.get().settings
@@ -56,54 +60,57 @@ export abstract class Server<Req = any, Res = any> {
 					type: 'apiKey',
 					name: 'Refresh-Token',
 					in: 'header',
-				}
+				},
 			},
 		},
 		tags: [],
 		'x-tagGroups': [],
 	}
-	protected abstract onLoad (): Promise<void>
-	protected abstract startServer (port: number): Promise<boolean>
+	protected abstract onLoad(): Promise<void>
+	protected abstract startServer(port: number): Promise<boolean>
 	protected abstract parse(req: Req, res: Res): Promise<Request>
-	protected abstract registerRoute (route: FullRoute): void
+	protected abstract registerRoute(route: FullRoute): void
 
-	constructor (server: http.Server) {
+	constructor(server: http.Server) {
 		this.server = server
 	}
 
-	get listener () {
+	get listener() {
 		if (!this.#listener) {
 			const socket = new io.Server(this.server, { cors: { origin: '*' } })
 			this.#listener = new Listener(socket, {
-				onConnect: async () => { },
-				onDisconnect: async () => { }
+				onConnect: async () => {},
+				onDisconnect: async () => {},
 			})
 		}
 		return this.#listener
 	}
 
-	addRouter (...routers: Router[]) {
+	addRouter(...routers: Router[]) {
 		routers.map((router) => router.routes).forEach((routes) => this.addRoute(...routes))
 	}
 
-	addRoute (...routes: Route[]) {
+	addRoute(...routes: Route[]) {
 		routes.forEach((route) => this.#regRoute(route))
 	}
 
-	addSchema (...schemas: Schemas[]) {
+	addSchema(...schemas: Schemas[]) {
 		schemas.forEach((schema) => Object.assign(this.#schemas, schema))
 	}
 
-	async load () {
+	async load() {
 		await this.onLoad()
 	}
 
-	#buildTag (groups: Defined<Route['groups']>) {
+	#buildTag(groups: Defined<Route['groups']>) {
 		if (!groups.length) return undefined
-		const parsed = groups.map((g) => typeof g === 'string' ? { name: g } : g)
+		const parsed = groups.map((g) => (typeof g === 'string' ? { name: g } : g))
 		const name = parsed.map((g) => g.name).join(' > ')
 		const displayName = parsed.at(-1)?.name ?? ''
-		const description = parsed.map((g) => g.description?.trim() ?? '').filter(Boolean).join('\n\n\n\n')
+		const description = parsed
+			.map((g) => g.description?.trim() ?? '')
+			.filter(Boolean)
+			.join('\n\n\n\n')
 
 		if (!this.#registeredTags[name]) {
 			this.#registeredTags[name] = true
@@ -122,7 +129,7 @@ export abstract class Server<Req = any, Res = any> {
 		return name
 	}
 
-	#regRoute (route: Route) {
+	#regRoute(route: Route) {
 		const middlewares = [parseAuthUser, ...(route.middlewares ?? [])]
 		route.onSetupHandler?.(route)
 		middlewares.forEach((m) => m.onSetup?.(route))
@@ -136,7 +143,10 @@ export abstract class Server<Req = any, Res = any> {
 
 		const scheme = Object.assign({}, schema, this.#schemas[key])
 		const fullRoute: FullRoute = {
-			method, middlewares, handler, key,
+			method,
+			middlewares,
+			handler,
+			key,
 			path: cleanPath(path),
 			onError,
 			schema: {
@@ -147,62 +157,63 @@ export abstract class Server<Req = any, Res = any> {
 				tags: tag ? [tag] : undefined,
 				description: route.descriptions?.join('\n\n'),
 				security,
-			}
+			},
 		}
-		if (this.#routesByPath.get(pathKey)) throw new Error(`Route path ${pathKey} already registered. All route paths and methods combinations must be unique`)
+		if (this.#routesByPath.get(pathKey))
+			throw new Error(`Route path ${pathKey} already registered. All route paths and methods combinations must be unique`)
 		if (this.#routesByKey.get(key)) throw new Error(`Route key ${fullRoute.key} already registered. All route keys must be unique`)
 		this.#routesByPath.set(pathKey, fullRoute)
 		this.#routesByKey.set(key, fullRoute)
 		this.registerRoute(fullRoute)
 	}
 
-	test () {
+	test() {
 		return supertest(this.server)
 	}
 
-	async start (port: number) {
+	async start(port: number) {
 		this.addRoute({
 			method: 'get',
 			path: `${this.settings.openapiDocsPath}/`,
-			handler: (req) => req.res({
-				body: '',
-				status: StatusCodes.Found,
-				headers: { 'Location': './index.html' },
-			}),
+			handler: (req) =>
+				req.res({
+					body: '',
+					status: StatusCodes.Found,
+					headers: { Location: './index.html' },
+				}),
 			hideSchema: true,
 		})
 
 		this.addRoute({
 			method: 'get',
 			path: `${this.settings.openapiDocsPath}/index.html`,
-			handler: (req) => req.res({
-				body: scalarHtml
-					.replaceAll('__API_TITLE__', this.settings.appId)
-					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
-				headers: { 'Content-Type': 'text/html' },
-			}),
+			handler: (req) =>
+				req.res({
+					body: scalarHtml.replaceAll('__API_TITLE__', this.settings.appId).replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
+					headers: { 'Content-Type': 'text/html' },
+				}),
 			hideSchema: true,
 		})
 
 		this.addRoute({
 			method: 'get',
 			path: `${this.settings.openapiDocsPath}/redoc.html`,
-			handler: (req) => req.res({
-				body: redocHtml
-					.replaceAll('__API_TITLE__', this.settings.appId)
-					.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
-				headers: { 'Content-Type': 'text/html' },
-			}),
+			handler: (req) =>
+				req.res({
+					body: redocHtml.replaceAll('__API_TITLE__', this.settings.appId).replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
+					headers: { 'Content-Type': 'text/html' },
+				}),
 			hideSchema: true,
 		})
 
 		this.addRoute({
 			method: 'get',
 			path: '__health',
-			handler: async (req) => req.res({
-				body: `${this.settings.appId} service running`,
-				headers: { 'Content-Type': 'text/plain' },
-			}),
+			handler: async (req) =>
+				req.res({
+					body: `${this.settings.appId} service running`,
+					headers: { 'Content-Type': 'text/plain' },
+				}),
 			hideSchema: true,
 		})
 
@@ -211,7 +222,6 @@ export abstract class Server<Req = any, Res = any> {
 		return started
 	}
 }
-
 
 const scalarHtml = `
 <!doctype html>

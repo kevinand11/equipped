@@ -1,4 +1,3 @@
-
 export const parseJSONValue = (data: any) => {
 	try {
 		if (data?.constructor?.name !== 'String') return data

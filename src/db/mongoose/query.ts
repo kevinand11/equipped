@@ -1,8 +1,10 @@
-import mongoose from 'mongoose'
-import { Instance } from '../../instance'
-import { Conditions, QueryKeys, QueryParams, QueryResults, QueryWhere, QueryWhereClause } from '../query'
+import type mongoose from 'mongoose'
 
-export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<Model>, params: QueryParams): Promise<QueryResults<Model>> => {
+import { Instance } from '../../instance'
+import type { QueryParams, QueryResults, QueryWhere, QueryWhereClause } from '../query'
+import { Conditions, QueryKeys } from '../query'
+
+export const parseMongodbQueryParams = async <Model>(model: mongoose.Model<Model>, params: QueryParams): Promise<QueryResults<Model>> => {
 	// Handle where clauses
 	const query = [] as ReturnType<typeof buildWhereQuery>[]
 	const whereType = Object.values(QueryKeys).indexOf(params.whereType!) !== -1 ? params.whereType! : QueryKeys.and
@@ -14,8 +16,8 @@ export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<Mode
 	if (params.search && params.search.fields.length > 0) {
 		const search = params.search.fields.map((field) => ({
 			[field]: {
-				$regex: new RegExp(params.search!.value, 'i')
-			}
+				$regex: new RegExp(params.search!.value, 'i'),
+			},
 		}))
 		query.push({ $or: search })
 	}
@@ -57,29 +59,34 @@ export const parseMongodbQueryParams = async <Model> (model: mongoose.Model<Mode
 	return {
 		pages: { start, last, next, previous, current: page },
 		docs: { limit, total, count: results.length },
-		results: results as Model[]
+		results: results as Model[],
 	}
 }
 
 const buildWhereQuery = (params: QueryWhereClause<unknown>[], key: QueryKeys = QueryKeys.and) => {
-	const where = (Array.isArray(params) ? params : []).map((param) => {
-		if (Object.values(QueryKeys).includes(param.condition as QueryKeys)) return buildWhereQuery(param.value as any, param.condition as QueryKeys)
-		const { field } = param as QueryWhere<unknown>
-		const checkedField = field === 'id' ? '_id' : (field ?? '')
-		const checkedValue = param.value === undefined ? '' : param.value
-		const checkedCondition = Object.keys(Conditions).indexOf(param.condition as string) > -1 ? param.condition : Conditions.eq
-		return ({
-			field: checkedField,
-			value: checkedValue,
-			condition: checkedCondition,
-			isWhere: true
+	const where = (Array.isArray(params) ? params : [])
+		.map((param) => {
+			if (Object.values(QueryKeys).includes(param.condition as QueryKeys))
+				return buildWhereQuery(param.value as any, param.condition as QueryKeys)
+			const { field } = param as QueryWhere<unknown>
+			const checkedField = field === 'id' ? '_id' : (field ?? '')
+			const checkedValue = param.value === undefined ? '' : param.value
+			const checkedCondition = Object.keys(Conditions).indexOf(param.condition as string) > -1 ? param.condition : Conditions.eq
+			return {
+				field: checkedField,
+				value: checkedValue,
+				condition: checkedCondition,
+				isWhere: true,
+			}
 		})
-	}).filter((c) => c).map((c) => {
-		if (c.isWhere) return {
-			[`${c.field}`]: { [`$${c.condition}`]: c.value }
-		}
-		else return c
-	})
+		.filter((c) => c)
+		.map((c) => {
+			if (c.isWhere)
+				return {
+					[`${c.field}`]: { [`$${c.condition}`]: c.value },
+				}
+			else return c
+		})
 
 	return where.length > 0 ? { [`$${key}`]: where } : null
 }

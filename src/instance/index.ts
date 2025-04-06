@@ -1,13 +1,16 @@
 import pino from 'pino'
-import { BullJob } from '../bull'
-import { Cache } from '../cache/cache'
+
+import { BullJob } from '../bull-job'
+import type { Cache } from '../cache/cache'
 import { RedisCache } from '../cache/types/redis-cache'
 import { MongoDb } from '../db/mongoose'
-import { EventBus } from '../events/'
+import type { EventBus } from '../events/'
 import { KafkaEventBus } from '../events/kafka'
 import { addWaitBeforeExit, exit } from '../exit'
-import { Server, serverTypes } from '../server'
-import { Settings, defaulInstanceSetting } from './settings'
+import type { Server } from '../server'
+import { serverTypes } from '../server'
+import type { Settings } from './settings'
+import { defaulInstanceSetting } from './settings'
 
 export class Instance {
 	static #initialized = false
@@ -20,45 +23,44 @@ export class Instance {
 	#server: Server | null = null
 	#dbs: { mongo: MongoDb } | null = null
 
-	private constructor () {
-	}
+	private constructor() {}
 
 	get logger() {
-		return this.#logger ||= Instance.createLogger()
+		return (this.#logger ||= Instance.createLogger())
 	}
 
-	get job () {
-		return this.#job ||= new BullJob()
+	get job() {
+		return (this.#job ||= new BullJob())
 	}
 
-	get cache () {
-		return this.#cache ||= new RedisCache()
+	get cache() {
+		return (this.#cache ||= new RedisCache())
 	}
 
-	get eventBus () {
-		return this.#eventBus ||= new KafkaEventBus()
+	get eventBus() {
+		return (this.#eventBus ||= new KafkaEventBus())
 	}
 
-	get server () {
-		return this.#server ||= serverTypes[this.settings.server]()
+	get server() {
+		return (this.#server ||= serverTypes[this.settings.server]())
 	}
 
-	get dbs () {
-		return this.#dbs ||= { mongo: new MongoDb() }
+	get dbs() {
+		return (this.#dbs ||= { mongo: new MongoDb() })
 	}
 
-	get listener () {
+	get listener() {
 		return this.server.listener
 	}
 
-	get settings () {
+	get settings() {
 		return this.#settings
 	}
 
-	static createLogger () {
+	static createLogger() {
 		const defaultLogLevel = 'info'
 		return pino<any>({
-			level: Instance.#initialized ? Instance.get().settings?.logLevel ?? defaultLogLevel : defaultLogLevel,
+			level: Instance.#initialized ? (Instance.get().settings?.logLevel ?? defaultLogLevel) : defaultLogLevel,
 			serializers: {
 				err: pino.stdSerializers.err,
 				req: pino.stdSerializers.req,
@@ -67,7 +69,7 @@ export class Instance {
 		})
 	}
 
-	static initialize (settings: Partial<Settings>) {
+	static initialize(settings: Partial<Settings>) {
 		Instance.#initialized = true
 		const instanceSettings = Instance.get().settings
 		Object.entries(settings).forEach(([key, value]) => {
@@ -75,13 +77,13 @@ export class Instance {
 		})
 	}
 
-	static get () {
+	static get() {
 		if (!this.#initialized) return exit('Has not been initialized. Make sure initialize is called before you get an instance')
 		if (!Instance.#instance) Instance.#instance = new Instance()
 		return Instance.#instance
 	}
 
-	async startConnections () {
+	async startConnections() {
 		try {
 			await Instance.get().cache.start()
 			await Instance.get().listener.start()
@@ -90,7 +92,7 @@ export class Instance {
 					await db.start()
 					await db.startAllDbChanges()
 					addWaitBeforeExit(db.close)
-				})
+				}),
 			)
 			await Instance.get().eventBus.startSubscribers()
 			addWaitBeforeExit(Instance.get().cache.close)

@@ -2,53 +2,52 @@ import mongoose from 'mongoose'
 import defaults from 'mongoose-lean-defaults'
 import getters from 'mongoose-lean-getters'
 import virtuals from 'mongoose-lean-virtuals'
+
 import { Instance } from '../../instance'
-import { BaseEntity } from '../../structure'
-import { Db, DbChangeCallbacks } from '../_instance'
-import { QueryParams, QueryResults } from '../query'
+import type { BaseEntity } from '../../structure'
+import type { DbChangeCallbacks } from '../_instance'
+import { Db } from '../_instance'
+import type { QueryParams, QueryResults } from '../query'
 import { MongoDbChange } from './changes'
 import { parseMongodbQueryParams } from './query'
 
 export class MongoDb extends Db {
 	#started = false
 
-	get Schema () {
+	get Schema() {
 		return mongoose.Schema
 	}
 
-	get Id () {
+	get Id() {
 		return new mongoose.Types.ObjectId()
 	}
 
-	get #connections () {
+	get #connections() {
 		// @ts-ignore
-		return mongoose.connection.otherDbs as mongoose.Connection[] ?? []
+		return (mongoose.connection.otherDbs as mongoose.Connection[]) ?? []
 	}
 
-	use (dbName = 'default') {
+	use(dbName = 'default') {
 		const conn = dbName === 'default' ? mongoose.connection : mongoose.connection.useDb(dbName, { useCache: true })
 		conn.plugin(defaults).plugin(virtuals).plugin(getters)
 		return conn
 	}
 
-	change<Model, Entity extends BaseEntity<any, any>> (
+	change<Model, Entity extends BaseEntity<any, any>>(
 		model: mongoose.Model<Model>,
 		callbacks: DbChangeCallbacks<Model, Entity>,
-		mapper: (model: Model | null) => Entity | null
+		mapper: (model: Model | null) => Entity | null,
 	) {
 		const change = new MongoDbChange<Model, Entity>(model, callbacks, mapper)
 		this._addToDbChanges(change)
 		return change
 	}
 
-	async query<Model> (
-		model: mongoose.Model<Model>,
-		params: QueryParams
-	): Promise<QueryResults<Model>> {
+	async query<Model>(model: mongoose.Model<Model>, params: QueryParams): Promise<QueryResults<Model>> {
 		return await parseMongodbQueryParams(model, params)
 	}
 
-	async start () {
+	async start() {
 		if (this.#started) return
 		this.#started = true
 
@@ -56,18 +55,19 @@ export class MongoDb extends Db {
 		await mongoose.connect(Instance.get().settings.mongoDbURI)
 
 		await Promise.all(
-			[mongoose.connection, ...this.#connections].map((conn) => {
-				return Object.values(conn.models)
-					.map(async (model) => {
+			[mongoose.connection, ...this.#connections]
+				.map((conn) =>
+					Object.values(conn.models).map(async (model) => {
 						await conn.db?.createCollection(model.collection.name, {
-							changeStreamPreAndPostImages: { enabled: true }
+							changeStreamPreAndPostImages: { enabled: true },
 						})
-					})
-			}).flat()
+					}),
+				)
+				.flat(),
 		)
 	}
 
-	async close () {
+	async close() {
 		await Promise.all(this.#connections.map(async (conn) => conn.close()))
 		await mongoose.disconnect()
 	}

@@ -1,4 +1,4 @@
-import { Enum, IAuthRole } from '../enums/types'
+import type { Enum, IAuthRole } from '../enums/types'
 
 export interface RefreshUser {
 	id: string
