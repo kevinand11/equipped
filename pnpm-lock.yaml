@@ -154,8 +154,8 @@ importers:
         specifier: ^0.1.0
         version: 0.1.0
       '@k11/ts-config':
-        specifier: ^0.1.1
-        version: 0.1.1
+        specifier: ^0.1.2
+        version: 0.1.2
       '@types/amqplib':
         specifier: ^0.10.5
         version: 0.10.5
@@ -497,8 +497,8 @@ packages:
   '@k11/prettier-config@0.1.0':
     resolution: {integrity: sha512-AXSN9nTDUy0+SJ9Fcob3FUv9JK/CE1ZhD6VWhPQvQlJPSTM2fPEPH3KHAIKfOMa5vGF8pcJPZeJQCSCuqkbRPg==}
 
-  '@k11/ts-config@0.1.1':
-    resolution: {integrity: sha512-jS8Zb+8HTPolmw+0ZIgvKsCahwYj6u1xkVangZxKxGKUsSozFIl+U1qhZK+PiUooAPYTmZhGbZZgnfUne9FeOw==}
+  '@k11/ts-config@0.1.2':
+    resolution: {integrity: sha512-wCB7c67zb1673MpIeooduqTYmpjBHvdEdVuSwMmlgzjd/f76R+Cct8MU2r8uhLwJnbe9vZ6uaJ6WKmQpyowtsg==}
 
   '@lukeed/ms@2.0.2':
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
@@ -4235,7 +4235,7 @@ snapshots:
 
   '@k11/prettier-config@0.1.0': {}
 
-  '@k11/ts-config@0.1.1': {}
+  '@k11/ts-config@0.1.2': {}
 
   '@lukeed/ms@2.0.2': {}
 
