@@ -76,15 +76,15 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 				f.value = parsed
 			},
 		})
-		/* if (this.settings.useSlowDown) app.register(fastifySlowDown, {
-			timeWindow: this.settings.slowDownPeriodInMs,
-			delayAfter: this.settings.slowDownAfter,
-			delay: this.settings.slowDownDelayInMs
+		/* if (this.settings.slowdown.enabled) app.register(fastifySlowDown, {
+			timeWindow: this.settings.slowdown.periodInMs,
+			delayAfter: this.settings.slowdown.delayAfter,
+			delay: this.settings.slowdown.delayInMs
 		}) */
-		if (this.settings.useRateLimit)
+		if (this.settings.rateLimit.enabled)
 			app.register(fastifyRateLimit, {
-				max: this.settings.rateLimit,
-				timeWindow: this.settings.rateLimitPeriodInMs,
+				max: this.settings.rateLimit.limit,
+				timeWindow: this.settings.rateLimit.periodInMs,
 				errorResponseBuilder: (_, context) => ({
 					statusCode: StatusCodes.TooManyRequests,
 					message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }]),

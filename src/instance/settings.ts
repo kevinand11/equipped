@@ -18,19 +18,25 @@ export type Settings = {
 	bullQueueName: string
 	eventColumnName: string
 	maxFileUploadSizeInMb: number
-	useRateLimit: boolean
-	rateLimitPeriodInMs: number
-	rateLimit: number
-	useSlowDown: boolean
-	slowDownPeriodInMs: number
-	slowDownAfter: number
-	slowDownDelayInMs: number
+	rateLimit: {
+		enabled?: boolean
+		periodInMs?: number
+		limit?: number
+	}
+	slowdown: {
+		enabled?: boolean
+		periodInMs?: number
+		delayAfter?: number
+		delayInMs?: number
+	}
 	hashSaltRounds: number
 	paginationDefaultLimit: number
 	server: ServerTypes
-	openapiDocsVersion: string
-	openapiDocsBaseUrl: string[]
-	openapiDocsPath: string
+	openapi: {
+		docsVersion?: string
+		docsBaseUrl?: string[]
+		docsPath?: string
+	}
 	logLevel: Level
 	logRequests: boolean
 	requestSchemaValidation: boolean
@@ -50,19 +56,25 @@ export const defaulInstanceSetting: Settings = {
 	bullQueueName: 'appTasksQueue',
 	eventColumnName: 'appEventsColumn',
 	maxFileUploadSizeInMb: 500,
-	useRateLimit: false,
-	rateLimitPeriodInMs: 60 * 60 * 1000,
-	rateLimit: 5000,
-	useSlowDown: false,
-	slowDownPeriodInMs: 10 * 60 * 1000,
-	slowDownAfter: 2000,
-	slowDownDelayInMs: 500,
+	rateLimit: {
+		enabled: false,
+		periodInMs: 60 * 60 * 1000,
+		limit: 5000,
+	},
+	slowdown: {
+		enabled: false,
+		periodInMs: 10 * 60 * 1000,
+		delayAfter: 2000,
+		delayInMs: 500,
+	},
 	hashSaltRounds: 10,
 	paginationDefaultLimit: 100,
 	server: 'express',
-	openapiDocsVersion: '1.0.0',
-	openapiDocsBaseUrl: ['/'],
-	openapiDocsPath: '/__docs',
+	openapi: {
+		docsVersion: '1.0.0',
+		docsBaseUrl: ['/'],
+		docsPath: '/__docs',
+	},
 	logLevel: 'info',
 	logRequests: true,
 	requestSchemaValidation: false,

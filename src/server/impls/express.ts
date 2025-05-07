@@ -58,19 +58,19 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 				useTempFiles: false,
 			}),
 		)
-		if (this.settings.useRateLimit)
+		if (this.settings.rateLimit.enabled)
 			app.use(
 				rateLimit({
-					windowMs: this.settings.rateLimitPeriodInMs,
-					limit: this.settings.rateLimit,
+					windowMs: this.settings.rateLimit.periodInMs,
+					limit: this.settings.rateLimit.limit,
 					handler: (_: express.Request, res: express.Response) =>
 						res.status(StatusCodes.TooManyRequests).json([{ message: 'Too Many Requests' }]),
 				}),
 			)
-		/* if (this.settings.useSlowDown) app.use(slowDown({
-			windowMs: this.settings.slowDownPeriodInMs,
-			delayAfter: this.settings.slowDownAfter,
-			delayMs: this.settings.slowDownDelayInMs
+		/* if (this.settings.slowdown.enabled) app.use(slowDown({
+			windowMs: this.settings.slowdown.periodInMs,
+			delayAfter: this.settings.slowdown.delayAfter,
+			delayMs: this.settings.slowdown.delayInMs
 		})) */
 	}
 

@@ -73,7 +73,7 @@ export class Instance {
 		Instance.#initialized = true
 		const instanceSettings = Instance.get().settings
 		Object.entries(settings).forEach(([key, value]) => {
-			instanceSettings[key] = value
+			instanceSettings[key] = typeof value === 'object' && !Array.isArray(value) ? { ...instanceSettings[key], ...value } : value
 		})
 	}
 
