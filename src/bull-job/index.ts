@@ -26,8 +26,8 @@ type CronLikeCallback = (data: CronLikeJobEvent) => Promise<void>
 export class BullJob {
 	#queue: Bull.Queue
 
-	constructor() {
-		this.#queue = new Bull(Instance.get().settings.bullQueueName, Instance.get().settings.redisURI)
+	constructor () {
+		this.#queue = new Bull(Instance.get().settings.bullQueueName, { redis: Instance.get().settings.redis })
 	}
 
 	static #getNewId() {

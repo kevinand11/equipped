@@ -1,5 +1,6 @@
-import { KafkaConfig } from 'kafkajs'
+import type { KafkaConfig } from 'kafkajs'
 import type { Level } from 'pino'
+import type { RedisClientOptions } from 'redis'
 
 import type { ServerTypes } from '../server'
 
@@ -12,7 +13,7 @@ export type Settings = {
 	mongoDbURI: string
 	rabbitURI: string
 	kafka: KafkaConfig
-	redisURI: string
+	redis: Omit<RedisClientOptions, 'modules' | 'functions' | 'scripts'>
 	appId: string
 	bullQueueName: string
 	eventColumnName: string
@@ -43,10 +44,8 @@ export const defaulInstanceSetting: Settings = {
 	debeziumUrl: '',
 	mongoDbURI: '',
 	rabbitURI: '',
-	redisURI: '',
-	kafka: {
-		brokers: [],
-	},
+	redis: {},
+	kafka: { brokers: [] },
 	appId: 'appId',
 	bullQueueName: 'appTasksQueue',
 	eventColumnName: 'appEventsColumn',

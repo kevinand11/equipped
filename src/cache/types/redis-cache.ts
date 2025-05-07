@@ -9,7 +9,7 @@ export class RedisCache extends Cache {
 
 	constructor() {
 		super()
-		this.client = createClient({ url: Instance.get().settings.redisURI })
+		this.client = createClient(Instance.get().settings.redis)
 		this.client.on('error', async (error) => {
 			exit(`Redis failed with error: ${error}`)
 		})
