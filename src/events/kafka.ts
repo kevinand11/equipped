@@ -10,13 +10,9 @@ import { Random } from '../utils/utils'
 export class KafkaEventBus extends EventBus {
 	#client = new Kafka({
 		clientId: Instance.get().settings.eventColumnName,
-		brokers: Instance.get().settings.kafkaURIs,
 		logLevel: logLevel.NOTHING,
+		...Instance.get().settings.kafka,
 	})
-
-	constructor() {
-		super()
-	}
 
 	createPublisher<Event extends Events[keyof Events]>(topic: Event['topic']) {
 		const publish = async (data: Event['data']) => {

@@ -1,3 +1,4 @@
+import { KafkaConfig } from 'kafkajs'
 import type { Level } from 'pino'
 
 import type { ServerTypes } from '../server'
@@ -10,7 +11,7 @@ export type Settings = {
 	debeziumUrl: string
 	mongoDbURI: string
 	rabbitURI: string
-	kafkaURIs: string[]
+	kafka: KafkaConfig
 	redisURI: string
 	appId: string
 	bullQueueName: string
@@ -43,7 +44,9 @@ export const defaulInstanceSetting: Settings = {
 	mongoDbURI: '',
 	rabbitURI: '',
 	redisURI: '',
-	kafkaURIs: [],
+	kafka: {
+		brokers: [],
+	},
 	appId: 'appId',
 	bullQueueName: 'appTasksQueue',
 	eventColumnName: 'appEventsColumn',
