@@ -60,7 +60,8 @@ export abstract class DbChange<Model, Entity extends BaseEntity<any, any>> {
 				return res.data[key]?.topics ?? []
 			})
 			.catch((err) => {
-				exit(`Failed to setup debezium for ${key}: ${err.message}`)
+				const message = err.response?.data?.message ?? err.message
+				exit(`Failed to setup debezium for ${key}: ${message}`)
 				return []
 			})
 		return topics[0] === key
