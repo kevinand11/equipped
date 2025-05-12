@@ -30,20 +30,10 @@ export class MongoDbChange<Model, Entity extends BaseEntity<any, any>> extends D
 
 		await retry(
 			async () => {
-				const { hosts, replicaSet, credentials, tls } = model.collection.conn.getClient().options
-
 				const started = await this._setup(topic, {
 					'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
 					'capture.mode': 'change_streams_update_full_with_pre_image',
-					'mongodb.connection.string': `mongodb://${hosts.map((h) => `${h.host}:${h.port}`).join(',')}/?replicaSet=${replicaSet}`,
-					'mongodb.ssl.enabled': tls.toString(),
-					...(credentials
-						? {
-								'mongodb.user': credentials.username,
-								'mongodb.password': credentials.password,
-								'mongodb.auth-source': credentials.source,
-							}
-						: {}),
+					'mongodb.connection.string': Instance.get().settings.mongoDbURI,
 					'collection.include.list': dbColName,
 				})
 
