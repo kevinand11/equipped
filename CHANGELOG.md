@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.14](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.13...v5.0.0-rc.14) (2025-05-12)
+
+
+### Bug Fixes
+
+* connect mongodb to debezium ([644366e](https://github.com/kevinand11/equipped/commit/644366ece05d7263c530d433fec3987ab069440c))
+
 ## [5.0.0-rc.13](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.12...v5.0.0-rc.13) (2025-05-11)
 
 
