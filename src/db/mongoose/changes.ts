@@ -78,16 +78,15 @@ export class MongoDbChange<Model, Entity extends BaseEntity<any, any>> extends D
 						})
 				})
 
-				if (!started) {
-					await model.findByIdAndUpdate(TestId, { $set: { colName } }, { upsert: true })
-					await model.findByIdAndDelete(TestId)
-					await Instance.get().logger.warn(`Waiting for db changes for ${dbColName} to start...`)
-					throw new Error(`Wait a few minutes for db changes for ${dbColName} to initialize...`)
-				}
+				if (started) return { done: true, value: true }
+				await model.findByIdAndUpdate(TestId, { $set: { colName } }, { upsert: true })
+				await model.findByIdAndDelete(TestId)
+				await Instance.get().logger.warn(`Waiting for db changes for ${dbColName} to start...`)
+				return { done: false }
 			},
 			5,
 			60_000,
-		).catch((err) => exit(err.message))
+		).catch((err) => exit(`Failed to start db changes for ${dbColName}: ${err.message}`))
 	}
 }
 

@@ -1,6 +1,5 @@
 import axios from 'axios'
 
-import { exit } from '../exit'
 import { Instance } from '../instance'
 import type { BaseEntity } from '../structure'
 import type { DeepPartial } from '../types'
@@ -61,8 +60,7 @@ export abstract class DbChange<Model, Entity extends BaseEntity<any, any>> {
 			})
 			.catch((err) => {
 				const message = err.response?.data?.message ?? err.message
-				exit(`Failed to setup debezium for ${key}: ${message}`)
-				return []
+				throw new Error(`Failed to setup debezium for ${key}: ${message}`)
 			})
 		return topics[0] === key
 	}
