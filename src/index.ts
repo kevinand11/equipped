@@ -1,8 +1,4 @@
-import dotenv from 'dotenv'
-
 import { exit } from './exit'
-
-dotenv.config()
 
 export * from './db'
 export * from './emails'
