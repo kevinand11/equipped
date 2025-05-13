@@ -12,7 +12,7 @@ export type Settings = {
 	debeziumUrl: string
 	mongoDbURI: string
 	rabbitURI: string
-	kafka: { brokers: string[]; ssl?: boolean; sasl?: Extract<SASLOptions, { mechanism: 'plain' }>; confluent?: boolean }
+	kafka: { brokers: string[]; ssl?: boolean; sasl?: Extract<SASLOptions, { mechanism: 'plain' }> }
 	redis: Omit<RedisClientOptions, 'modules' | 'functions' | 'scripts'>
 	app: string
 	appId: string
