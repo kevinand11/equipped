@@ -5,7 +5,7 @@ import type { BaseEntity } from '../structure'
 import type { DeepPartial } from '../types'
 import type { QueryParams, QueryResults } from './query'
 
-export const TopicPrefix = 'equipped'
+export const TopicPrefix = 'db-changes'
 
 export abstract class Db {
 	#dbChanges = [] as DbChange<any, any>[]
@@ -55,13 +55,13 @@ export abstract class DbChange<Model, Entity extends BaseEntity<any, any>> {
 		return await axios
 			.put(`/connectors/${key}/config`, {
 				'topic.prefix': TopicPrefix,
-					'topic.creation.enable': 'false',
-					'topic.creation.default.replication.factor': `-1`,
-					'topic.creation.default.partitions': '-1',
-					'key.converter': 'org.apache.kafka.connect.json.JsonConverter',
-					'key.converter.schemas.enable': 'false',
-					'value.converter': 'org.apache.kafka.connect.json.JsonConverter',
-					'value.converter.schemas.enable': 'false',
+				'topic.creation.enable': 'false',
+				'topic.creation.default.replication.factor': `-1`,
+				'topic.creation.default.partitions': '-1',
+				'key.converter': 'org.apache.kafka.connect.json.JsonConverter',
+				'key.converter.schemas.enable': 'false',
+				'value.converter': 'org.apache.kafka.connect.json.JsonConverter',
+				'value.converter.schemas.enable': 'false',
 				...data,
 			}, { baseURL })
 			.then(async () => {
