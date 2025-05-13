@@ -58,9 +58,15 @@ export class MongoDb extends Db {
 			[mongoose.connection, ...this.#connections]
 				.map((conn) =>
 					Object.values(conn.models).map(async (model) => {
-						await conn.db?.createCollection(model.collection.name, {
+						if (!conn.db) return
+						const name = model.collection.name
+						const options = {
 							changeStreamPreAndPostImages: { enabled: true },
-						})
+						}
+						const existing = await conn.db.listCollections<mongoose.mongo.CollectionInfo>({ name }).next()
+						if (existing) {
+							if (existing.options?.changeStreamPreAndPostImages?.enabled !== options.changeStreamPreAndPostImages.enabled) await conn.db.command({ collMod: name, ...options })
+						} else await conn.db.createCollection(name, options)
 					}),
 				)
 				.flat(),
