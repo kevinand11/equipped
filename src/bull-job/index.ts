@@ -27,7 +27,10 @@ export class BullJob {
 	#queue: Bull.Queue
 
 	constructor () {
-		this.#queue = new Bull(Instance.get().settings.bullQueueName, { redis: Instance.get().settings.redis })
+		this.#queue = new Bull(
+			Instance.get().getScopedName(Instance.get().settings.bullQueueName),
+			{ redis: Instance.get().settings.redis }
+		)
 	}
 
 	static #getNewId() {

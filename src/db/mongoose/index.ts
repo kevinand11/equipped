@@ -27,8 +27,8 @@ export class MongoDb extends Db {
 		return (mongoose.connection.otherDbs as mongoose.Connection[]) ?? []
 	}
 
-	use(dbName = 'default') {
-		const conn = dbName === 'default' ? mongoose.connection : mongoose.connection.useDb(dbName, { useCache: true })
+	use(dbName: string) {
+		const conn = mongoose.connection.useDb(Instance.get().getScopedName(dbName).replaceAll('.', '-'), { useCache: true })
 		conn.plugin(defaults).plugin(virtuals).plugin(getters)
 		return conn
 	}

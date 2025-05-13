@@ -45,7 +45,7 @@ export abstract class Server<Req = any, Res = any> {
 	protected openapiJsonUrl = `${this.settings.openapi.docsPath}/openapi.json`
 	protected baseOpenapiDoc: OpenAPIV3_1.Document = {
 		openapi: '3.0.0',
-		info: { title: this.settings.appId, version: this.settings.openapi.docsVersion ?? '' },
+		info: { title: `${this.settings.app} ${this.settings.appId}`, version: this.settings.openapi.docsVersion ?? '' },
 		servers: this.settings.openapi.docsBaseUrl?.map((url) => ({ url })),
 		paths: {},
 		components: {

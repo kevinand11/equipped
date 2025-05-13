@@ -3,9 +3,9 @@ import axios from 'axios'
 import { Instance } from '../instance'
 import type { BaseEntity } from '../structure'
 import type { DeepPartial } from '../types'
-import type { DebeziumSetup } from './debezium'
-import { DefaultDebeziumSetup } from './debezium'
 import type { QueryParams, QueryResults } from './query'
+
+export const TopicPrefix = 'equipped'
 
 export abstract class Db {
 	#dbChanges = [] as DbChange<any, any>[]
@@ -50,11 +50,20 @@ export abstract class DbChange<Model, Entity extends BaseEntity<any, any>> {
 		return this.#mapper
 	}
 
-	protected async _setup(key: string, data: DebeziumSetup) {
-		data = { ...DefaultDebeziumSetup, ...data }
+	protected async _setup(key: string, data: Record<string, string>) {
 		const baseURL = Instance.get().settings.debeziumUrl
 		return await axios
-			.put(`/connectors/${key}/config`, data, { baseURL })
+			.put(`/connectors/${key}/config`, {
+				'topic.prefix': TopicPrefix,
+					'topic.creation.enable': 'false',
+					'topic.creation.default.replication.factor': `-1`,
+					'topic.creation.default.partitions': '-1',
+					'key.converter': 'org.apache.kafka.connect.json.JsonConverter',
+					'key.converter.schemas.enable': 'false',
+					'value.converter': 'org.apache.kafka.connect.json.JsonConverter',
+					'value.converter.schemas.enable': 'false',
+				...data,
+			}, { baseURL })
 			.then(async () => {
 				const topics = await axios.get(`/connectors/${key}/topics`, { baseURL })
 				return topics.data[key]?.topics?.at?.(0) === key

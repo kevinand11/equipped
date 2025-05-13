@@ -57,6 +57,10 @@ export class Instance {
 		return this.#settings
 	}
 
+	getScopedName (name: string) {
+		return [this.settings.app, name].join('.')
+	}
+
 	static createLogger() {
 		const defaultLogLevel = 'info'
 		return pino<any>({

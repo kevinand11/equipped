@@ -7,7 +7,7 @@ import { retry } from '../../utils/retry'
 import { Validation } from '../../validations'
 import type { DbChangeCallbacks } from '../_instance'
 import { DbChange } from '../_instance'
-import { TopicPrefix } from '../debezium'
+import { TopicPrefix } from '../_instance'
 
 export class MongoDbChange<Model, Entity extends BaseEntity<any, any>> extends DbChange<Model, Entity> {
 	#started = false
@@ -76,7 +76,7 @@ export class MongoDbChange<Model, Entity extends BaseEntity<any, any>> extends D
 							before: this.mapper(before)!,
 							after: null,
 						})
-				})
+				}, { skipScope: true })
 
 				if (started) return { done: true, value: true }
 				await model.findByIdAndUpdate(TestId, { $set: { colName } }, { upsert: true })

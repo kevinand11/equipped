@@ -1,7 +1,7 @@
 import Confluent from '@confluentinc/kafka-javascript'
 import Kafka from 'kafkajs'
 
-import type { Events, SubscribeOptions } from '.'
+import type { Events, PublishOptions, SubscribeOptions } from '.'
 import { DefaultSubscribeOptions, EventBus } from '.'
 import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
@@ -16,21 +16,18 @@ export class KafkaEventBus extends EventBus {
 		const settings = Instance.get().settings
 		const { confluent = false, ...kafkaSettings } = settings.kafka
 		this.#confluent = confluent
-		this.#client = confluent ? new Confluent.KafkaJS.Kafka({
-			kafkaJS: {
-				clientId: settings.eventColumnName,
-				logLevel: Confluent.KafkaJS.logLevel.NOTHING,
-				...kafkaSettings,
-			}
-		}) :
-			new Kafka.Kafka({
-			clientId: settings.eventColumnName,
-			logLevel: Kafka.logLevel.NOTHING,
+		const config = {
+			clientId: Instance.get().getScopedName(settings.eventColumnName),
 			...kafkaSettings,
-			})
+		}
+		this.#client = confluent ? new Confluent.KafkaJS.Kafka({
+			kafkaJS: { ...config, logLevel: Confluent.KafkaJS.logLevel.NOTHING }
+		}) :
+			new Kafka.Kafka({ ...config, logLevel: Kafka.logLevel.NOTHING })
 	}
 
-	createPublisher<Event extends Events[keyof Events]>(topic: Event['topic']) {
+	createPublisher<Event extends Events[keyof Events]>(topicName: Event['topic'], options: Partial<PublishOptions> = {}) {
+		const topic = options.skipScope ? topicName :  Instance.get().getScopedName(topicName)
 		const publish = async (data: Event['data']) => {
 			try {
 				const producer = this.#client.producer()
@@ -49,19 +46,18 @@ export class KafkaEventBus extends EventBus {
 	}
 
 	createSubscriber<Event extends Events[keyof Events]>(
-		topic: Event['topic'],
+		topicName: Event['topic'],
 		onMessage: (data: Event['data']) => Promise<void>,
 		options: Partial<SubscribeOptions> = {},
 	) {
 		options = { ...DefaultSubscribeOptions, ...options }
 		let started = false
+		const topic = options.skipScope ? topicName :  Instance.get().getScopedName(topicName)
 		const subscribe = async () => {
 			if (started) return
 			started = true
 			await this.#createTopic(topic)
-			const groupId = options.fanout
-				? `${Instance.get().settings.appId}-fanout-${Random.string(10)}`
-				: `${Instance.get().settings.appId}-${topic}`
+			const groupId = options.fanout ? Instance.get().getScopedName(`${Instance.get().settings.appId}-fanout-${Random.string(10)}`) : topic
 			const consumer = this.#client.consumer(this.#confluent ? { kafkaJS: { groupId } } as any : { groupId })
 
 			await consumer.connect()

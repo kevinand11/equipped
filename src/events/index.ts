@@ -1,7 +1,8 @@
 import type { Enum, IEventTypes } from '../enums/types'
 
 export interface Events extends Record<Enum<IEventTypes>, { topic: Enum<IEventTypes>; data: any }> {}
-export type SubscribeOptions = { fanout: boolean }
+export type PublishOptions = { skipScope?: boolean }
+export type SubscribeOptions = PublishOptions & { fanout: boolean }
 
 export abstract class EventBus {
 	protected _subscribers: (() => Promise<void>)[] = []
@@ -12,6 +13,7 @@ export abstract class EventBus {
 
 	abstract createPublisher<Event extends Events[keyof Events]>(
 		topic: Event['topic'],
+		options?: Partial<SubscribeOptions>,
 	): {
 		publish: (data: Event['data']) => Promise<boolean>
 	}

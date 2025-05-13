@@ -14,6 +14,7 @@ export type Settings = {
 	rabbitURI: string
 	kafka: { brokers: string[]; ssl?: boolean; sasl?: Extract<SASLOptions, { mechanism: 'plain' }>; confluent?: boolean }
 	redis: Omit<RedisClientOptions, 'modules' | 'functions' | 'scripts'>
+	app: string
 	appId: string
 	bullQueueName: string
 	eventColumnName: string
@@ -52,6 +53,7 @@ export const defaulInstanceSetting: Settings = {
 	rabbitURI: '',
 	redis: {},
 	kafka: { brokers: [] },
+	app: 'app',
 	appId: 'appId',
 	bullQueueName: 'appTasksQueue',
 	eventColumnName: 'appEventsColumn',
