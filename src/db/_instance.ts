@@ -52,11 +52,12 @@ export abstract class DbChange<Model, Entity extends BaseEntity<any, any>> {
 
 	protected async _setup(key: string, data: DebeziumSetup) {
 		data = { ...DefaultDebeziumSetup, ...data }
+		const baseURL = Instance.get().settings.debeziumUrl
 		return await axios
-			.put(`/connectors/${key}/config`, data, { baseURL: Instance.get().settings.debeziumUrl })
+			.put(`/connectors/${key}/config`, data, { baseURL })
 			.then(async () => {
-				const res = await axios.get(`/connectors/${key}/status`, { baseURL: Instance.get().settings.debeziumUrl })
-				return res.data.tasks.every((task) => task.state === 'RUNNING')
+				const topics = await axios.get(`/connectors/${key}/topics`, { baseURL })
+				return topics.data[key]?.topics?.at?.(0) === key
 			})
 			.catch((err) => {
 				const message = err.response?.data?.message ?? err.message

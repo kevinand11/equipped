@@ -1,4 +1,5 @@
-import { Kafka, logLevel } from 'kafkajs'
+import Confluent from '@confluentinc/kafka-javascript'
+import Kafka from 'kafkajs'
 
 import type { Events, SubscribeOptions } from '.'
 import { DefaultSubscribeOptions, EventBus } from '.'
@@ -8,11 +9,26 @@ import { parseJSONValue } from '../utils/json'
 import { Random } from '../utils/utils'
 
 export class KafkaEventBus extends EventBus {
-	#client = new Kafka({
-		clientId: Instance.get().settings.eventColumnName,
-		logLevel: logLevel.NOTHING,
-		...Instance.get().settings.kafka,
-	})
+	#client: Kafka.Kafka | Confluent.KafkaJS.Kafka
+	#confluent: boolean
+	constructor () {
+		super()
+		const settings = Instance.get().settings
+		const { confluent = false, ...kafkaSettings } = settings.kafka
+		this.#confluent = confluent
+		this.#client = confluent ? new Confluent.KafkaJS.Kafka({
+			kafkaJS: {
+				clientId: settings.eventColumnName,
+				logLevel: Confluent.KafkaJS.logLevel.NOTHING,
+				...kafkaSettings,
+			}
+		}) :
+			new Kafka.Kafka({
+			clientId: settings.eventColumnName,
+			logLevel: Kafka.logLevel.NOTHING,
+			...kafkaSettings,
+			})
+	}
 
 	createPublisher<Event extends Events[keyof Events]>(topic: Event['topic']) {
 		const publish = async (data: Event['data']) => {
@@ -46,7 +62,7 @@ export class KafkaEventBus extends EventBus {
 			const groupId = options.fanout
 				? `${Instance.get().settings.appId}-fanout-${Random.string(10)}`
 				: `${Instance.get().settings.appId}-${topic}`
-			const consumer = this.#client.consumer({ groupId })
+			const consumer = this.#client.consumer(this.#confluent ? { kafkaJS: { groupId } } as any : { groupId })
 
 			await consumer.connect()
 			await consumer.subscribe({ topic })
@@ -75,11 +91,8 @@ export class KafkaEventBus extends EventBus {
 
 	async #createTopic(topic: string) {
 		const admin = this.#client.admin()
-		await admin
-			.createTopics({
-				topics: [{ topic, numPartitions: 5 }],
-			})
-			.catch(() => {})
+		await admin.connect()
+		await admin.createTopics({ topics: [{ topic }] })
 	}
 
 	async #deleteGroup(groupId: string) {

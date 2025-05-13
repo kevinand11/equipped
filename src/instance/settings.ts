@@ -1,4 +1,4 @@
-import type { KafkaConfig } from 'kafkajs'
+import type { SASLOptions } from 'kafkajs'
 import type { Level } from 'pino'
 import type { RedisClientOptions } from 'redis'
 
@@ -12,7 +12,7 @@ export type Settings = {
 	debeziumUrl: string
 	mongoDbURI: string
 	rabbitURI: string
-	kafka: KafkaConfig
+	kafka: { brokers: string[]; ssl?: boolean; sasl?: Extract<SASLOptions, { mechanism: 'plain' }>; confluent?: boolean }
 	redis: Omit<RedisClientOptions, 'modules' | 'functions' | 'scripts'>
 	appId: string
 	bullQueueName: string
