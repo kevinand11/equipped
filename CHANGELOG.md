@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.16](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.15...v5.0.0-rc.16) (2025-05-13)
+
+
+### Features
+
+* scope all external connections interactions under appId ([3dc767a](https://github.com/kevinand11/equipped/commit/3dc767a4c1d944b0bb8b5c2052f014b5e5b8d84f))
+
+
+### Bug Fixes
+
+* change debezium topic prefix ([3283930](https://github.com/kevinand11/equipped/commit/32839305bde345dd1962b6734fe4c1b02ae48dfe))
+* check if debezium connected fine ([f24a2b1](https://github.com/kevinand11/equipped/commit/f24a2b1c7bc4ef89af019da359a5fb6f37993df1))
+* upsert collection with proper settings ([e87867e](https://github.com/kevinand11/equipped/commit/e87867e125fee29333fe86e7ee95a33115319216))
+
 ## [5.0.0-rc.15](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.14...v5.0.0-rc.15) (2025-05-12)
 
 ## [5.0.0-rc.14](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.13...v5.0.0-rc.14) (2025-05-12)
