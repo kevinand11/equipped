@@ -1,6 +1,5 @@
 import type { SASLOptions } from 'kafkajs'
 import type { Level } from 'pino'
-import type { RedisClientOptions } from 'redis'
 
 import type { ServerTypes } from '../server'
 
@@ -13,7 +12,14 @@ export type Settings = {
 	mongoDbURI: string
 	rabbitURI: string
 	kafka: { brokers: string[]; ssl?: boolean; sasl?: Extract<SASLOptions, { mechanism: 'plain' }>; confluent?: boolean }
-	redis: Omit<RedisClientOptions, 'modules' | 'functions' | 'scripts'>
+	redis: {
+		host?: string
+		port?: number
+		password?: string
+		username?: string
+		tls?: boolean
+		cluster?: boolean
+	}
 	app: string
 	appId: string
 	bullQueueName: string

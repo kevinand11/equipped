@@ -1,15 +1,31 @@
-import { createClient } from 'redis'
+import { Cluster, Redis, RedisOptions } from 'ioredis'
 
 import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { Cache } from '../cache'
 
 export class RedisCache extends Cache {
-	client: ReturnType<typeof createClient>
+	client: Redis | Cluster
 
-	constructor() {
+	constructor(extraConfig?: Partial<RedisOptions>) {
 		super()
-		this.client = createClient(Instance.get().settings.redis)
+		const settings = Instance.get().settings.redis
+		const node = {
+			...(settings.host ? { host: settings.host } : {}),
+			...(settings.port ? { port: settings.port } : {}),
+		}
+		const common = {
+			...extraConfig,
+			...(settings.password ? { password: settings.password } : {}),
+			...(settings.username ? { username: settings.username } : {}),
+			...(settings.tls ? { tls: {} } : {}),
+			lazyConnect: !extraConfig,
+		}
+		this.client = settings.cluster ? new Cluster([node], {
+			...extraConfig,
+			redisOptions: common,
+			lazyConnect: !extraConfig,
+		}) : new Redis({ ...common, ...node })
 		this.client.on('error', async (error) => {
 			exit(`Redis failed with error: ${error}`)
 		})
@@ -32,7 +48,7 @@ export class RedisCache extends Cache {
 	}
 
 	async set(key: string, data: string, ttlInSecs: number) {
-		if (ttlInSecs > 0) await this.client.setEx(Instance.get().getScopedName(key), ttlInSecs, data)
+		if (ttlInSecs > 0) await this.client.setex(Instance.get().getScopedName(key), ttlInSecs, data)
 		else this.client.set(Instance.get().getScopedName(key), data)
 	}
 

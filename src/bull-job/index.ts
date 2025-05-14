@@ -1,5 +1,6 @@
 import Bull from 'bull'
 
+import { RedisCache } from '../cache/types/redis-cache'
 import type { Enum, ICronLikeJobs, ICronTypes, IDelayedJobs } from '../enums/types'
 import { Instance } from '../instance'
 import { Random } from '../utils/utils'
@@ -19,9 +20,9 @@ export interface CronLikeJobsEvents extends Record<CronLike, { type: CronLike; d
 
 type DelayedJobEvent = DelayedJobEvents[keyof DelayedJobEvents]
 type CronLikeJobEvent = CronLikeJobsEvents[keyof CronLikeJobsEvents]
-type DelayedJobCallback = (data: DelayedJobEvent) => Promise<void>
-type CronCallback = (name: ICronTypes[keyof ICronTypes]) => Promise<void>
-type CronLikeCallback = (data: CronLikeJobEvent) => Promise<void>
+type DelayedJobCallback = (data: DelayedJobEvent) => Promise<void> | void
+type CronCallback = (name: ICronTypes[keyof ICronTypes]) => Promise<void> | void
+type CronLikeCallback = (data: CronLikeJobEvent) => Promise<void> | void
 
 export class BullJob {
 	#queue: Bull.Queue
@@ -29,7 +30,11 @@ export class BullJob {
 	constructor () {
 		this.#queue = new Bull(
 			Instance.get().getScopedName(Instance.get().settings.bullQueueName),
-			{ redis: Instance.get().settings.redis }
+			{
+				createClient: (type) => new RedisCache(type === 'client' ? undefined : {
+					maxRetriesPerRequest: null,
+					enableReadyCheck: false
+			}).client as any }
 		)
 	}
 
@@ -79,7 +84,7 @@ export class BullJob {
 	) {
 		await this.#cleanup()
 		await Promise.all(crons.map(({ cron, name }) => this.#addCronJob(name, cron)))
-		await Promise.all([
+		Promise.all([
 			this.#queue.process(JobNames.DelayedJob, async (job) => await (callbacks.onDelayed as any)?.(job.data)),
 			this.#queue.process(JobNames.CronJob, async (job) => await (callbacks.onCron as any)?.(job.data.type)),
 			this.#queue.process(JobNames.CronLikeJob, async (job) => await (callbacks.onCronLike as any)?.(job.data)),
