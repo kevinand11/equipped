@@ -1,3 +1,4 @@
+import Confluent from '@confluentinc/kafka-javascript'
 import Kafka from 'kafkajs'
 
 import type { Events, PublishOptions, SubscribeOptions } from '.'
@@ -8,16 +9,21 @@ import { parseJSONValue } from '../utils/json'
 import { Random } from '../utils/utils'
 
 export class KafkaEventBus extends EventBus {
-	#client: Kafka.Kafka
+	#client: Kafka.Kafka | Confluent.KafkaJS.Kafka
+	#confluent: boolean
 	constructor () {
 		super()
 		const settings = Instance.get().settings
-		const { ...kafkaSettings } = settings.kafka
+		const { confluent = false, ...kafkaSettings } = settings.kafka
+		this.#confluent = confluent
 		const config = {
 			clientId: Instance.get().getScopedName(settings.eventColumnName),
 			...kafkaSettings,
 		}
-		this.#client = new Kafka.Kafka({ ...config, logLevel: Kafka.logLevel.NOTHING })
+		this.#client = confluent ? new Confluent.KafkaJS.Kafka({
+			kafkaJS: { ...config, logLevel: Confluent.KafkaJS.logLevel.NOTHING }
+		}) :
+			new Kafka.Kafka({ ...config, logLevel: Kafka.logLevel.NOTHING })
 	}
 
 	createPublisher<Event extends Events[keyof Events]>(topicName: Event['topic'], options: Partial<PublishOptions> = {}) {
@@ -52,7 +58,7 @@ export class KafkaEventBus extends EventBus {
 			started = true
 			await this.#createTopic(topic)
 			const groupId = options.fanout ? Instance.get().getScopedName(`${Instance.get().settings.appId}-fanout-${Random.string(10)}`) : topic
-			const consumer = this.#client.consumer({ groupId })
+			const consumer = this.#client.consumer(this.#confluent ? { kafkaJS: { groupId } } as any : { groupId })
 
 			await consumer.connect()
 			await consumer.subscribe({ topic })
