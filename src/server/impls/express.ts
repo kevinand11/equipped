@@ -48,7 +48,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 				contentSecurityPolicy: false,
 			}),
 		)
-		app.use(cors({ origin: '*' }))
+		app.use(cors(this.cors))
 		app.use(express.urlencoded({ extended: false }))
 		app.use(express.static(this.staticPath))
 		app.use(this.#oapi)

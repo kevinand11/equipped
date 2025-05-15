@@ -71,6 +71,11 @@ export abstract class Server<Req = any, Res = any> {
 		tags: [],
 		'x-tagGroups': [],
 	}
+	protected cors = {
+		origin:(requestOrigin, callback) => callback(null, requestOrigin),
+		credentials: true,
+		methods: ['GET','HEAD','PUT','PATCH','POST','DELETE']
+	}
 	protected abstract onLoad(): Promise<void>
 	protected abstract startServer(port: number): Promise<boolean>
 	protected abstract parse(req: Req, res: Res): Promise<Request>
