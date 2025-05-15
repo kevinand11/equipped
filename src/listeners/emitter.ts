@@ -6,7 +6,6 @@ import { Instance } from '../instance'
 import { StatusCodes } from '../server'
 import type { BaseEntity } from '../structure'
 import type { AuthUser } from '../utils/authUser'
-import { verifyAccessToken } from '../utils/tokens'
 
 enum EmitTypes {
 	created = 'created',
@@ -103,7 +102,7 @@ export class Listener {
 		this.#socket.on(event, async (socket) => {
 			const socketId = socket.id
 			let user = null as AuthUser | null
-			if (socket.handshake.auth.token) user = await verifyAccessToken(socket.handshake.auth.token ?? '').catch(() => null)
+			if (socket.handshake.auth.token) user = await Instance.get().settings.requestsAuth.accessToken.verify(socket.handshake.auth.token ?? '').catch(() => null)
 			socket.on('leave', async (data: LeaveRoomParams, callback: Callback) => {
 				if (!data.channel)
 					return (

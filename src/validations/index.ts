@@ -11,7 +11,7 @@ import type { StorageFile } from '../storage'
 const isNotTruncated = (error?: string) =>
 	Validate.makeRule<StorageFile>((file) => {
 		const val = file as StorageFile
-		error = error ?? `is larger than allowed limit of ${Instance.get().settings.maxFileUploadSizeInMb}mb`
+		error = error ?? `is larger than allowed limit of ${Instance.get().settings.requests.maxFileUploadSizeInMb}mb`
 		const valid = val ? !val.isTruncated : true
 		return valid ? Validate.isValid(val) : Validate.isInvalid([error], val)
 	})

@@ -2,13 +2,10 @@ import type { SASLOptions } from 'kafkajs'
 import type { Level } from 'pino'
 
 import type { ServerTypes } from '../server'
-import { AuthUser } from '../utils/authUser'
+import { AuthUser, RefreshUser } from '../utils/authUser'
+
 
 export type Settings = {
-	accessTokenKey: string
-	accessTokenTTL: number
-	refreshTokenKey: string
-	refreshTokenTTL: number
 	debeziumUrl: string
 	mongoDbURI: string
 	rabbitURI: string
@@ -25,7 +22,6 @@ export type Settings = {
 	appId: string
 	bullQueueName: string
 	eventColumnName: string
-	maxFileUploadSizeInMb: number
 	rateLimit: {
 		enabled?: boolean
 		periodInMs?: number
@@ -37,30 +33,38 @@ export type Settings = {
 		delayAfter?: number
 		delayInMs?: number
 	}
+	logLevel: Level
 	hashSaltRounds: number
-	paginationDefaultLimit: number
 	server: ServerTypes
 	openapi: {
 		docsVersion?: string
 		docsBaseUrl?: string[]
 		docsPath?: string
 	}
+	requests: {
+		log?: boolean
+		schemaValidation?: boolean
+		paginationDefaultLimit: number
+		maxFileUploadSizeInMb: number
+	}
 	requestsAuth: {
-		accessToken?: boolean
+		accessToken: {
+			key: string
+			ttl: number
+			verify: (token: string) => Promise<AuthUser>
+		},
+		refreshToken: {
+			key: string
+			ttl: number
+			verify: (token: string) => Promise<RefreshUser>
+		},
 		apiKey?: {
 			verify: (key: string) => Promise<AuthUser>
 		}
 	}
-	logLevel: Level
-	logRequests: boolean
-	requestSchemaValidation: boolean
 }
 
 export const defaulInstanceSetting: Settings = {
-	accessTokenKey: 'accessTokenKey',
-	accessTokenTTL: 60 * 60,
-	refreshTokenKey: 'refreshTokenKey',
-	refreshTokenTTL: 14 * 24 * 60 * 60,
 	debeziumUrl: '',
 	mongoDbURI: '',
 	rabbitURI: '',
@@ -70,7 +74,8 @@ export const defaulInstanceSetting: Settings = {
 	appId: 'appId',
 	bullQueueName: 'appTasksQueue',
 	eventColumnName: 'appEventsColumn',
-	maxFileUploadSizeInMb: 500,
+	hashSaltRounds: 10,
+	logLevel: 'info',
 	rateLimit: {
 		enabled: false,
 		periodInMs: 60 * 60 * 1000,
@@ -82,18 +87,32 @@ export const defaulInstanceSetting: Settings = {
 		delayAfter: 2000,
 		delayInMs: 500,
 	},
-	hashSaltRounds: 10,
-	paginationDefaultLimit: 100,
 	server: 'express',
 	openapi: {
 		docsVersion: '1.0.0',
 		docsBaseUrl: ['/'],
 		docsPath: '/__docs',
 	},
-	requestsAuth: {
-		accessToken: true,
+	requests: {
+		log: true,
+		schemaValidation: false,
+		paginationDefaultLimit: 100,
+		maxFileUploadSizeInMb: 500,
 	},
-	logLevel: 'info',
-	logRequests: true,
-	requestSchemaValidation: false,
+	requestsAuth: {
+		accessToken: {
+			key: 'accessTokenKey',
+			ttl: 60 * 60,
+			verify: defaultTokenVerifier,
+		},
+		refreshToken: {
+			key: 'refreshTokenKey',
+			ttl: 14 * 24 * 60 * 60,
+			verify: defaultTokenVerifier,
+		}
+	},
+}
+
+async function defaultTokenVerifier (_token: string): Promise<never> {
+	throw new Error('Not implemented')
 }

@@ -10,19 +10,19 @@ const getAccessTokenKey = (userId: string) => `${userId}-access-token`
 const getRefreshTokenKey = (userId: string) => `${userId}-refresh-token`
 
 export const makeAccessToken = async (payload: AuthUser) => {
-	const token = jwt.sign(payload, Instance.get().settings.accessTokenKey, { expiresIn: Instance.get().settings.accessTokenTTL })
-	await Instance.get().cache.set(getAccessTokenKey(payload.id), token, Instance.get().settings.accessTokenTTL)
+	const token = jwt.sign(payload, Instance.get().settings.requestsAuth.accessToken.key, { expiresIn: Instance.get().settings.requestsAuth.accessToken.ttl })
+	await Instance.get().cache.set(getAccessTokenKey(payload.id), token, Instance.get().settings.requestsAuth.accessToken.ttl)
 	return token
 }
 export const makeRefreshToken = async (payload: RefreshUser) => {
-	const token = jwt.sign(payload, Instance.get().settings.refreshTokenKey, { expiresIn: Instance.get().settings.refreshTokenTTL })
-	await Instance.get().cache.set(getRefreshTokenKey(payload.id), token, Instance.get().settings.refreshTokenTTL)
+	const token = jwt.sign(payload, Instance.get().settings.requestsAuth.refreshToken.key, { expiresIn: Instance.get().settings.requestsAuth.refreshToken.ttl })
+	await Instance.get().cache.set(getRefreshTokenKey(payload.id), token, Instance.get().settings.requestsAuth.refreshToken.ttl)
 	return token
 }
 
 export const verifyAccessToken = async (token: string) => {
 	try {
-		const user = jwt.verify(token, Instance.get().settings.accessTokenKey) as AuthUser
+		const user = jwt.verify(token, Instance.get().settings.requestsAuth.accessToken.key) as AuthUser
 		if (!user) throw new NotAuthenticatedError()
 		const cachedToken = await getCachedAccessToken(user.id)
 		// Cached access token was deleted, e.g. by user roles being modified, so token needs to be treated as expired
@@ -37,7 +37,7 @@ export const verifyAccessToken = async (token: string) => {
 
 export const verifyRefreshToken = async (token: string) => {
 	try {
-		const user = jwt.verify(token, Instance.get().settings.refreshTokenKey) as RefreshUser
+		const user = jwt.verify(token, Instance.get().settings.requestsAuth.refreshToken.key) as RefreshUser
 		if (!user) throw new NotAuthenticatedError()
 		return user
 	} catch {

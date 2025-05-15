@@ -38,7 +38,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		this.#expressApp = app
 
 		app.disable('x-powered-by')
-		if (this.settings.logRequests) app.use(pinoHttp({ logger: Instance.get().logger }))
+		if (this.settings.requests.log) app.use(pinoHttp({ logger: Instance.get().logger }))
 		app.use(express.json())
 		app.use(express.text())
 		app.use(cookie())
@@ -54,7 +54,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		app.use(this.#oapi)
 		app.use(
 			fileUpload({
-				limits: { fileSize: this.settings.maxFileUploadSizeInMb * 1024 * 1024 },
+				limits: { fileSize: this.settings.requests.maxFileUploadSizeInMb * 1024 * 1024 },
 				useTempFiles: false,
 			}),
 		)
@@ -82,7 +82,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		]
 		if (!route.schema.hide)
 			controllers.unshift(
-				this.#oapi[this.settings.requestSchemaValidation ? 'validPath' : 'path'](openapi),
+				this.#oapi[this.settings.requests.schemaValidation ? 'validPath' : 'path'](openapi),
 				(error: Error, _, __, next) => {
 					if ('validationErrors' in error) {
 						const validationErrors = <FastifySchemaValidationError[]>error.validationErrors

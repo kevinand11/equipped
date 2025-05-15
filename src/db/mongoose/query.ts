@@ -31,7 +31,7 @@ export const parseMongodbQueryParams = async <Model>(model: mongoose.Model<Model
 
 	// Handle limit clause
 	const settings = Instance.get().settings
-	const limit = Number(params.limit) <= settings.paginationDefaultLimit ? Number(params.limit) : settings.paginationDefaultLimit
+	const limit = Number(params.limit) <= settings.requests.paginationDefaultLimit ? Number(params.limit) : settings.requests.paginationDefaultLimit
 
 	// Handle offset clause
 	let page = Number.isNaN(Number(params.page)) ? 0 : Number(params.page)

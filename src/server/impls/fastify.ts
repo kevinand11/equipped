@@ -29,8 +29,8 @@ function getFastifyApp() {
 	return Fastify({
 		ignoreTrailingSlash: true,
 		caseSensitive: false,
-		disableRequestLogging: !instance.settings.logRequests,
-		loggerInstance: instance.settings.logRequests ? instance.logger : undefined,
+		disableRequestLogging: !instance.settings.requests.log,
+		loggerInstance: instance.settings.requests.log ? instance.logger : undefined,
 		ajv: { customOptions: { coerceTypes: false } },
 		schemaErrorFormatter: (errors, data) =>
 			new ValidationError(
@@ -61,7 +61,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		app.register(fastifyMultipart, {
 			attachFieldsToBody: 'keyValues',
 			throwFileSizeLimit: false,
-			limits: { fileSize: this.settings.maxFileUploadSizeInMb * 1024 * 1024 },
+			limits: { fileSize: this.settings.requests.maxFileUploadSizeInMb * 1024 * 1024 },
 			onFile: async (f) => {
 				const buffer = await f.toBuffer()
 				const parsed: StorageFile = {
@@ -90,7 +90,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 					message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }]),
 				}),
 			})
-		if (!this.settings.requestSchemaValidation) {
+		if (!this.settings.requests.schemaValidation) {
 			app.setValidatorCompiler(() => () => true)
 			app.setSerializerCompiler(() => (data) => JSON.stringify(data))
 		}

@@ -1,12 +1,12 @@
 import { NotAuthorizedError } from '../../errors'
-import { verifyRefreshToken } from '../../utils/tokens'
+import { Instance } from '../../instance'
 import { makeMiddleware } from '../types'
 
 export const requireRefreshUser = makeMiddleware(
 	async (request) => {
 		const refreshToken = request.headers.RefreshToken
 		if (!refreshToken) throw new NotAuthorizedError('Refresh-Token header missing')
-		request.refreshUser = await verifyRefreshToken(refreshToken)
+		request.refreshUser = await Instance.get().settings.requestsAuth.refreshToken.verify(refreshToken)
 		if (!request.refreshUser) throw new NotAuthorizedError()
 	},
 	(route) => {

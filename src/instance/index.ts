@@ -1,3 +1,4 @@
+import { merge } from 'lodash'
 import pino from 'pino'
 
 import { BullJob } from '../bull-job'
@@ -9,6 +10,7 @@ import { KafkaEventBus } from '../events/kafka'
 import { addWaitBeforeExit, exit } from '../exit'
 import type { Server } from '../server'
 import { serverTypes } from '../server'
+import { DeepPartial } from '../types'
 import type { Settings } from './settings'
 import { defaulInstanceSetting } from './settings'
 
@@ -73,12 +75,10 @@ export class Instance {
 		})
 	}
 
-	static initialize(settings: Partial<Settings>) {
+	static initialize(settings: DeepPartial<Settings>) {
 		Instance.#initialized = true
-		const instanceSettings = Instance.get().settings
-		Object.entries(settings).forEach(([key, value]) => {
-			instanceSettings[key] = typeof value === 'object' && !Array.isArray(value) ? { ...instanceSettings[key], ...value } : value
-		})
+		const instance = Instance.get()
+		instance.#settings = merge(instance.#settings, settings)
 	}
 
 	static get() {
