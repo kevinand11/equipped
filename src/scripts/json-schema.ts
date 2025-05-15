@@ -72,7 +72,6 @@ export function generateJSONSchema(
 					headers: def.requestHeaders,
 					response,
 					operationId: key,
-					summary: name,
 				}
 
 				return [key, schema] as const

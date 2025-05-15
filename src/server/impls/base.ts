@@ -160,7 +160,6 @@ export abstract class Server<Req = any, Res = any> {
 			onError,
 			schema: {
 				...scheme,
-				...(scheme.title ? { summary: scheme.title } : {}),
 				summary: scheme.title ?? scheme.summary ?? cleanPath(path),
 				hide: hideSchema,
 				tags: tag ? [tag] : undefined,
