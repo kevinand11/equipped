@@ -122,6 +122,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			...allHeaders,
 			AccessToken: req.get('Access-Token'),
 			RefreshToken: req.get('Refresh-Token'),
+			ApiKey: req.get('Api-Key'),
 			ContentType: req.get('Content-Type'),
 			Referer: req.get('referer'),
 			UserAgent: req.get('User-Agent'),

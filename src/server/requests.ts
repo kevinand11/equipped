@@ -7,7 +7,7 @@ import type { Api, FileSchema, GetApiPart, HeadersType, SupportedStatusCodes } f
 import type { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
 
-type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'Referer' | 'ContentType' | 'UserAgent'
+type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 
 type IsFileOrFileArray<T> = T extends FileSchema ? StorageFile[] : T extends FileSchema[] ? StorageFile[] : T
 type ApiToBody<Def extends Api> = MappedUnion<Def['body']>

@@ -127,6 +127,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			...allHeaders,
 			AccessToken: req.headers['access-token']?.toString(),
 			RefreshToken: req.headers['refresh-token']?.toString(),
+			ApiKey: req.headers['api-key']?.toString(),
 			ContentType: req.headers['content-type']?.toString(),
 			Referer: req.headers['referer']?.toString(),
 			UserAgent: req.headers['user-agent']?.toString(),

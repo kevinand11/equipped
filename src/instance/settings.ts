@@ -2,6 +2,7 @@ import type { SASLOptions } from 'kafkajs'
 import type { Level } from 'pino'
 
 import type { ServerTypes } from '../server'
+import { AuthUser } from '../utils/authUser'
 
 export type Settings = {
 	accessTokenKey: string
@@ -44,6 +45,12 @@ export type Settings = {
 		docsBaseUrl?: string[]
 		docsPath?: string
 	}
+	requestsAuth: {
+		accessToken?: boolean
+		apiKey?: {
+			verify: (key: string) => Promise<AuthUser>
+		}
+	}
 	logLevel: Level
 	logRequests: boolean
 	requestSchemaValidation: boolean
@@ -82,6 +89,9 @@ export const defaulInstanceSetting: Settings = {
 		docsVersion: '1.0.0',
 		docsBaseUrl: ['/'],
 		docsPath: '/__docs',
+	},
+	requestsAuth: {
+		accessToken: true,
 	},
 	logLevel: 'info',
 	logRequests: true,

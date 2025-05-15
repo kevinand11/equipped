@@ -61,6 +61,11 @@ export abstract class Server<Req = any, Res = any> {
 					name: 'Refresh-Token',
 					in: 'header',
 				},
+				ApiKey: {
+					type: 'apiKey',
+					name: 'Api-Key',
+					in: 'header',
+				},
 			},
 		},
 		tags: [],
