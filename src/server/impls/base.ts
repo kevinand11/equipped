@@ -72,8 +72,7 @@ export abstract class Server<Req = any, Res = any> {
 		'x-tagGroups': [],
 	}
 	protected cors = {
-		origin:(requestOrigin, callback) => callback(null, requestOrigin),
-		credentials: true,
+		origin: '*',
 		methods: ['GET','HEAD','PUT','PATCH','POST','DELETE']
 	}
 	protected abstract onLoad(): Promise<void>
@@ -199,7 +198,7 @@ export abstract class Server<Req = any, Res = any> {
 			path: `${this.settings.openapi.docsPath}/index.html`,
 			handler: (req) =>
 				req.res({
-					body: scalarHtml.replaceAll('__API_TITLE__', this.settings.appId).replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
+					body: scalarHtml.replaceAll('__API_TITLE__', `${this.settings.app} ${this.settings.appId}`).replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 					headers: { 'Content-Type': 'text/html' },
 				}),
 			hideSchema: true,
@@ -210,7 +209,7 @@ export abstract class Server<Req = any, Res = any> {
 			path: `${this.settings.openapi.docsPath}/redoc.html`,
 			handler: (req) =>
 				req.res({
-					body: redocHtml.replaceAll('__API_TITLE__', this.settings.appId).replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
+					body: redocHtml.replaceAll('__API_TITLE__', `${this.settings.app} ${this.settings.appId}`).replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 					headers: { 'Content-Type': 'text/html' },
 				}),
 			hideSchema: true,
@@ -252,7 +251,7 @@ const scalarHtml = `
       const configuration = { theme: 'purple' };
       document.getElementById('api-reference').dataset.configuration = JSON.stringify(configuration);
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.12"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.28.33"></script>
   </body>
 </html>
 `
@@ -273,7 +272,7 @@ const redocHtml = `
   </head>
   <body>
     <redoc spec-url="__OPENAPI_JSON_URL__"></redoc>
-    <script src="https://cdn.jsdelivr.net/npm/redoc@2.1.5/bundles/redoc.standalone.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/redoc@2.5.0/bundles/redoc.standalone.js"></script>
   </body>
 </html>
 `
