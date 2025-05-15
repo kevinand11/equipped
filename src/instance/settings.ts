@@ -1,7 +1,7 @@
 import type { SASLOptions } from 'kafkajs'
 import type { Level } from 'pino'
 
-import { AuthUser, RefreshUser } from '../requests-auth'
+import { BaseApiKeysUtility, BaseTokensUtility } from '../requests-auth'
 import type { ServerTypes } from '../server'
 
 
@@ -48,19 +48,8 @@ export type Settings = {
 		maxFileUploadSizeInMb: number
 	}
 	requestsAuth: {
-		accessToken: {
-			key: string
-			ttl: number
-			verify: (token: string) => Promise<AuthUser>
-		},
-		refreshToken: {
-			key: string
-			ttl: number
-			verify: (token: string) => Promise<RefreshUser>
-		},
-		apiKey?: {
-			verify: (key: string) => Promise<AuthUser>
-		}
+		tokens?: BaseTokensUtility,
+		apiKey?: BaseApiKeysUtility,
 	}
 }
 
@@ -99,20 +88,5 @@ export const defaulInstanceSetting: Settings = {
 		paginationDefaultLimit: 100,
 		maxFileUploadSizeInMb: 500,
 	},
-	requestsAuth: {
-		accessToken: {
-			key: 'accessTokenKey',
-			ttl: 60 * 60,
-			verify: defaultTokenVerifier,
-		},
-		refreshToken: {
-			key: 'refreshTokenKey',
-			ttl: 14 * 24 * 60 * 60,
-			verify: defaultTokenVerifier,
-		}
-	},
-}
-
-async function defaultTokenVerifier (_token: string): Promise<never> {
-	throw new Error('Not implemented')
+	requestsAuth: {}
 }

@@ -102,7 +102,8 @@ export class Listener {
 		this.#socket.on(event, async (socket) => {
 			const socketId = socket.id
 			let user = null as AuthUser | null
-			if (socket.handshake.auth.token) user = await Instance.get().settings.requestsAuth.accessToken.verify(socket.handshake.auth.token ?? '').catch(() => null)
+			const tokensUtil = Instance.get().settings.requestsAuth.tokens
+			if (socket.handshake.auth.token && tokensUtil) user = await tokensUtil.verifyAccessToken(socket.handshake.auth.token ?? '').catch(() => null)
 			socket.on('leave', async (data: LeaveRoomParams, callback: Callback) => {
 				if (!data.channel)
 					return (

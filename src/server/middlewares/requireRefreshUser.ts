@@ -6,7 +6,7 @@ export const requireRefreshUser = makeMiddleware(
 	async (request) => {
 		const refreshToken = request.headers.RefreshToken
 		if (!refreshToken) throw new NotAuthorizedError('Refresh-Token header missing')
-		request.refreshUser = await Instance.get().settings.requestsAuth.refreshToken.verify(refreshToken)
+		request.refreshUser = await Instance.get().settings.requestsAuth.tokens?.verifyRefreshToken(refreshToken) ?? null
 		if (!request.refreshUser) throw new NotAuthorizedError()
 	},
 	(route) => {

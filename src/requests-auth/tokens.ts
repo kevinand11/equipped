@@ -52,32 +52,49 @@ export abstract class BaseTokensUtility {
 	}
 }
 
+type CacheTokensUtilityOptions = {
+	accessTokenKey: string,
+	refreshTokenKey: string,
+	accessTokenTTL: number,
+	refreshTokenTTL: number,
+	accessTokenPrefix: string,
+	refreshTokenPrefix: string
+}
+
 export class CacheTokensUtility extends BaseTokensUtility {
 	#getAccessTokenKey: (userId: string) => string
 	#getRefreshTokenKey: (userId: string) => string
-	constructor (options: { accessTokenPrefix?: string, refreshTokenPrefix?: string } = {}) {
+	private options: CacheTokensUtilityOptions
+	constructor (options?: Partial<CacheTokensUtilityOptions>) {
 		super()
-		const accessPrefix = options?.accessTokenPrefix ?? 'tokens.access.'
-		const refreshPrefix = options?.accessTokenPrefix ?? 'tokens.refresh.'
-		this.#getAccessTokenKey = (userId: string) => `${accessPrefix}${userId}`
-		this.#getRefreshTokenKey = (userId: string) => `${refreshPrefix}${userId}`
+		this.options = {
+			accessTokenKey: 'accessTokenKey',
+			refreshTokenKey: 'refreshTokenKey',
+			accessTokenTTL: 60 * 60,
+			refreshTokenTTL: 14 * 24 * 60 * 60,
+			accessTokenPrefix: 'tokens.access.',
+			refreshTokenPrefix: 'tokens.refresh.',
+			...options
+		}
+		this.#getAccessTokenKey = (userId: string) => `${this.options.accessTokenPrefix}${userId}`
+		this.#getRefreshTokenKey = (userId: string) => `${this.options.refreshTokenPrefix}${userId}`
 	}
 
 	async createAccessToken (payload: AuthUser) {
-		const token = jwt.sign(payload, Instance.get().settings.requestsAuth.accessToken.key, { expiresIn: Instance.get().settings.requestsAuth.accessToken.ttl })
-		await Instance.get().cache.set(this.#getAccessTokenKey(payload.id), token, Instance.get().settings.requestsAuth.accessToken.ttl)
+		const token = jwt.sign(payload, this.options.accessTokenKey, { expiresIn: this.options.accessTokenTTL })
+		await Instance.get().cache.set(this.#getAccessTokenKey(payload.id), token, this.options.accessTokenTTL)
 		return token
 	}
 
 	async createRefreshToken (payload: RefreshUser) {
-		const token = jwt.sign(payload, Instance.get().settings.requestsAuth.refreshToken.key, { expiresIn: Instance.get().settings.requestsAuth.refreshToken.ttl })
-		await Instance.get().cache.set(this.#getRefreshTokenKey(payload.id), token, Instance.get().settings.requestsAuth.refreshToken.ttl)
+		const token = jwt.sign(payload, this.options.refreshTokenKey, { expiresIn: this.options.refreshTokenTTL })
+		await Instance.get().cache.set(this.#getRefreshTokenKey(payload.id), token, this.options.refreshTokenTTL)
 		return token
 	}
 
 	async verifyAccessToken (token: string) {
 		try {
-			const user = jwt.verify(token, Instance.get().settings.requestsAuth.accessToken.key) as AuthUser
+			const user = jwt.verify(token, this.options.accessTokenKey) as AuthUser
 			if (!user) throw new NotAuthenticatedError()
 			const cachedToken = await this.retrieveAccessTokenFor(user.id)
 			// Cached access token was deleted, e.g. by user roles being modified, so token needs to be treated as expired
@@ -92,7 +109,7 @@ export class CacheTokensUtility extends BaseTokensUtility {
 
 	async verifyRefreshToken (token: string) {
 		try {
-			const user = jwt.verify(token, Instance.get().settings.requestsAuth.refreshToken.key) as RefreshUser
+			const user = jwt.verify(token, this.options.refreshTokenKey) as RefreshUser
 			if (!user) throw new NotAuthenticatedError()
 			return user
 		} catch {
