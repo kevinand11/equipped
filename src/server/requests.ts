@@ -32,8 +32,16 @@ export class Request<Def extends Api = Api> {
 	readonly cookies: Record<string, any>
 	readonly rawBody: unknown
 	readonly headers: Record<HeaderKeys, string | undefined> & GetApiPart<Def, 'requestHeaders', true, {}> & HeadersType
-	authUser: null | AuthUser = null
-	refreshUser: null | RefreshUser = null
+	users: {
+		access: AuthUser | null
+		refresh: RefreshUser | null
+		apiKey: AuthUser | null
+	} = {
+		access: null,
+		refresh: null,
+		apiKey: null,
+	}
+	authUser: AuthUser | null = null
 	pendingError: null | CustomError = null
 
 	constructor({
