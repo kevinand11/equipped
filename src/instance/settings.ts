@@ -1,8 +1,8 @@
 import type { SASLOptions } from 'kafkajs'
 import type { Level } from 'pino'
 
+import { AuthUser, RefreshUser } from '../requests-auth'
 import type { ServerTypes } from '../server'
-import { AuthUser, RefreshUser } from '../utils/authUser'
 
 
 export type Settings = {

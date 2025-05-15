@@ -1,10 +1,10 @@
 import type { Readable } from 'stream'
 
 import type { CustomError } from '../errors'
+import type { AuthUser, RefreshUser } from '../requests-auth'
 import type { StorageFile } from '../storage'
 import type { DistributiveOmit, IsInTypeList } from '../types'
 import type { Api, FileSchema, GetApiPart, HeadersType, SupportedStatusCodes } from './types'
-import type { AuthUser, RefreshUser } from '../utils/authUser'
 import { parseJSONValue } from '../utils/json'
 
 type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'

@@ -3,9 +3,9 @@ import type io from 'socket.io'
 
 import type { Enum } from '../enums/types'
 import { Instance } from '../instance'
+import type { AuthUser } from '../requests-auth'
 import { StatusCodes } from '../server'
 import type { BaseEntity } from '../structure'
-import type { AuthUser } from '../utils/authUser'
 
 enum EmitTypes {
 	created = 'created',

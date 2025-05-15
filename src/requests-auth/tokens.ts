@@ -4,7 +4,7 @@ import type { CustomError } from '../errors'
 import { AccessTokenExpired, NotAuthenticatedError } from '../errors'
 import { Instance } from '../instance'
 import { StatusCodes } from '../server'
-import type { AuthUser, RefreshUser } from './authUser'
+import type { AuthUser, RefreshUser } from './types'
 
 
 export abstract class BaseTokensUtility {
