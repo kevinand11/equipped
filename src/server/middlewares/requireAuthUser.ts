@@ -4,13 +4,15 @@ import { makeMiddleware } from '../types'
 
 export const requireAuthUser = makeMiddleware(
 	async (request) => {
-		if (request.pendingError) throw request.pendingError
-		request.authUser = request.users.access || request.users.apiKey
+		const user = request.users.access.value || request.users.apiKey.value
+		const error = request.users.access.error || request.users.apiKey.error
+		if (!user && error) throw error
+		request.authUser = user
 		if (!request.authUser) throw new NotAuthenticatedError()
 	},
 	(route) => {
 		route.security ??= []
-		route.security.push({ AccessToken: [], ApiKey: [] })
+		route.security.push({ AccessToken: [] }, { ApiKey: [] })
 		route.descriptions ??= []
 		route.descriptions.push('Requires a valid means of authentication.')
 	},
@@ -18,8 +20,8 @@ export const requireAuthUser = makeMiddleware(
 
 export const requireAccessTokenUser = makeMiddleware(
 	async (request) => {
-		if (request.pendingError) throw request.pendingError
-		request.authUser = request.users.access
+		if (request.users.access.error) throw request.users.access.error
+		request.authUser = request.users.access.value
 		if (!request.authUser) throw new NotAuthenticatedError()
 	},
 	(route) => {
@@ -32,8 +34,8 @@ export const requireAccessTokenUser = makeMiddleware(
 
 export const requireApiKeyUser = makeMiddleware(
 	async (request) => {
-		if (request.pendingError) throw request.pendingError
-		request.authUser = request.users.apiKey
+		if (request.users.apiKey.error) throw request.users.apiKey.error
+		request.authUser = request.users.apiKey.value
 		if (!request.authUser) throw new NotAuthenticatedError()
 	},
 	(route) => {
@@ -47,10 +49,11 @@ export const requireApiKeyUser = makeMiddleware(
 
 export const requireRefreshTokenUser = makeMiddleware(
 	async (request) => {
+		if (request.users.refresh.error) throw request.users.refresh.error
 		const refreshToken = request.headers.RefreshToken
 		if (!refreshToken) throw new NotAuthorizedError('Refresh-Token header missing')
-		request.users.refresh = await Instance.get().settings.requestsAuth.tokens?.verifyRefreshToken(refreshToken) ?? null
-		if (!request.users.refresh) throw new NotAuthorizedError()
+		request.users.refresh.value = await Instance.get().settings.requestsAuth.tokens?.verifyRefreshToken(refreshToken)
+		if (!request.users.refresh.value) throw new NotAuthorizedError()
 	},
 	(route) => {
 		route.security ??= []

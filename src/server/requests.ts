@@ -22,6 +22,8 @@ type UnionMapper<T> = {
 }
 type MappedUnion<T> = UnionMapper<T>[keyof UnionMapper<T>]
 
+type ReqUser<T> = { error?: CustomError, value?: T }
+
 export class Request<Def extends Api = Api> {
 	readonly ip: string | undefined
 	readonly method: Def['method']
@@ -33,16 +35,15 @@ export class Request<Def extends Api = Api> {
 	readonly rawBody: unknown
 	readonly headers: Record<HeaderKeys, string | undefined> & GetApiPart<Def, 'requestHeaders', true, {}> & HeadersType
 	users: {
-		access: AuthUser | null
-		refresh: RefreshUser | null
-		apiKey: AuthUser | null
+		access: ReqUser<AuthUser>
+		refresh: ReqUser<RefreshUser>
+		apiKey: ReqUser<AuthUser>
 	} = {
-		access: null,
-		refresh: null,
-		apiKey: null,
+		access: {},
+		refresh: {},
+		apiKey: {},
 	}
-	authUser: AuthUser | null = null
-	pendingError: null | CustomError = null
+	authUser?: AuthUser
 
 	constructor({
 		ip,

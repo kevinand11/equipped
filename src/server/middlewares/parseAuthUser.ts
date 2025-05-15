@@ -5,12 +5,14 @@ import { makeMiddleware } from '../types'
 export const parseAuthUser = makeMiddleware(async (request) => {
 	const { requestsAuth } = Instance.get().settings
 	const { AccessToken, ApiKey } = request.headers
-	function errorHandler (err: any) {
-		if (err instanceof CustomError) request.pendingError = err
-		return null
+	function makeErrorHandler (key: 'access' | 'apiKey') {
+		return function (err: any) {
+			if (err instanceof CustomError) request.users[key].error = err
+			return undefined
+		}
 	}
 	if (requestsAuth.tokens && AccessToken)
-		request.users.access = await requestsAuth.tokens.verifyAccessToken(AccessToken).catch(errorHandler)
+		request.users.access.value = await requestsAuth.tokens.verifyAccessToken(AccessToken).catch(makeErrorHandler('access'))
 	else if (requestsAuth.apiKey && ApiKey)
-		request.users.apiKey = await requestsAuth.apiKey.verifyApiKey(ApiKey).catch(errorHandler)
+		request.users.apiKey.value = await requestsAuth.apiKey.verifyApiKey(ApiKey).catch(makeErrorHandler('apiKey'))
 })
