@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.21](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.20...v5.0.0-rc.21) (2025-05-15)
+
+
+### Features
+
+* support api keys for auth ([f94857c](https://github.com/kevinand11/equipped/commit/f94857ce9dd598e3685b467aaee2180eb000eecf))
+
+
+### Bug Fixes
+
+* cors issue ([f91f952](https://github.com/kevinand11/equipped/commit/f91f952c15eece948bf490a33273b72b80ba0681))
+* remove silly api docs path title ([8e5ea1e](https://github.com/kevinand11/equipped/commit/8e5ea1eaca5059731c74caeedbc67cae1e9ee1c7))
+* specify default value for cors ([e25e16f](https://github.com/kevinand11/equipped/commit/e25e16f2c24378a44331be7d2c873f8c59bf475b))
+
 ## [5.0.0-rc.20](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.19...v5.0.0-rc.20) (2025-05-14)
 
 ## [5.0.0-rc.19](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.18...v5.0.0-rc.19) (2025-05-14)
