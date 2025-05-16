@@ -12,13 +12,13 @@ export const requireAuthUser = makeMiddleware(
 	},
 	(route) => {
 		route.security ??= []
-		route.security.push({ AccessToken: [] }, { ApiKey: [] })
+		route.security.push({ Authorization: [] }, { ApiKey: [] })
 		route.descriptions ??= []
 		route.descriptions.push('Requires a valid means of authentication.')
 	},
 )
 
-export const requireAccessTokenUser = makeMiddleware(
+export const requireAuthorizationUser = makeMiddleware(
 	async (request) => {
 		if (request.users.access.error) throw request.users.access.error
 		request.authUser = request.users.access.value
@@ -26,9 +26,9 @@ export const requireAccessTokenUser = makeMiddleware(
 	},
 	(route) => {
 		route.security ??= []
-		route.security.push({ AccessToken: [] })
+		route.security.push({ Authorization: [] })
 		route.descriptions ??= []
-		route.descriptions.push('Requires a valid Access-Token header.')
+		route.descriptions.push('Requires a valid authorization header.')
 	},
 )
 
@@ -42,7 +42,7 @@ export const requireApiKeyUser = makeMiddleware(
 		route.security ??= []
 		route.security.push({ ApiKey: [] })
 		route.descriptions ??= []
-		route.descriptions.push('Requires a valid Api-Key header.')
+		route.descriptions.push('Requires a valid x-api-key header.')
 	},
 )
 
@@ -51,7 +51,7 @@ export const requireRefreshTokenUser = makeMiddleware(
 	async (request) => {
 		if (request.users.refresh.error) throw request.users.refresh.error
 		const refreshToken = request.headers.RefreshToken
-		if (!refreshToken) throw new NotAuthorizedError('Refresh-Token header missing')
+		if (!refreshToken) throw new NotAuthorizedError('x-refresh-token header missing')
 		request.users.refresh.value = await Instance.get().settings.requestsAuth.tokens?.verifyRefreshToken(refreshToken)
 		if (!request.users.refresh.value) throw new NotAuthorizedError()
 	},
@@ -59,6 +59,6 @@ export const requireRefreshTokenUser = makeMiddleware(
 		route.security ??= []
 		route.security.push({ RefreshToken: [] })
 		route.descriptions ??= []
-		route.descriptions.push('Requires a valid Refresh-Token header.')
+		route.descriptions.push('Requires a valid x-refresh-token header.')
 	},
 )

@@ -120,12 +120,12 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
-			AccessToken: req.get('Access-Token'),
-			RefreshToken: req.get('Refresh-Token'),
-			ApiKey: req.get('Api-Key'),
-			ContentType: req.get('Content-Type'),
+			Authorization: req.get('authorization'),
+			RefreshToken: req.get('x-refresh-token'),
+			ApiKey: req.get('x-api-key'),
+			ContentType: req.get('content-type'),
 			Referer: req.get('referer'),
-			UserAgent: req.get('User-Agent'),
+			UserAgent: req.get('user-agent'),
 		}
 		const files = Object.fromEntries(
 			await Promise.all(

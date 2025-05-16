@@ -7,7 +7,7 @@ import type { DistributiveOmit, IsInTypeList } from '../types'
 import type { Api, FileSchema, GetApiPart, HeadersType, SupportedStatusCodes } from './types'
 import { parseJSONValue } from '../utils/json'
 
-type HeaderKeys = 'AccessToken' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
+type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 
 type IsFileOrFileArray<T> = T extends FileSchema ? StorageFile[] : T extends FileSchema[] ? StorageFile[] : T
 type ApiToBody<Def extends Api> = MappedUnion<Def['body']>

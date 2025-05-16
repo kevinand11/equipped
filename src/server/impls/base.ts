@@ -51,19 +51,19 @@ export abstract class Server<Req = any, Res = any> {
 		components: {
 			schemas: {},
 			securitySchemes: {
-				AccessToken: {
+				Authorization: {
 					type: 'apiKey',
-					name: 'Access-Token',
+					name: 'authorization',
 					in: 'header',
 				},
 				RefreshToken: {
 					type: 'apiKey',
-					name: 'Refresh-Token',
+					name: 'x-refresh-token',
 					in: 'header',
 				},
 				ApiKey: {
 					type: 'apiKey',
-					name: 'Api-Key',
+					name: 'x-api-key',
 					in: 'header',
 				},
 			},

@@ -125,9 +125,9 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
-			AccessToken: req.headers['access-token']?.toString(),
-			RefreshToken: req.headers['refresh-token']?.toString(),
-			ApiKey: req.headers['api-key']?.toString(),
+			Authorization: req.headers['authorization']?.toString(),
+			RefreshToken: req.headers['x-refresh-token']?.toString(),
+			ApiKey: req.headers['x-api-key']?.toString(),
 			ContentType: req.headers['content-type']?.toString(),
 			Referer: req.headers['referer']?.toString(),
 			UserAgent: req.headers['user-agent']?.toString(),

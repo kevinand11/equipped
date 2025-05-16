@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken'
 
 import type { CustomError } from '../errors'
-import { AccessTokenExpired, NotAuthenticatedError } from '../errors'
+import { AuthorizationExpired, NotAuthenticatedError } from '../errors'
 import { Instance } from '../instance'
 import { StatusCodes } from '../server'
 import type { AuthUser, RefreshUser } from './types'
@@ -26,7 +26,7 @@ export abstract class BaseTokensUtility {
 	}> {
 		const authUser = await this.verifyAccessToken(tokens.accessToken).catch((err) => {
 			const error = err as CustomError
-			if (error.statusCode === StatusCodes.AccessTokenExpired) return null
+			if (error.statusCode === StatusCodes.AuthorizationExpired) return null
 			else throw err
 		})
 		if (authUser) return tokens
@@ -98,11 +98,11 @@ export class CacheTokensUtility extends BaseTokensUtility {
 			if (!user) throw new NotAuthenticatedError()
 			const cachedToken = await this.retrieveAccessTokenFor(user.id)
 			// Cached access token was deleted, e.g. by user roles being modified, so token needs to be treated as expired
-			if (token && token !== cachedToken) throw new AccessTokenExpired()
+			if (token && token !== cachedToken) throw new AuthorizationExpired()
 			return user
 		} catch (err) {
-			if (err instanceof AccessTokenExpired) throw err
-			if (err instanceof jwt.TokenExpiredError) throw new AccessTokenExpired()
+			if (err instanceof AuthorizationExpired) throw err
+			if (err instanceof jwt.TokenExpiredError) throw new AuthorizationExpired()
 			else throw new NotAuthenticatedError()
 		}
 	}
