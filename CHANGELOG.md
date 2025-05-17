@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.25](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.24...v5.0.0-rc.25) (2025-05-17)
+
+
+### Bug Fixes
+
+* correct return type of validate fn ([90f9b40](https://github.com/kevinand11/equipped/commit/90f9b409db112171839d2fd2b1cc12228c695107))
+
 ## [5.0.0-rc.24](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.23...v5.0.0-rc.24) (2025-05-17)
 
 
