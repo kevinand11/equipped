@@ -1,6 +1,6 @@
 import * as bcrypt from 'bcryptjs'
 import * as Validate from 'valleyed'
-import type { ExtractI } from 'valleyed/lib/api/base'
+import type { ExtractO } from 'valleyed/lib/api/base'
 import type { VCore } from 'valleyed/lib/api/core'
 import type { VObject } from 'valleyed/lib/api/objects'
 
@@ -37,9 +37,9 @@ Validate.v.file = (...args: Parameters<typeof file>) => file(...args).addRule(is
 export const Schema = Validate.v
 export const Validation = { ...Validate, isNotTruncated, isValidPhone }
 
-export function validate<T extends Record<string, VCore<any>>>(schema: T, value: unknown): ExtractI<VObject<T>>
+export function validate<T extends Record<string, VCore<any>>>(schema: T, value: unknown): ExtractO<VObject<T>>
 // eslint-disable-next-line no-redeclare
-export function validate<T extends VCore<any>>(schema: T, value: unknown): ExtractI<T>
+export function validate<T extends VCore<any>>(schema: T, value: unknown): ExtractO<T>
 // eslint-disable-next-line no-redeclare
 export function validate(schema, value) {
 	const validator = schema instanceof Validate.VCore ? schema : Validate.v.object(schema)
