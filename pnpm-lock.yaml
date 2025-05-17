@@ -144,8 +144,8 @@ importers:
         specifier: 0.5.1
         version: 0.5.1
       valleyed:
-        specifier: 4.4.2
-        version: 4.4.2
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@commitlint/cli':
         specifier: ^19.8.1
@@ -3686,8 +3686,8 @@ packages:
     resolution: {integrity: sha512-c1Q0mCiPlgdTVVVIJIrBuxNicYE+t/7oKeI9MWLj3fh/uq2Pxh/3eeWbVZ4OcGW1TUf53At0njHw5SMdA3tmMg==}
     engines: {node: '>= 0.10'}
 
-  valleyed@4.4.2:
-    resolution: {integrity: sha512-R5nCtpNzb9MD8nh+xMsURCMtqb2foPeksb8DTiO0UU+7h7YWuBQXair2DlYOSHRarhu3px+fJbUlokl6p+m8ww==}
+  valleyed@4.4.3:
+    resolution: {integrity: sha512-Xuak89C58l9ZueAEenYiSmnLT3e9dsLzugHuG32RyHFcarJLSOY9wZA+H2+YkOY3Ki2G9m74EJidVnsuHNeRUA==}
 
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
@@ -7788,7 +7788,7 @@ snapshots:
 
   validator@13.12.0: {}
 
-  valleyed@4.4.2:
+  valleyed@4.4.3:
     dependencies:
       url-regex-safe: 4.0.0
     transitivePeerDependencies:
