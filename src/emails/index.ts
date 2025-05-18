@@ -2,8 +2,6 @@ import path from 'path'
 
 import pug from 'pug'
 
-import type { Enum, IEmailsList } from '../enums/types'
-
 export type PhoneText = {
 	to: string
 	from: string
@@ -14,7 +12,7 @@ export type Email = {
 	to: string
 	subject: string
 	content: string
-	from: Enum<IEmailsList>
+	from: string
 	data: {}
 }
 
