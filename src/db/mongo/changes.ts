@@ -1,30 +1,26 @@
-import mongoose from 'mongoose'
+import { Filter, MongoClient, ObjectId } from 'mongodb'
 
 import { exit } from '../../exit'
 import { Instance } from '../../instance'
-import type { BaseEntity } from '../../structure'
 import { retry } from '../../utils/retry'
 import { Validation } from '../../validations'
-import type { DbChangeCallbacks } from '../_instance'
-import { DbChange } from '../_instance'
-import { TopicPrefix } from '../_instance'
+import { DbChange, DbChangeCallbacks, TopicPrefix } from '../_instance'
+import * as core from '../core'
 
-export class MongoDbChange<Model, Entity extends BaseEntity<any, any>> extends DbChange<Model, Entity> {
+export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity extends core.Entity> extends DbChange<Model, Entity> {
 	#started = false
-	#model: mongoose.Model<Model>
 
-	constructor(model: mongoose.Model<Model>, callbacks: DbChangeCallbacks<Model, Entity>, mapper: (model: Model | null) => Entity | null) {
+	constructor(private client: MongoClient, private dbName: string, private colName: string, callbacks: DbChangeCallbacks<Model, Entity>, mapper: (model: Model) => Entity) {
 		super(callbacks, mapper)
-		this.#model = model
 	}
 
 	async start(): Promise<void> {
 		if (this.#started) return
 		this.#started = true
 
-		const model = this.#model
-		const dbName = model.db.name
-		const colName = model.collection.name
+		const collection = this.client.db(this.dbName).collection<Model>(this.colName)
+		const dbName = this.dbName
+		const colName = this.colName
 		const dbColName = `${dbName}.${colName}`
 		const topic = `${TopicPrefix}.${dbColName}`
 
@@ -38,16 +34,15 @@ export class MongoDbChange<Model, Entity extends BaseEntity<any, any>> extends D
 				})
 
 				const hexId = '5f5f65717569707065645f5f' // __equipped__
-				const TestId = new mongoose.Types.ObjectId(hexId)
+				const TestId = makeId(hexId)
+				const condition = { _id: TestId } as Filter<Model>
 
 				const hydrate = (data: any) =>
 					data._id
-						? model
-								.hydrate({
-									...data,
-									_id: makeId(data._id['$oid'] ?? data._id),
-								})
-								.toObject({ getters: true, virtuals: true })
+						? {
+								...data,
+								_id: makeId(data._id['$oid'] ?? data._id),
+							}
 						: undefined
 
 				Instance.get().eventBus.createSubscriber(topic as never, async (data: DbDocumentChange) => {
@@ -79,8 +74,8 @@ export class MongoDbChange<Model, Entity extends BaseEntity<any, any>> extends D
 				}, { skipScope: true })
 
 				if (started) return { done: true, value: true }
-				await model.findByIdAndUpdate(TestId, { $set: { colName } }, { upsert: true })
-				await model.findByIdAndDelete(TestId)
+				await collection.findOneAndUpdate(condition, { $set: { colName } as any }, { upsert: true })
+				await collection.findOneAndDelete(condition)
 				await Instance.get().logger.warn(`Waiting for db changes for ${dbColName} to start...`)
 				return { done: false }
 			},
@@ -98,7 +93,7 @@ type DbDocumentChange = {
 
 const makeId = (id: string) => {
 	try {
-		return new mongoose.Types.ObjectId(id)
+		return new ObjectId(id)
 	} catch {
 		return id
 	}

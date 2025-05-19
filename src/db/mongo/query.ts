@@ -1,10 +1,11 @@
-import type mongoose from 'mongoose'
+import { Collection } from 'mongodb'
 
 import { Instance } from '../../instance'
+import * as core from '../core'
 import type { QueryParams, QueryResults, QueryWhere, QueryWhereClause } from '../query'
 import { Conditions, QueryKeys } from '../query'
 
-export const parseMongodbQueryParams = async <Model>(model: mongoose.Model<Model>, params: QueryParams): Promise<QueryResults<Model>> => {
+export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: string }>>(collection: Collection<Model>, params: QueryParams): Promise<QueryResults<Model>> => {
 	// Handle where clauses
 	const query = [] as ReturnType<typeof buildWhereQuery>[]
 	const whereType = Object.values(QueryKeys).indexOf(params.whereType!) !== -1 ? params.whereType! : QueryKeys.and
@@ -37,18 +38,18 @@ export const parseMongodbQueryParams = async <Model>(model: mongoose.Model<Model
 	let page = Number.isNaN(Number(params.page)) ? 0 : Number(params.page)
 	page = page < 1 ? 1 : page
 
-	const total = await model.countDocuments(totalClause).catch(() => {
+	const total = await collection.countDocuments(totalClause).catch(() => {
 		throw new Error('Error querying database')
 	})
 
-	let builtQuery = model.find(totalClause).lean({ virtuals: true, getters: true, defaults: true })
+	let builtQuery = collection.find(totalClause)
 	if (sort.length) builtQuery = builtQuery.sort(Object.fromEntries(sort))
 	if (!all && limit) {
 		builtQuery = builtQuery.limit(limit)
 		if (page) builtQuery = builtQuery.skip((page - 1) * limit)
 	}
 
-	const results = await builtQuery.catch(() => {
+	const results = await builtQuery.toArray().catch(() => {
 		throw new Error('Error querying database')
 	})
 	const start = 1

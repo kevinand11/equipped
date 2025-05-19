@@ -1,22 +1,27 @@
 import axios from 'axios'
 
 import { Instance } from '../instance'
-import type { BaseEntity } from '../structure'
 import type { DeepPartial } from '../types'
-import type { QueryParams, QueryResults } from './query'
+import * as core from './core'
 
 export const TopicPrefix = 'db-changes'
 
-export abstract class Db {
+export type TableOptions = { skipAudit?: boolean }
+
+export type Config<Model extends core.Model<any>, Entity extends core.Entity> = {
+	db: string
+	col: string
+	mapper: (model: Model) => Entity
+	change?: DbChangeCallbacks<Model, Entity>
+	options?: { skipAudit?: boolean }
+}
+
+export abstract class Db<IdKey extends core.IdType> {
 	#dbChanges = [] as DbChange<any, any>[]
 
-	abstract change<Model, Entity extends BaseEntity<any, any>>(
-		collection: any,
-		callbacks: DbChangeCallbacks<Model, Entity>,
-		mapper: (model: Model | null) => Entity | null,
-	): DbChange<Model, Entity>
-
-	abstract query<Model>(collection: any, params: QueryParams): Promise<QueryResults<Model>>
+	protected getScopedDb(db: string) {
+		return Instance.get().getScopedName(db).replaceAll('.', '-')
+	}
 
 	protected _addToDbChanges(dbChange: DbChange<any, any>) {
 		this.#dbChanges.push(dbChange)
@@ -28,14 +33,16 @@ export abstract class Db {
 	}
 
 	abstract start(): Promise<void>
-	abstract close(): Promise<void>
+	abstract close (): Promise<void>
+
+	abstract use<Model extends core.Model<IdKey>, Entity extends core.Entity> (config: Config<Model, Entity>): core.Table<IdKey, Model, Entity>
 }
 
-export abstract class DbChange<Model, Entity extends BaseEntity<any, any>> {
+export abstract class DbChange<Model extends core.Model<any>, Entity extends core.Entity> {
 	#callbacks: DbChangeCallbacks<Model, Entity> = {}
-	#mapper: (model: Model | null) => Entity | null
+	#mapper: (model: Model) => Entity
 
-	constructor(callbacks: DbChangeCallbacks<Model, Entity>, mapper: (model: Model | null) => Entity | null) {
+	constructor(callbacks: DbChangeCallbacks<Model, Entity>, mapper: (model: Model) => Entity) {
 		this.#callbacks = callbacks
 		this.#mapper = mapper
 	}
@@ -75,7 +82,7 @@ export abstract class DbChange<Model, Entity extends BaseEntity<any, any>> {
 	}
 }
 
-export type DbChangeCallbacks<Model, Entity> = {
+export type DbChangeCallbacks<Model extends core.Model<any>, Entity extends core.Entity> = {
 	created?: (data: { before: null; after: Entity }) => Promise<void>
 	updated?: (data: { before: Entity; after: Entity; changes: DeepPartial<Model> }) => Promise<void>
 	deleted?: (data: { before: Entity; after: null }) => Promise<void>
