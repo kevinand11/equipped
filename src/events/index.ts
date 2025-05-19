@@ -1,6 +1,5 @@
-import type { Enum, IEventTypes } from '../enums/types'
+import { Events } from '../types/overrides'
 
-export interface Events extends Record<Enum<IEventTypes>, { topic: Enum<IEventTypes>; data: any }> {}
 export type PublishOptions = { skipScope?: boolean }
 export type SubscribeOptions = PublishOptions & { fanout: boolean }
 

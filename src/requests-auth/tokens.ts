@@ -4,23 +4,25 @@ import type { CustomError } from '../errors'
 import { AuthorizationExpired, NotAuthenticatedError } from '../errors'
 import { Instance } from '../instance'
 import { StatusCodes } from '../server'
-import type { AuthUser, RefreshUser } from './types'
-
+import type { AuthUser, RefreshUser } from '../types/overrides'
 
 export abstract class BaseTokensUtility {
-	abstract createAccessToken(payload: AuthUser) :Promise<string>
-	abstract createRefreshToken(payload: RefreshUser) :Promise<string>
-	abstract verifyAccessToken(token: string) :Promise<AuthUser>
-	abstract verifyRefreshToken (token: string): Promise<RefreshUser>
-	abstract retrieveAccessTokenFor(userId: string) :Promise<string | null>
-	abstract retrieveRefreshTokenFor(userId: string) :Promise<string | null>
-	abstract deleteAccessTokenFor(userId: string) :Promise<void>
-	abstract deleteRefreshTokenFor(userId: string) :Promise<void>
+	abstract createAccessToken(payload: AuthUser): Promise<string>
+	abstract createRefreshToken(payload: RefreshUser): Promise<string>
+	abstract verifyAccessToken(token: string): Promise<AuthUser>
+	abstract verifyRefreshToken(token: string): Promise<RefreshUser>
+	abstract retrieveAccessTokenFor(userId: string): Promise<string | null>
+	abstract retrieveRefreshTokenFor(userId: string): Promise<string | null>
+	abstract deleteAccessTokenFor(userId: string): Promise<void>
+	abstract deleteRefreshTokenFor(userId: string): Promise<void>
 
-	async exchangeTokens (tokens: {
-		accessToken: string
-		refreshToken: string
-	}, getPayload: (id: string) => Promise<{ access: AuthUser; refresh: RefreshUser }>): Promise<{
+	async exchangeTokens(
+		tokens: {
+			accessToken: string
+			refreshToken: string
+		},
+		getPayload: (id: string) => Promise<{ access: AuthUser; refresh: RefreshUser }>,
+	): Promise<{
 		accessToken: string
 		refreshToken: string
 	}> {
@@ -53,11 +55,11 @@ export abstract class BaseTokensUtility {
 }
 
 type CacheTokensUtilityOptions = {
-	accessTokenKey: string,
-	refreshTokenKey: string,
-	accessTokenTTL: number,
-	refreshTokenTTL: number,
-	accessTokenPrefix: string,
+	accessTokenKey: string
+	refreshTokenKey: string
+	accessTokenTTL: number
+	refreshTokenTTL: number
+	accessTokenPrefix: string
 	refreshTokenPrefix: string
 }
 
@@ -65,7 +67,7 @@ export class CacheTokensUtility extends BaseTokensUtility {
 	#getAccessTokenKey: (userId: string) => string
 	#getRefreshTokenKey: (userId: string) => string
 	private options: CacheTokensUtilityOptions
-	constructor (options?: Partial<CacheTokensUtilityOptions>) {
+	constructor(options?: Partial<CacheTokensUtilityOptions>) {
 		super()
 		this.options = {
 			accessTokenKey: 'accessTokenKey',
@@ -74,25 +76,25 @@ export class CacheTokensUtility extends BaseTokensUtility {
 			refreshTokenTTL: 14 * 24 * 60 * 60,
 			accessTokenPrefix: 'tokens.access.',
 			refreshTokenPrefix: 'tokens.refresh.',
-			...options
+			...options,
 		}
 		this.#getAccessTokenKey = (userId: string) => `${this.options.accessTokenPrefix}${userId}`
 		this.#getRefreshTokenKey = (userId: string) => `${this.options.refreshTokenPrefix}${userId}`
 	}
 
-	async createAccessToken (payload: AuthUser) {
+	async createAccessToken(payload: AuthUser) {
 		const token = jwt.sign(payload, this.options.accessTokenKey, { expiresIn: this.options.accessTokenTTL })
 		await Instance.get().cache.set(this.#getAccessTokenKey(payload.id), token, this.options.accessTokenTTL)
 		return token
 	}
 
-	async createRefreshToken (payload: RefreshUser) {
+	async createRefreshToken(payload: RefreshUser) {
 		const token = jwt.sign(payload, this.options.refreshTokenKey, { expiresIn: this.options.refreshTokenTTL })
 		await Instance.get().cache.set(this.#getRefreshTokenKey(payload.id), token, this.options.refreshTokenTTL)
 		return token
 	}
 
-	async verifyAccessToken (token: string) {
+	async verifyAccessToken(token: string) {
 		try {
 			const user = jwt.verify(token, this.options.accessTokenKey) as AuthUser
 			if (!user) throw new NotAuthenticatedError()
@@ -107,7 +109,7 @@ export class CacheTokensUtility extends BaseTokensUtility {
 		}
 	}
 
-	async verifyRefreshToken (token: string) {
+	async verifyRefreshToken(token: string) {
 		try {
 			const user = jwt.verify(token, this.options.refreshTokenKey) as RefreshUser
 			if (!user) throw new NotAuthenticatedError()
@@ -117,19 +119,19 @@ export class CacheTokensUtility extends BaseTokensUtility {
 		}
 	}
 
-	async retrieveAccessTokenFor (userId: string) {
+	async retrieveAccessTokenFor(userId: string) {
 		return Instance.get().cache.get(this.#getAccessTokenKey(userId))
 	}
 
-	async retrieveRefreshTokenFor (userId: string) {
+	async retrieveRefreshTokenFor(userId: string) {
 		return Instance.get().cache.get(this.#getRefreshTokenKey(userId))
 	}
 
-	async deleteAccessTokenFor (userId: string) {
+	async deleteAccessTokenFor(userId: string) {
 		await Instance.get().cache.delete(this.#getAccessTokenKey(userId))
 	}
 
-	async deleteRefreshTokenFor (userId: string) {
+	async deleteRefreshTokenFor(userId: string) {
 		await Instance.get().cache.delete(this.#getRefreshTokenKey(userId))
 	}
 }

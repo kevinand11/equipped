@@ -1,11 +1,10 @@
 import { match as Match } from 'path-to-regexp'
 import type io from 'socket.io'
 
-import type { Enum } from '../enums/types'
 import { Instance } from '../instance'
-import type { AuthUser } from '../requests-auth'
 import { StatusCodes } from '../server'
 import type { BaseEntity } from '../structure'
+import type { AuthUser } from '../types/overrides'
 
 enum EmitTypes {
 	created = 'created',
@@ -17,7 +16,7 @@ const EmitterEvent = '__listener_emitter'
 type EmitData = { channel: string; type: EmitTypes; after: any; before: any }
 type LeaveRoomParams = { channel: string }
 type JoinRoomParams = { channel: string; token?: string; query: Record<string, any> }
-type Callback = (params: { code: Enum<typeof StatusCodes>; message: string; channel: string }) => void
+type Callback = (params: { code: StatusCodes; message: string; channel: string }) => void
 export type OnJoinFn = (
 	data: { channel: string; user: AuthUser | null },
 	params: Record<string, any>,
@@ -103,7 +102,8 @@ export class Listener {
 			const socketId = socket.id
 			let user = null as AuthUser | null
 			const tokensUtil = Instance.get().settings.requestsAuth.tokens
-			if (socket.handshake.auth.token && tokensUtil) user = await tokensUtil.verifyAccessToken(socket.handshake.auth.token ?? '').catch(() => null)
+			if (socket.handshake.auth.token && tokensUtil)
+				user = await tokensUtil.verifyAccessToken(socket.handshake.auth.token ?? '').catch(() => null)
 			socket.on('leave', async (data: LeaveRoomParams, callback: Callback) => {
 				if (!data.channel)
 					return (

@@ -1,8 +1,8 @@
 import Bull from 'bull'
 
 import { RedisCache } from '../cache/types/redis-cache'
-import type { Enum, ICronLikeJobs, ICronTypes, IDelayedJobs } from '../enums/types'
 import { Instance } from '../instance'
+import type { CronLikeJobs, ICronTypes, DelayedJobs } from '../types/overrides'
 import { Random } from '../utils/utils'
 
 enum JobNames {
@@ -11,15 +11,10 @@ enum JobNames {
 	DelayedJob = 'DelayedJob',
 }
 
-type Cron = Enum<ICronTypes>
-type Delayed = Enum<IDelayedJobs>
-type CronLike = Enum<ICronLikeJobs>
+type Cron = keyof ICronTypes
 
-export interface DelayedJobEvents extends Record<Delayed, { type: Delayed; data: any }> {}
-export interface CronLikeJobsEvents extends Record<CronLike, { type: CronLike; data: any }> {}
-
-type DelayedJobEvent = DelayedJobEvents[keyof DelayedJobEvents]
-type CronLikeJobEvent = CronLikeJobsEvents[keyof CronLikeJobsEvents]
+type DelayedJobEvent = DelayedJobs[keyof DelayedJobs]
+type CronLikeJobEvent = CronLikeJobs[keyof CronLikeJobs]
 type DelayedJobCallback = (data: DelayedJobEvent) => Promise<void> | void
 type CronCallback = (name: ICronTypes[keyof ICronTypes]) => Promise<void> | void
 type CronLikeCallback = (data: CronLikeJobEvent) => Promise<void> | void
@@ -27,15 +22,18 @@ type CronLikeCallback = (data: CronLikeJobEvent) => Promise<void> | void
 export class BullJob {
 	#queue: Bull.Queue
 
-	constructor () {
-		this.#queue = new Bull(
-			Instance.get().getScopedName(Instance.get().settings.bullQueueName),
-			{
-				createClient: (type) => new RedisCache(type === 'client' ? undefined : {
-					maxRetriesPerRequest: null,
-					enableReadyCheck: false
-			}).client as any }
-		)
+	constructor() {
+		this.#queue = new Bull(Instance.get().getScopedName(Instance.get().settings.bullQueueName), {
+			createClient: (type) =>
+				new RedisCache(
+					type === 'client'
+						? undefined
+						: {
+								maxRetriesPerRequest: null,
+								enableReadyCheck: false,
+							},
+				).client as any,
+		})
 	}
 
 	static #getNewId() {

@@ -1,10 +1,10 @@
 import type { Readable } from 'stream'
 
 import type { CustomError } from '../errors'
-import type { AuthUser, RefreshUser } from '../requests-auth'
 import type { StorageFile } from '../storage'
+import type { Api, FileSchema, GetApiPart, HeadersType, StatusCodes } from './types'
 import type { DistributiveOmit, IsInTypeList } from '../types'
-import type { Api, FileSchema, GetApiPart, HeadersType, SupportedStatusCodes } from './types'
+import type { AuthUser, RefreshUser } from '../types/overrides'
 import { parseJSONValue } from '../utils/json'
 
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
@@ -22,7 +22,7 @@ type UnionMapper<T> = {
 }
 type MappedUnion<T> = UnionMapper<T>[keyof UnionMapper<T>]
 
-type ReqUser<T> = { error?: CustomError, value?: T }
+type ReqUser<T> = { error?: CustomError; value?: T }
 
 export class Request<Def extends Api = Api> {
 	readonly ip: string | undefined
@@ -120,15 +120,15 @@ export class Request<Def extends Api = Api> {
 	}
 }
 
-type RequestParams<T, S extends SupportedStatusCodes, H extends HeadersType> = { body: T; piped?: boolean } & (IsInTypeList<
+type RequestParams<T, S extends StatusCodes, H extends HeadersType> = { body: T; piped?: boolean } & (IsInTypeList<
 	S,
-	[SupportedStatusCodes, 200]
+	[StatusCodes, 200]
 > extends true
 	? { status?: S }
 	: { status: S }) &
 	(IsInTypeList<H, [HeadersType]> extends true ? { headers?: H } : { headers: H })
 
-export class Response<T, S extends SupportedStatusCodes, H extends HeadersType> {
+export class Response<T, S extends StatusCodes, H extends HeadersType> {
 	readonly body: T | undefined
 	readonly status: S
 	readonly headers: H

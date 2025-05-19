@@ -1,49 +1,45 @@
 import type { FastifySchema } from 'fastify'
 
-import type { Enum } from '../enums/types'
 import type { CustomError } from '../errors'
-import type { Defined, Flatten, IsInTypeList, IsType, JSONValue } from '../types'
+import type { Defined, EnumToStringUnion, Flatten, IsInTypeList, IsType, JSONValue } from '../types'
 import type { Request, Response } from './requests'
 
-export const Methods = {
-	get: 'get',
-	post: 'post',
-	put: 'put',
-	patch: 'patch',
-	delete: 'delete',
-} as const
+export enum Methods {
+	get = 'get',
+	post = 'post',
+	put = 'put',
+	patch = 'patch',
+	delete = 'delete',
+	options = 'options',
+}
 
-export type MethodTypes = Enum<typeof Methods>
+export enum StatusCodes {
+	Ok = 200,
+	Found = 302,
+	BadRequest = 400,
+	NotAuthenticated = 401,
+	NotAuthorized = 403,
+	NotFound = 404,
+	ValidationError = 422,
+	TooManyRequests = 429,
+	AuthorizationExpired = 461,
+}
 
-export const StatusCodes = {
-	Ok: 200,
-	Found: 302,
-	BadRequest: 400,
-	NotAuthenticated: 401,
-	NotAuthorized: 403,
-	NotFound: 404,
-	ValidationError: 422,
-	TooManyRequests: 429,
-	AuthorizationExpired: 461,
-} as const
-
-export type SupportedStatusCodes = Enum<typeof StatusCodes>
-
-export type GoodStatusCodes = 200 | 302
-export type BadStatusCodes = Exclude<SupportedStatusCodes, GoodStatusCodes>
+type GoodStatusCodes = StatusCodes.Ok | StatusCodes.Found
+type BadStatusCodes = Exclude<StatusCodes, GoodStatusCodes>
 type ApiErrors = Record<BadStatusCodes, JSONValue<CustomError['serializedErrors']>>
-type ApiResponse<T, StatusCode extends SupportedStatusCodes> = Record<StatusCode, JSONValue<T>> | Omit<ApiErrors, StatusCode>
+type ApiResponse<T, StatusCode extends StatusCodes> = Record<StatusCode, JSONValue<T>> | Omit<ApiErrors, StatusCode>
 
 export interface Api<
 	Res = any,
 	Key extends string = string,
-	Method extends MethodTypes = MethodTypes,
+	Method extends Methods | EnumToStringUnion<typeof Methods> = Methods | EnumToStringUnion<typeof Methods>,
 	Body = any,
 	Params extends Record<string, string> = Record<string, string>,
 	Query extends Record<string, any> = Record<string, any>,
 	RequestHeaders extends HeadersType = HeadersType,
 	ResponseHeaders extends HeadersType = HeadersType,
-	DefaultStatus extends SupportedStatusCodes = SupportedStatusCodes,
+	DefaultStatus extends StatusCodes = StatusCodes,
 > {
 	key: Key
 	method: Method
@@ -72,8 +68,8 @@ export interface ApiDef<T extends Api> {
 }
 
 type Awaitable<T> = Promise<T> | T
-type Res<T, S extends SupportedStatusCodes, H extends HeadersType> = Awaitable<
-	IsInTypeList<S, [SupportedStatusCodes, 200, unknown]> extends true
+type Res<T, S extends StatusCodes, H extends HeadersType> = Awaitable<
+	IsInTypeList<S, [StatusCodes, StatusCodes.Ok, unknown]> extends true
 		? IsInTypeList<H, [HeadersType, unknown]> extends true
 			? Response<T, S, H> | T
 			: Response<T, S, H>
@@ -124,7 +120,7 @@ export interface Route<Def extends ApiDef<Api> = ApiDef<Api>> {
 export type RouteConfig<T extends ApiDef<Api> = ApiDef<Api>> = Omit<Route<T>, 'method' | 'handler'>
 export type GeneralConfig = Omit<RouteConfig, 'schema' | 'key'>
 export type AddMethodImpls = {
-	[Method in MethodTypes]: <T extends ApiDef<any>>(route: RouteConfig<T>) => (handler: RouteHandler<InferApiFromApiDef<T>>) => Route<T>
+	[Method in Methods]: <T extends ApiDef<any>>(route: RouteConfig<T>) => (handler: RouteHandler<InferApiFromApiDef<T>>) => Route<T>
 }
 
 class MiddlewareHandler<Cb extends Function> {

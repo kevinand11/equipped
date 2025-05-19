@@ -1,5 +1,7 @@
 import type { BaseEntity } from '../structure'
 
+export type EnumToStringUnion<T extends Record<string, string | number>> = `${T[keyof T]}`
+
 export type DeepPartial<T> = { [P in keyof T]?: DeepPartial<T[P]> }
 
 export type DeepOmit<T, K, A = never> = T extends any[]

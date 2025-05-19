@@ -73,7 +73,7 @@ export abstract class Server<Req = any, Res = any> {
 	}
 	protected cors = {
 		origin: '*',
-		methods: ['GET','HEAD','PUT','PATCH','POST','DELETE']
+		methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
 	}
 	protected abstract onLoad(): Promise<void>
 	protected abstract startServer(port: number): Promise<boolean>
@@ -197,7 +197,9 @@ export abstract class Server<Req = any, Res = any> {
 			path: `${this.settings.openapi.docsPath}/index.html`,
 			handler: (req) =>
 				req.res({
-					body: scalarHtml.replaceAll('__API_TITLE__', `${this.settings.app} ${this.settings.appId}`).replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
+					body: scalarHtml
+						.replaceAll('__API_TITLE__', `${this.settings.app} ${this.settings.appId}`)
+						.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 					headers: { 'Content-Type': 'text/html' },
 				}),
 			hideSchema: true,
@@ -208,7 +210,9 @@ export abstract class Server<Req = any, Res = any> {
 			path: `${this.settings.openapi.docsPath}/redoc.html`,
 			handler: (req) =>
 				req.res({
-					body: redocHtml.replaceAll('__API_TITLE__', `${this.settings.app} ${this.settings.appId}`).replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
+					body: redocHtml
+						.replaceAll('__API_TITLE__', `${this.settings.app} ${this.settings.appId}`)
+						.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 					headers: { 'Content-Type': 'text/html' },
 				}),
 			hideSchema: true,
