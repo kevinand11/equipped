@@ -1,12 +1,9 @@
-export interface IEventTypes {}
-export interface IDelayedJobs {}
-export interface ICronLikeJobs {}
-export interface ICronTypes {}
+export interface CronTypes {}
 
-export interface Events extends Record<string, { topic: string; data: any }> {}
+export interface Events extends Record<never, { topic: unknown; data: unknown }> {}
 
-export interface DelayedJobs extends Record<string, { type: string; data: any }> {}
-export interface CronLikeJobs extends Record<string, { type: string; data: any }> {}
+export interface DelayedJobs extends Record<never, { type: unknown; data: unknown }> {}
+export interface CronLikeJobs extends Record<never, { type: unknown; data: unknown }> {}
 
 export interface RefreshUser {
 	id: string

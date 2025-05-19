@@ -2,7 +2,7 @@ import Bull from 'bull'
 
 import { RedisCache } from '../cache/types/redis-cache'
 import { Instance } from '../instance'
-import type { CronLikeJobs, ICronTypes, DelayedJobs } from '../types/overrides'
+import { CronLikeJobs, CronTypes, DelayedJobs } from '../types/overrides'
 import { Random } from '../utils/utils'
 
 enum JobNames {
@@ -11,12 +11,11 @@ enum JobNames {
 	DelayedJob = 'DelayedJob',
 }
 
-type Cron = keyof ICronTypes
-
+type Cron = CronTypes[keyof CronTypes]
 type DelayedJobEvent = DelayedJobs[keyof DelayedJobs]
 type CronLikeJobEvent = CronLikeJobs[keyof CronLikeJobs]
 type DelayedJobCallback = (data: DelayedJobEvent) => Promise<void> | void
-type CronCallback = (name: ICronTypes[keyof ICronTypes]) => Promise<void> | void
+type CronCallback = (name: CronTypes[keyof CronTypes]) => Promise<void> | void
 type CronLikeCallback = (data: CronLikeJobEvent) => Promise<void> | void
 
 export class BullJob {
@@ -77,7 +76,7 @@ export class BullJob {
 	}
 
 	async startProcessingQueues(
-		crons: { name: Cron | string; cron: string }[],
+		crons: { name: Cron; cron: string }[],
 		callbacks: { onDelayed?: DelayedJobCallback; onCron?: CronCallback; onCronLike?: CronLikeCallback },
 	) {
 		await this.#cleanup()
