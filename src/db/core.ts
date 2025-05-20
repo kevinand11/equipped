@@ -1,11 +1,10 @@
 import { ClientSession, Filter, UpdateFilter } from 'mongodb'
 
-import { BaseEntity } from '../structure'
-import { DistributiveOmit } from '../types'
+import { BaseEntity, DistributiveOmit } from '../types'
 import { QueryParams, QueryResults } from './query'
 
 export type IdType = { '_id': string } | { 'id': string }
-export type Entity = BaseEntity<any, any>
+export type Entity = BaseEntity
 type ModelId<T> = T extends Model<infer Id> ? Id[keyof Id] : never
 export type Model<IdKey extends IdType> = IdKey & {
   createdAt?: number;

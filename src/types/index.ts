@@ -1,5 +1,3 @@
-import type { BaseEntity } from '../structure'
-
 export type EnumToStringUnion<T extends Record<string, string | number>> = `${T[keyof T]}`
 
 export type DeepPartial<T> = { [P in keyof T]?: DeepPartial<T[P]> }
@@ -48,9 +46,7 @@ export type JSONValue<T> = T extends JSONPrimitives
 	? T
 	: T extends Array<infer U>
 		? JSONValue<U>[]
-		: T extends BaseEntity<infer _M, infer I>
-			? JSONValue<DeepOmit<T, I, '__ignoreInJSON'>>
-			: T extends Function
+		: T extends Function
 				? never
 				: T extends object
 					? {
@@ -61,3 +57,7 @@ export type JSONValue<T> = T extends JSONPrimitives
 									: K]: JSONValue<T[K]>
 						}
 					: never
+
+export interface BaseEntity {
+	toJSON(): Record<string, unknown>
+}

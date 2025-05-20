@@ -3,7 +3,7 @@ import type io from 'socket.io'
 
 import { Instance } from '../instance'
 import { StatusCodes } from '../server'
-import type { BaseEntity } from '../structure'
+import type { BaseEntity } from '../types'
 import type { AuthUser } from '../types/overrides'
 
 enum EmitTypes {
@@ -50,15 +50,15 @@ export class Listener {
 		await this.#subscriber.subscribe()
 	}
 
-	async created<T extends BaseEntity<any, any>>(channels: string[], data: T) {
+	async created<T extends BaseEntity>(channels: string[], data: T) {
 		await this.#emit(channels, EmitTypes.created, { after: data.toJSON(), before: null })
 	}
 
-	async updated<T extends BaseEntity<any, any>>(channels: string[], { after, before }: { after: T; before: T }) {
+	async updated<T extends BaseEntity>(channels: string[], { after, before }: { after: T; before: T }) {
 		await this.#emit(channels, EmitTypes.updated, { after: after.toJSON(), before: before.toJSON() })
 	}
 
-	async deleted<T extends BaseEntity<any, any>>(channels: string[], data: T) {
+	async deleted<T extends BaseEntity>(channels: string[], data: T) {
 		await this.#emit(channels, EmitTypes.deleted, { before: data.toJSON(), after: null })
 	}
 
