@@ -14,7 +14,12 @@ export abstract class BaseTokensUtility {
 	abstract retrieveAccessTokenFor(userId: string): Promise<string | null>
 	abstract retrieveRefreshTokenFor(userId: string): Promise<string | null>
 	abstract deleteAccessTokenFor(userId: string): Promise<void>
-	abstract deleteRefreshTokenFor(userId: string): Promise<void>
+	abstract deleteRefreshTokenFor (userId: string): Promise<void>
+
+	extractAccessTokenValue (headerValue: string) {
+		if (!headerValue.startsWith('Bearer ')) throw new Error(`authorization header must begin with 'Bearer '`)
+		return headerValue.slice(7)
+	}
 
 	async exchangeTokens(
 		tokens: {
@@ -96,7 +101,7 @@ export class CacheTokensUtility extends BaseTokensUtility {
 
 	async verifyAccessToken(token: string) {
 		try {
-			const user = jwt.verify(token, this.options.accessTokenKey) as AuthUser
+			const user = jwt.verify(this.extractAccessTokenValue(token), this.options.accessTokenKey) as AuthUser
 			if (!user) throw new NotAuthenticatedError()
 			const cachedToken = await this.retrieveAccessTokenFor(user.id)
 			// Cached access token was deleted, e.g. by user roles being modified, so token needs to be treated as expired
