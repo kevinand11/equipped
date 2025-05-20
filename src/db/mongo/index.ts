@@ -13,12 +13,11 @@ export class MongoDb extends Db<{ _id: string }> {
 	#client = new MongoClient(Instance.get().settings.mongoDbURI)
 
 	async session<T>(callback: (session: ClientSession) => Promise<T>) {
-		const session = this.#client.startSession()
-		return await session.withTransaction(callback)
+		return this.#client.withSession(callback)
 	}
 
 	id () {
-		return new ObjectId().toString()
+		return new ObjectId()
 	}
 
 	use<Model extends core.Model<{ _id: string }>, Entity extends core.Entity> (config: Config<Model, Entity>) {
@@ -43,16 +42,16 @@ export class MongoDb extends Db<{ _id: string }> {
 		const options = {
 			changeStreamPreAndPostImages: { enabled: true },
 		}
-		Object.entries(grouped).map(async ([dbName, colNames]) => {
+		await Promise.all(Object.entries(grouped).map(async ([dbName, colNames]) => {
 			const db = this.#client.db(dbName)
-			const collections = await db.listCollections<CollectionInfo>({ name: { $in: colNames } }).toArray()
+			const collections = await db.listCollections<CollectionInfo>().toArray()
 			return colNames.map(async (colName) => {
 				const existing = collections.find((collection) => collection.name === colName)
 				if (existing) {
 					if (existing.options?.changeStreamPreAndPostImages?.enabled !== options.changeStreamPreAndPostImages.enabled) await db.command({ collMod: colName, ...options })
 				} else await db.createCollection(colName, options)
 			})
-		})
+		}))
 	}
 
 	async close () {

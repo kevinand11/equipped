@@ -1,6 +1,6 @@
 import { Collection, ObjectId, OptionalUnlessRequiredId, SortDirection, WithId } from 'mongodb'
 
-import { Config, TableOptions } from '../_instance'
+import { Config } from '../_instance'
 import * as core from '../core'
 import { QueryParams } from '../query'
 import { parseMongodbQueryParams } from './query'
@@ -23,12 +23,12 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
     return Array.isArray(doc) ? mapped: mapped[0]
   }
 
-  function prepInsertValue(value: core.CreateInput<Model>, id: string, now: Date, options: TableOptions) {
+  function prepInsertValue(value: core.CreateInput<Model>, id: string, now: Date, skipUpdate?: boolean) {
     const base: core.Model<any> = {
       [idKey]: id,
-      ...(options.skipAudit ? {} : {
+      ...(tableOptions.skipAudit ? {} : {
         createdAt: now.getTime(),
-        updatedAt: now.getTime(),
+        ...(skipUpdate ? {} : { updatedAt: now.getTime(), })
       })
     }
     return {
@@ -37,12 +37,12 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
     } as unknown as OptionalUnlessRequiredId<Model>
   }
 
-  function prepUpdateValue(value: core.UpdateInput<Model>, now: Date, options: TableOptions) {
+  function prepUpdateValue(value: core.UpdateInput<Model>, now: Date) {
     return {
       ...value,
       $set: {
         ...value.$set,
-        ...(Object.keys(value).length > 0 && !options.skipAudit
+        ...(Object.keys(value).length > 0 && !tableOptions.skipAudit
           ? {
               'updatedAt': now.getTime(),
             }
@@ -94,7 +94,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 
     insertMany: async (values, options = {}) => {
       const now = options.getTime?.() ?? new Date()
-      const payload = values.map((value, i) => prepInsertValue(value, options.makeId?.(i) ?? new ObjectId().toString(), now, tableOptions))
+      const payload = values.map((value, i) => prepInsertValue(value, options.makeId?.(i) ?? new ObjectId().toString(), now))
       await collection.insertMany(payload, { session: options.session })
 
       const insertedData = await Promise.all(
@@ -110,7 +110,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 
     updateMany: async (filter, values, options = {}) => {
       const now = options.getTime?.() ?? new Date()
-      await collection.updateMany(filter, prepUpdateValue(values, now, tableOptions), { session: options.session })
+      await collection.updateMany(filter, prepUpdateValue(values, now), { session: options.session })
       return table.findMany(filter, options)
     },
 
@@ -130,9 +130,9 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
       const doc = await collection.findOneAndUpdate(
         filter,
         {
-          ...prepUpdateValue('update' in values ? values.update : {}, now, tableOptions),
+          ...prepUpdateValue('update' in values ? values.update : {}, now),
           // @ts-expect-error fighting ts
-          $setOnInsert: prepInsertValue(values.insert, options.makeId?.() ?? new ObjectId().toString(), now),
+          $setOnInsert: prepInsertValue(values.insert, options.makeId?.() ?? new ObjectId().toString(), now, true),
         },
         { returnDocument: 'after', session: options.session, upsert: true }
       )
@@ -163,21 +163,21 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
         if (operation.op) {
           switch (operation.op) {
             case 'insert':
-              bulk.insert(prepInsertValue(operation.value, operation.makeId?.(i) ?? new ObjectId().toString(), now, tableOptions))
+              bulk.insert(prepInsertValue(operation.value, operation.makeId?.(i) ?? new ObjectId().toString(), now))
               break
             case 'delete':
               bulk.find(operation.filter).delete()
               break
             case 'update':
-              bulk.find(operation.filter).update(prepUpdateValue(operation.value, now, tableOptions))
+              bulk.find(operation.filter).update(prepUpdateValue(operation.value, now))
               break
             case 'upsert':
               bulk
                 .find(operation.filter)
                 .upsert()
                 .update({
-                  ...prepUpdateValue('update' in operation ? operation.update : {}, now, tableOptions),
-                  $setOnInsert: prepInsertValue(operation.insert as any, operation.makeId?.(i) ?? new ObjectId().toString(), now, tableOptions),
+                  ...prepUpdateValue('update' in operation ? operation.update : {}, now),
+                  $setOnInsert: prepInsertValue(operation.insert as any, operation.makeId?.(i) ?? new ObjectId().toString(), now, true),
                 })
               break
             default:
