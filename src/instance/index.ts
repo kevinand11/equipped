@@ -44,7 +44,7 @@ export class Instance {
 	}
 
 	get server() {
-		return (this.#server ||= serverTypes[this.settings.server]())
+		return (this.#server ||= serverTypes[this.settings.server.type]())
 	}
 
 	get dbs() {

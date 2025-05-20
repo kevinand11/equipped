@@ -40,8 +40,8 @@ export abstract class Server<Req = any, Res = any> {
 	#registeredTags: Record<string, boolean> = {}
 	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
 	protected server: http.Server
-	protected staticPath = path.join(process.cwd(), 'public')
 	protected settings = Instance.get().settings
+	protected staticPath = this.settings.server.publicPath ? path.join(process.cwd(), this.settings.server.publicPath) : null
 	protected openapiJsonUrl = `${this.settings.openapi.docsPath}/openapi.json`
 	protected baseOpenapiDoc: OpenAPIV3_1.Document = {
 		openapi: '3.0.0',

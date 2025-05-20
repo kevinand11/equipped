@@ -50,7 +50,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		)
 		app.use(cors(this.cors))
 		app.use(express.urlencoded({ extended: false }))
-		app.use(express.static(this.staticPath))
+		if (this.staticPath) app.use(express.static(this.staticPath))
 		app.use(this.#oapi)
 		app.use(
 			fileUpload({

@@ -35,7 +35,10 @@ export type Settings = {
 	}
 	logLevel: Level
 	hashSaltRounds: number
-	server: ServerTypes
+	server: {
+		type: ServerTypes
+		publicPath?: string
+	}
 	openapi: {
 		docsVersion?: string
 		docsBaseUrl?: string[]
@@ -76,7 +79,9 @@ export const defaulInstanceSetting: Settings = {
 		delayAfter: 2000,
 		delayInMs: 500,
 	},
-	server: 'express',
+	server: {
+		type: 'fastify'
+	},
 	openapi: {
 		docsVersion: '1.0.0',
 		docsBaseUrl: ['/'],

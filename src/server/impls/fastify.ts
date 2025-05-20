@@ -49,7 +49,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		this.#fastifyApp = app
 
 		app.decorateRequest('savedReq', null)
-		app.register(fastifyStatic, { root: this.staticPath })
+		if (this.staticPath) app.register(fastifyStatic, { root: this.staticPath })
 		app.register(fastifyCookie, {})
 		app.register(fastifyCors, this.cors)
 		app.register(fastifySwagger, { openapi: this.baseOpenapiDoc })
