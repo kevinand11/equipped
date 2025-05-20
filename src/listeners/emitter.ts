@@ -27,6 +27,8 @@ export type SocketCallers = {
 	onDisconnect: (userId: string, socketId: string) => Promise<void>
 }
 
+const defaultTo = '*'
+
 export class Listener {
 	#socket: io.Server
 	#callers: SocketCallers
@@ -50,16 +52,27 @@ export class Listener {
 		await this.#subscriber.subscribe()
 	}
 
-	async created<T extends BaseEntity>(channels: string[], data: T) {
-		await this.#emit(channels, EmitTypes.created, { after: data.toJSON(), before: null })
+	async created<T extends BaseEntity>(channels: string[], data: T, to?: string | string[]) {
+		await this.#emit(channels, EmitTypes.created, { after: data.toJSON(), before: null }, to)
 	}
 
-	async updated<T extends BaseEntity>(channels: string[], { after, before }: { after: T; before: T }) {
-		await this.#emit(channels, EmitTypes.updated, { after: after.toJSON(), before: before.toJSON() })
+	async updated<T extends BaseEntity>(channels: string[], { after, before }: { after: T; before: T }, to?: string | string[]) {
+		await this.#emit(channels, EmitTypes.updated, { after: after.toJSON(), before: before.toJSON() }, to)
 	}
 
-	async deleted<T extends BaseEntity>(channels: string[], data: T) {
-		await this.#emit(channels, EmitTypes.deleted, { before: data.toJSON(), after: null })
+	async deleted<T extends BaseEntity>(channels: string[], data: T, to?: string | string[]) {
+		await this.#emit(channels, EmitTypes.deleted, { before: data.toJSON(), after: null }, to)
+	}
+
+	async #emit (channels: string[], type: EmitTypes, { before, after }: { after: any; before: any }, to?: string | string[]) {
+		const toArray = Array.isArray(to) ? to : [to ?? defaultTo]
+		const channelMap = channels.flatMap((c) => toArray.map(() => `${to}:${c}`))
+		await Promise.all(
+			channelMap.map(async (channel) => {
+				const emitData: EmitData = { channel, type, before, after }
+				await this.#publisher.publish(emitData as never)
+			}),
+		)
 	}
 
 	set callers(callers: SocketCallers) {
@@ -67,32 +80,22 @@ export class Listener {
 		this.#setupSocketConnection()
 	}
 
-	register(channel: string, onJoin?: OnJoinFn) {
-		if (!onJoin) onJoin = async ({ channel }) => channel
+	register(channel: string, onJoin: OnJoinFn) {
 		this.#routes[channel] = onJoin
 		this.#routes[channel + '/:id'] = onJoin
 		return this
 	}
 
-	#getJoinCb(channel: string) {
+	#getConfig(channel: string) {
 		const matcher = (key: string) => Match(key)(channel)
 		const matchedChannel = Object.keys(this.#routes).find(matcher) ?? null
 		if (!matchedChannel) return null
 		const match = matcher(matchedChannel)
 		if (!match) return null
 		return {
-			onJoin: this.#routes[matchedChannel],
+			config: this.#routes[matchedChannel],
 			params: match.params,
 		}
-	}
-
-	async #emit(channels: string[], type: EmitTypes, { before, after }: { after: any; before: any }) {
-		await Promise.all(
-			channels.map(async (channel) => {
-				const emitData: EmitData = { channel, type, before, after }
-				await this.#publisher.publish(emitData as never)
-			}),
-		)
 	}
 
 	#setupSocketConnection = () => {
@@ -135,7 +138,7 @@ export class Listener {
 						})
 					)
 				const channel = data.channel
-				const route = this.#getJoinCb(channel) ?? null
+				const route = this.#getConfig(channel) ?? null
 				if (!route)
 					return (
 						typeof callback === 'function' &&
@@ -145,16 +148,8 @@ export class Listener {
 							channel,
 						})
 					)
-				const newChannel = await route.onJoin({ channel, user }, route.params, data.query ?? {})
-				if (!newChannel)
-					return (
-						typeof callback === 'function' &&
-						callback({
-							code: StatusCodes.NotAuthorized,
-							message: 'restricted access',
-							channel,
-						})
-					)
+				const to = await route.config({ channel, user }, route.params, data.query ?? {})
+				const newChannel = `${to ?? defaultTo}:${channel}`
 				socket.join(newChannel)
 				return (
 					typeof callback === 'function' &&
