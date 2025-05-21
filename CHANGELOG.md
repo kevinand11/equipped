@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.31](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.30...v5.0.0-rc.31) (2025-05-21)
+
+
+### Bug Fixes
+
+* cache admin connection for kafka ([f14bfcf](https://github.com/kevinand11/equipped/commit/f14bfcf5796ebb69b4cf44dc79ac0cad19abf33b))
+
 ## [5.0.0-rc.30](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.29...v5.0.0-rc.30) (2025-05-21)
 
 
