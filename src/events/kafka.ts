@@ -12,6 +12,7 @@ import { Random } from '../utils/utils'
 export class KafkaEventBus extends EventBus {
 	#client: Kafka.Kafka | Confluent.KafkaJS.Kafka
 	#confluent: boolean
+	#admin: Kafka.Admin | Confluent.KafkaJS.Admin | undefined
 	constructor() {
 		super()
 		const settings = Instance.get().settings
@@ -89,14 +90,21 @@ export class KafkaEventBus extends EventBus {
 		return { subscribe }
 	}
 
+	async #getAdmin () {
+		if (!this.#admin) {
+			this.#admin = this.#client.admin()
+			await this.#admin.connect()
+		}
+		return this.#admin
+	}
+
 	async #createTopic(topic: string) {
-		const admin = this.#client.admin()
-		await admin.connect()
+		const admin = await this.#getAdmin()
 		await admin.createTopics({ topics: [{ topic }] })
 	}
 
 	async #deleteGroup(groupId: string) {
-		const admin = this.#client.admin()
+		const admin = await this.#getAdmin()
 		await admin.deleteGroups([groupId]).catch(() => {})
 	}
 }
