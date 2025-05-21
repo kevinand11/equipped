@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.30](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.29...v5.0.0-rc.30) (2025-05-21)
+
+
+### Bug Fixes
+
+* verify access token and scope redis key ([781fe51](https://github.com/kevinand11/equipped/commit/781fe518f4c8e05711e7a7522482384e49afb926))
+
 ## [5.0.0-rc.29](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.28...v5.0.0-rc.29) (2025-05-20)
 
 ## [5.0.0-rc.28](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.27...v5.0.0-rc.28) (2025-05-19)
