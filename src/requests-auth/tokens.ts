@@ -79,8 +79,8 @@ export class CacheTokensUtility extends BaseTokensUtility {
 			refreshTokenKey: 'refreshTokenKey',
 			accessTokenTTL: 60 * 60,
 			refreshTokenTTL: 14 * 24 * 60 * 60,
-			accessTokenPrefix: 'tokens.access.',
-			refreshTokenPrefix: 'tokens.refresh.',
+			accessTokenPrefix: 'tokens:access:',
+			refreshTokenPrefix: 'tokens:refresh:',
 			...options,
 		}
 		this.#getAccessTokenKey = (userId: string) => `${this.options.accessTokenPrefix}${userId}`
