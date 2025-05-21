@@ -59,8 +59,8 @@ export class Instance {
 		return this.#settings
 	}
 
-	getScopedName (name: string) {
-		return [this.settings.app, name].join('.')
+	getScopedName (name: string, key = '.') {
+		return [this.settings.app, name].join(key)
 	}
 
 	static createLogger() {

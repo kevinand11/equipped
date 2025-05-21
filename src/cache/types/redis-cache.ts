@@ -40,23 +40,23 @@ export class RedisCache extends Cache {
 	}
 
 	async delete(key: string) {
-		await this.client.del(Instance.get().getScopedName(key))
+		await this.client.del(Instance.get().getScopedName(key, ':'))
 	}
 
 	async get(key: string) {
-		return await this.client.get(Instance.get().getScopedName(key))
+		return await this.client.get(Instance.get().getScopedName(key, ':'))
 	}
 
 	async set(key: string, data: string, ttlInSecs: number) {
-		if (ttlInSecs > 0) await this.client.setex(Instance.get().getScopedName(key), ttlInSecs, data)
+		if (ttlInSecs > 0) await this.client.setex(Instance.get().getScopedName(key, ':'), ttlInSecs, data)
 		else this.client.set(Instance.get().getScopedName(key), data)
 	}
 
 	async getOrSet<T>(key: string, fn: () => Promise<T>, ttlInSecs: number) {
-		const cached = await this.get(Instance.get().getScopedName(key))
+		const cached = await this.get(Instance.get().getScopedName(key, ':'))
 		if (cached) return JSON.parse(cached)
 
 		const result = await fn()
-		await this.set(Instance.get().getScopedName(key), JSON.stringify(result), ttlInSecs)
+		await this.set(Instance.get().getScopedName(key, ':'), JSON.stringify(result), ttlInSecs)
 	}
 }

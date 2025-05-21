@@ -99,13 +99,14 @@ export class CacheTokensUtility extends BaseTokensUtility {
 		return token
 	}
 
-	async verifyAccessToken(token: string) {
+	async verifyAccessToken(authHeader: string) {
 		try {
-			const user = jwt.verify(this.extractAccessTokenValue(token), this.options.accessTokenKey) as AuthUser
+			const accessToken = this.extractAccessTokenValue(authHeader)
+			const user = jwt.verify(accessToken, this.options.accessTokenKey) as AuthUser
 			if (!user) throw new NotAuthenticatedError()
 			const cachedToken = await this.retrieveAccessTokenFor(user.id)
 			// Cached access token was deleted, e.g. by user roles being modified, so token needs to be treated as expired
-			if (token && token !== cachedToken) throw new AuthorizationExpired()
+			if (accessToken && accessToken !== cachedToken) throw new AuthorizationExpired()
 			return user
 		} catch (err) {
 			if (err instanceof AuthorizationExpired) throw err
