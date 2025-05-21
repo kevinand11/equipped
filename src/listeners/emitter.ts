@@ -1,9 +1,9 @@
 import { match as Match } from 'path-to-regexp'
 import type io from 'socket.io'
 
+import { Entity } from '../db/core'
 import { Instance } from '../instance'
 import { StatusCodes } from '../server'
-import type { BaseEntity } from '../types'
 import type { AuthUser } from '../types/overrides'
 
 enum EmitTypes {
@@ -52,15 +52,15 @@ export class Listener {
 		await this.#subscriber.subscribe()
 	}
 
-	async created<T extends BaseEntity>(channels: string[], data: T, to?: string | string[]) {
+	async created<T extends Entity>(channels: string[], data: T, to?: string | string[]) {
 		await this.#emit(channels, EmitTypes.created, { after: data.toJSON(), before: null }, to)
 	}
 
-	async updated<T extends BaseEntity>(channels: string[], { after, before }: { after: T; before: T }, to?: string | string[]) {
+	async updated<T extends Entity>(channels: string[], { after, before }: { after: T; before: T }, to?: string | string[]) {
 		await this.#emit(channels, EmitTypes.updated, { after: after.toJSON(), before: before.toJSON() }, to)
 	}
 
-	async deleted<T extends BaseEntity>(channels: string[], data: T, to?: string | string[]) {
+	async deleted<T extends Entity>(channels: string[], data: T, to?: string | string[]) {
 		await this.#emit(channels, EmitTypes.deleted, { before: data.toJSON(), after: null }, to)
 	}
 

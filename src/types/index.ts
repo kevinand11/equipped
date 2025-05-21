@@ -1,20 +1,10 @@
+import { ClassPropertiesWrapper } from 'valleyed'
+
+export { DeepOmit } from 'valleyed'
+
 export type EnumToStringUnion<T extends Record<string, string | number>> = `${T[keyof T]}`
 
 export type DeepPartial<T> = { [P in keyof T]?: DeepPartial<T[P]> }
-
-export type DeepOmit<T, K, A = never> = T extends any[]
-	? DeepOmit<T[number], K, A>[]
-	: T extends (...args: any[]) => any
-		? never
-		: T extends Array<infer U>
-			? DeepOmit<U, K, A>[]
-			: {
-					[P in keyof T as P extends K | A ? never : P]: DeepOmit<
-						T[P],
-						K extends `${Exclude<P, symbol>}.${infer R}` ? R : never,
-						A
-					>
-				}
 
 export type DistributiveOmit<T, K extends PropertyKey> = T extends any ? Omit<T, K> : never
 
@@ -58,6 +48,4 @@ export type JSONValue<T> = T extends JSONPrimitives
 						}
 					: never
 
-export interface BaseEntity {
-	toJSON(): Record<string, unknown>
-}
+export class BaseEntity<Keys extends object, Ignored extends string> extends ClassPropertiesWrapper<Keys, Ignored> {}

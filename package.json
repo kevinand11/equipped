@@ -83,7 +83,7 @@
 		"socket.io": "4.8.1",
 		"supertest": "7.1.1",
 		"ts-oas": "0.5.1",
-		"valleyed": "4.4.4"
+		"valleyed": "4.4.5"
 	},
 	"repository": {
 		"url": "git://github.com/kevinand11/equipped.git"
