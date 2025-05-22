@@ -1,6 +1,6 @@
 {
 	"name": "equipped",
-	"version": "5.0.0-rc.32",
+	"version": "5.0.0-rc.33",
 	"private": false,
 	"description": "",
 	"main": "lib/index.js",
