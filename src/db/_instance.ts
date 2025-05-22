@@ -33,9 +33,11 @@ export abstract class Db<IdKey extends core.IdType> {
 	}
 
 	abstract start(): Promise<void>
-	abstract close (): Promise<void>
+	abstract close(): Promise<void>
 
-	abstract use<Model extends core.Model<IdKey>, Entity extends core.Entity> (config: Config<Model, Entity>): core.Table<IdKey, Model, Entity>
+	abstract use<Model extends core.Model<IdKey>, Entity extends core.Entity>(
+		config: Config<Model, Entity>,
+	): core.Table<IdKey, Model, Entity>
 }
 
 export abstract class DbChange<Model extends core.Model<any>, Entity extends core.Entity> {
@@ -57,27 +59,31 @@ export abstract class DbChange<Model extends core.Model<any>, Entity extends cor
 		return this.#mapper
 	}
 
-	protected async _setup(key: string, data: Record<string, string>) {
+	protected async configureConnector(key: string, data: Record<string, string>) {
 		const baseURL = Instance.get().settings.debeziumUrl
 		return await axios
-			.put(`/connectors/${key}/config`, {
-				'topic.prefix': TopicPrefix,
-				'topic.creation.enable': 'false',
-				'topic.creation.default.replication.factor': `-1`,
-				'topic.creation.default.partitions': '-1',
-				'key.converter': 'org.apache.kafka.connect.json.JsonConverter',
-				'key.converter.schemas.enable': 'false',
-				'value.converter': 'org.apache.kafka.connect.json.JsonConverter',
-				'value.converter.schemas.enable': 'false',
-				...data,
-			}, { baseURL })
+			.put(
+				`/connectors/${key}/config`,
+				{
+					'topic.prefix': TopicPrefix,
+					'topic.creation.enable': 'false',
+					'topic.creation.default.replication.factor': `-1`,
+					'topic.creation.default.partitions': '-1',
+					'key.converter': 'org.apache.kafka.connect.json.JsonConverter',
+					'key.converter.schemas.enable': 'false',
+					'value.converter': 'org.apache.kafka.connect.json.JsonConverter',
+					'value.converter.schemas.enable': 'false',
+					...data,
+				},
+				{ baseURL },
+			)
 			.then(async () => {
 				const topics = await axios.get(`/connectors/${key}/topics`, { baseURL })
-				return topics.data[key]?.topics?.at?.(0) === key
+				return topics.data[key]?.topics?.includes?.(key) ?? false
 			})
 			.catch((err) => {
 				const message = err.response?.data?.message ?? err.message
-				throw new Error(`Failed to setup debezium for ${key}: ${message}`)
+				throw new Error(`Failed to configure watcher for ${key}: ${message}`)
 			})
 	}
 }
