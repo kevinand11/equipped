@@ -52,21 +52,21 @@ export class Listener {
 		await this.#subscriber.subscribe()
 	}
 
-	async created<T extends Entity>(channels: string[], data: T, to?: string | string[]) {
+	async created<T extends Entity>(channels: string[], data: T, to: string | string[] | null) {
 		await this.#emit(channels, EmitTypes.created, { after: data.toJSON(), before: null }, to)
 	}
 
-	async updated<T extends Entity>(channels: string[], { after, before }: { after: T; before: T }, to?: string | string[]) {
+	async updated<T extends Entity>(channels: string[], { after, before }: { after: T; before: T }, to: string | string[] | null) {
 		await this.#emit(channels, EmitTypes.updated, { after: after.toJSON(), before: before.toJSON() }, to)
 	}
 
-	async deleted<T extends Entity>(channels: string[], data: T, to?: string | string[]) {
+	async deleted<T extends Entity>(channels: string[], data: T, to: string | string[] | null) {
 		await this.#emit(channels, EmitTypes.deleted, { before: data.toJSON(), after: null }, to)
 	}
 
-	async #emit (channels: string[], type: EmitTypes, { before, after }: { after: any; before: any }, to?: string | string[]) {
+	async #emit(channels: string[], type: EmitTypes, { before, after }: { after: any; before: any }, to: string | string[] | null) {
 		const toArray = Array.isArray(to) ? to : [to ?? defaultTo]
-		const channelMap = channels.flatMap((c) => toArray.map(() => `${to}:${c}`))
+		const channelMap = channels.flatMap((c) => toArray.map((to) => `${to}:${c}`))
 		await Promise.all(
 			channelMap.map(async (channel) => {
 				const emitData: EmitData = { channel, type, before, after }
