@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.34](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.33...v5.0.0-rc.34) (2025-05-25)
+
+
+### Bug Fixes
+
+* updateOne and deleteOne logic ([ec62374](https://github.com/kevinand11/equipped/commit/ec62374fb02d439526ea01631c534edef555d1e6))
+
 ## [5.0.0-rc.33](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.32...v5.0.0-rc.33) (2025-05-22)
 
 
