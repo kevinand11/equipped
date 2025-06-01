@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.35](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.34...v5.0.0-rc.35) (2025-06-01)
+
+
+### Bug Fixes
+
+* return updated doc on updateOne mongo ([5034d67](https://github.com/kevinand11/equipped/commit/5034d6716d9117b3b7187aec1bec8c722410beab))
+
 ## [5.0.0-rc.34](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.33...v5.0.0-rc.34) (2025-05-25)
 
 
