@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.37](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.36...v5.0.0-rc.37) (2025-06-01)
+
+
+### Features
+
+* new RequestError and EquippedError ([2900ad3](https://github.com/kevinand11/equipped/commit/2900ad3cddc1df07f752e6018e3053c8cb7b8a40))
+
 ## [5.0.0-rc.36](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.35...v5.0.0-rc.36) (2025-06-01)
 
 
