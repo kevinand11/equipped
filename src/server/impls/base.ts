@@ -6,6 +6,7 @@ import type { OpenAPIV3_1 } from 'openapi-types'
 import io from 'socket.io'
 import supertest from 'supertest'
 
+import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import { Listener } from '../../listeners'
 import type { Defined } from '../../types'
@@ -168,8 +169,12 @@ export abstract class Server<Req = any, Res = any> {
 			},
 		}
 		if (this.#routesByPath.get(pathKey))
-			throw new Error(`Route path ${pathKey} already registered. All route paths and methods combinations must be unique`)
-		if (this.#routesByKey.get(key)) throw new Error(`Route key ${fullRoute.key} already registered. All route keys must be unique`)
+			throw new EquippedError(`Route path ${pathKey} already registered. All route paths and methods combinations must be unique`, {
+				route,
+				pathKey,
+			})
+		if (this.#routesByKey.get(key))
+			throw new EquippedError(`Route key ${fullRoute.key} already registered. All route keys must be unique`, { route, key })
 		this.#routesByPath.set(pathKey, fullRoute)
 		this.#routesByKey.set(key, fullRoute)
 		this.registerRoute(fullRoute)

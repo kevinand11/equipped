@@ -5,6 +5,7 @@ import { BullJob } from '../bull-job'
 import type { Cache } from '../cache/cache'
 import { RedisCache } from '../cache/types/redis-cache'
 import { MongoDb } from '../db/mongo'
+import { EquippedError } from '../errors'
 import type { EventBus } from '../events/'
 import { KafkaEventBus } from '../events/kafka'
 import { addWaitBeforeExit, exit } from '../exit'
@@ -83,7 +84,8 @@ export class Instance {
 	}
 
 	static get() {
-		if (!this.#initialized) return exit('Has not been initialized. Make sure initialize is called before you get an instance')
+		if (!this.#initialized)
+			return exit(new EquippedError('Has not been initialized. Make sure initialize is called before you get an instance', {}))
 		if (!Instance.#instance) Instance.#instance = new Instance()
 		return Instance.#instance
 	}
@@ -102,7 +104,7 @@ export class Instance {
 			await Instance.get().eventBus.startSubscribers()
 			addWaitBeforeExit(Instance.get().cache.close)
 		} catch (error: any) {
-			exit(`Error starting connections: ${error}`)
+			exit(new EquippedError(`Error starting connections`, {}, error))
 		}
 	}
 }

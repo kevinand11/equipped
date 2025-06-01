@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken'
 
 import type { RequestError } from '../errors'
-import { AuthorizationExpired, NotAuthenticatedError } from '../errors'
+import { AuthorizationExpired, EquippedError, NotAuthenticatedError } from '../errors'
 import { Instance } from '../instance'
 import { StatusCodes } from '../server'
 import type { AuthUser, RefreshUser } from '../types/overrides'
@@ -17,7 +17,7 @@ export abstract class BaseTokensUtility {
 	abstract deleteRefreshTokenFor(userId: string): Promise<void>
 
 	extractAccessTokenValue(headerValue: string) {
-		if (!headerValue.startsWith('Bearer ')) throw new Error(`authorization header must begin with 'Bearer '`)
+		if (!headerValue.startsWith('Bearer ')) throw new EquippedError(`authorization header must begin with 'Bearer '`, { headerValue })
 		return headerValue.slice(7)
 	}
 

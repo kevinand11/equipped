@@ -4,7 +4,7 @@ import { RequestError } from '../requestError'
 export class BadRequestError extends RequestError {
 	statusCode = StatusCodes.BadRequest
 
-	constructor(message: string) {
-		super(message, [{ message }])
+	constructor(message: string, error?: Error) {
+		super(message, [{ message }], error)
 	}
 }

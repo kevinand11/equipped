@@ -7,7 +7,8 @@ export abstract class RequestError extends EquippedError {
 	protected constructor(
 		public readonly message: string,
 		public readonly serializedErrors: { message: string; field?: string }[],
+		error?: Error,
 	) {
-		super(message, { serializedErrors })
+		super(message, { serializedErrors }, error)
 	}
 }

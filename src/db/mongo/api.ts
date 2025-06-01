@@ -1,5 +1,6 @@
 import { Collection, ObjectId, OptionalUnlessRequiredId, SortDirection, WithId } from 'mongodb'
 
+import { EquippedError } from '../../errors'
 import { Config } from '../_instance'
 import * as core from '../core'
 import { QueryParams } from '../query'
@@ -181,7 +182,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 							})
 						break
 					default:
-						throw new Error(`Unknown bulkWrite operation`)
+						throw new EquippedError(`Unknown bulkWrite operation`, { operation })
 				}
 			})
 			await bulk.execute({ session: options.session })

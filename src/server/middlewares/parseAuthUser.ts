@@ -1,3 +1,4 @@
+import { BadRequestError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
 import { makeMiddleware } from '../types'
 
@@ -6,7 +7,8 @@ export const parseAuthUser = makeMiddleware(async (request) => {
 	const { Authorization, ApiKey } = request.headers
 	function makeErrorHandler(key: 'access' | 'apiKey') {
 		return function (err: any) {
-			request.users[key].error = err
+			request.users[key].error = err instanceof RequestError ? err : new BadRequestError('failed to parse auth user', err)
+			request.users[key].error.context[key] = key
 			return undefined
 		}
 	}

@@ -1,5 +1,6 @@
 import { Cluster, Redis, RedisOptions } from 'ioredis'
 
+import { EquippedError } from '../../errors'
 import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { Cache } from '../cache'
@@ -21,13 +22,15 @@ export class RedisCache extends Cache {
 			...(settings.tls ? { tls: {} } : {}),
 			lazyConnect: !extraConfig,
 		}
-		this.client = settings.cluster ? new Cluster([node], {
-			...extraConfig,
-			redisOptions: common,
-			lazyConnect: !extraConfig,
-		}) : new Redis({ ...common, ...node })
+		this.client = settings.cluster
+			? new Cluster([node], {
+					...extraConfig,
+					redisOptions: common,
+					lazyConnect: !extraConfig,
+				})
+			: new Redis({ ...common, ...node })
 		this.client.on('error', async (error) => {
-			exit(`Redis failed with error: ${error}`)
+			exit(new EquippedError(`Redis failed with error`, {}, error))
 		})
 	}
 

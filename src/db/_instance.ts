@@ -3,6 +3,7 @@ import axios from 'axios'
 import { Instance } from '../instance'
 import type { DeepPartial } from '../types'
 import * as core from './core'
+import { EquippedError } from '../errors'
 
 export const TopicPrefix = 'db-changes'
 
@@ -82,8 +83,7 @@ export abstract class DbChange<Model extends core.Model<any>, Entity extends cor
 				return topics.data[key]?.topics?.includes?.(key) ?? false
 			})
 			.catch((err) => {
-				const message = err.response?.data?.message ?? err.message
-				throw new Error(`Failed to configure watcher for ${key}: ${message}`)
+				throw new EquippedError(`Failed to configure watcher`, { key }, err)
 			})
 	}
 }

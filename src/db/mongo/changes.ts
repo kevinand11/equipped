@@ -1,5 +1,6 @@
 import { Filter, MongoClient, ObjectId } from 'mongodb'
 
+import { EquippedError } from '../../errors'
 import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { retry } from '../../utils/retry'
@@ -92,7 +93,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 			},
 			6,
 			10_000,
-		).catch((err) => exit(`Failed to start db changes for ${dbColName}: ${err.message}`))
+		).catch((err) => exit(new EquippedError(`Failed to start db changes`, { dbColName }, err)))
 	}
 }
 

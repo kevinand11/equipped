@@ -1,12 +1,14 @@
+import { EquippedError } from './errors'
+
 const listeners: any[] = []
 
 export const addWaitBeforeExit = (fn: any) => {
 	listeners.unshift(fn)
 }
 
-export const exit = (message: string): never => {
+export const exit = (error: EquippedError): never => {
 	// eslint-disable-next-line no-console
-	console.error(message)
+	console.error(error)
 	process.exit(1)
 }
 
@@ -21,7 +23,7 @@ Object.entries(signals).forEach(([signal, code]) => {
 		await Promise.all(
 			listeners.map(async (l) => {
 				try {
-					;(await typeof l) === 'function' ? l() : l
+					typeof l === 'function' ? await l() : await l
 					// eslint-disable-next-line no-empty
 				} catch {}
 			}),

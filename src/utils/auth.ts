@@ -2,11 +2,12 @@ import axios from 'axios'
 import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
 
+import { EquippedError } from '../errors'
+
 export const signinWithGoogle = async (idToken: string) => {
 	const authUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`
 	const { data } = await axios.get(authUrl).catch((err) => {
-		const message = err?.response?.data?.error
-		throw new Error(message ? 'Invalid id token' : 'Something unexpected happened')
+		throw new EquippedError('Failed to sign in with google', { idToken }, err)
 	})
 	data.first_name = data.given_name
 	data.last_name = data.family_name
@@ -30,11 +31,11 @@ export const signinWithApple = async (idToken: string) => {
 			.getSigningKey(kid)
 			.then((key) => key.getPublicKey())
 			.catch(() => null)
-		if (!publicKey) throw new Error('')
+		if (!publicKey) throw new EquippedError('no publicKey', { idToken, publicKey, json })
 		const data = jwt.verify(idToken, publicKey, { algorithms: [alg as any] }) as Record<string, any>
-		if (!data) throw new Error('')
-		if (data.iss !== APPLE_BASE) throw new Error('')
-		if (data.exp * 1000 < Date.now()) throw new Error('expired idToken')
+		if (!data) throw new EquippedError('no data', { idToken, data })
+		if (data.iss !== APPLE_BASE) throw new EquippedError('iss doesnt match', { idToken, data })
+		if (data.exp * 1000 < Date.now()) throw new EquippedError('expired idToken', { idToken, data })
 		// TODO: Find out how to get profile data from api
 		return data as {
 			email?: string
@@ -43,7 +44,7 @@ export const signinWithApple = async (idToken: string) => {
 			is_private_email?: 'true' | 'false'
 		} & Record<string, any>
 	} catch (err: any) {
-		throw new Error(err.message || 'Invalid idToken')
+		throw new EquippedError('Failed to sign in with apple', { idToken }, err)
 	}
 }
 
@@ -59,8 +60,7 @@ export const signinWithFacebook = async (accessToken: string, fields = [] as str
 			},
 		})
 		.catch((err) => {
-			const message = err?.response?.data?.error?.message
-			throw new Error(message ? 'Invalid access token' : 'Something unexpected happened')
+			throw new EquippedError('Failed to sign in with facebook', { accessToken, fields }, err)
 		})
 	const isValidData = fields.every((key) => key in data)
 	if (!isValidData) throw new Error('Incomplete scope for access token')

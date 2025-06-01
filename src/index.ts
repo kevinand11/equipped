@@ -1,3 +1,4 @@
+import { EquippedError } from './errors'
 import { exit } from './exit'
 
 export * from './db'
@@ -20,6 +21,6 @@ export * from './validations'
 export const getEnvOrFail = (key: string) => {
 	const value = process.env[key]
 	if (value) return value
-	exit(`Environment variable not found: ${key}`)
+	exit(new EquippedError(`Environment variable not found: ${key}`, {}))
 	return ''
 }
