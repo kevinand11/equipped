@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.36](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.35...v5.0.0-rc.36) (2025-06-01)
+
+
+### Bug Fixes
+
+* allow errors to be forwarded to the user ([e09d88c](https://github.com/kevinand11/equipped/commit/e09d88cfa770e3c974c4a5de67c6bddfb3753f57))
+
 ## [5.0.0-rc.35](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.34...v5.0.0-rc.35) (2025-06-01)
 
 
