@@ -109,7 +109,10 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 
 		updateOne: async (filter, values, options = {}) => {
 			const now = options.getTime?.() ?? new Date()
-			const doc = await collection.findOneAndUpdate(filter, prepUpdateValue(values, now), { session: options.session })
+			const doc = await collection.findOneAndUpdate(filter, prepUpdateValue(values, now), {
+				returnDocument: 'after',
+				session: options.session,
+			})
 			return doc ? transform(doc) : null
 		},
 
@@ -154,33 +157,31 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 			const bulk = collection.initializeUnorderedBulkOp({ session: options.session })
 			const now = options.getTime?.() ?? new Date()
 			operations.forEach((operation, i) => {
-				if (operation.op) {
-					switch (operation.op) {
-						case 'insert':
-							bulk.insert(prepInsertValue(operation.value, operation.makeId?.(i) ?? new ObjectId().toString(), now))
-							break
-						case 'delete':
-							bulk.find(operation.filter).delete()
-							break
-						case 'update':
-							bulk.find(operation.filter).update(prepUpdateValue(operation.value, now))
-							break
-						case 'upsert':
-							bulk.find(operation.filter)
-								.upsert()
-								.update({
-									...prepUpdateValue('update' in operation ? operation.update : {}, now),
-									$setOnInsert: prepInsertValue(
-										operation.insert as any,
-										operation.makeId?.(i) ?? new ObjectId().toString(),
-										now,
-										true,
-									),
-								})
-							break
-						default:
-							throw new Error(`Unknown bulkWrite operation`)
-					}
+				switch (operation.op) {
+					case 'insert':
+						bulk.insert(prepInsertValue(operation.value, operation.makeId?.(i) ?? new ObjectId().toString(), now))
+						break
+					case 'delete':
+						bulk.find(operation.filter).delete()
+						break
+					case 'update':
+						bulk.find(operation.filter).update(prepUpdateValue(operation.value, now))
+						break
+					case 'upsert':
+						bulk.find(operation.filter)
+							.upsert()
+							.update({
+								...prepUpdateValue('update' in operation ? operation.update : {}, now),
+								$setOnInsert: prepInsertValue(
+									operation.insert as any,
+									operation.makeId?.(i) ?? new ObjectId().toString(),
+									now,
+									true,
+								),
+							})
+						break
+					default:
+						throw new Error(`Unknown bulkWrite operation`)
 				}
 			})
 			await bulk.execute({ session: options.session })
