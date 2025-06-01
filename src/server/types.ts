@@ -1,6 +1,6 @@
 import type { FastifySchema } from 'fastify'
 
-import type { CustomError } from '../errors'
+import type { RequestError } from '../errors'
 import type { Defined, EnumToStringUnion, Flatten, IsInTypeList, IsType, JSONValue } from '../types'
 import type { Request, Response } from './requests'
 
@@ -27,7 +27,7 @@ export enum StatusCodes {
 
 type GoodStatusCodes = StatusCodes.Ok | StatusCodes.Found
 type BadStatusCodes = Exclude<StatusCodes, GoodStatusCodes>
-type ApiErrors = Record<BadStatusCodes, JSONValue<CustomError['serializedErrors']>>
+type ApiErrors = Record<BadStatusCodes, JSONValue<RequestError['serializedErrors']>>
 type ApiResponse<T, StatusCode extends StatusCodes> = Record<StatusCode, JSONValue<T>> | Omit<ApiErrors, StatusCode>
 
 export interface Api<
@@ -95,7 +95,7 @@ export type RouteHandler<Def extends Api = Api> = (
 export type ErrorHandler<Def extends Api = Api> = (
 	req: Request<Def>,
 	err: Error,
-) => Res<CustomError['serializedErrors'], CustomError['statusCode'], HeadersType>
+) => Res<RequestError['serializedErrors'], RequestError['statusCode'], HeadersType>
 export type RouteMiddlewareHandler<Def extends Api = Api> = (req: Request<Def>) => Awaitable<void>
 export type HandlerSetup = (route: Route) => void
 

@@ -1,6 +1,6 @@
 import type { Readable } from 'stream'
 
-import type { CustomError } from '../errors'
+import type { RequestError } from '../errors'
 import type { StorageFile } from '../storage'
 import type { Api, FileSchema, GetApiPart, HeadersType, StatusCodes } from './types'
 import type { DistributiveOmit, IsInTypeList } from '../types'
@@ -22,7 +22,7 @@ type UnionMapper<T> = {
 }
 type MappedUnion<T> = UnionMapper<T>[keyof UnionMapper<T>]
 
-type ReqUser<T> = { error?: CustomError; value?: T }
+type ReqUser<T> = { error?: RequestError; value?: T }
 
 export class Request<Def extends Api = Api> {
 	readonly ip: string | undefined
@@ -115,8 +115,8 @@ export class Request<Def extends Api = Api> {
 		})
 	}
 
-	error(params: DistributiveOmit<RequestParams<CustomError['serializedErrors'], CustomError['statusCode'], HeadersType>, 'piped'>) {
-		return new Response<CustomError['serializedErrors'], CustomError['statusCode'], HeadersType>(<any>{ ...params, piped: false })
+	error(params: DistributiveOmit<RequestParams<RequestError['serializedErrors'], RequestError['statusCode'], HeadersType>, 'piped'>) {
+		return new Response<RequestError['serializedErrors'], RequestError['statusCode'], HeadersType>(<any>{ ...params, piped: false })
 	}
 }
 

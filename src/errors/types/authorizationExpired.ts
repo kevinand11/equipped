@@ -1,7 +1,7 @@
 import { StatusCodes } from '../../server'
-import { CustomError } from '../customError'
+import { RequestError } from '../requestError'
 
-export class AuthorizationExpired extends CustomError {
+export class AuthorizationExpired extends RequestError {
 	statusCode = StatusCodes.AuthorizationExpired
 
 	constructor(message = 'Access token expired') {

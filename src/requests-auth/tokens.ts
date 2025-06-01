@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken'
 
-import type { CustomError } from '../errors'
+import type { RequestError } from '../errors'
 import { AuthorizationExpired, NotAuthenticatedError } from '../errors'
 import { Instance } from '../instance'
 import { StatusCodes } from '../server'
@@ -14,9 +14,9 @@ export abstract class BaseTokensUtility {
 	abstract retrieveAccessTokenFor(userId: string): Promise<string | null>
 	abstract retrieveRefreshTokenFor(userId: string): Promise<string | null>
 	abstract deleteAccessTokenFor(userId: string): Promise<void>
-	abstract deleteRefreshTokenFor (userId: string): Promise<void>
+	abstract deleteRefreshTokenFor(userId: string): Promise<void>
 
-	extractAccessTokenValue (headerValue: string) {
+	extractAccessTokenValue(headerValue: string) {
 		if (!headerValue.startsWith('Bearer ')) throw new Error(`authorization header must begin with 'Bearer '`)
 		return headerValue.slice(7)
 	}
@@ -32,7 +32,7 @@ export abstract class BaseTokensUtility {
 		refreshToken: string
 	}> {
 		const authUser = await this.verifyAccessToken(tokens.accessToken).catch((err) => {
-			const error = err as CustomError
+			const error = err as RequestError
 			if (error.statusCode === StatusCodes.AuthorizationExpired) return null
 			else throw err
 		})

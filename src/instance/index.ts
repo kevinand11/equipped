@@ -59,7 +59,7 @@ export class Instance {
 		return this.#settings
 	}
 
-	getScopedName (name: string, key = '.') {
+	getScopedName(name: string, key = '.') {
 		return [this.settings.app, name].join(key)
 	}
 
@@ -69,6 +69,7 @@ export class Instance {
 			level: Instance.#initialized ? (Instance.get().settings?.logLevel ?? defaultLogLevel) : defaultLogLevel,
 			serializers: {
 				err: pino.stdSerializers.err,
+				error: pino.stdSerializers.err,
 				req: pino.stdSerializers.req,
 				res: pino.stdSerializers.res,
 			},

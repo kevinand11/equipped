@@ -1,7 +1,7 @@
 import { StatusCodes } from '../../server'
-import { CustomError } from '../customError'
+import { RequestError } from '../requestError'
 
-export class RefreshTokenMisusedError extends CustomError {
+export class RefreshTokenMisusedError extends RequestError {
 	statusCode = StatusCodes.NotAuthenticated
 
 	constructor(message = 'Refresh token misused') {

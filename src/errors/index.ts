@@ -1,4 +1,5 @@
-export * from './customError'
+export * from './equippedError'
+export * from './requestError'
 export * from './types/authorizationExpired'
 export * from './types/badRequestError'
 export * from './types/notAuthenticatedError'

@@ -1,12 +1,12 @@
 import { StatusCodes } from '../../server'
-import { CustomError } from '../customError'
+import { RequestError } from '../requestError'
 
 type Error = {
 	messages: string[]
 	field: string
 }
 
-export class ValidationError extends CustomError {
+export class ValidationError extends RequestError {
 	statusCode = StatusCodes.ValidationError
 
 	constructor(errors: Error[]) {

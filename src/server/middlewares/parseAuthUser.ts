@@ -1,13 +1,12 @@
-import { CustomError } from '../../errors'
 import { Instance } from '../../instance'
 import { makeMiddleware } from '../types'
 
 export const parseAuthUser = makeMiddleware(async (request) => {
 	const { requestsAuth } = Instance.get().settings
 	const { Authorization, ApiKey } = request.headers
-	function makeErrorHandler (key: 'access' | 'apiKey') {
+	function makeErrorHandler(key: 'access' | 'apiKey') {
 		return function (err: any) {
-			if (err instanceof CustomError) request.users[key].error = err
+			request.users[key].error = err
 			return undefined
 		}
 	}

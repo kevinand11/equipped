@@ -1,7 +1,7 @@
 import { StatusCodes } from '../../server'
-import { CustomError } from '../customError'
+import { RequestError } from '../requestError'
 
-export class NotAuthenticatedError extends CustomError {
+export class NotAuthenticatedError extends RequestError {
 	statusCode = StatusCodes.NotAuthenticated
 
 	constructor(message = 'Not authenticated') {
