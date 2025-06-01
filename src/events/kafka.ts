@@ -73,7 +73,7 @@ export class KafkaEventBus extends EventBus {
 					addWaitBeforeExit(
 						(async () => {
 							if (!message.value) return
-							await onMessage(parseJSONValue(message.value.toString())).catch(() => {})
+							await onMessage(parseJSONValue(message.value.toString()))
 						})(),
 					)
 				},
@@ -90,7 +90,7 @@ export class KafkaEventBus extends EventBus {
 		return { subscribe }
 	}
 
-	async #getAdmin () {
+	async #getAdmin() {
 		if (!this.#admin) {
 			this.#admin = this.#client.admin()
 			await this.#admin.connect()
