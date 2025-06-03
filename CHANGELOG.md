@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.39](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.38...v5.0.0-rc.39) (2025-06-03)
+
+
+### Features
+
+* date schema ([b578c6b](https://github.com/kevinand11/equipped/commit/b578c6ba6f0820cf254c1a252d2e9e5f0941a3ca))
+* remove need to wrap entities in EntityJSON ([a788990](https://github.com/kevinand11/equipped/commit/a7889909e96a78485bb98566f4c5e4016ff05391))
+* reshape File in ApiDeb to FileSchema ([a46f188](https://github.com/kevinand11/equipped/commit/a46f1889384a4551059703d063a06dd3297dfda4))
+* support passing VBase directly as body of ApiDef ([942344f](https://github.com/kevinand11/equipped/commit/942344f3602bc652c8def0fb87ddb05304bee2e9))
+
 ## [5.0.0-rc.38](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.37...v5.0.0-rc.38) (2025-06-01)
 
 ## [5.0.0-rc.37](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.36...v5.0.0-rc.37) (2025-06-01)
