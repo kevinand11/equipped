@@ -1,5 +1,3 @@
-import { ClassPropertiesWrapper } from 'valleyed'
-
 export { DeepOmit } from 'valleyed'
 
 export type EnumToStringUnion<T extends Record<string, string | number>> = `${T[keyof T]}`
@@ -36,7 +34,9 @@ export type JSONValue<T> = T extends JSONPrimitives
 	? T
 	: T extends Array<infer U>
 		? JSONValue<U>[]
-		: T extends Function
+		: T extends { toJSON: (...args: any[]) => any }
+			? ReturnType<T['toJSON']>
+			: T extends Function
 				? never
 				: T extends object
 					? {
@@ -47,5 +47,3 @@ export type JSONValue<T> = T extends JSONPrimitives
 									: K]: JSONValue<T[K]>
 						}
 					: never
-
-export class BaseEntity<Keys extends object, Ignored extends string> extends ClassPropertiesWrapper<Keys, Ignored> {}
