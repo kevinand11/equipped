@@ -1,4 +1,5 @@
 import type { FastifySchema } from 'fastify'
+import { ExtractI, VBase } from 'valleyed/lib/api/base'
 
 import type { RequestError } from '../errors'
 import type { Defined, EnumToStringUnion, Flatten, IsInTypeList, IsType, JSONValue } from '../types'
@@ -58,7 +59,7 @@ export type FileSchema = 'equipped-file-schema'
 export interface ApiDef<T extends Api> {
 	key: T['key']
 	method: T['method']
-	body: Flatten<GetApiPart<T, 'body', false>>
+	body: Flatten<ReshapeBody<GetApiPart<T, 'body', false>>>
 	params: Flatten<GetApiPart<T, 'params', false>>
 	query: Flatten<GetApiPart<T, 'query', false>>
 	requestHeaders: Flatten<GetApiPart<T, 'requestHeaders', false>>
@@ -67,6 +68,7 @@ export interface ApiDef<T extends Api> {
 	__apiDef: true
 }
 
+export type ReshapeBody<T> = T extends VBase<any, any> ? ExtractI<T> : T
 type Awaitable<T> = Promise<T> | T
 type Res<T, S extends StatusCodes, H extends HeadersType> = Awaitable<
 	IsInTypeList<S, [StatusCodes, StatusCodes.Ok, unknown]> extends true

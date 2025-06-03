@@ -2,7 +2,7 @@ import type { Readable } from 'stream'
 
 import type { RequestError } from '../errors'
 import type { StorageFile } from '../storage'
-import type { Api, FileSchema, GetApiPart, HeadersType, StatusCodes } from './types'
+import type { Api, FileSchema, GetApiPart, HeadersType, ReshapeBody, StatusCodes } from './types'
 import type { DistributiveOmit, IsInTypeList } from '../types'
 import type { AuthUser, RefreshUser } from '../types/overrides'
 import { parseJSONValue } from '../utils/json'
@@ -10,7 +10,7 @@ import { parseJSONValue } from '../utils/json'
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 
 type IsFileOrFileArray<T> = T extends FileSchema ? StorageFile[] : T extends FileSchema[] ? StorageFile[] : T
-type ApiToBody<Def extends Api> = MappedUnion<Def['body']>
+type ApiToBody<Def extends Api> = MappedUnion<ReshapeBody<Def['body']>>
 type UnionMapper<T> = {
 	[K in T extends infer P ? keyof P : never]: T extends infer P
 		? K extends keyof P
