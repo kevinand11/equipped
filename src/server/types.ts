@@ -56,6 +56,7 @@ export interface Api<
 
 export type HeadersType = Record<string, string | string[] | undefined>
 export type FileSchema = 'equipped-file-schema'
+export type DateSchema = 'equipped-date-schema'
 
 export interface ApiDef<T extends Api> {
 	key: T['key']
@@ -72,11 +73,13 @@ export interface ApiDef<T extends Api> {
 export type ReshapeBody<T> = T extends VBase<any, any> ? ExtractI<T> : T
 type ApiBody<T> = T extends File
 	? FileSchema
-	: T extends Array<infer U>
-		? ApiBody<U>[]
-		: T extends object
-			? { [K in keyof T]: ApiBody<T[K]> }
-			: T
+	: T extends Date
+		? DateSchema
+		: T extends Array<infer U>
+			? ApiBody<U>[]
+			: T extends object
+				? { [K in keyof T]: ApiBody<T[K]> }
+				: T
 type Awaitable<T> = Promise<T> | T
 type Res<T, S extends StatusCodes, H extends HeadersType> = Awaitable<
 	IsInTypeList<S, [StatusCodes, StatusCodes.Ok, unknown]> extends true

@@ -7,10 +7,11 @@ import type { RouteSchema } from '../server'
 import { StatusCodes } from '../server'
 
 const statusCodes = Object.entries(StatusCodes)
-const fileSchema = { type: 'string', format: 'binary', example: 'binary file' }
 
-function isFile(schema: Definition) {
-	return schema.type === 'string' && schema.enum?.at(0) === 'equipped-file-schema'
+function transform(schema: Definition) {
+	if (schema.type === 'string' && schema.enum?.at(0) === 'equipped-file-schema') return { type: 'string', format: 'binary' }
+	if (schema.type === 'string' && schema.enum?.at(0) === 'equipped-date-schema') return { type: 'string', format: 'datetime' }
+	return schema
 }
 
 export function generateJSONSchema(
@@ -30,12 +31,11 @@ export function generateJSONSchema(
 		ref: false,
 		nullableKeyword: false,
 		schemaProcessor: (schema) => {
-			if (isFile(schema)) return fileSchema
-			if (Array.isArray(schema.items)) schema.items = schema.items.map((s) => (isFile(s) ? fileSchema : s))
-			if (schema.anyOf) schema.anyOf = schema.anyOf.map((s) => (isFile(s) ? fileSchema : s))
-			if (schema.oneOf) schema.oneOf = schema.oneOf.map((s) => (isFile(s) ? fileSchema : s))
-			if (schema.allOf) schema.allOf = schema.allOf.map((s) => (isFile(s) ? fileSchema : s))
-			return schema
+			if (Array.isArray(schema.items)) schema.items = schema.items.map(transform)
+			if (schema.anyOf) schema.anyOf = schema.anyOf.map(transform)
+			if (schema.oneOf) schema.oneOf = schema.oneOf.map(transform)
+			if (schema.allOf) schema.allOf = schema.allOf.map(transform)
+			return transform(schema)
 		},
 		...(options?.options ?? {}),
 	})
