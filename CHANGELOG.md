@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.40](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.39...v5.0.0-rc.40) (2025-06-04)
+
+
+### Features
+
+* prettify types ([3764801](https://github.com/kevinand11/equipped/commit/37648011ed3b49b7db857480cc536ee21ddcf0e3))
+
 ## [5.0.0-rc.39](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.38...v5.0.0-rc.39) (2025-06-03)
 
 
