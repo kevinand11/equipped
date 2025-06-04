@@ -77,6 +77,6 @@ const compare = async (plainPassword: string, hashed: string) => {
 
 export const Hash = { hash, compare }
 
-declare module 'valleyed/lib/types' {
+declare module 'valleyed/lib/utils/types' {
 	interface File extends StorageFile {}
 }

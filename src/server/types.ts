@@ -1,9 +1,9 @@
 import type { FastifySchema } from 'fastify'
+import { File } from 'valleyed'
 import { ExtractI, VBase } from 'valleyed/lib/api/base'
-import { File } from 'valleyed/lib/types'
 
 import type { RequestError } from '../errors'
-import type { Defined, EnumToStringUnion, Flatten, IsInTypeList, IsType, JSONValue } from '../types'
+import type { Defined, EnumToStringUnion, Prettify, IsInTypeList, IsType, JSONValue } from '../types'
 import type { Request, Response } from './requests'
 
 export enum Methods {
@@ -61,12 +61,12 @@ export type DateSchema = 'equipped-date-schema'
 export interface ApiDef<T extends Api> {
 	key: T['key']
 	method: T['method']
-	body: Flatten<ApiBody<ReshapeBody<GetApiPart<T, 'body', false>>>>
-	params: Flatten<GetApiPart<T, 'params', false>>
-	query: Flatten<GetApiPart<T, 'query', false>>
-	requestHeaders: Flatten<GetApiPart<T, 'requestHeaders', false>>
-	responseHeaders: Flatten<GetApiPart<T, 'responseHeaders', false>>
-	responses: Flatten<ApiResponse<T['response'], GetApiPart<T, 'defaultStatusCode', true, 200>>>
+	body: Prettify<ApiBody<ReshapeBody<GetApiPart<T, 'body', false>>>>
+	params: Prettify<GetApiPart<T, 'params', false>>
+	query: Prettify<GetApiPart<T, 'query', false>>
+	requestHeaders: Prettify<GetApiPart<T, 'requestHeaders', false>>
+	responseHeaders: Prettify<GetApiPart<T, 'responseHeaders', false>>
+	responses: Prettify<ApiResponse<T['response'], GetApiPart<T, 'defaultStatusCode', true, 200>>>
 	__apiDef: true
 }
 

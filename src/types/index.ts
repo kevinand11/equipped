@@ -1,4 +1,4 @@
-export { DeepOmit } from 'valleyed'
+export { DeepOmit, JSONValue, JSONPrimitives, Prettify } from 'valleyed'
 
 export type EnumToStringUnion<T extends Record<string, string | number>> = `${T[keyof T]}`
 
@@ -7,7 +7,6 @@ export type DeepPartial<T> = { [P in keyof T]?: DeepPartial<T[P]> }
 export type DistributiveOmit<T, K extends PropertyKey> = T extends any ? Omit<T, K> : never
 
 export type Defined<T> = Exclude<T, undefined>
-export type Flatten<T> = T extends object ? { [K in keyof T]: Flatten<T[K]> } : T
 
 export type IsType<A, B> = Exclude<A, B> | Exclude<B, A> extends never ? true : false
 export type IsInTypeList<T, L extends any[]> = L extends [infer First, ...infer Remaining]
@@ -28,22 +27,3 @@ export type Paths<T, D = never> = T extends StopTypes
 		: T extends readonly any[]
 			? Paths<T[number]>
 			: D
-
-export type JSONPrimitives = string | number | boolean | null
-export type JSONValue<T> = T extends JSONPrimitives
-	? T
-	: T extends Array<infer U>
-		? JSONValue<U>[]
-		: T extends { toJSON: (...args: any[]) => any }
-			? ReturnType<T['toJSON']>
-			: T extends Function
-				? never
-				: T extends object
-					? {
-							[K in keyof T as JSONValue<T[K]> extends never
-								? never
-								: JSONValue<T[K]> extends undefined
-									? never
-									: K]: JSONValue<T[K]>
-						}
-					: never

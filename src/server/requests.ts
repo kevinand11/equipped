@@ -1,18 +1,18 @@
 import type { Readable } from 'stream'
 
-import { File } from 'valleyed/lib/types'
+import { File } from 'valleyed'
 
 import type { RequestError } from '../errors'
 import type { StorageFile } from '../storage'
 import type { Api, FileSchema, GetApiPart, HeadersType, ReshapeBody, StatusCodes } from './types'
-import type { DistributiveOmit, IsInTypeList } from '../types'
+import type { DistributiveOmit, IsInTypeList, Prettify } from '../types'
 import type { AuthUser, RefreshUser } from '../types/overrides'
 import { parseJSONValue } from '../utils/json'
 
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 
 type IsFileOrFileArray<T> = T extends FileSchema | File ? StorageFile[] : T extends FileSchema[] ? StorageFile[] : T
-type ApiToBody<Def extends Api> = MappedUnion<ReshapeBody<Def['body']>>
+type ApiToBody<Def extends Api> = Prettify<MappedUnion<ReshapeBody<Def['body']>>>
 type UnionMapper<T> = {
 	[K in T extends infer P ? keyof P : never]: T extends infer P
 		? K extends keyof P
@@ -31,11 +31,11 @@ export class Request<Def extends Api = Api> {
 	readonly method: Def['method']
 	readonly path: string
 	readonly body: ApiToBody<Def>
-	readonly params: GetApiPart<Def, 'params'>
-	readonly query: GetApiPart<Def, 'query'>
+	readonly params: Prettify<GetApiPart<Def, 'params'>>
+	readonly query: Prettify<GetApiPart<Def, 'query'>>
 	readonly cookies: Record<string, any>
 	readonly rawBody: unknown
-	readonly headers: Record<HeaderKeys, string | undefined> & GetApiPart<Def, 'requestHeaders', true, {}> & HeadersType
+	readonly headers: Prettify<Record<HeaderKeys, string | undefined> & GetApiPart<Def, 'requestHeaders', true, {}> & HeadersType>
 	users: {
 		access: ReqUser<AuthUser>
 		refresh: ReqUser<RefreshUser>
@@ -92,7 +92,7 @@ export class Request<Def extends Api = Api> {
 		)
 		if (this.query?.['auth']) delete this.query['auth']
 		if (this.query?.['authType']) delete this.query['authType']
-		this.headers = headers
+		this.headers = <any>headers
 	}
 
 	#parseQueryStrings(value: unknown) {
