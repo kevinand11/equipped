@@ -1,21 +1,26 @@
 import { Collection } from 'mongodb'
+import { v } from 'valleyed'
 
-import { Instance } from '../../instance'
-import * as core from '../core'
-import type { QueryParams, QueryResults, QueryWhere, QueryWhereClause } from '../query'
-import { Conditions, QueryKeys } from '../query'
+import * as core from '../base/core'
+
+import {
+	QueryKeys,
+	queryResultsPipe,
+	type QueryParams,
+	type QueryResults,
+	type QueryWhereBlock,
+	type QueryWhereClause,
+} from '.../../schemas/db'
 
 export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: string }>>(
 	collection: Collection<Model>,
 	params: QueryParams,
 ): Promise<QueryResults<Model>> => {
-	// Handle where clauses
-	const query = [] as ReturnType<typeof buildWhereQuery>[]
-	const whereType = Object.values(QueryKeys).indexOf(params.whereType!) !== -1 ? params.whereType! : QueryKeys.and
-	const authType = Object.values(QueryKeys).indexOf(params.authType!) !== -1 ? params.authType! : QueryKeys.and
-	const where = buildWhereQuery(params.where ?? [], whereType)
+	// Handle where/search clauses
+	const query = <ReturnType<typeof buildWhereQuery>[]>[]
+	const where = buildWhereQuery(params.where ?? [], params.whereType)
 	if (where) query.push(where)
-	const auth = buildWhereQuery(params.auth ?? [], authType)
+	const auth = buildWhereQuery(params.auth ?? [], params.authType)
 	if (auth) query.push(auth)
 	if (params.search && params.search.fields.length > 0) {
 		const search = params.search.fields.map((field) => ({
@@ -31,16 +36,10 @@ export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: st
 	// Handle sort clauses
 	const sort = params.sort?.map((p) => [p.field, p.desc ? 'desc' : 'asc']) ?? []
 
+	// Handle limit/offest clause
 	const all = params.all ?? false
-
-	// Handle limit clause
-	const settings = Instance.get().settings
-	const limit =
-		Number(params.limit) <= settings.requests.paginationDefaultLimit ? Number(params.limit) : settings.requests.paginationDefaultLimit
-
-	// Handle offset clause
-	let page = Number.isNaN(Number(params.page)) ? 0 : Number(params.page)
-	page = page < 1 ? 1 : page
+	const limit = params.limit
+	const page = params.page
 
 	const total = await collection.countDocuments(totalClause)
 
@@ -57,35 +56,34 @@ export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: st
 	const next = page >= last ? null : page + 1
 	const previous = page <= start ? null : page - 1
 
-	return {
+	return queryResultsPipe(v.any()).parse({
 		pages: { start, last, next, previous, current: page },
 		docs: { limit, total, count: results.length },
-		results: results as Model[],
-	}
+		results: results as any[],
+	} satisfies QueryResults<Model>)
 }
 
-const buildWhereQuery = (params: QueryWhereClause<unknown>[], key: QueryKeys = QueryKeys.and) => {
+function isWhereBlock<T>(param: QueryWhereClause<T>[number]): param is QueryWhereBlock<T> {
+	return Object.values(QueryKeys).includes(param.condition as QueryKeys)
+}
+
+const buildWhereQuery = (params: QueryWhereClause<unknown>, key: QueryKeys = QueryKeys.and): Record<string, Record<string, any>> | null => {
 	const where = (Array.isArray(params) ? params : [])
 		.map((param) => {
-			if (Object.values(QueryKeys).includes(param.condition as QueryKeys))
-				return buildWhereQuery(param.value as any, param.condition as QueryKeys)
-			const { field } = param as QueryWhere<unknown>
+			if (isWhereBlock<unknown>(param)) return buildWhereQuery(param.value, param.condition)
+			const { field } = param
 			const checkedField = field === 'id' ? '_id' : (field ?? '')
 			const checkedValue = param.value === undefined ? '' : param.value
-			const checkedCondition = Object.keys(Conditions).indexOf(param.condition as string) > -1 ? param.condition : Conditions.eq
 			return {
 				field: checkedField,
 				value: checkedValue,
-				condition: checkedCondition,
+				condition: param.condition,
 				isWhere: true,
 			}
 		})
-		.filter((c) => c)
+		.filter((c) => !!c)
 		.map((c) => {
-			if (c.isWhere)
-				return {
-					[`${c.field}`]: { [`$${c.condition}`]: c.value },
-				}
+			if (c.isWhere) return { [`${c.field}`]: { [`$${c.condition}`]: c.value } }
 			else return c
 		})
 

@@ -1,10 +1,11 @@
 import { Collection, ObjectId, OptionalUnlessRequiredId, SortDirection, WithId } from 'mongodb'
+import { Prettify } from 'valleyed'
 
-import { EquippedError } from '../../errors'
-import { Config } from '../_instance'
-import * as core from '../core'
-import { QueryParams } from '../query'
 import { parseMongodbQueryParams } from './query'
+import { EquippedError } from '../../errors'
+import { QueryParams } from '../../schemas/db'
+import { Config } from '../base/_instance'
+import * as core from '../base/core'
 
 const idKey = '_id'
 type IdType = { _id: string }
@@ -13,7 +14,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 	collection: Collection<Model>,
 	{ mapper, options: tableOptions = {} }: Config<Model, Entity>,
 ) {
-	type WI = Model | WithId<Model>
+	type WI = Model | WithId<Model> | Prettify<Model | WithId<Model>>
 	async function transform(doc: WI): Promise<Entity>
 	// eslint-disable-next-line no-redeclare
 	async function transform(doc: WI[]): Promise<Entity[]>
@@ -61,7 +62,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 			const results = await parseMongodbQueryParams(collection, params)
 			return {
 				...results,
-				results: await transform(results.results),
+				results: (await transform(results.results)) as any,
 			}
 		},
 

@@ -5,8 +5,8 @@ import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { retry } from '../../utils/retry'
 import { differ } from '../../validations'
-import { DbChange, DbChangeCallbacks, TopicPrefix } from '../_instance'
-import * as core from '../core'
+import { DbChange, DbChangeCallbacks, TopicPrefix } from '../base/_instance'
+import * as core from '../base/core'
 
 export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity extends core.Entity> extends DbChange<Model, Entity> {
 	#started = false

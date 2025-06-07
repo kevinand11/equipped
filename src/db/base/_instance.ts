@@ -1,9 +1,9 @@
 import axios from 'axios'
 
-import { Instance } from '../instance'
-import type { DeepPartial } from '../types'
 import * as core from './core'
-import { EquippedError } from '../errors'
+import { EquippedError } from '../../errors'
+import { Instance } from '../../instance'
+import type { DeepPartial } from '../../types'
 
 export const TopicPrefix = 'db-changes'
 

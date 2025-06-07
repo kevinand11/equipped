@@ -1,6 +1,6 @@
 import { ClassPropertiesWrapper } from 'valleyed'
 
-import { AddMethodDefImpls, Methods, RouteDefHandler, RouteGeneralConfig, RouteDefConfig, Route, MethodsEnum } from './types'
+import { AddMethodDefImpls, Methods, RouteDefHandler, RouteGeneralConfig, Route, MethodsEnum, RouteConfig } from './types'
 
 export const cleanPath = (path: string) => {
 	let cleaned = path.replace(/(\/\s*)+/g, '/')
@@ -29,7 +29,10 @@ export class Router extends ClassPropertiesWrapper<AddMethodDefImpls> {
 			Object.values(Methods).reduce(
 				(acc, method) => ({
 					...acc,
-					[method]: (...args: Parameters<AddMethodDefImpls[MethodsEnum]>) => this.#addRoute(method, ...args),
+					[method]:
+						(...args: Parameters<AddMethodDefImpls[MethodsEnum]>) =>
+						(handler: RouteDefHandler<any>) =>
+							this.#addRoute(method, ...args, handler),
 				}),
 				{} as any,
 			),
@@ -40,7 +43,7 @@ export class Router extends ClassPropertiesWrapper<AddMethodDefImpls> {
 	#addRoute(
 		method: MethodsEnum,
 		path: string,
-		routeConfig: RouteDefConfig<any>,
+		routeConfig: RouteConfig = {},
 		handler: RouteDefHandler<any>,
 		collection: Route[] = this.#routes,
 	) {

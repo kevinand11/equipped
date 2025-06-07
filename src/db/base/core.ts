@@ -1,8 +1,8 @@
 import { ClientSession, Filter, UpdateFilter } from 'mongodb'
 import { ClassPropertiesWrapper } from 'valleyed'
 
-import { DistributiveOmit } from '../types'
-import { QueryParams, QueryResults } from './query'
+import { QueryParams, QueryResults } from '../../schemas/db'
+import { DistributiveOmit } from '../../types'
 
 export type IdType = { _id: string } | { id: string }
 export type Entity = ClassPropertiesWrapper<any, any>

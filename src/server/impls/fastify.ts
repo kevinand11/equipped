@@ -17,9 +17,10 @@ import { Instance } from '../../instance'
 import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
-import { Request, Response, type IncomingFile } from '../requests'
+import { Request, Response } from '../requests'
 import { StatusCodes, type Route } from '../types'
 import { Server, type FullRoute } from './base'
+import { IncomingFile } from '../../schemas'
 
 function getFastifyApp() {
 	const instance = Instance.get()

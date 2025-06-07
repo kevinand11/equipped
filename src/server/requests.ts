@@ -3,6 +3,7 @@ import type { Readable } from 'stream'
 import { File } from 'valleyed'
 
 import type { RequestError } from '../errors'
+import { IncomingFile } from '../schemas'
 import type { FileSchema, HeadersType, MethodsEnum, RouteDefToReqRes, StatusCodesEnum } from './types'
 import type { DistributiveOmit, IsInTypeList, Prettify } from '../types'
 import type { AuthUser, RefreshUser } from '../types/overrides'
@@ -150,13 +151,4 @@ export class Response<Def extends RouteDefToReqRes<any> = any> {
 	get shouldJSONify() {
 		return this.body === null || this.body === undefined
 	}
-}
-
-export interface IncomingFile {
-	name: string
-	type: string
-	size: number
-	isTruncated: boolean
-	data: Buffer
-	duration: number
 }

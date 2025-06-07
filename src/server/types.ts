@@ -95,7 +95,7 @@ type Res<T extends RouteDefToReqRes<any>> = Awaitable<
 >
 export type RouteDefHandler<Def extends RouteDef> = (req: Request<RouteDefToReqRes<Def>>) => Res<RouteDefToReqRes<Def>>
 export type AddMethodDefImpls = {
-	[Method in MethodsEnum]: <T extends RouteDef>(path: string, config: RouteDefConfig<T>, handler: RouteDefHandler<T>) => Route<T>
+	[Method in MethodsEnum]: <T extends RouteDef>(path: string, config?: RouteConfig) => (handler: RouteDefHandler<T>) => Route<T>
 }
 
 type RouteMiddlewareHandler<Def extends RouteDef> = (req: Request<RouteDefToReqRes<Def>>) => Awaitable<void>

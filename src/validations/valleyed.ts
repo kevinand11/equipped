@@ -1,7 +1,7 @@
 import { PipeError, v } from 'valleyed'
 
 import { Instance } from '../instance'
-import type { IncomingFile } from '../server/requests'
+import type { IncomingFile } from '../schemas'
 
 export * from 'valleyed/lib/api/externals'
 
