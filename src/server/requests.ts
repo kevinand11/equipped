@@ -4,7 +4,7 @@ import { File } from 'valleyed'
 
 import type { RequestError } from '../errors'
 import { IncomingFile } from '../schemas'
-import type { FileSchema, HeadersType, MethodsEnum, RouteDefToReqRes, StatusCodesEnum } from './types'
+import type { DefaultHeaders, FileSchema, MethodsEnum, RouteDefToReqRes, StatusCodesEnum } from './types'
 import type { DistributiveOmit, IsInTypeList, Prettify } from '../types'
 import type { AuthUser, RefreshUser } from '../types/overrides'
 import { parseJSONValue } from '../utils/json'
@@ -25,8 +25,9 @@ type UnionMapper<T> = {
 type MappedUnion<T> = UnionMapper<T>[keyof UnionMapper<T>]
 
 type ReqUser<T> = { error?: RequestError; value?: T }
+type FallbackHeadersType = Record<string, string | string[] | undefined>
 
-export class Request<Def extends RouteDefToReqRes<any> = any> {
+export class Request<Def extends RouteDefToReqRes<any>> {
 	readonly ip: string | undefined
 	readonly method: MethodsEnum
 	readonly path: string
@@ -35,7 +36,7 @@ export class Request<Def extends RouteDefToReqRes<any> = any> {
 	readonly query: Def['query']
 	readonly cookies: Record<string, any>
 	readonly rawBody: unknown
-	readonly headers: Prettify<Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & HeadersType>
+	readonly headers: Prettify<Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & FallbackHeadersType>
 	users: {
 		access: ReqUser<AuthUser>
 		refresh: ReqUser<RefreshUser>
@@ -63,7 +64,7 @@ export class Request<Def extends RouteDefToReqRes<any> = any> {
 		params: Def['params']
 		query: Def['query']
 		cookies: Record<string, any>
-		headers: Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & HeadersType
+		headers: Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & FallbackHeadersType
 		files: Record<string, IncomingFile[]>
 		method: MethodsEnum
 		path: string
@@ -113,7 +114,7 @@ export class Request<Def extends RouteDefToReqRes<any> = any> {
 		T extends Omit<Def, 'response' | 'statusCode' | 'responseHeaders'> & {
 			response: RequestError['serializedErrors']
 			statusCode: RequestError['statusCode']
-			responseHeaders: HeadersType
+			responseHeaders: DefaultHeaders
 		},
 	>(params: DistributiveOmit<RequestParams<T>, 'piped'>) {
 		return new Response<T>(<any>{ ...params, piped: false })
@@ -126,11 +127,11 @@ type RequestParams<Def extends RouteDefToReqRes<any>, T = Def['response']> = { b
 > extends true
 	? { status?: Def['statusCode'] }
 	: { status: Def['statusCode'] }) &
-	(IsInTypeList<Def['responseHeaders'], [HeadersType]> extends true
+	(IsInTypeList<Def['responseHeaders'], [DefaultHeaders]> extends true
 		? { headers?: Def['responseHeaders'] }
 		: { headers: Def['responseHeaders'] })
 
-export class Response<Def extends RouteDefToReqRes<any> = any> {
+export class Response<Def extends RouteDefToReqRes<any>> {
 	readonly body: Def['response'] | undefined
 	readonly status: Def['statusCode']
 	readonly headers: Def['responseHeaders']
@@ -144,6 +145,7 @@ export class Response<Def extends RouteDefToReqRes<any> = any> {
 
 		if (!this.piped) {
 			const contentType = Object.keys(this.headers as any).find((key) => key.toLowerCase() === 'content-type')
+			// @ts-expect-error indexing on generic
 			if (!contentType) this.headers['Content-Type'] = 'application/json'
 		}
 	}

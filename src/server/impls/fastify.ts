@@ -98,7 +98,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		await this.#fastifyApp.ready()
 	}
 
-	protected registerRoute(route: FullRoute) {
+	protected registerRoute(route: FullRoute<any>) {
 		this.#fastifyApp.register(async (inst) => {
 			inst.route({
 				url: route.path,
@@ -145,7 +145,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		}))
 	}
 
-	makeController(cb: Defined<Route['handler']>) {
+	makeController(cb: Defined<Route<any>['handler']>) {
 		const handler: RouteHandlerMethod = async (req, reply) => {
 			const request = await this.parse(req)
 			const rawResponse = await cb(request)
@@ -156,14 +156,14 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		return handler
 	}
 
-	makeMiddleware(cb: Defined<Route['middlewares']>[number]['cb']) {
+	makeMiddleware(cb: Defined<Route<any>['middlewares']>[number]['cb']) {
 		const handler: preHandlerHookHandler = async (req) => {
 			await cb(await this.parse(req))
 		}
 		return handler
 	}
 
-	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
+	makeErrorMiddleware(cb: Defined<Route<any>['onError']>['cb']) {
 		const handler: FastifyInstance['errorHandler'] = async (error, req, reply) => {
 			const request = await this.parse(req)
 			const rawResponse = await cb(request, error)

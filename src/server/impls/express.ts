@@ -72,7 +72,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})) */
 	}
 
-	protected registerRoute(route: FullRoute) {
+	protected registerRoute(route: FullRoute<any>) {
 		const openapi = prepareOpenapiMethod(route.schema, this.#ref, this.baseOpenapiDoc, route.path)
 		const controllers: (express.RequestHandler | express.ErrorRequestHandler)[] = [
 			...route.middlewares.map((m) => this.makeMiddleware(m.cb)),
@@ -114,7 +114,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 	protected async onLoad() {}
 
-	protected async parse(req: express.Request): Promise<Request> {
+	protected async parse(req: express.Request): Promise<Request<any>> {
 		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 		const headers = {
 			...allHeaders,
@@ -145,7 +145,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		)
 
 		// @ts-ignore
-		return (req.savedReq ||= new Request({
+		return (req.savedReq ||= new Request<any>({
 			ip: req.ip,
 			body: req.body ?? {},
 			cookies: req.cookies ?? {},
@@ -158,7 +158,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		}))
 	}
 
-	makeController(cb: Defined<Route['handler']>) {
+	makeController(cb: Defined<Route<any>['handler']>) {
 		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
 				const request = await this.parse(req)
@@ -178,7 +178,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		}
 	}
 
-	makeMiddleware(cb: Defined<Route['middlewares']>[number]['cb']) {
+	makeMiddleware(cb: Defined<Route<any>['middlewares']>[number]['cb']) {
 		return async (req: express.Request, _res: express.Response, next: express.NextFunction) => {
 			try {
 				await cb(await this.parse(req))
@@ -189,7 +189,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		}
 	}
 
-	makeErrorMiddleware(cb: Defined<Route['onError']>['cb']) {
+	makeErrorMiddleware(cb: Defined<Route<any>['onError']>['cb']) {
 		return async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
 			const request = await this.parse(req)
 			const rawResponse = await cb(request, err)

@@ -1,6 +1,6 @@
 import { ClassPropertiesWrapper } from 'valleyed'
 
-import { AddMethodDefImpls, Methods, RouteDefHandler, RouteGeneralConfig, Route, MethodsEnum, RouteConfig } from './types'
+import { AddMethodDefImpls, Methods, RouteDefHandler, RouteGeneralConfig, Route, MethodsEnum, RouteConfig, RouteDef } from './types'
 
 export const cleanPath = (path: string) => {
 	let cleaned = path.replace(/(\/\s*)+/g, '/')
@@ -9,7 +9,7 @@ export const cleanPath = (path: string) => {
 	return cleaned
 }
 
-export const groupRoutes = (config: RouteGeneralConfig, routes: Route[]): Route[] =>
+export const groupRoutes = <T extends RouteDef>(config: RouteGeneralConfig<T>, routes: Route<T>[]): Route<T>[] =>
 	routes.map((route) => ({
 		...config,
 		...route,
@@ -20,11 +20,11 @@ export const groupRoutes = (config: RouteGeneralConfig, routes: Route[]): Route[
 	}))
 
 export class Router extends ClassPropertiesWrapper<AddMethodDefImpls> {
-	#config: RouteGeneralConfig = { path: '' }
-	#routes: Route[] = []
+	#config: RouteGeneralConfig<any> = { path: '' }
+	#routes: Route<any>[] = []
 	#children: Router[] = []
 
-	constructor(config?: RouteGeneralConfig) {
+	constructor(config?: RouteGeneralConfig<any>) {
 		super(
 			Object.values(Methods).reduce(
 				(acc, method) => ({
@@ -40,19 +40,19 @@ export class Router extends ClassPropertiesWrapper<AddMethodDefImpls> {
 		if (config) this.#config = config
 	}
 
-	#addRoute(
+	#addRoute<T extends RouteDef>(
 		method: MethodsEnum,
 		path: string,
-		routeConfig: RouteConfig = {},
-		handler: RouteDefHandler<any>,
-		collection: Route[] = this.#routes,
+		routeConfig: RouteConfig<T> = {},
+		handler: RouteDefHandler<T>,
+		collection: Route<T>[] = this.#routes,
 	) {
 		const route = groupRoutes(this.#config, [{ ...routeConfig, path, method, handler }])[0]
 		collection.push(route)
 		return route
 	}
 
-	add(...routes: Route[]) {
+	add<T extends RouteDef>(...routes: Route<T>[]) {
 		const mapped = groupRoutes(this.#config, routes)
 		this.#routes.push(...mapped)
 	}

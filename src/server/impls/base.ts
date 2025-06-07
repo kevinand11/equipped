@@ -14,11 +14,11 @@ import type { Defined } from '../../types'
 import { parseAuthUser } from '../middlewares'
 import type { Request } from '../requests'
 import { cleanPath, type Router } from '../routes'
-import { Methods, StatusCodes, StatusCodesEnum, type Route } from '../types'
+import { Methods, RouteDef, StatusCodes, StatusCodesEnum, type Route } from '../types'
 
-export type FullRoute = Required<
-	Omit<Route, 'schema' | 'groups' | 'security' | 'title' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler'>
-> & { schema: FastifySchema; onError?: Route['onError'] }
+export type FullRoute<T extends RouteDef> = Required<
+	Omit<Route<T>, 'schema' | 'groups' | 'security' | 'title' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler'>
+> & { schema: FastifySchema; onError?: Route<T>['onError'] }
 
 declare module 'openapi-types' {
 	namespace OpenAPIV3 {
@@ -43,7 +43,7 @@ function buildResponseSchema(statusCode: StatusCodesEnum) {
 }
 
 export abstract class Server<Req = any, Res = any> {
-	#routesByKey = new Map<string, FullRoute>()
+	#routesByKey = new Map<string, FullRoute<any>>()
 	#listener: Listener | null = null
 	#registeredTags: Record<string, boolean> = {}
 	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
@@ -81,12 +81,14 @@ export abstract class Server<Req = any, Res = any> {
 	}
 	protected cors = {
 		origin: '*',
-		methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
+		methods: Object.values(Methods)
+			.filter((m) => m !== Methods.options)
+			.map((m) => m.toUpperCase()),
 	}
 	protected abstract onLoad(): Promise<void>
 	protected abstract startServer(port: number): Promise<boolean>
-	protected abstract parse(req: Req, res: Res): Promise<Request>
-	protected abstract registerRoute(route: FullRoute): void
+	protected abstract parse(req: Req, res: Res): Promise<Request<any>>
+	protected abstract registerRoute(route: FullRoute<any>): void
 
 	constructor(server: http.Server) {
 		this.server = server
@@ -107,7 +109,7 @@ export abstract class Server<Req = any, Res = any> {
 		routers.map((router) => router.routes).forEach((routes) => this.addRoute(...routes))
 	}
 
-	addRoute(...routes: Route[]) {
+	addRoute<T extends RouteDef>(...routes: Route<T>[]) {
 		routes.forEach((route) => this.#regRoute(route))
 	}
 
@@ -115,7 +117,7 @@ export abstract class Server<Req = any, Res = any> {
 		await this.onLoad()
 	}
 
-	#buildTag(groups: Defined<Route['groups']>) {
+	#buildTag(groups: Defined<Route<any>['groups']>) {
 		if (!groups.length) return undefined
 		const parsed = groups.map((g) => (typeof g === 'string' ? { name: g } : g))
 		const name = parsed.map((g) => g.name).join(' > ')
@@ -142,8 +144,9 @@ export abstract class Server<Req = any, Res = any> {
 		return name
 	}
 
-	#regRoute(route: Route) {
-		const middlewares = [parseAuthUser, ...(route.middlewares ?? [])]
+	#regRoute<T extends RouteDef>(route: Route<T>) {
+		const middlewares = route.middlewares ?? []
+		middlewares.unshift(parseAuthUser as any)
 		route.onSetupHandler?.(route)
 		middlewares.forEach((m) => m.onSetup?.(route))
 		route.onError?.onSetup?.(route)
@@ -155,7 +158,7 @@ export abstract class Server<Req = any, Res = any> {
 
 		const statusCode = schema?.defaultStatusCode ?? StatusCodes.Ok
 
-		const fullRoute: FullRoute = {
+		const fullRoute: FullRoute<T> = {
 			method,
 			middlewares,
 			handler,
