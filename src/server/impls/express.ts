@@ -21,8 +21,7 @@ import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response, type IncomingFile } from '../requests'
-import type { Route } from '../types'
-import { StatusCodes } from '../types'
+import { StatusCodes, type Route } from '../types'
 import { Server, type FullRoute } from './base'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
@@ -163,7 +162,8 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			try {
 				const request = await this.parse(req)
 				const rawResponse = await cb(request)
-				const response = rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse })
+				const response =
+					rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.Ok, headers: {} })
 				if (!response.piped) {
 					Object.entries(<object>response.headers).forEach(([key, value]) => res.header(key, value))
 					const type = response.shouldJSONify ? 'json' : 'send'
@@ -193,9 +193,11 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			const request = await this.parse(req)
 			const rawResponse = await cb(request, err)
 			const response =
-				rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.BadRequest })
+				rawResponse instanceof Response
+					? rawResponse
+					: request.res({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
 			if (!response.piped) {
-				Object.entries(response.headers).forEach(([key, value]) => value && res.header(key, value))
+				Object.entries(response.headers).forEach(([key, value]) => value && res.header(key, value as any))
 				res.status(response.status).send(response.body).end()
 			} else {
 				response.body.pipe(res)

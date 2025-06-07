@@ -5,6 +5,7 @@ import type { FastifySchema } from 'fastify'
 import type { OpenAPIV3_1 } from 'openapi-types'
 import io from 'socket.io'
 import supertest from 'supertest'
+import { v } from 'valleyed'
 
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
@@ -12,15 +13,12 @@ import { Listener } from '../../listeners'
 import type { Defined } from '../../types'
 import { parseAuthUser } from '../middlewares'
 import type { Request } from '../requests'
-import type { Router } from '../routes'
-import { cleanPath } from '../routes'
-import type { Route } from '../types'
-import { StatusCodes } from '../types'
+import { cleanPath, type Router } from '../routes'
+import { Methods, StatusCodes, StatusCodesEnum, type Route } from '../types'
 
 export type FullRoute = Required<
-	Omit<Route, 'schema' | 'groups' | 'security' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler' | '__def'>
+	Omit<Route, 'schema' | 'groups' | 'security' | 'title' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler'>
 > & { schema: FastifySchema; onError?: Route['onError'] }
-type Schemas = Record<string, Defined<Route['schema']>>
 
 declare module 'openapi-types' {
 	namespace OpenAPIV3 {
@@ -33,10 +31,19 @@ declare module 'openapi-types' {
 	}
 }
 
+function buildResponseSchema(statusCode: StatusCodesEnum) {
+	return Object.fromEntries(
+		Object.entries(StatusCodes)
+			.filter(([, value]) => value > 299 && value != statusCode)
+			.map(([key, value]) => [
+				value.toString(),
+				v.array(v.object({ message: v.string(), field: v.optional(v.string()) })).meta({ description: `${key} Response` }),
+			]),
+	)
+}
+
 export abstract class Server<Req = any, Res = any> {
-	#routesByPath = new Map<string, FullRoute>()
 	#routesByKey = new Map<string, FullRoute>()
-	#schemas: Schemas = {}
 	#listener: Listener | null = null
 	#registeredTags: Record<string, boolean> = {}
 	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
@@ -104,10 +111,6 @@ export abstract class Server<Req = any, Res = any> {
 		routes.forEach((route) => this.#regRoute(route))
 	}
 
-	addSchema(...schemas: Schemas[]) {
-		schemas.forEach((schema) => Object.assign(this.#schemas, schema))
-	}
-
 	async load() {
 		await this.onLoad()
 	}
@@ -145,37 +148,37 @@ export abstract class Server<Req = any, Res = any> {
 		middlewares.forEach((m) => m.onSetup?.(route))
 		route.onError?.onSetup?.(route)
 
-		const { method, path, handler, schema, security, onError, hideSchema = false } = route
-		const pathKey = `(${method.toUpperCase()}) ${path}`
-		const { key = pathKey } = route
+		const { method, path, handler, schema, title, security, onError } = route
+		const key = `(${method.toUpperCase()}) ${path}`
 
 		const tag = this.#buildTag(route.groups ?? [])
 
-		const scheme = Object.assign({}, schema, this.#schemas[key])
+		const statusCode = schema?.defaultStatusCode ?? StatusCodes.Ok
+
 		const fullRoute: FullRoute = {
 			method,
 			middlewares,
 			handler,
-			key,
 			path: cleanPath(path),
 			onError,
 			schema: {
-				...scheme,
-				summary: scheme.title ?? scheme.summary ?? cleanPath(path),
-				hide: hideSchema,
+				operationId: key,
+				body: schema?.body?.toJsonSchema(),
+				querystring: schema?.query?.toJsonSchema(),
+				params: schema?.params?.toJsonSchema(),
+				headers: schema?.headers?.toJsonSchema(),
+				response: schema?.response
+					? v.object({ ...buildResponseSchema(statusCode), [statusCode]: schema.response }).toJsonSchema()
+					: undefined,
+				summary: title ?? cleanPath(path),
+				hide: !schema || schema.hide,
 				tags: tag ? [tag] : undefined,
 				description: route.descriptions?.join('\n\n'),
 				security,
 			},
 		}
-		if (this.#routesByPath.get(pathKey))
-			throw new EquippedError(`Route path ${pathKey} already registered. All route paths and methods combinations must be unique`, {
-				route,
-				pathKey,
-			})
 		if (this.#routesByKey.get(key))
-			throw new EquippedError(`Route key ${fullRoute.key} already registered. All route keys must be unique`, { route, key })
-		this.#routesByPath.set(pathKey, fullRoute)
+			throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
 		this.#routesByKey.set(key, fullRoute)
 		this.registerRoute(fullRoute)
 	}
@@ -186,19 +189,24 @@ export abstract class Server<Req = any, Res = any> {
 
 	async start(port: number) {
 		this.addRoute({
-			method: 'get',
+			method: Methods.get,
 			path: `${this.settings.openapi.docsPath}/`,
+			schema: {
+				body: v.string(),
+				defaultStatusCode: StatusCodes.Found,
+				responseHeaders: v.object({ Location: v.string() }),
+				hide: true,
+			},
 			handler: (req) =>
 				req.res({
 					body: '',
 					status: StatusCodes.Found,
 					headers: { Location: './index.html' },
 				}),
-			hideSchema: true,
 		})
 
 		this.addRoute({
-			method: 'get',
+			method: Methods.get,
 			path: `${this.settings.openapi.docsPath}/index.html`,
 			handler: (req) =>
 				req.res({
@@ -207,11 +215,10 @@ export abstract class Server<Req = any, Res = any> {
 						.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 					headers: { 'Content-Type': 'text/html' },
 				}),
-			hideSchema: true,
 		})
 
 		this.addRoute({
-			method: 'get',
+			method: Methods.get,
 			path: `${this.settings.openapi.docsPath}/redoc.html`,
 			handler: (req) =>
 				req.res({
@@ -220,22 +227,20 @@ export abstract class Server<Req = any, Res = any> {
 						.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
 					headers: { 'Content-Type': 'text/html' },
 				}),
-			hideSchema: true,
 		})
 
 		this.addRoute({
-			method: 'get',
+			method: Methods.get,
 			path: '__health',
 			handler: async (req) =>
 				req.res({
 					body: `${this.settings.appId} service running`,
 					headers: { 'Content-Type': 'text/plain' },
 				}),
-			hideSchema: true,
 		})
 
 		const started = await this.startServer(port)
-		if (started) await Instance.get().logger.info(`${this.settings.appId} service listening on port ${port}`)
+		if (started) Instance.get().logger.info(`${this.settings.appId} service listening on port ${port}`)
 		return started
 	}
 }

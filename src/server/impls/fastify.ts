@@ -18,8 +18,7 @@ import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response, type IncomingFile } from '../requests'
-import type { Route } from '../types'
-import { StatusCodes } from '../types'
+import { StatusCodes, type Route } from '../types'
 import { Server, type FullRoute } from './base'
 
 function getFastifyApp() {
@@ -149,7 +148,8 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		const handler: RouteHandlerMethod = async (req, reply) => {
 			const request = await this.parse(req)
 			const rawResponse = await cb(request)
-			const response = rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse })
+			const response =
+				rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.Ok, headers: {} })
 			return reply.status(response.status).headers(response.headers).send(response.body)
 		}
 		return handler
@@ -167,7 +167,9 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			const request = await this.parse(req)
 			const rawResponse = await cb(request, error)
 			const response =
-				rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.BadRequest })
+				rawResponse instanceof Response
+					? rawResponse
+					: request.res({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
 			return reply.status(response.status).headers(response.headers).send(response.body)
 		}
 		return handler
@@ -176,7 +178,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 
 declare module 'fastify' {
 	interface FastifyRequest {
-		savedReq: Request | null
+		savedReq: Request<any> | null
 	}
 }
 
