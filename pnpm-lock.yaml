@@ -135,8 +135,8 @@ importers:
         specifier: 0.5.2
         version: 0.5.2
       valleyed:
-        specifier: 4.4.10
-        version: 4.4.10
+        specifier: link:../valleyed
+        version: link:../valleyed
     devDependencies:
       '@commitlint/cli':
         specifier: ^19.8.1
@@ -2096,10 +2096,6 @@ packages:
     resolution: {integrity: sha512-UxC0Yv1Y4WRJiGQxQkP0hfdL0/5/6YvdfOOClRgJ0qppSarkhneSa6UvkMkms0AkdGimSH3Ikqm+6mkMmX7vGA==}
     engines: {node: '>=12.22.0'}
 
-  ip-regex@4.3.0:
-    resolution: {integrity: sha512-B9ZWJxHHOHUhUjCPrMpLD4xEq35bUTClHM1S6CBU5ixQnkZmwipwgc96vAd7AAGM9TGHvJR+Uss+/Ak6UphK+Q==}
-    engines: {node: '>=8'}
-
   ipaddr.js@1.9.1:
     resolution: {integrity: sha512-0KI/607xoxSToH7GjN1FfSbLoU0+btTicjsQSWQlh/hZykN8KpmMf7uYwPW3R+akZ6R/w18ZlXSHBYXiYUPO3g==}
     engines: {node: '>= 0.10'}
@@ -3450,10 +3446,6 @@ packages:
     resolution: {integrity: sha512-qkf4trmKSIiMTs/E63cxH+ojC2unam7rJ0WrauAzpT3ECNTxGRMlaXxVbfxMUC/w0LaYk6jQ4y/nGR9uBO3tww==}
     engines: {node: '>=12.0.0'}
 
-  tlds@1.251.0:
-    resolution: {integrity: sha512-yztVk5O1LGKCjPd+7soBQyiKvSBXI5qugc/X0C7pLa0rV5ufBS6xcyX0pdf4NznO8xcZ5fqX248q+jTHd4AQJA==}
-    hasBin: true
-
   to-fast-properties@2.0.0:
     resolution: {integrity: sha512-/OaKK0xYrs3DmxRYqL/yDc+FxFUVYhDlXMhRmv3z915w2HF1tnN1omB354j8VUGO/hbRzyD6Y3sA7v7GS/ceog==}
     engines: {node: '>=4'}
@@ -3588,15 +3580,6 @@ packages:
   url-parse@1.5.10:
     resolution: {integrity: sha512-WypcfiRhfeUP9vvF0j6rw0J3hrWrw6iZv3+22h6iRMJ/8z1Tj6XfLP4DsUix5MhMPnXpiHDoKyoZ/bdCkwBCiQ==}
 
-  url-regex-safe@4.0.0:
-    resolution: {integrity: sha512-BrnFCWKNFrFnRzKD66NtJqQepfJrUHNPvPxE5y5NSAhXBb4OlobQjt7907Jm4ItPiXaeX+dDWMkcnOd4jR9N8A==}
-    engines: {node: '>= 14'}
-    peerDependencies:
-      re2: ^1.20.1
-    peerDependenciesMeta:
-      re2:
-        optional: true
-
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
@@ -3614,9 +3597,6 @@ packages:
   validator@13.12.0:
     resolution: {integrity: sha512-c1Q0mCiPlgdTVVVIJIrBuxNicYE+t/7oKeI9MWLj3fh/uq2Pxh/3eeWbVZ4OcGW1TUf53At0njHw5SMdA3tmMg==}
     engines: {node: '>= 0.10'}
-
-  valleyed@4.4.10:
-    resolution: {integrity: sha512-KrvwYCiwKIWjIR/tZ9hpUem+Si5b08PEkq4WM1iV2PZy7slRoOguGXMGr5MzcWVxeBy7ko3ho4wB0RynDkm5NA==}
 
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
@@ -5995,8 +5975,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  ip-regex@4.3.0: {}
-
   ipaddr.js@1.9.1: {}
 
   ipaddr.js@2.2.0: {}
@@ -7451,8 +7429,6 @@ snapshots:
       fdir: 6.4.3(picomatch@4.0.2)
       picomatch: 4.0.2
 
-  tlds@1.251.0: {}
-
   to-fast-properties@2.0.0: {}
 
   to-regex-range@5.0.1:
@@ -7605,11 +7581,6 @@ snapshots:
       querystringify: 2.2.0
       requires-port: 1.0.0
 
-  url-regex-safe@4.0.0:
-    dependencies:
-      ip-regex: 4.3.0
-      tlds: 1.251.0
-
   util-deprecate@1.0.2: {}
 
   utils-merge@1.0.1: {}
@@ -7622,12 +7593,6 @@ snapshots:
       spdx-expression-parse: 3.0.1
 
   validator@13.12.0: {}
-
-  valleyed@4.4.10:
-    dependencies:
-      url-regex-safe: 4.0.0
-    transitivePeerDependencies:
-      - re2
 
   vary@1.1.2: {}
 

@@ -1,6 +1,5 @@
 import type { FastifySchema } from 'fastify'
-import { File } from 'valleyed'
-import { ExtractI, VBase } from 'valleyed/lib/api/base'
+import { File, Pipe, PipeOutput } from 'valleyed'
 
 import type { RequestError } from '../errors'
 import type { Defined, EnumToStringUnion, Prettify, IsInTypeList, IsType, JSONValue } from '../types'
@@ -70,7 +69,7 @@ export interface ApiDef<T extends Api> {
 	__apiDef: true
 }
 
-export type ReshapeBody<T> = T extends VBase<any, any> ? ExtractI<T> : T
+export type ReshapeBody<T> = T extends Pipe<any, any, any> ? PipeOutput<T> : T
 type ApiBody<T> = T extends File
 	? FileSchema
 	: T extends Date

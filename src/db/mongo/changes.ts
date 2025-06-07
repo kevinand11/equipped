@@ -4,7 +4,7 @@ import { EquippedError } from '../../errors'
 import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { retry } from '../../utils/retry'
-import { Validation } from '../../validations'
+import { differ } from '../../validations'
 import { DbChange, DbChangeCallbacks, TopicPrefix } from '../_instance'
 import * as core from '../core'
 
@@ -64,7 +64,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 					await this.callbacks.updated({
 						before: this.mapper(before)!,
 						after: this.mapper(after)!,
-						changes: Validation.Differ.from(Validation.Differ.diff(before, after)),
+						changes: differ.from(differ.diff(before, after)),
 					})
 				else if (op === 'd' && this.callbacks.deleted && before)
 					await this.callbacks.deleted({
@@ -88,7 +88,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 				if (started) return { done: true, value: true }
 				await collection.findOneAndUpdate(condition, { $set: { colName } as any }, { upsert: true })
 				await collection.findOneAndDelete(condition)
-				await Instance.get().logger.warn(`Waiting for db changes for ${dbColName} to start...`)
+				Instance.get().logger.warn(`Waiting for db changes for ${dbColName} to start...`)
 				return { done: false }
 			},
 			6,
