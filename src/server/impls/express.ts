@@ -17,15 +17,13 @@ import { pinoHttp } from 'pino-http'
 import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
-import type { StorageFile } from '../../storage'
 import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
-import { Request, Response } from '../requests'
+import { Request, Response, type IncomingFile } from '../requests'
 import type { Route } from '../types'
 import { StatusCodes } from '../types'
-import type { FullRoute } from './base'
-import { Server } from './base'
+import { Server, type FullRoute } from './base'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express
@@ -131,7 +129,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			await Promise.all(
 				Object.entries(req.files ?? {}).map(async ([key, file]) => {
 					const uploads = Array.isArray(file) ? file : [file]
-					const fileArray: StorageFile[] = await Promise.all(
+					const fileArray: IncomingFile[] = await Promise.all(
 						uploads.map(async (f) => ({
 							name: f.name,
 							type: f.mimetype,

@@ -3,7 +3,6 @@ import type { Readable } from 'stream'
 import { File } from 'valleyed'
 
 import type { RequestError } from '../errors'
-import type { StorageFile } from '../storage'
 import type { Api, FileSchema, GetApiPart, HeadersType, ReshapeBody, StatusCodes } from './types'
 import type { DistributiveOmit, IsInTypeList, Prettify } from '../types'
 import type { AuthUser, RefreshUser } from '../types/overrides'
@@ -11,7 +10,7 @@ import { parseJSONValue } from '../utils/json'
 
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 
-type IsFileOrFileArray<T> = T extends FileSchema | File ? StorageFile[] : T extends FileSchema[] ? StorageFile[] : T
+type IsFileOrFileArray<T> = T extends FileSchema | File ? IncomingFile[] : T extends FileSchema[] ? IncomingFile[] : T
 type ApiToBody<Def extends Api> = Prettify<MappedUnion<ReshapeBody<Def['body']>>>
 type UnionMapper<T> = {
 	[K in T extends infer P ? keyof P : never]: T extends infer P
@@ -64,7 +63,7 @@ export class Request<Def extends Api = Api> {
 		query: Def['query']
 		cookies: Record<string, any>
 		headers: Record<HeaderKeys, string | undefined> & GetApiPart<Def, 'requestHeaders', true, {}> & HeadersType
-		files: Record<string, StorageFile[]>
+		files: Record<string, IncomingFile[]>
 		method: Def['method']
 		path: string
 	}) {
@@ -152,4 +151,13 @@ export class Response<T, S extends StatusCodes, H extends HeadersType> {
 	get shouldJSONify() {
 		return this.body === null || this.body === undefined
 	}
+}
+
+export interface IncomingFile {
+	name: string
+	type: string
+	size: number
+	isTruncated: boolean
+	data: Buffer
+	duration: number
 }

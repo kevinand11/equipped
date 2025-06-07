@@ -14,15 +14,13 @@ import qs from 'qs'
 import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
-import type { StorageFile } from '../../storage'
 import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
 import { errorHandler, notFoundHandler } from '../middlewares'
-import { Request, Response } from '../requests'
+import { Request, Response, type IncomingFile } from '../requests'
 import type { Route } from '../types'
 import { StatusCodes } from '../types'
-import type { FullRoute } from './base'
-import { Server } from './base'
+import { Server, type FullRoute } from './base'
 
 function getFastifyApp() {
 	const instance = Instance.get()
@@ -64,7 +62,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			limits: { fileSize: this.settings.requests.maxFileUploadSizeInMb * 1024 * 1024 },
 			onFile: async (f) => {
 				const buffer = await f.toBuffer()
-				const parsed: StorageFile = {
+				const parsed: IncomingFile = {
 					name: f.filename,
 					type: f.mimetype,
 					size: buffer.byteLength,
@@ -190,6 +188,6 @@ function excludeBufferKeys<T>(body: T) {
 	const nonFileEntries = entries.filter(([_, value]) => !isFile(value))
 	return {
 		body: <T>Object.fromEntries(nonFileEntries),
-		files: <Record<string, StorageFile[]>>Object.fromEntries(fileEntries),
+		files: <Record<string, IncomingFile[]>>Object.fromEntries(fileEntries),
 	}
 }
