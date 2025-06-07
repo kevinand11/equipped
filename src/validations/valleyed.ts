@@ -10,7 +10,7 @@ export const file = (err?: string) =>
 		err = err ?? `is larger than allowed limit of ${Instance.get().settings.requests.maxFileUploadSizeInMb}mb`
 		const valid = input ? !input.isTruncated : true
 		if (valid) return input
-		throw new PipeError([err], input)
+		throw PipeError.root(err, input)
 	})
 
 declare module 'valleyed/lib/api/files' {

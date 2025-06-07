@@ -1,8 +1,6 @@
 import { Collection } from 'mongodb'
 import { v } from 'valleyed'
 
-import * as core from '../base/core'
-
 import {
 	QueryKeys,
 	queryResultsPipe,
@@ -10,7 +8,8 @@ import {
 	type QueryResults,
 	type QueryWhereBlock,
 	type QueryWhereClause,
-} from '.../../schemas/db'
+} from '../../schemas/db'
+import * as core from '../base/core'
 
 export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: string }>>(
 	collection: Collection<Model>,

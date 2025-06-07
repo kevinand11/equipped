@@ -7,20 +7,14 @@ import { ValidationError } from '../errors'
 export function validate<T extends Pipe<unknown, unknown>>(pipe: T, value: unknown): PipeOutput<T> {
 	const validity = pipe.safeParse(value)
 	if (validity.valid) return validity.value as PipeOutput<T>
-	const errorsObject = validity.error.messages
-		.map((error) => {
-			const splitKey = ': '
-			const [field, ...rest] = error.split(splitKey)
-			return { field, message: rest.join(splitKey) }
-		})
-		.reduce(
-			(acc, cur) => {
-				if (acc[cur.field]) acc[cur.field].push(cur.message)
-				else acc[cur.field] = [cur.message]
-				return acc
-			},
-			{} as Record<string, string[]>,
-		)
+	const errorsObject = validity.error.messages.reduce<Record<string, { field: string; messages: string[] }>>(
+		(acc, { path = '', message }) => {
+			if (acc[path]) acc[path].messages.push(message)
+			else acc[path] = { field: path, messages: [message] }
+			return acc
+		},
+		{},
+	)
 
-	throw new ValidationError(Object.entries(errorsObject).map(([key, value]) => ({ field: key, messages: value })))
+	throw new ValidationError(Object.values(errorsObject))
 }
