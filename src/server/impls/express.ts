@@ -8,19 +8,16 @@ import express from 'express'
 import fileUpload from 'express-fileupload'
 import { rateLimit } from 'express-rate-limit'
 // import slowDown from 'express-slow-down'
-import type { FastifySchemaValidationError } from 'fastify/types/schema'
 import helmet from 'helmet'
 // @ts-ignore
 import resolver from 'json-schema-resolver'
 import { pinoHttp } from 'pino-http'
 
-import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
-import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
-import { Request, Response } from '../requests'
-import { StatusCodes, type Route } from '../types'
+import { Request } from '../requests'
+import { StatusCodes } from '../types'
 import { Server } from './base'
 import { IncomingFile } from '../../schemas'
 
@@ -32,7 +29,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 	constructor() {
 		const app = express()
 		super(http.createServer(app), {
-			parse: async (req) => {
+			parseRequest: async (req) => {
 				const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 				const headers = {
 					...allHeaders,
@@ -62,10 +59,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 					),
 				)
 
-				// @ts-ignore
-				if (req.savedReq) return req.savedReq
-				// @ts-ignore
-				return (req.savedReq ||= new Request<any>({
+				return new Request<any>({
 					ip: req.ip,
 					body: req.body ?? {},
 					cookies: req.cookies ?? {},
@@ -75,38 +69,27 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 					path: req.path,
 					headers,
 					files,
-				}))
+				})
 			},
-			registerRoute: (route) => {
+			handleResponse: async (res, response) => {
+				if (!response.piped) {
+					Object.entries(<object>response.headers).forEach(([key, value]) => res.header(key, value))
+					const type = response.shouldJSONify ? 'json' : 'send'
+					res.status(response.status)[type](response.body).end()
+				} else {
+					response.body.pipe(res)
+				}
+			},
+			registerRoute: (route, cb) => {
 				const openapi = prepareOpenapiMethod(route.schema, this.#ref, this.baseOpenapiDoc, route.path)
-				const controllers: (express.RequestHandler | express.ErrorRequestHandler)[] = [
-					...route.middlewares.map((m) => this.makeMiddleware(m.cb)),
-					this.makeController(route.handler),
-				]
-				if (!route.schema.hide)
-					controllers.unshift(
-						this.#oapi[this.settings.requests.schemaValidation ? 'validPath' : 'path'](openapi),
-						(error: Error, _, __, next) => {
-							if ('validationErrors' in error) {
-								const validationErrors = <FastifySchemaValidationError[]>error.validationErrors
-								throw new ValidationError(
-									validationErrors.map((error) => ({
-										messages: [error.message ?? ''],
-										field: error.instancePath.replaceAll('/', '.').split('.').filter(Boolean).join('.'),
-									})),
-								)
-							}
-							next()
-						},
-					)
-				if (route.onError) controllers.push(this.makeErrorMiddleware(route.onError.cb))
+				const controllers = [!route.schema.hide ? this.#oapi.path(openapi) : undefined, cb].filter(Boolean)
 				this.#expressApp[route.method]?.(route.path, ...controllers)
 			},
 			registerErrorHandler: (cb) => {
-				this.#expressApp.use(this.makeErrorMiddleware(cb))
+				this.#expressApp.use(async (err, req, res, _next) => cb(err, req, res))
 			},
 			registerNotFoundHandler: (cb) => {
-				this.#expressApp.use(this.makeMiddleware(cb))
+				this.#expressApp.use(cb)
 			},
 			start: async (port) =>
 				new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
@@ -155,53 +138,5 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			delayAfter: this.settings.slowdown.delayAfter,
 			delayMs: this.settings.slowdown.delayInMs
 		})) */
-	}
-
-	makeController(cb: Defined<Route<any>['handler']>) {
-		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-			try {
-				const request = await this.implementations.parse(req, res)
-				const rawResponse = await cb(request)
-				const response =
-					rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.Ok, headers: {} })
-				if (!response.piped) {
-					Object.entries(<object>response.headers).forEach(([key, value]) => res.header(key, value))
-					const type = response.shouldJSONify ? 'json' : 'send'
-					res.status(response.status)[type](response.body).end()
-				} else {
-					response.body.pipe(res)
-				}
-			} catch (e) {
-				next(e)
-			}
-		}
-	}
-
-	makeMiddleware(cb: Defined<Route<any>['middlewares']>[number]['cb']) {
-		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-			try {
-				await cb(await this.implementations.parse(req, res))
-				return next()
-			} catch (e) {
-				return next(e)
-			}
-		}
-	}
-
-	makeErrorMiddleware(cb: Defined<Route<any>['onError']>['cb']) {
-		return async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-			const request = await this.implementations.parse(req, res)
-			const rawResponse = await cb(request, err)
-			const response =
-				rawResponse instanceof Response
-					? rawResponse
-					: request.res({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
-			if (!response.piped) {
-				Object.entries(response.headers).forEach(([key, value]) => value && res.header(key, value as any))
-				res.status(response.status).send(response.body).end()
-			} else {
-				response.body.pipe(res)
-			}
-		}
 	}
 }

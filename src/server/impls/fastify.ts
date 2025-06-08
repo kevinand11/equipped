@@ -6,7 +6,7 @@ import fastifyMultipart from '@fastify/multipart'
 import fastifyRateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
 import fastifySwagger from '@fastify/swagger'
-import type { FastifyReply, FastifyRequest, preHandlerHookHandler, RouteHandlerMethod } from 'fastify'
+import type { FastifyReply, FastifyRequest } from 'fastify'
 import Fastify from 'fastify'
 // import fastifySlowDown from 'fastify-slow-down'
 import qs from 'qs'
@@ -14,10 +14,9 @@ import qs from 'qs'
 import { ValidationError } from '../../errors'
 import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
-import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
-import { Request, Response } from '../requests'
-import { StatusCodes, type Route } from '../types'
+import { Request } from '../requests'
+import { StatusCodes } from '../types'
 import { Server } from './base'
 import { IncomingFile } from '../../schemas'
 
@@ -43,7 +42,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	constructor() {
 		const app = getFastifyApp()
 		super(app.server, {
-			parse: async (req) => {
+			parseRequest: async (req) => {
 				const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 				const headers = {
 					...allHeaders,
@@ -56,8 +55,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 				}
 				const { body, files } = excludeBufferKeys(req.body ?? {})
 
-				if (req.savedReq) return req.savedReq
-				return (req.savedReq = new Request({
+				return new Request({
 					ip: req.ip,
 					body,
 					cookies: req.cookies ?? {},
@@ -67,25 +65,26 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 					path: req.url,
 					headers,
 					files,
-				}))
+				})
 			},
-			registerRoute: (route) => {
+			handleResponse: async (res, response) => {
+				await res.status(response.status).headers(response.headers).send(response.body)
+			},
+			registerRoute: (route, cb) => {
 				this.#fastifyApp.register(async (inst) => {
 					inst.route({
 						url: route.path,
 						method: route.method,
-						handler: this.makeController(route.handler),
-						preHandler: route.middlewares.map((m) => this.makeMiddleware(m.cb)),
-						errorHandler: route.onError ? this.makeErrorMiddleware(route.onError.cb) : undefined,
+						handler: cb,
 						schema: route.schema,
 					})
 				})
 			},
 			registerErrorHandler: (cb) => {
-				this.#fastifyApp.setErrorHandler(this.makeErrorMiddleware(cb))
+				this.#fastifyApp.setErrorHandler(cb)
 			},
 			registerNotFoundHandler: (cb) => {
-				this.#fastifyApp.setNotFoundHandler(this.makeController(cb))
+				this.#fastifyApp.setNotFoundHandler(cb)
 			},
 			start: async (port) => {
 				await this.#fastifyApp.ready()
@@ -97,6 +96,8 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		this.#fastifyApp = app
 
 		app.decorateRequest('savedReq', null)
+		app.setValidatorCompiler(() => () => true)
+		app.setSerializerCompiler(() => (data) => JSON.stringify(data))
 		if (this.staticPath) app.register(fastifyStatic, { root: this.staticPath })
 		app.register(fastifyCookie, {})
 		app.register(fastifyCors, this.cors)
@@ -138,47 +139,6 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 					message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }]),
 				}),
 			})
-		if (!this.settings.requests.schemaValidation) {
-			app.setValidatorCompiler(() => () => true)
-			app.setSerializerCompiler(() => (data) => JSON.stringify(data))
-		}
-	}
-
-	makeController(cb: Defined<Route<any>['handler']>) {
-		const handler: RouteHandlerMethod = async (req, reply) => {
-			const request = await this.implementations.parse(req, reply)
-			const rawResponse = await cb(request)
-			const response =
-				rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.Ok, headers: {} })
-			return reply.status(response.status).headers(response.headers).send(response.body)
-		}
-		return handler
-	}
-
-	makeMiddleware(cb: Defined<Route<any>['middlewares']>[number]['cb']) {
-		const handler: preHandlerHookHandler = async (req, reply) => {
-			await cb(await this.implementations.parse(req, reply))
-		}
-		return handler
-	}
-
-	makeErrorMiddleware(cb: Defined<Route<any>['onError']>['cb']) {
-		const handler: FastifyInstance['errorHandler'] = async (error, req, reply) => {
-			const request = await this.implementations.parse(req, reply)
-			const rawResponse = await cb(request, error)
-			const response =
-				rawResponse instanceof Response
-					? rawResponse
-					: request.res({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
-			return reply.status(response.status).headers(response.headers).send(response.body)
-		}
-		return handler
-	}
-}
-
-declare module 'fastify' {
-	interface FastifyRequest {
-		savedReq: Request<any> | null
 	}
 }
 

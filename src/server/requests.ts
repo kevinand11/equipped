@@ -85,15 +85,11 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 			)
 		)
 		this.cookies = cookies
-		this.params = <any>params
-		this.query = <any>(
-			Object.fromEntries(
-				Object.entries(query && typeof body === 'object' ? query : {}).map(([key, val]) => [key, this.#parseQueryStrings(val)]),
-			)
-		)
-		if (this.query?.['auth']) delete this.query['auth']
-		if (this.query?.['authType']) delete this.query['authType']
+		this.params = params
 		this.headers = <any>headers
+		this.query = Object.fromEntries(
+			Object.entries(query && typeof query === 'object' ? query : {}).map(([key, val]) => [key, this.#parseQueryStrings(val)]),
+		)
 	}
 
 	#parseQueryStrings(value: unknown) {

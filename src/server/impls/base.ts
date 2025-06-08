@@ -7,11 +7,11 @@ import io from 'socket.io'
 import supertest from 'supertest'
 import { v } from 'valleyed'
 
-import { EquippedError } from '../../errors'
+import { EquippedError, NotFoundError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
 import { Listener } from '../../listeners'
-import { errorHandler, notFoundHandler, parseAuthUser } from '../middlewares'
-import type { Request } from '../requests'
+import { parseAuthUser } from '../middlewares/parseAuthUser'
+import { type Request, Response } from '../requests'
 import { cleanPath, type Router } from '../routes'
 import { Methods, MethodsEnum, RouteDef, StatusCodes, type Route } from '../types'
 
@@ -96,10 +96,11 @@ export abstract class Server<Req = any, Res = any> {
 	constructor(
 		server: http.Server,
 		protected implementations: {
-			parse: (req: Req, res: Res) => Promise<Request<any>>
-			registerRoute: (route: FullRoute<any>) => void
-			registerErrorHandler: (middleware: NonNullable<Route<any>['onError']>['cb']) => void
-			registerNotFoundHandler: (middleware: NonNullable<Route<any>['middlewares']>[number]['cb']) => void
+			parseRequest: (req: Req) => Promise<Request<any>>
+			handleResponse: (res: Res, response: Response<any>) => Promise<void>
+			registerRoute: (route: FullRoute<any>, cb: (req: Req, res: Res) => Promise<void>) => void
+			registerErrorHandler: (cb: (error: Error, req: Req, res: Res) => Promise<void>) => void
+			registerNotFoundHandler: (cb: (req: Req, res: Res) => Promise<void>) => void
 			start: (port: number) => Promise<boolean>
 		},
 	) {
@@ -189,7 +190,35 @@ export abstract class Server<Req = any, Res = any> {
 		if (this.#routesByKey.get(key))
 			throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
 		this.#routesByKey.set(key, fullRoute)
-		this.implementations.registerRoute(fullRoute)
+		this.implementations.registerRoute(fullRoute, this.#createController(fullRoute))
+	}
+
+	#createController<T extends FullRoute<any>>(route: T) {
+		return async (req: Req, res: Res) => {
+			const request = await this.implementations.parseRequest(req)
+
+			if (this.settings.requests.schemaValidation) {
+				// TODO: run schema validation for request
+			}
+
+			try {
+				for (const middleware of route.middlewares) await middleware.cb(request)
+				const rawRes = await route.handler(request)
+				const response =
+					rawRes instanceof Response ? rawRes : new Response({ body: rawRes, status: StatusCodes.Ok, headers: {}, piped: false })
+				return await this.implementations.handleResponse(res, response)
+			} catch (error) {
+				if (route.onError?.cb) {
+					const rawResponse = await route.onError.cb(request, error as Error)
+					const response =
+						rawResponse instanceof Response
+							? rawResponse
+							: new Response({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
+					return await this.implementations.handleResponse(res, response)
+				}
+				throw error
+			}
+		}
 	}
 
 	test() {
@@ -248,8 +277,24 @@ export abstract class Server<Req = any, Res = any> {
 				}),
 		})
 
-		this.implementations.registerNotFoundHandler(notFoundHandler.cb)
-		this.implementations.registerErrorHandler(errorHandler.cb)
+		this.implementations.registerNotFoundHandler(async (req) => {
+			const request = await this.implementations.parseRequest(req)
+			throw new NotFoundError(`Route ${request.path} not found`)
+		})
+		this.implementations.registerErrorHandler(async (error, _, res) => {
+			Instance.get().logger.error(error)
+			const response =
+				error instanceof RequestError
+					? new Response({
+							body: error.serializedErrors,
+							status: error.statusCode,
+						})
+					: new Response({
+							body: [{ message: 'Something went wrong', data: error.message }],
+							status: StatusCodes.BadRequest,
+						})
+			return await this.implementations.handleResponse(res, response)
+		})
 
 		const started = await this.implementations.start(port)
 		if (started) Instance.get().logger.info(`${this.settings.appId} service listening on port ${port}`)
