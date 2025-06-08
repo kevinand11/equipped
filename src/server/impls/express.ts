@@ -73,7 +73,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			handleResponse: async (res, response) => {
 				if (!response.piped) {
 					Object.entries(<object>response.headers).forEach(([key, value]) => res.header(key, value))
-					const type = response.shouldJSONify ? 'json' : 'send'
+					const type = response.body === null || response.body === undefined ? 'json' : 'send'
 					res.status(response.status)[type](response.body).end()
 				} else {
 					response.body.pipe(res)

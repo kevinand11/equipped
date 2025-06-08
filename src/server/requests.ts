@@ -2,25 +2,11 @@ import type { Readable } from 'stream'
 
 import type { RequestError } from '../errors'
 import type { DefaultHeaders, IncomingFile, MethodsEnum, RouteDefToReqRes, StatusCodesEnum } from './types'
-import type { DistributiveOmit, IsInTypeList, Prettify } from '../types'
+import type { DistributiveOmit, IsInTypeList } from '../types'
 import type { AuthUser, RefreshUser } from '../types/overrides'
 import { parseJSONObject } from '../utils/json'
 
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
-
-type IsFileOrFileArray<T> = T extends IncomingFile ? IncomingFile[] : T extends IncomingFile[] ? IncomingFile[] : T
-type ApiToBody<T> = Prettify<MappedUnion<T>>
-type UnionMapper<T> = {
-	[K in T extends infer P ? keyof P : never]: T extends infer P
-		? K extends keyof P
-			? {
-					[Q in keyof T]: IsFileOrFileArray<T[Q]>
-				}
-			: never
-		: never
-}
-type MappedUnion<T> = UnionMapper<T>[keyof UnionMapper<T>]
-
 type ReqUser<T> = { error?: RequestError; value?: T }
 type FallbackHeadersType = Record<string, string | string[] | undefined>
 
@@ -28,7 +14,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 	readonly ip: string | undefined
 	readonly method: MethodsEnum
 	readonly path: string
-	body: ApiToBody<Def['body']>
+	body: Def['body']
 	params: Def['params']
 	query: Def['query']
 	headers: Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & FallbackHeadersType
@@ -121,9 +107,5 @@ export class Response<Def extends RouteDefToReqRes<any>> {
 			// @ts-expect-error indexing on generic
 			if (!contentType) this.headers['Content-Type'] = 'application/json'
 		}
-	}
-
-	get shouldJSONify() {
-		return this.body === null || this.body === undefined
 	}
 }
