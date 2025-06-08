@@ -34,7 +34,7 @@ export type DefaultHeaders = Record<string, ArrayOrValue<string>>
 type ArrayOrValue<T> = T | T[] | undefined
 
 export type RouteDef = Readonly<{
-	body?: Pipe<unknown>
+	body?: Pipe<Record<string, unknown>>
 	response?: Pipe<unknown>
 	params?: Pipe<Record<string, ArrayOrValue<string>>>
 	headers?: Pipe<DefaultHeaders>

@@ -11,7 +11,7 @@ import type { AuthUser, RefreshUser } from '../types/overrides'
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 
 type IsFileOrFileArray<T> = T extends File ? IncomingFile[] : T extends File[] ? IncomingFile[] : T
-type ApiToBody<T> = Prettify<MappedUnion<T extends object ? T : { raw: T }>>
+type ApiToBody<T> = Prettify<MappedUnion<T>>
 type UnionMapper<T> = {
 	[K in T extends infer P ? keyof P : never]: T extends infer P
 		? K extends keyof P
@@ -58,7 +58,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		files,
 	}: {
 		ip: string | undefined
-		body: unknown
+		body: Def['body']
 		params: Def['params']
 		query: Def['query']
 		cookies: Record<string, any>
@@ -74,7 +74,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		this.cookies = cookies
 		this.headers = headers
 		this.query = query
-		this.body = <any>Object.assign(body && typeof body === 'object' ? body : { raw: body }, files)
+		this.body = <any>Object.assign({}, body, files)
 	}
 
 	pipe(stream: Readable, opts: { headers?: Def['responseHeaders']; status?: Def['statusCode'] } = {}) {

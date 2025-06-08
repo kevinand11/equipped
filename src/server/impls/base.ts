@@ -254,12 +254,6 @@ export abstract class Server<Req = any, Res = any> {
 		this.addRoute({
 			method: Methods.get,
 			path: `${this.settings.openapi.docsPath}/`,
-			schema: {
-				body: v.string(),
-				defaultStatusCode: StatusCodes.Found,
-				responseHeaders: v.object({ Location: v.string() }),
-				hide: true,
-			},
 			handler: (req) =>
 				req.res({
 					body: '',
@@ -273,21 +267,7 @@ export abstract class Server<Req = any, Res = any> {
 			path: `${this.settings.openapi.docsPath}/index.html`,
 			handler: (req) =>
 				req.res({
-					body: scalarHtml
-						.replaceAll('__API_TITLE__', `${this.settings.app} ${this.settings.appId}`)
-						.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
-					headers: { 'Content-Type': 'text/html' },
-				}),
-		})
-
-		this.addRoute({
-			method: Methods.get,
-			path: `${this.settings.openapi.docsPath}/redoc.html`,
-			handler: (req) =>
-				req.res({
-					body: redocHtml
-						.replaceAll('__API_TITLE__', `${this.settings.app} ${this.settings.appId}`)
-						.replaceAll('__OPENAPI_JSON_URL__', './openapi.json'),
+					body: scalarHtml(`${this.settings.app} ${this.settings.appId}`, './openapi.json'),
 					headers: { 'Content-Type': 'text/html' },
 				}),
 		})
@@ -327,11 +307,11 @@ export abstract class Server<Req = any, Res = any> {
 	}
 }
 
-const scalarHtml = `
+const scalarHtml = (title: string, jsonUrl: string) => `
 <!doctype html>
 <html>
   <head>
-    <title>__API_TITLE__</title>
+    <title>${title}</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 	<style>
@@ -341,33 +321,12 @@ const scalarHtml = `
     </style>
   </head>
   <body>
-    <script id="api-reference" data-url="__OPENAPI_JSON_URL__"></script>
+    <script id="api-reference" data-url="${jsonUrl}"></script>
     <script>
       const configuration = { theme: 'purple' };
       document.getElementById('api-reference').dataset.configuration = JSON.stringify(configuration);
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.28.33"></script>
-  </body>
-</html>
-`
-
-const redocHtml = `
-<!doctype html>
-<html>
-  <head>
-    <title>__API_TITLE__</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-	<style>
-      body {
-        margin: 0;
-        padding: 0;
-      }
-    </style>
-  </head>
-  <body>
-    <redoc spec-url="__OPENAPI_JSON_URL__"></redoc>
-    <script src="https://cdn.jsdelivr.net/npm/redoc@2.5.0/bundles/redoc.standalone.js"></script>
   </body>
 </html>
 `
