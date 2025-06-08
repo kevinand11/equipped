@@ -33,6 +33,15 @@ export type DefaultHeaders = Record<string, ArrayOrValue<string>>
 
 type ArrayOrValue<T> = T | T[] | undefined
 
+export type IncomingFile = {
+	name: string
+	type: string
+	size: number
+	isTruncated: boolean
+	data: Buffer
+	duration: number
+}
+
 export type RouteDef = Readonly<{
 	body?: Pipe<Record<string, unknown>>
 	response?: Pipe<unknown>

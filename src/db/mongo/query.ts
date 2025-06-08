@@ -1,14 +1,6 @@
 import { Collection } from 'mongodb'
-import { v } from 'valleyed'
 
-import {
-	QueryKeys,
-	queryResultsPipe,
-	type QueryParams,
-	type QueryResults,
-	type QueryWhereBlock,
-	type QueryWhereClause,
-} from '../../schemas/db'
+import { QueryKeys, type QueryParams, type QueryResults, type QueryWhereBlock, type QueryWhereClause } from '../../schemas/db'
 import * as core from '../base/core'
 
 export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: string }>>(
@@ -55,11 +47,11 @@ export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: st
 	const next = page >= last ? null : page + 1
 	const previous = page <= start ? null : page - 1
 
-	return queryResultsPipe(v.any()).parse({
+	return {
 		pages: { start, last, next, previous, current: page },
 		docs: { limit, total, count: results.length },
 		results: results as any[],
-	} satisfies QueryResults<Model>)
+	} satisfies QueryResults<Model>
 }
 
 function isWhereBlock<T>(param: QueryWhereClause<T>[number]): param is QueryWhereBlock<T> {

@@ -17,9 +17,8 @@ import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { getMediaDuration } from '../../utils/media'
 import { Request } from '../requests'
-import { StatusCodes } from '../types'
+import { IncomingFile, StatusCodes } from '../types'
 import { Server } from './base'
-import { IncomingFile } from '../../schemas'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express

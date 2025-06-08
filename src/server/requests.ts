@@ -1,17 +1,14 @@
 import type { Readable } from 'stream'
 
-import { File } from 'valleyed'
-
 import type { RequestError } from '../errors'
-import { IncomingFile } from '../schemas'
-import type { DefaultHeaders, MethodsEnum, RouteDefToReqRes, StatusCodesEnum } from './types'
+import type { DefaultHeaders, IncomingFile, MethodsEnum, RouteDefToReqRes, StatusCodesEnum } from './types'
 import type { DistributiveOmit, IsInTypeList, Prettify } from '../types'
 import type { AuthUser, RefreshUser } from '../types/overrides'
 import { parseJSONObject } from '../utils/json'
 
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 
-type IsFileOrFileArray<T> = T extends File ? IncomingFile[] : T extends File[] ? IncomingFile[] : T
+type IsFileOrFileArray<T> = T extends IncomingFile ? IncomingFile[] : T extends IncomingFile[] ? IncomingFile[] : T
 type ApiToBody<T> = Prettify<MappedUnion<T>>
 type UnionMapper<T> = {
 	[K in T extends infer P ? keyof P : never]: T extends infer P
