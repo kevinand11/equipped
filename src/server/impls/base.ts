@@ -13,10 +13,10 @@ import { Listener } from '../../listeners'
 import { errorHandler, notFoundHandler, parseAuthUser } from '../middlewares'
 import type { Request } from '../requests'
 import { cleanPath, type Router } from '../routes'
-import { Methods, RouteDef, StatusCodes, StatusCodesEnum, type Route } from '../types'
+import { Methods, MethodsEnum, RouteDef, StatusCodes, type Route } from '../types'
 
 export type FullRoute<T extends RouteDef> = Required<
-	Omit<Route<T>, 'schema' | 'groups' | 'security' | 'title' | 'descriptions' | 'hideSchema' | 'onError' | 'onSetupHandler'>
+	Omit<Route<T>, 'schema' | 'groups' | 'security' | 'title' | 'descriptions' | 'hideSchema' | 'onError'>
 > & { schema: FastifySchema; onError?: Route<T>['onError'] }
 
 declare module 'openapi-types' {
@@ -30,16 +30,24 @@ declare module 'openapi-types' {
 	}
 }
 
-function buildResponseSchema(statusCode: StatusCodesEnum) {
-	return Object.fromEntries(
-		Object.entries(StatusCodes)
-			.filter(([, value]) => value > 299 && value != statusCode)
-			.map(([key, value]) => [
-				value.toString(),
-				v.array(v.object({ message: v.string(), field: v.optional(v.string()) })).meta({ description: `${key} Response` }),
-			]),
-	)
+function stripEmptyObjects<T extends object>(obj: T) {
+	return Object.entries(obj).reduce((acc, [key, value]) => {
+		if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) return acc
+		return { ...acc, [key]: value }
+	}, {} as T)
 }
+
+const errorsSchema = Object.fromEntries(
+	Object.entries(StatusCodes)
+		.filter(([, value]) => value > 699)
+		.map(([key, value]) => [
+			value.toString(),
+			v
+				.array(v.object({ message: v.string(), field: v.optional(v.string()) }))
+				.meta({ description: `${key} Response` })
+				.toJsonSchema(),
+		]),
+)
 
 export abstract class Server<Req = any, Res = any> {
 	#routesByKey = new Map<string, FullRoute<any>>()
@@ -147,7 +155,6 @@ export abstract class Server<Req = any, Res = any> {
 	#regRoute<T extends RouteDef>(route: Route<T>) {
 		const middlewares = route.middlewares ?? []
 		middlewares.unshift(parseAuthUser as any)
-		route.onSetupHandler?.(route)
 		middlewares.forEach((m) => m.onSetup?.(route))
 		route.onError?.onSetup?.(route)
 
@@ -157,6 +164,7 @@ export abstract class Server<Req = any, Res = any> {
 		const tag = this.#buildTag(route.groups ?? [])
 
 		const statusCode = schema?.defaultStatusCode ?? StatusCodes.Ok
+		const supportsBody = (<MethodsEnum[]>[Methods.post, Methods.put, Methods.patch]).includes(method)
 
 		const fullRoute: FullRoute<T> = {
 			method,
@@ -164,21 +172,19 @@ export abstract class Server<Req = any, Res = any> {
 			handler,
 			path: cleanPath(path),
 			onError,
-			schema: {
+			schema: stripEmptyObjects({
 				operationId: key,
-				body: schema?.body?.toJsonSchema(),
+				body: supportsBody ? schema?.body?.toJsonSchema() : undefined,
 				querystring: schema?.query?.toJsonSchema(),
 				params: schema?.params?.toJsonSchema(),
 				headers: schema?.headers?.toJsonSchema(),
-				response: schema?.response
-					? v.object({ ...buildResponseSchema(statusCode), [statusCode]: schema.response }).toJsonSchema()
-					: undefined,
+				response: schema?.response ? { ...errorsSchema, [statusCode]: schema.response.toJsonSchema() } : undefined,
 				summary: title ?? cleanPath(path),
 				hide: !schema || schema.hide,
 				tags: tag ? [tag] : undefined,
 				description: route.descriptions?.join('\n\n'),
 				security,
-			},
+			}),
 		}
 		if (this.#routesByKey.get(key))
 			throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })

@@ -30,7 +30,6 @@ export type MethodsEnum = Enum<typeof Methods>
 export type StatusCodesEnum = Enum<typeof StatusCodes>
 
 export type DefaultHeaders = Record<string, ArrayOrValue<string>>
-export type FileSchema = 'equipped-file-schema'
 
 type ArrayOrValue<T> = T | T[] | undefined
 
@@ -49,7 +48,6 @@ type RouteGroup = { name: string; description?: string }
 type HandlerSetup<T extends RouteDef> = (route: Route<T>) => void
 
 export type RouteConfig<T extends RouteDef> = {
-	onSetupHandler?: HandlerSetup<T>
 	middlewares?: ReturnType<typeof makeMiddleware<T>>[]
 	onError?: ReturnType<typeof makeErrorMiddleware<T>>
 	groups?: (RouteGroup | RouteGroup['name'])[]
