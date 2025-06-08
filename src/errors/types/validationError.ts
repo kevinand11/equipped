@@ -9,11 +9,11 @@ type ValidError = {
 export class ValidationError extends RequestError {
 	statusCode = StatusCodes.ValidationError
 
-	constructor(errors: ValidError[], error?: Error) {
+	constructor(errors: ValidError[], cause?: unknown) {
 		super(
-			'Invalid request parameters',
-			errors.map((e) => ({ field: e.field, message: e.messages.join('\n') })),
-			error,
+			'Unprocessable Entity',
+			errors.flatMap(({ field, messages }) => messages.map((message) => ({ message, field }))),
+			cause,
 		)
 	}
 }

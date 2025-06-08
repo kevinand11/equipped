@@ -98,7 +98,7 @@ export class Instance<T extends object = object> {
 			)
 			await Instance.get().eventBus.startSubscribers()
 			addWaitBeforeExit(Instance.get().cache.close)
-		} catch (error: any) {
+		} catch (error) {
 			exit(new EquippedError(`Error starting connections`, {}, error))
 		}
 	}

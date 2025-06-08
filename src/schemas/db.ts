@@ -19,13 +19,13 @@ export enum Conditions {
 	exists = 'exists',
 }
 
-const queryKeys = v.defaultOnFail(v.defaults(v.optional(v.in([QueryKeys.and, QueryKeys.or])), QueryKeys.and), QueryKeys.and)
+const queryKeys = v.defaultsOnFail(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
 
 const queryWhere = <T>() =>
 	v.object({
 		field: v.string() as Pipe<Paths<T, string>>,
 		value: v.any(),
-		condition: v.defaultOnFail(v.defaults(v.optional(v.in(Object.values(Conditions))), Conditions.eq), Conditions.eq),
+		condition: v.defaultsOnFail(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
 	})
 
 const queryWhereBlock = <T>() =>
@@ -34,27 +34,28 @@ const queryWhereBlock = <T>() =>
 		value: v.array(queryWhere<T>()),
 	})
 
-const queryWhereClause = <T>() => v.optional(v.array(v.or([queryWhere<T>(), queryWhereBlock<T>()])))
+const queryWhereClause = <T>() => v.defaults(v.array(v.or([queryWhere<T>(), queryWhereBlock<T>()])), [])
 
 export function queryParamsPipe<T>() {
 	const pagLimit = Instance.get().settings.requests.paginationDefaultLimit
 	return v.object({
-		all: v.optional(v.boolean()),
-		limit: v.defaultOnFail(v.defaults(v.optional(v.number().pipe(v.lte(pagLimit))), pagLimit), pagLimit),
-		page: v.defaultOnFail(v.defaults(v.optional(v.number().pipe(v.gte(1))), 1), 1),
+		all: v.defaults(v.boolean(), false),
+		limit: v.defaultsOnFail(v.defaults(v.number().pipe(v.lte(pagLimit)), pagLimit), pagLimit),
+		page: v.defaultsOnFail(v.defaults(v.number().pipe(v.gte(1)), 1), 1),
 		search: v.optional(
 			v.object({
 				value: v.string(),
 				fields: v.array(v.string() as Pipe<Paths<T, string>>),
 			}),
 		),
-		sort: v.optional(
+		sort: v.defaults(
 			v.array(
 				v.object({
 					field: v.string() as Pipe<Paths<T, string>>,
-					desc: v.optional(v.boolean()),
+					desc: v.defaults(v.boolean(), false),
 				}),
 			),
+			[],
 		),
 		whereType: queryKeys,
 		authType: queryKeys,

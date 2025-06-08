@@ -9,9 +9,9 @@ export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: st
 ): Promise<QueryResults<Model>> => {
 	// Handle where/search clauses
 	const query = <ReturnType<typeof buildWhereQuery>[]>[]
-	const where = buildWhereQuery(params.where ?? [], params.whereType)
+	const where = buildWhereQuery(params.where, params.whereType)
 	if (where) query.push(where)
-	const auth = buildWhereQuery(params.auth ?? [], params.authType)
+	const auth = buildWhereQuery(params.auth, params.authType)
 	if (auth) query.push(auth)
 	if (params.search && params.search.fields.length > 0) {
 		const search = params.search.fields.map((field) => ({
@@ -25,7 +25,7 @@ export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: st
 	if (query.length > 0) totalClause['$and'] = query
 
 	// Handle sort clauses
-	const sort = params.sort?.map((p) => [p.field, p.desc ? 'desc' : 'asc']) ?? []
+	const sort = params.sort.map((p) => [p.field, p.desc ? 'desc' : 'asc'])
 
 	// Handle limit/offest clause
 	const all = params.all ?? false

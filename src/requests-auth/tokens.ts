@@ -110,8 +110,8 @@ export class CacheTokensUtility extends BaseTokensUtility {
 			return user
 		} catch (err) {
 			if (err instanceof AuthorizationExpired) throw err
-			if (err instanceof jwt.TokenExpiredError) throw new AuthorizationExpired()
-			else throw new NotAuthenticatedError()
+			if (err instanceof jwt.TokenExpiredError) throw new AuthorizationExpired(undefined, err)
+			else throw new NotAuthenticatedError(undefined, err)
 		}
 	}
 
@@ -120,8 +120,8 @@ export class CacheTokensUtility extends BaseTokensUtility {
 			const user = jwt.verify(token, this.options.refreshTokenKey) as RefreshUser
 			if (!user) throw new NotAuthenticatedError()
 			return user
-		} catch {
-			throw new NotAuthenticatedError()
+		} catch (err) {
+			throw new NotAuthenticatedError(undefined, err)
 		}
 	}
 

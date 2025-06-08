@@ -43,7 +43,7 @@ export const signinWithApple = async (idToken: string) => {
 			email_verified?: 'true' | 'false'
 			is_private_email?: 'true' | 'false'
 		} & Record<string, any>
-	} catch (err: any) {
+	} catch (err) {
 		throw new EquippedError('Failed to sign in with apple', { idToken }, err)
 	}
 }

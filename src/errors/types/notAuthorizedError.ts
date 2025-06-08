@@ -4,7 +4,7 @@ import { RequestError } from '../requestError'
 export class NotAuthorizedError extends RequestError {
 	statusCode = StatusCodes.NotAuthorized
 
-	constructor(message = 'Not authorized', error?: Error) {
-		super(message, [{ message }], error)
+	constructor(message = 'Not authorized', cause?: unknown) {
+		super(message, [{ message }], cause)
 	}
 }
