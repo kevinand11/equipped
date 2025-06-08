@@ -4,6 +4,6 @@ export class EquippedError extends Error {
 		public readonly context: Record<string, unknown>,
 		public readonly error?: Error,
 	) {
-		super(message)
+		super(message, { cause: error })
 	}
 }

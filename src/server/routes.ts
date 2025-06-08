@@ -1,4 +1,4 @@
-import { ClassPropertiesWrapper } from 'valleyed'
+import { DataClass } from 'valleyed'
 
 import { AddMethodDefImpls, Methods, RouteDefHandler, RouteGeneralConfig, Route, MethodsEnum, RouteConfig, RouteDef } from './types'
 
@@ -19,7 +19,7 @@ export const groupRoutes = <T extends RouteDef>(config: RouteGeneralConfig<T>, r
 		security: [...(config.security ?? []), ...(route.security ?? [])],
 	}))
 
-export class Router extends ClassPropertiesWrapper<AddMethodDefImpls> {
+export class Router extends DataClass<AddMethodDefImpls> {
 	#config: RouteGeneralConfig<any> = { path: '' }
 	#routes: Route<any>[] = []
 	#children: Router[] = []

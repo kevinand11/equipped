@@ -1,5 +1,4 @@
 import { Collection, ObjectId, OptionalUnlessRequiredId, SortDirection, WithId } from 'mongodb'
-import { Prettify } from 'valleyed'
 
 import { parseMongodbQueryParams } from './query'
 import { EquippedError } from '../../errors'
@@ -14,7 +13,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 	collection: Collection<Model>,
 	{ mapper, options: tableOptions = {} }: Config<Model, Entity>,
 ) {
-	type WI = Model | WithId<Model> | Prettify<Model | WithId<Model>>
+	type WI = Model | WithId<Model>
 	async function transform(doc: WI): Promise<Entity>
 	// eslint-disable-next-line no-redeclare
 	async function transform(doc: WI[]): Promise<Entity[]>
@@ -62,7 +61,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 			const results = await parseMongodbQueryParams(collection, params)
 			return {
 				...results,
-				results: (await transform(results.results)) as any,
+				results: (await transform(results.results as any)) as any,
 			}
 		},
 

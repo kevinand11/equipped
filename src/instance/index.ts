@@ -17,7 +17,7 @@ import { DeepPartial } from '../types'
 export class Instance<T extends object = object> {
 	static #instance: Instance
 	readonly envs: T = {} as T
-	#settings: Settings
+	readonly settings: Settings = { ...defaulInstanceSetting }
 	#logger: pino.Logger<any> | null = null
 	#job: BullJob | null = null
 	#cache: Cache | null = null
@@ -25,8 +25,7 @@ export class Instance<T extends object = object> {
 	#server: Server | null = null
 	#dbs: { mongo: MongoDb } | null = null
 
-	constructor(envsPipe: Pipe<any, T, any>, settings?: DeepPartial<Settings>) {
-		this.#settings = merge({ ...defaulInstanceSetting }, settings)
+	constructor(envsPipe: Pipe<any, T, any>, settings?: (envs: T) => DeepPartial<Settings> | DeepPartial<Settings>) {
 		const envValidity = envsPipe.safeParse(process.env)
 		if (!envValidity.valid) {
 			return exit(
@@ -36,6 +35,7 @@ export class Instance<T extends object = object> {
 			)
 		}
 		this.envs = Object.freeze(envValidity.value)
+		this.settings = merge(this.settings, typeof settings === 'function' ? settings(this.envs) : (settings ?? {}))
 		Instance.#instance = this
 	}
 
@@ -43,14 +43,6 @@ export class Instance<T extends object = object> {
 		if (!Instance.#instance)
 			return exit(new EquippedError('Has not been initialized. Make sure initialize is called before you get an instance', {}))
 		return Instance.#instance
-	}
-
-	get settings(): Settings {
-		return this.#settings
-	}
-
-	set settings(settings: DeepPartial<Settings>) {
-		this.#settings = merge({ ...this.#settings }, settings)
 	}
 
 	get logger() {
@@ -78,7 +70,7 @@ export class Instance<T extends object = object> {
 	}
 
 	get server() {
-		return (this.#server ||= serverTypes[this.#settings.server.type]())
+		return (this.#server ||= serverTypes[this.settings.server.type]())
 	}
 
 	get dbs() {
