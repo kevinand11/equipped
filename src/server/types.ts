@@ -42,7 +42,7 @@ export type IncomingFile = {
 	duration: number
 }
 
-export type RouteDef = Readonly<{
+export type RouteDef = {
 	body?: Pipe<Record<string, unknown>>
 	response?: Pipe<unknown>
 	params?: Pipe<Record<string, ArrayOrValue<string>>>
@@ -50,7 +50,7 @@ export type RouteDef = Readonly<{
 	responseHeaders?: Pipe<DefaultHeaders>
 	query?: Pipe<Record<string, ArrayOrValue<unknown>>>
 	defaultStatusCode?: StatusCodesEnum
-}>
+}
 
 type RouteGroup = { name: string; description?: string }
 type HandlerSetup<T extends RouteDef> = (route: Route<T>) => void
@@ -62,12 +62,13 @@ export type RouteConfig<T extends RouteDef> = {
 	title?: string
 	descriptions?: string[]
 	security?: Record<string, string[]>[]
+	schema?: T
+	hide?: boolean
 }
 
-type RouteDefConfig<T extends RouteDef> = RouteConfig<T> & { schema?: T; hide?: boolean }
-export type RouteGeneralConfig<T extends RouteDef> = RouteConfig<T> & { path: string }
-
-export type Route<T extends RouteDef> = RouteDefConfig<T> & {
+export type RouterConfig<T extends RouteDef> = RouteConfig<T> & { path: string }
+export type Route<T extends RouteDef> = Omit<RouteConfig<T>, 'schema'> & {
+	schemas?: T[]
 	path: string
 	method: MethodsEnum
 	handler: RouteDefHandler<T>
@@ -96,10 +97,6 @@ type Res<T extends RouteDefToReqRes<any>> = Awaitable<
 		: Response<T>
 >
 export type RouteDefHandler<Def extends RouteDef> = (req: Request<RouteDefToReqRes<Def>>) => Res<RouteDefToReqRes<Def>>
-export type AddMethodDefImpls = {
-	[Method in MethodsEnum]: <T extends RouteDef>(path: string, config?: RouteDefConfig<T>) => (handler: RouteDefHandler<T>) => Route<T>
-}
-
 type RouteMiddlewareHandler<_Def extends RouteDef> = (req: Request<RouteDefToReqRes<any>>) => Awaitable<void>
 type ErrorHandler<Def extends RouteDef> = (
 	req: Request<RouteDefToReqRes<any>>,

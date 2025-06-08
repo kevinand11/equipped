@@ -1,6 +1,4 @@
-import { DataClass } from 'valleyed'
-
-import { AddMethodDefImpls, Methods, RouteDefHandler, RouteGeneralConfig, Route, MethodsEnum, RouteConfig, RouteDef } from './types'
+import { Methods, RouteDefHandler, RouterConfig, Route, MethodsEnum, RouteConfig, RouteDef } from './types'
 
 export const cleanPath = (path: string) => {
 	let cleaned = path.replace(/(\/\s*)+/g, '/')
@@ -9,65 +7,54 @@ export const cleanPath = (path: string) => {
 	return cleaned
 }
 
-export const groupRoutes = <T extends RouteDef>(config: RouteGeneralConfig<T>, routes: Route<T>[]): Route<T>[] =>
+const groupRoutes = <T extends RouteDef>(config: RouterConfig<T>, routes: Route<T>[]): Route<T>[] =>
 	routes.map((route) => ({
 		...config,
 		...route,
 		path: cleanPath(`${config.path}/${route.path}`),
 		groups: [...(config.groups ?? []), ...(route.groups ?? [])],
 		middlewares: [...(config.middlewares ?? []), ...(route.middlewares ?? [])],
+		schemas: [...(config.schema ? [config.schema] : []), ...(route.schemas ?? [])],
 		security: [...(config.security ?? []), ...(route.security ?? [])],
 	}))
 
-export class Router extends DataClass<AddMethodDefImpls> {
-	#config: RouteGeneralConfig<any> = { path: '' }
+export class Router<T extends RouteDef> {
+	#config: RouterConfig<T> = { path: '' }
 	#routes: Route<any>[] = []
-	#children: Router[] = []
+	#children: Router<T>[] = []
 
-	constructor(config?: RouteGeneralConfig<any>) {
-		super(
-			Object.values(Methods).reduce(
-				(acc, method) => ({
-					...acc,
-					[method]:
-						(...args: Parameters<AddMethodDefImpls[MethodsEnum]>) =>
-						(handler: RouteDefHandler<any>) =>
-							this.#addRoute(method, ...args, handler),
-				}),
-				{} as any,
-			),
-		)
-		if (config) this.#config = config
+	constructor(config: RouterConfig<T> = { path: '' }) {
+		this.#config = config
 	}
 
-	#addRoute<T extends RouteDef>(
-		method: MethodsEnum,
-		path: string,
-		routeConfig: RouteConfig<T> = {},
-		handler: RouteDefHandler<T>,
-		collection: Route<T>[] = this.#routes,
-	) {
-		const route = groupRoutes(this.#config, [{ ...routeConfig, path, method, handler }])[0]
-		collection.push(route)
-		return route
+	#wrap(method: MethodsEnum) {
+		return <T extends RouteDef>(path: string, config: RouteConfig<T> = {}) =>
+			(handler: RouteDefHandler<T>) => {
+				const schema = config.schema ?? {}
+				const route = groupRoutes(this.#config, [{ ...config, schemas: [schema as any], path, method, handler }])[0]
+				this.#routes.push(route)
+				return route as unknown as Route<T>
+			}
 	}
 
-	add<T extends RouteDef>(...routes: Route<T>[]) {
+	head = this.#wrap(Methods.head)
+	get = this.#wrap(Methods.get)
+	post = this.#wrap(Methods.post)
+	put = this.#wrap(Methods.put)
+	patch = this.#wrap(Methods.patch)
+	delete = this.#wrap(Methods.delete)
+	options = this.#wrap(Methods.options)
+
+	add(...routes: Route<any>[]) {
 		const mapped = groupRoutes(this.#config, routes)
 		this.#routes.push(...mapped)
 	}
 
-	nest(...routers: Router[]) {
+	nest(...routers: Router<any>[]) {
 		routers.forEach((router) => this.#children.push(router))
 	}
 
 	get routes() {
-		const routes = [...this.#routes]
-		this.#children.forEach((child) => {
-			child.routes.forEach((route) => {
-				this.#addRoute(route.method, route.path, route, route.handler, routes)
-			})
-		})
-		return routes
+		return [...this.#routes].concat(this.#children.flatMap((child) => groupRoutes(this.#config, child.#routes)))
 	}
 }
