@@ -7,6 +7,7 @@ import { IncomingFile } from '../schemas'
 import type { DefaultHeaders, MethodsEnum, RouteDefToReqRes, StatusCodesEnum } from './types'
 import type { DistributiveOmit, IsInTypeList, Prettify } from '../types'
 import type { AuthUser, RefreshUser } from '../types/overrides'
+import { parseJSONObject } from '../utils/json'
 
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 
@@ -73,8 +74,8 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		this.params = params
 		this.cookies = cookies
 		this.headers = headers
-		this.query = query
-		this.body = <any>Object.assign({}, body, files)
+		this.query = parseJSONObject(query)
+		this.body = <any>Object.assign(parseJSONObject(body), files)
 	}
 
 	pipe(stream: Readable, opts: { headers?: Def['responseHeaders']; status?: Def['statusCode'] } = {}) {

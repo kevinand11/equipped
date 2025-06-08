@@ -6,3 +6,7 @@ export const parseJSONValue = (data: any) => {
 		return data
 	}
 }
+
+export function parseJSONObject<T extends object>(data: T) {
+	return Object.fromEntries(Object.entries(data).map(([key, value]) => [key, parseJSONValue(value)])) as T
+}

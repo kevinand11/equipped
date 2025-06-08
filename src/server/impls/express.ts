@@ -81,8 +81,8 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 				}
 			},
 			registerRoute: (route, cb) => {
-				const openapi = prepareOpenapiMethod(route.schema, this.#ref, this.baseOpenapiDoc, route.path)
-				const controllers = [!route.schema.hide ? this.#oapi.path(openapi) : undefined, cb].filter(Boolean)
+				const openapi = prepareOpenapiMethod(route.jsonSchema, this.#ref, this.baseOpenapiDoc, route.path)
+				const controllers = [!route.jsonSchema.hide ? this.#oapi.path(openapi) : undefined, cb].filter(Boolean)
 				this.#expressApp[route.method]?.(route.path, ...controllers)
 			},
 			registerErrorHandler: (cb) => {

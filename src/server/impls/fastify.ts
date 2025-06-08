@@ -71,12 +71,12 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 				await res.status(response.status).headers(response.headers).send(response.body)
 			},
 			registerRoute: (route, cb) => {
-				this.#fastifyApp.register(async (inst) => {
+				this.#fastifyApp.register((inst) => {
 					inst.route({
 						url: route.path,
 						method: route.method,
 						handler: cb,
-						schema: route.schema,
+						schema: route.jsonSchema,
 					})
 				})
 			},
