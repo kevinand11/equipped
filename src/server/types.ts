@@ -34,12 +34,12 @@ export type DefaultHeaders = Record<string, ArrayOrValue<string>>
 type ArrayOrValue<T> = T | T[] | undefined
 
 export type RouteDef = Readonly<{
-	body?: Pipe<unknown, unknown, any>
-	response?: Pipe<unknown, unknown, any>
-	params?: Pipe<Record<string, ArrayOrValue<string>>, Record<string, ArrayOrValue<string>>, any>
-	headers?: Pipe<DefaultHeaders, DefaultHeaders, any>
-	responseHeaders?: Pipe<DefaultHeaders, DefaultHeaders, any>
-	query?: Pipe<Record<string, ArrayOrValue<string>>, Record<string, ArrayOrValue<string>>, any>
+	body?: Pipe<unknown>
+	response?: Pipe<unknown>
+	params?: Pipe<Record<string, ArrayOrValue<string>>>
+	headers?: Pipe<DefaultHeaders>
+	responseHeaders?: Pipe<DefaultHeaders>
+	query?: Pipe<Record<string, ArrayOrValue<unknown>>>
 	defaultStatusCode?: StatusCodesEnum
 	hide?: boolean
 }>
