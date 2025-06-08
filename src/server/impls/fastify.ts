@@ -16,10 +16,9 @@ import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
-import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../requests'
 import { StatusCodes, type Route } from '../types'
-import { Server, type FullRoute } from './base'
+import { Server } from './base'
 import { IncomingFile } from '../../schemas'
 
 function getFastifyApp() {
@@ -43,7 +42,58 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 
 	constructor() {
 		const app = getFastifyApp()
-		super(app.server)
+		super(app.server, {
+			parse: async (req) => {
+				const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
+				const headers = {
+					...allHeaders,
+					Authorization: req.headers['authorization']?.toString(),
+					RefreshToken: req.headers['x-refresh-token']?.toString(),
+					ApiKey: req.headers['x-api-key']?.toString(),
+					ContentType: req.headers['content-type']?.toString(),
+					Referer: req.headers['referer']?.toString(),
+					UserAgent: req.headers['user-agent']?.toString(),
+				}
+				const { body, files } = excludeBufferKeys(req.body ?? {})
+
+				if (req.savedReq) return req.savedReq
+				return (req.savedReq = new Request({
+					ip: req.ip,
+					body,
+					cookies: req.cookies ?? {},
+					params: req.params ?? <any>{},
+					query: req.query ?? {},
+					method: <any>req.method,
+					path: req.url,
+					headers,
+					files,
+				}))
+			},
+			registerRoute: (route) => {
+				this.#fastifyApp.register(async (inst) => {
+					inst.route({
+						url: route.path,
+						method: route.method,
+						handler: this.makeController(route.handler),
+						preHandler: route.middlewares.map((m) => this.makeMiddleware(m.cb)),
+						errorHandler: route.onError ? this.makeErrorMiddleware(route.onError.cb) : undefined,
+						schema: route.schema,
+					})
+				})
+			},
+			registerErrorHandler: (cb) => {
+				this.#fastifyApp.setErrorHandler(this.makeErrorMiddleware(cb))
+			},
+			registerNotFoundHandler: (cb) => {
+				this.#fastifyApp.setNotFoundHandler(this.makeController(cb))
+			},
+			start: async (port) => {
+				await this.#fastifyApp.ready()
+				await this.#fastifyApp.listen({ port, host: '0.0.0.0' })
+				addWaitBeforeExit(this.#fastifyApp.close)
+				return true
+			},
+		})
 		this.#fastifyApp = app
 
 		app.decorateRequest('savedReq', null)
@@ -94,60 +144,9 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		}
 	}
 
-	protected async onLoad() {
-		await this.#fastifyApp.ready()
-	}
-
-	protected registerRoute(route: FullRoute<any>) {
-		this.#fastifyApp.register(async (inst) => {
-			inst.route({
-				url: route.path,
-				method: route.method,
-				handler: this.makeController(route.handler),
-				preHandler: route.middlewares.map((m) => this.makeMiddleware(m.cb)),
-				errorHandler: route.onError ? this.makeErrorMiddleware(route.onError.cb) : undefined,
-				schema: route.schema,
-			})
-		})
-	}
-
-	protected async startServer(port: number) {
-		this.#fastifyApp.setNotFoundHandler(this.makeController(<any>notFoundHandler.cb))
-		this.#fastifyApp.setErrorHandler(this.makeErrorMiddleware(errorHandler.cb))
-		await this.#fastifyApp.listen({ port, host: '0.0.0.0' })
-		addWaitBeforeExit(this.#fastifyApp.close)
-		return true
-	}
-
-	protected async parse(req: FastifyRequest) {
-		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
-		const headers = {
-			...allHeaders,
-			Authorization: req.headers['authorization']?.toString(),
-			RefreshToken: req.headers['x-refresh-token']?.toString(),
-			ApiKey: req.headers['x-api-key']?.toString(),
-			ContentType: req.headers['content-type']?.toString(),
-			Referer: req.headers['referer']?.toString(),
-			UserAgent: req.headers['user-agent']?.toString(),
-		}
-		const { body, files } = excludeBufferKeys(req.body ?? {})
-
-		return (req.savedReq ||= new Request({
-			ip: req.ip,
-			body,
-			cookies: req.cookies ?? {},
-			params: req.params ?? <any>{},
-			query: req.query ?? {},
-			method: <any>req.method,
-			path: req.url,
-			headers,
-			files,
-		}))
-	}
-
 	makeController(cb: Defined<Route<any>['handler']>) {
 		const handler: RouteHandlerMethod = async (req, reply) => {
-			const request = await this.parse(req)
+			const request = await this.implementations.parse(req, reply)
 			const rawResponse = await cb(request)
 			const response =
 				rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.Ok, headers: {} })
@@ -157,15 +156,15 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	}
 
 	makeMiddleware(cb: Defined<Route<any>['middlewares']>[number]['cb']) {
-		const handler: preHandlerHookHandler = async (req) => {
-			await cb(await this.parse(req))
+		const handler: preHandlerHookHandler = async (req, reply) => {
+			await cb(await this.implementations.parse(req, reply))
 		}
 		return handler
 	}
 
 	makeErrorMiddleware(cb: Defined<Route<any>['onError']>['cb']) {
 		const handler: FastifyInstance['errorHandler'] = async (error, req, reply) => {
-			const request = await this.parse(req)
+			const request = await this.implementations.parse(req, reply)
 			const rawResponse = await cb(request, error)
 			const response =
 				rawResponse instanceof Response

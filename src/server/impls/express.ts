@@ -19,10 +19,9 @@ import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import type { Defined } from '../../types'
 import { getMediaDuration } from '../../utils/media'
-import { errorHandler, notFoundHandler } from '../middlewares'
 import { Request, Response } from '../requests'
 import { StatusCodes, type Route } from '../types'
-import { Server, type FullRoute } from './base'
+import { Server } from './base'
 import { IncomingFile } from '../../schemas'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
@@ -32,7 +31,93 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 	constructor() {
 		const app = express()
-		super(http.createServer(app))
+		super(http.createServer(app), {
+			parse: async (req) => {
+				const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
+				const headers = {
+					...allHeaders,
+					Authorization: req.get('authorization'),
+					RefreshToken: req.get('x-refresh-token'),
+					ApiKey: req.get('x-api-key'),
+					ContentType: req.get('content-type'),
+					Referer: req.get('referer'),
+					UserAgent: req.get('user-agent'),
+				}
+				const files = Object.fromEntries(
+					await Promise.all(
+						Object.entries(req.files ?? {}).map(async ([key, file]) => {
+							const uploads = Array.isArray(file) ? file : [file]
+							const fileArray: IncomingFile[] = await Promise.all(
+								uploads.map(async (f) => ({
+									name: f.name,
+									type: f.mimetype,
+									size: f.size,
+									isTruncated: f.truncated,
+									data: f.data,
+									duration: await getMediaDuration(f.data),
+								})),
+							)
+							return <const>[key, fileArray]
+						}),
+					),
+				)
+
+				// @ts-ignore
+				if (req.savedReq) return req.savedReq
+				// @ts-ignore
+				return (req.savedReq ||= new Request<any>({
+					ip: req.ip,
+					body: req.body ?? {},
+					cookies: req.cookies ?? {},
+					params: req.params ?? {},
+					query: req.query ?? {},
+					method: <any>req.method,
+					path: req.path,
+					headers,
+					files,
+				}))
+			},
+			registerRoute: (route) => {
+				const openapi = prepareOpenapiMethod(route.schema, this.#ref, this.baseOpenapiDoc, route.path)
+				const controllers: (express.RequestHandler | express.ErrorRequestHandler)[] = [
+					...route.middlewares.map((m) => this.makeMiddleware(m.cb)),
+					this.makeController(route.handler),
+				]
+				if (!route.schema.hide)
+					controllers.unshift(
+						this.#oapi[this.settings.requests.schemaValidation ? 'validPath' : 'path'](openapi),
+						(error: Error, _, __, next) => {
+							if ('validationErrors' in error) {
+								const validationErrors = <FastifySchemaValidationError[]>error.validationErrors
+								throw new ValidationError(
+									validationErrors.map((error) => ({
+										messages: [error.message ?? ''],
+										field: error.instancePath.replaceAll('/', '.').split('.').filter(Boolean).join('.'),
+									})),
+								)
+							}
+							next()
+						},
+					)
+				if (route.onError) controllers.push(this.makeErrorMiddleware(route.onError.cb))
+				this.#expressApp[route.method]?.(route.path, ...controllers)
+			},
+			registerErrorHandler: (cb) => {
+				this.#expressApp.use(this.makeErrorMiddleware(cb))
+			},
+			registerNotFoundHandler: (cb) => {
+				this.#expressApp.use(this.makeMiddleware(cb))
+			},
+			start: async (port) =>
+				new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
+					try {
+						const app = this.server.listen({ host: '0.0.0.0', port }, async () => resolve(true))
+						addWaitBeforeExit(app.close)
+					} catch (err) {
+						reject(<Error>err)
+					}
+				}),
+		})
 		this.#expressApp = app
 
 		app.disable('x-powered-by')
@@ -72,96 +157,10 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		})) */
 	}
 
-	protected registerRoute(route: FullRoute<any>) {
-		const openapi = prepareOpenapiMethod(route.schema, this.#ref, this.baseOpenapiDoc, route.path)
-		const controllers: (express.RequestHandler | express.ErrorRequestHandler)[] = [
-			...route.middlewares.map((m) => this.makeMiddleware(m.cb)),
-			this.makeController(route.handler),
-		]
-		if (!route.schema.hide)
-			controllers.unshift(
-				this.#oapi[this.settings.requests.schemaValidation ? 'validPath' : 'path'](openapi),
-				(error: Error, _, __, next) => {
-					if ('validationErrors' in error) {
-						const validationErrors = <FastifySchemaValidationError[]>error.validationErrors
-						throw new ValidationError(
-							validationErrors.map((error) => ({
-								messages: [error.message ?? ''],
-								field: error.instancePath.replaceAll('/', '.').split('.').filter(Boolean).join('.'),
-							})),
-						)
-					}
-					next()
-				},
-			)
-		if (route.onError) controllers.push(this.makeErrorMiddleware(route.onError.cb))
-		this.#expressApp[route.method]?.(route.path, ...controllers)
-	}
-
-	protected async startServer(port: number) {
-		this.#expressApp.use(this.makeMiddleware(notFoundHandler.cb))
-		this.#expressApp.use(this.makeErrorMiddleware(errorHandler.cb))
-
-		return await new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
-			try {
-				const app = this.server.listen({ host: '0.0.0.0', port }, async () => resolve(true))
-				addWaitBeforeExit(app.close)
-			} catch (err) {
-				reject(<Error>err)
-			}
-		})
-	}
-
-	protected async onLoad() {}
-
-	protected async parse(req: express.Request): Promise<Request<any>> {
-		const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
-		const headers = {
-			...allHeaders,
-			Authorization: req.get('authorization'),
-			RefreshToken: req.get('x-refresh-token'),
-			ApiKey: req.get('x-api-key'),
-			ContentType: req.get('content-type'),
-			Referer: req.get('referer'),
-			UserAgent: req.get('user-agent'),
-		}
-		const files = Object.fromEntries(
-			await Promise.all(
-				Object.entries(req.files ?? {}).map(async ([key, file]) => {
-					const uploads = Array.isArray(file) ? file : [file]
-					const fileArray: IncomingFile[] = await Promise.all(
-						uploads.map(async (f) => ({
-							name: f.name,
-							type: f.mimetype,
-							size: f.size,
-							isTruncated: f.truncated,
-							data: f.data,
-							duration: await getMediaDuration(f.data),
-						})),
-					)
-					return <const>[key, fileArray]
-				}),
-			),
-		)
-
-		// @ts-ignore
-		return (req.savedReq ||= new Request<any>({
-			ip: req.ip,
-			body: req.body ?? {},
-			cookies: req.cookies ?? {},
-			params: req.params ?? {},
-			query: req.query ?? {},
-			method: <any>req.method,
-			path: req.path,
-			headers,
-			files,
-		}))
-	}
-
 	makeController(cb: Defined<Route<any>['handler']>) {
 		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
-				const request = await this.parse(req)
+				const request = await this.implementations.parse(req, res)
 				const rawResponse = await cb(request)
 				const response =
 					rawResponse instanceof Response ? rawResponse : request.res({ body: rawResponse, status: StatusCodes.Ok, headers: {} })
@@ -179,9 +178,9 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 	}
 
 	makeMiddleware(cb: Defined<Route<any>['middlewares']>[number]['cb']) {
-		return async (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+		return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
 			try {
-				await cb(await this.parse(req))
+				await cb(await this.implementations.parse(req, res))
 				return next()
 			} catch (e) {
 				return next(e)
@@ -191,7 +190,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 	makeErrorMiddleware(cb: Defined<Route<any>['onError']>['cb']) {
 		return async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-			const request = await this.parse(req)
+			const request = await this.implementations.parse(req, res)
 			const rawResponse = await cb(request, err)
 			const response =
 				rawResponse instanceof Response

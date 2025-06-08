@@ -10,8 +10,7 @@ import { v } from 'valleyed'
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import { Listener } from '../../listeners'
-import type { Defined } from '../../types'
-import { parseAuthUser } from '../middlewares'
+import { errorHandler, notFoundHandler, parseAuthUser } from '../middlewares'
 import type { Request } from '../requests'
 import { cleanPath, type Router } from '../routes'
 import { Methods, RouteDef, StatusCodes, StatusCodesEnum, type Route } from '../types'
@@ -85,12 +84,17 @@ export abstract class Server<Req = any, Res = any> {
 			.filter((m) => m !== Methods.options)
 			.map((m) => m.toUpperCase()),
 	}
-	protected abstract onLoad(): Promise<void>
-	protected abstract startServer(port: number): Promise<boolean>
-	protected abstract parse(req: Req, res: Res): Promise<Request<any>>
-	protected abstract registerRoute(route: FullRoute<any>): void
 
-	constructor(server: http.Server) {
+	constructor(
+		server: http.Server,
+		protected implementations: {
+			parse: (req: Req, res: Res) => Promise<Request<any>>
+			registerRoute: (route: FullRoute<any>) => void
+			registerErrorHandler: (middleware: NonNullable<Route<any>['onError']>['cb']) => void
+			registerNotFoundHandler: (middleware: NonNullable<Route<any>['middlewares']>[number]['cb']) => void
+			start: (port: number) => Promise<boolean>
+		},
+	) {
 		this.server = server
 	}
 
@@ -113,11 +117,7 @@ export abstract class Server<Req = any, Res = any> {
 		routes.forEach((route) => this.#regRoute(route))
 	}
 
-	async load() {
-		await this.onLoad()
-	}
-
-	#buildTag(groups: Defined<Route<any>['groups']>) {
+	#buildTag(groups: NonNullable<Route<any>['groups']>) {
 		if (!groups.length) return undefined
 		const parsed = groups.map((g) => (typeof g === 'string' ? { name: g } : g))
 		const name = parsed.map((g) => g.name).join(' > ')
@@ -183,7 +183,7 @@ export abstract class Server<Req = any, Res = any> {
 		if (this.#routesByKey.get(key))
 			throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
 		this.#routesByKey.set(key, fullRoute)
-		this.registerRoute(fullRoute)
+		this.implementations.registerRoute(fullRoute)
 	}
 
 	test() {
@@ -242,7 +242,10 @@ export abstract class Server<Req = any, Res = any> {
 				}),
 		})
 
-		const started = await this.startServer(port)
+		this.implementations.registerNotFoundHandler(notFoundHandler.cb)
+		this.implementations.registerErrorHandler(errorHandler.cb)
+
+		const started = await this.implementations.start(port)
 		if (started) Instance.get().logger.info(`${this.settings.appId} service listening on port ${port}`)
 		return started
 	}
