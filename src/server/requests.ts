@@ -108,9 +108,9 @@ type RequestParams<Def extends RouteDefToReqRes<any>, T = Def['response']> = { b
 		: { headers: Def['responseHeaders'] })
 
 export class Response<Def extends RouteDefToReqRes<any>> {
-	readonly body: Def['response'] | undefined
+	body: Def['response'] | undefined
+	headers: Def['responseHeaders']
 	readonly status: Def['statusCode']
-	readonly headers: Def['responseHeaders']
 	readonly piped: boolean
 
 	constructor({ body, status = <any>200, headers = <any>{}, piped = false }: RequestParams<Def>) {

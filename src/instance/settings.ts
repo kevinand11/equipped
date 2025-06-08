@@ -4,7 +4,6 @@ import type { Level } from 'pino'
 import { BaseApiKeysUtility, BaseTokensUtility } from '../requests-auth'
 import type { ServerTypes } from '../server'
 
-
 export type Settings = {
 	debeziumUrl: string
 	mongoDbURI: string
@@ -46,13 +45,12 @@ export type Settings = {
 	}
 	requests: {
 		log?: boolean
-		schemaValidation?: boolean
 		paginationDefaultLimit: number
 		maxFileUploadSizeInMb: number
 	}
 	requestsAuth: {
-		tokens?: BaseTokensUtility,
-		apiKey?: BaseApiKeysUtility,
+		tokens?: BaseTokensUtility
+		apiKey?: BaseApiKeysUtility
 	}
 }
 
@@ -80,7 +78,7 @@ export const defaulInstanceSetting: Settings = {
 		delayInMs: 500,
 	},
 	server: {
-		type: 'fastify'
+		type: 'fastify',
 	},
 	openapi: {
 		docsVersion: '1.0.0',
@@ -89,9 +87,8 @@ export const defaulInstanceSetting: Settings = {
 	},
 	requests: {
 		log: true,
-		schemaValidation: false,
 		paginationDefaultLimit: 100,
 		maxFileUploadSizeInMb: 500,
 	},
-	requestsAuth: {}
+	requestsAuth: {},
 }

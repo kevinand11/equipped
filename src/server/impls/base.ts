@@ -14,14 +14,15 @@ import { pipeErrorToValidationError } from '../../validations'
 import { parseAuthUser } from '../middlewares/parseAuthUser'
 import { type Request, Response } from '../requests'
 import { cleanPath, type Router } from '../routes'
-import { Methods, MethodsEnum, RouteDef, StatusCodes, type Route } from '../types'
+import { Methods, MethodsEnum, RouteDef, RouteDefToReqRes, StatusCodes, type Route } from '../types'
 
-export type FullRoute<T extends RouteDef> = Required<
-	Omit<Route<T>, 'schema' | 'groups' | 'security' | 'title' | 'descriptions' | 'onError'>
+type FullRoute<T extends RouteDef> = Required<
+	Omit<Route<T>, 'schema' | 'groups' | 'security' | 'hide' | 'title' | 'descriptions' | 'onError'>
 > & {
-	schema: Route<T>['schema']
 	jsonSchema: FastifySchema
 	onError?: Route<T>['onError']
+	validateRequest: (req: Request<any>) => Request<RouteDefToReqRes<T>>
+	validateResponse: (res: Response<any>) => Response<RouteDefToReqRes<T>>
 }
 
 declare module 'openapi-types' {
@@ -159,17 +160,21 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	#regRoute<T extends RouteDef>(route: Route<T>) {
-		const { method, path, handler, schema, title, security, onError, middlewares = [] } = route
+		const { method, path, handler, schema, hide = false, title, security, onError, middlewares = [] } = route
 
 		middlewares.unshift(parseAuthUser as any)
 		middlewares.forEach((m) => m.onSetup?.(route))
 		onError?.onSetup?.(route)
 
 		const key = `(${method.toUpperCase()}) ${path}`
-		const tag = this.#buildTag(route.groups ?? [])
+		if (this.#routesByKey.get(key))
+			throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
 
+		const tag = this.#buildTag(route.groups ?? [])
 		const statusCode = schema?.defaultStatusCode ?? StatusCodes.Ok
 		const supportsBody = (<MethodsEnum[]>[Methods.post, Methods.put, Methods.patch]).includes(method)
+
+		const anySchema = v.any()
 
 		const fullRoute: FullRoute<T> = {
 			method,
@@ -177,7 +182,6 @@ export abstract class Server<Req = any, Res = any> {
 			handler,
 			path: cleanPath(path),
 			onError,
-			schema,
 			jsonSchema: stripEmptyObjects({
 				operationId: key,
 				body: supportsBody ? schema?.body?.toJsonSchema() : undefined,
@@ -186,52 +190,63 @@ export abstract class Server<Req = any, Res = any> {
 				headers: schema?.headers?.toJsonSchema(),
 				response: schema?.response ? { ...errorsSchema, [statusCode]: schema.response.toJsonSchema() } : undefined,
 				summary: title ?? cleanPath(path),
-				hide: !schema || schema.hide,
+				hide: hide || !schema,
 				tags: tag ? [tag] : undefined,
 				description: route.descriptions?.join('\n\n'),
 				security,
 			}),
+			validateRequest: (req) => {
+				const validity = v
+					.object({
+						params: schema?.params ?? anySchema,
+						headers: schema?.headers ?? anySchema,
+						query: schema?.query ?? anySchema,
+						body: schema?.body ?? anySchema,
+					})
+					.safeParse({
+						params: req.params,
+						headers: req.headers,
+						query: req.query,
+						body: req.body,
+					})
+
+				if (!validity.valid) throw pipeErrorToValidationError(validity.error)
+				req.params = validity.value.params
+				req.headers = validity.value.headers
+				req.query = validity.value.query
+				req.body = validity.value.body as any
+				return req
+			},
+			validateResponse: (res) => {
+				const validity = v
+					.object({
+						responseHeaders: schema?.responseHeaders ?? anySchema,
+						response: schema?.response ?? anySchema,
+					})
+					.safeParse({
+						responseHeaders: res.headers,
+						response: res.body,
+					})
+
+				if (!validity.valid) throw pipeErrorToValidationError(validity.error)
+				res.body = validity.value.response
+				res.headers = validity.value.responseHeaders
+				return res
+			},
 		}
-		if (this.#routesByKey.get(key))
-			throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
 		this.#routesByKey.set(key, fullRoute)
 		this.implementations.registerRoute(fullRoute, this.#createController(fullRoute))
 	}
 
 	#createController<T extends FullRoute<any>>(route: T) {
 		return async (req: Req, res: Res) => {
-			const request = await this.implementations.parseRequest(req)
-
-			if (this.settings.requests.schemaValidation) {
-				const validity = v
-					.object(
-						stripEmptyObjects({
-							params: route.schema?.params,
-							headers: route.schema?.headers,
-							query: route.schema?.query,
-							body: route.schema?.body,
-						}),
-						false,
-					)
-					.safeParse({
-						params: request.params,
-						headers: request.headers,
-						query: request.query,
-						body: request.body,
-					})
-				if (!validity.valid) throw pipeErrorToValidationError(validity.error)
-				request.params = validity.value.params
-				request.headers = validity.value.headers
-				request.query = validity.value.query
-				request.body = validity.value.body as any
-			}
-
+			const request = route.validateRequest(await this.implementations.parseRequest(req))
 			try {
 				for (const middleware of route.middlewares) await middleware.cb(request)
 				const rawRes = await route.handler(request)
 				const response =
 					rawRes instanceof Response ? rawRes : new Response({ body: rawRes, status: StatusCodes.Ok, headers: {}, piped: false })
-				return await this.implementations.handleResponse(res, response)
+				return await this.implementations.handleResponse(res, route.validateResponse(response))
 			} catch (error) {
 				if (route.onError?.cb) {
 					const rawResponse = await route.onError.cb(request, error as Error)
@@ -239,7 +254,7 @@ export abstract class Server<Req = any, Res = any> {
 						rawResponse instanceof Response
 							? rawResponse
 							: new Response({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
-					return await this.implementations.handleResponse(res, response)
+					return await this.implementations.handleResponse(res, route.validateResponse(response))
 				}
 				throw error
 			}

@@ -41,7 +41,6 @@ export type RouteDef = Readonly<{
 	responseHeaders?: Pipe<DefaultHeaders>
 	query?: Pipe<Record<string, ArrayOrValue<unknown>>>
 	defaultStatusCode?: StatusCodesEnum
-	hide?: boolean
 }>
 
 type RouteGroup = { name: string; description?: string }
@@ -56,7 +55,7 @@ export type RouteConfig<T extends RouteDef> = {
 	security?: Record<string, string[]>[]
 }
 
-type RouteDefConfig<T extends RouteDef> = RouteConfig<T> & { schema?: T }
+type RouteDefConfig<T extends RouteDef> = RouteConfig<T> & { schema?: T; hide?: boolean }
 export type RouteGeneralConfig<T extends RouteDef> = RouteConfig<T> & { path: string }
 
 export type Route<T extends RouteDef> = RouteDefConfig<T> & {
