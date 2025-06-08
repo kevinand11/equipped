@@ -92,9 +92,9 @@ export type AddMethodDefImpls = {
 	[Method in MethodsEnum]: <T extends RouteDef>(path: string, config?: RouteDefConfig<T>) => (handler: RouteDefHandler<T>) => Route<T>
 }
 
-type RouteMiddlewareHandler<Def extends RouteDef> = (req: Request<RouteDefToReqRes<Def>>) => Awaitable<void>
+type RouteMiddlewareHandler<_Def extends RouteDef> = (req: Request<RouteDefToReqRes<any>>) => Awaitable<void>
 type ErrorHandler<Def extends RouteDef> = (
-	req: Request<RouteDefToReqRes<Def>>,
+	req: Request<RouteDefToReqRes<any>>,
 	err: Error,
 ) => Res<
 	Omit<RouteDefToReqRes<Def>, 'response' | 'statusCode' | 'responseHeaders'> & {
