@@ -10,14 +10,19 @@ import { v } from 'valleyed'
 import { EquippedError, NotFoundError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
 import { Listener } from '../../listeners'
+import { pipeErrorToValidationError } from '../../validations'
 import { parseAuthUser } from '../middlewares/parseAuthUser'
 import { type Request, Response } from '../requests'
 import { cleanPath, type Router } from '../routes'
 import { Methods, MethodsEnum, RouteDef, StatusCodes, type Route } from '../types'
 
 export type FullRoute<T extends RouteDef> = Required<
-	Omit<Route<T>, 'schema' | 'groups' | 'security' | 'title' | 'descriptions' | 'hideSchema' | 'onError'>
-> & { schema: FastifySchema; onError?: Route<T>['onError'] }
+	Omit<Route<T>, 'schema' | 'groups' | 'security' | 'title' | 'descriptions' | 'onError'>
+> & {
+	schema: Route<T>['schema']
+	jsonSchema: FastifySchema
+	onError?: Route<T>['onError']
+}
 
 declare module 'openapi-types' {
 	namespace OpenAPIV3 {
@@ -154,14 +159,13 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	#regRoute<T extends RouteDef>(route: Route<T>) {
-		const middlewares = route.middlewares ?? []
+		const { method, path, handler, schema, title, security, onError, middlewares = [] } = route
+
 		middlewares.unshift(parseAuthUser as any)
 		middlewares.forEach((m) => m.onSetup?.(route))
-		route.onError?.onSetup?.(route)
+		onError?.onSetup?.(route)
 
-		const { method, path, handler, schema, title, security, onError } = route
 		const key = `(${method.toUpperCase()}) ${path}`
-
 		const tag = this.#buildTag(route.groups ?? [])
 
 		const statusCode = schema?.defaultStatusCode ?? StatusCodes.Ok
@@ -173,7 +177,8 @@ export abstract class Server<Req = any, Res = any> {
 			handler,
 			path: cleanPath(path),
 			onError,
-			schema: stripEmptyObjects({
+			schema,
+			jsonSchema: stripEmptyObjects({
 				operationId: key,
 				body: supportsBody ? schema?.body?.toJsonSchema() : undefined,
 				querystring: schema?.query?.toJsonSchema(),
@@ -198,7 +203,27 @@ export abstract class Server<Req = any, Res = any> {
 			const request = await this.implementations.parseRequest(req)
 
 			if (this.settings.requests.schemaValidation) {
-				// TODO: run schema validation for request
+				const validity = v
+					.object(
+						stripEmptyObjects({
+							params: route.schema?.params,
+							headers: route.schema?.headers,
+							query: route.schema?.query,
+							body: route.schema?.body,
+						}),
+						false,
+					)
+					.safeParse({
+						params: request.params,
+						headers: request.headers,
+						query: request.query,
+						body: request.body,
+					})
+				if (!validity.valid) throw pipeErrorToValidationError(validity.error)
+				request.params = validity.value.params
+				request.headers = validity.value.headers
+				request.query = validity.value.query
+				request.body = validity.value.body as any
 			}
 
 			try {

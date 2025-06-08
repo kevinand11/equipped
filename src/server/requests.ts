@@ -7,12 +7,11 @@ import { IncomingFile } from '../schemas'
 import type { DefaultHeaders, MethodsEnum, RouteDefToReqRes, StatusCodesEnum } from './types'
 import type { DistributiveOmit, IsInTypeList, Prettify } from '../types'
 import type { AuthUser, RefreshUser } from '../types/overrides'
-import { parseJSONValue } from '../utils/json'
 
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 
 type IsFileOrFileArray<T> = T extends File ? IncomingFile[] : T extends File[] ? IncomingFile[] : T
-type ApiToBody<T> = Prettify<MappedUnion<T>>
+type ApiToBody<T> = Prettify<MappedUnion<T extends object ? T : { raw: T }>>
 type UnionMapper<T> = {
 	[K in T extends infer P ? keyof P : never]: T extends infer P
 		? K extends keyof P
@@ -31,12 +30,11 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 	readonly ip: string | undefined
 	readonly method: MethodsEnum
 	readonly path: string
-	readonly body: ApiToBody<Def['body']>
-	readonly params: Def['params']
-	readonly query: Def['query']
+	body: ApiToBody<Def['body']>
+	params: Def['params']
+	query: Def['query']
+	headers: Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & FallbackHeadersType
 	readonly cookies: Record<string, any>
-	readonly rawBody: unknown
-	readonly headers: Prettify<Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & FallbackHeadersType>
 	users: {
 		access: ReqUser<AuthUser>
 		refresh: ReqUser<RefreshUser>
@@ -72,30 +70,11 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		this.ip = ip
 		this.method = method
 		this.path = path
-		this.rawBody = body
-		this.body = <any>(
-			Object.assign(
-				Object.fromEntries(
-					Object.entries(body && typeof body === 'object' ? body : { raw: body }).map(([key, value]) => [
-						key,
-						parseJSONValue(value),
-					]),
-				),
-				files,
-			)
-		)
-		this.cookies = cookies
 		this.params = params
-		this.headers = <any>headers
-		this.query = Object.fromEntries(
-			Object.entries(query && typeof query === 'object' ? query : {}).map(([key, val]) => [key, this.#parseQueryStrings(val)]),
-		)
-	}
-
-	#parseQueryStrings(value: unknown) {
-		if (Array.isArray(value)) return value.map(this.#parseQueryStrings)
-		if (typeof value === 'string') return parseJSONValue(value)
-		return value
+		this.cookies = cookies
+		this.headers = headers
+		this.query = query
+		this.body = <any>Object.assign(body && typeof body === 'object' ? body : { raw: body }, files)
 	}
 
 	pipe(stream: Readable, opts: { headers?: Def['responseHeaders']; status?: Def['statusCode'] } = {}) {
