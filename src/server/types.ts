@@ -1,4 +1,4 @@
-import { IsInTypeList, IsType, Pipe, PipeInput, Prettify } from 'valleyed'
+import { IsInTypeList, IsType, Pipe, PipeOutput, Prettify } from 'valleyed'
 
 import type { Request, Response } from './requests'
 import type { RequestError } from '../errors'
@@ -43,12 +43,12 @@ export type IncomingFile = {
 }
 
 export type RouteDef = {
-	body?: Pipe<Record<string, unknown>>
-	response?: Pipe<unknown>
-	params?: Pipe<Record<string, ArrayOrValue<string>>>
-	headers?: Pipe<DefaultHeaders>
-	responseHeaders?: Pipe<DefaultHeaders>
-	query?: Pipe<Record<string, ArrayOrValue<unknown>>>
+	body?: Pipe<Record<string, unknown>, Record<string, unknown>>
+	response?: Pipe<unknown, unknown>
+	params?: Pipe<Record<string, ArrayOrValue<string>>, Record<string, ArrayOrValue<string>>>
+	headers?: Pipe<DefaultHeaders, DefaultHeaders>
+	responseHeaders?: Pipe<DefaultHeaders, DefaultHeaders>
+	query?: Pipe<Record<string, ArrayOrValue<unknown>>, Record<string, ArrayOrValue<unknown>>>
 	defaultStatusCode?: StatusCodesEnum
 }
 
@@ -75,7 +75,7 @@ export type Route<T extends RouteDef> = RouteConfig<T> & {
 
 type GetApiPart<T extends RouteDef, K extends keyof RouteDef> = NonNullable<IsInTypeList<T[K], [unknown]> extends true ? RouteDef[K] : T[K]>
 
-type ArePipes<A, B> = A extends Pipe<any, any, any> ? (B extends Pipe<any, any, any> ? true : false) : false
+type ArePipes<A, B> = A extends Pipe<any, any> ? (B extends Pipe<any, any> ? true : false) : false
 type Compare<A, B, CP = true> =
 	IsType<B, unknown> extends true
 		? A
@@ -83,7 +83,7 @@ type Compare<A, B, CP = true> =
 			? B
 			: CP extends true
 				? ArePipes<A, B> extends true
-					? Pipe<PipeInput<A> & PipeInput<B>>
+					? Pipe<PipeOutput<A> & PipeOutput<B>>
 					: B
 				: B
 export type MergeRouteDefs<A extends RouteDef, B extends RouteDef> = {
@@ -91,12 +91,12 @@ export type MergeRouteDefs<A extends RouteDef, B extends RouteDef> = {
 }
 
 export type RouteDefToReqRes<T extends RouteDef> = Prettify<{
-	body: PipeInput<GetApiPart<T, 'body'>>
-	params: PipeInput<GetApiPart<T, 'params'>>
-	requestHeaders: PipeInput<GetApiPart<T, 'headers'>>
-	query: PipeInput<GetApiPart<T, 'query'>>
-	response: PipeInput<GetApiPart<T, 'response'>>
-	responseHeaders: PipeInput<GetApiPart<T, 'responseHeaders'>>
+	body: PipeOutput<GetApiPart<T, 'body'>>
+	params: PipeOutput<GetApiPart<T, 'params'>>
+	requestHeaders: PipeOutput<GetApiPart<T, 'headers'>>
+	query: PipeOutput<GetApiPart<T, 'query'>>
+	response: PipeOutput<GetApiPart<T, 'response'>>
+	responseHeaders: PipeOutput<GetApiPart<T, 'responseHeaders'>>
 	statusCode: GetApiPart<T, 'defaultStatusCode'>
 }>
 

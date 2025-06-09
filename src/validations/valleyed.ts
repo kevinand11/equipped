@@ -1,4 +1,4 @@
-import { PipeError, makePipe, v } from 'valleyed'
+import { PipeError, v } from 'valleyed'
 
 import { Instance } from '../instance'
 import type { IncomingFile } from '../server'
@@ -16,14 +16,14 @@ const filePipe = (err?: string) =>
 	)
 
 export const incomingFile = (err?: string) =>
-	makePipe<IncomingFile>(
+	v.pipe<IncomingFile>(
 		(input) =>
 			filePipe(err)
-				.pipe(v.containsMin(1, 'no file provided'))
+				.pipe(v.min(1, 'no file provided'))
 				.pipe((files) => files[0])
 				.parse(input),
-		{ type: 'string', format: 'binary' },
+		{ schema: { type: 'string', format: 'binary' } },
 	)
 
 export const incomingFiles = (err?: string) =>
-	makePipe<IncomingFile[]>((input) => filePipe(err).parse(input), { type: 'string', format: 'binary' })
+	v.pipe<IncomingFile[]>((input) => filePipe(err).parse(input), { schema: { type: 'string', format: 'binary' } })

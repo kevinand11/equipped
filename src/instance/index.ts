@@ -25,7 +25,7 @@ export class Instance<T extends object = object> {
 	#server: Server | null = null
 	#dbs: { mongo: MongoDb } | null = null
 
-	constructor(envsPipe: Pipe<any, T, any>, settings?: (envs: T) => DeepPartial<Settings> | DeepPartial<Settings>) {
+	constructor(envsPipe: Pipe<any, T>, settings?: (envs: T) => DeepPartial<Settings> | DeepPartial<Settings>) {
 		const envValidity = envsPipe.safeParse(process.env)
 		if (!envValidity.valid) {
 			return exit(

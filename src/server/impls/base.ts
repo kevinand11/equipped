@@ -152,7 +152,7 @@ export abstract class Server<Req = any, Res = any> {
 		})
 		const validateRequest: RequestValidator = (req) => {
 			if (!Object.keys(requestPipe)) return req
-			const validity = v.object(requestPipe, false).safeParse({
+			const validity = v.object(requestPipe).safeParse({
 				params: req.params,
 				headers: req.headers,
 				query: req.query,
@@ -170,7 +170,7 @@ export abstract class Server<Req = any, Res = any> {
 			if (!Object.keys(responsePipe)) return res
 			status = res.status
 
-			const validity = v.object(responsePipe, false).safeParse({
+			const validity = v.object(responsePipe).safeParse({
 				responseHeaders: res.headers,
 				response: res.body,
 			})
