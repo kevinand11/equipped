@@ -1,11 +1,10 @@
 import { ClientSession, Filter, UpdateFilter } from 'mongodb'
-import { DataClass } from 'valleyed'
 
 import { QueryParams, QueryResults } from '../../schemas/db'
 import { DistributiveOmit } from '../../types'
 
 export type IdType = { _id: string } | { id: string }
-export type Entity = DataClass<any, any>
+export type Entity = { toJSON: () => Record<string, unknown> }
 type ModelId<T> = T extends Model<infer Id> ? Id[keyof Id] : never
 export type Model<IdKey extends IdType> = IdKey & {
 	createdAt?: number

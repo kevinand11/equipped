@@ -69,7 +69,6 @@
 		"jsonwebtoken": "9.0.2",
 		"jwks-rsa": "3.2.0",
 		"kafkajs": "2.2.4",
-		"lodash": "^4.17.21",
 		"mongodb": "^6.16.0",
 		"music-metadata": "7.14.0",
 		"openapi-types": "12.1.3",

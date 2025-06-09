@@ -1,4 +1,3 @@
-import { merge } from 'lodash'
 import pino from 'pino'
 import { Pipe } from 'valleyed'
 
@@ -11,13 +10,13 @@ import type { EventBus } from '../events/'
 import { KafkaEventBus } from '../events/kafka'
 import { addWaitBeforeExit, exit } from '../exit'
 import { serverTypes, type Server } from '../server'
-import { defaulInstanceSetting, type Settings } from './settings'
+import { settingsPipe, type Settings } from './settings'
 import { DeepPartial } from '../types'
 
 export class Instance<T extends object = object> {
 	static #instance: Instance
 	readonly envs: T = {} as T
-	readonly settings: Settings = { ...defaulInstanceSetting }
+	readonly settings: Settings = {} as Settings
 	#logger: pino.Logger<any> | null = null
 	#job: BullJob | null = null
 	#cache: Cache | null = null
@@ -25,7 +24,7 @@ export class Instance<T extends object = object> {
 	#server: Server | null = null
 	#dbs: { mongo: MongoDb } | null = null
 
-	constructor(envsPipe: Pipe<any, T>, settings?: (envs: T) => DeepPartial<Settings> | DeepPartial<Settings>) {
+	constructor(envsPipe: Pipe<any, T>, settings?: DeepPartial<Settings> | ((envs: T) => DeepPartial<Settings>)) {
 		const envValidity = envsPipe.safeParse(process.env)
 		if (!envValidity.valid) {
 			return exit(
@@ -35,7 +34,15 @@ export class Instance<T extends object = object> {
 			)
 		}
 		this.envs = Object.freeze(envValidity.value)
-		this.settings = merge(this.settings, typeof settings === 'function' ? settings(this.envs) : (settings ?? {}))
+		const settingsValidity = settingsPipe.safeParse(typeof settings === 'function' ? settings(this.envs) : (settings ?? {}))
+		if (!settingsValidity.valid) {
+			return exit(
+				new EquippedError(`Settings are not valid\n${settingsValidity.error.toString()}`, {
+					messages: settingsValidity.error.messages,
+				}),
+			)
+		}
+		this.settings = Object.freeze(settingsValidity.value)
 		Instance.#instance = this
 	}
 

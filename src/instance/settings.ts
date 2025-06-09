@@ -1,95 +1,85 @@
-import type { SASLOptions } from 'kafkajs'
-import type { Level } from 'pino'
+import { PipeOutput, v } from 'valleyed'
 
 import { BaseApiKeysUtility, BaseTokensUtility } from '../requests-auth'
-import type { ServerTypes } from '../server'
 
-export type Settings = {
-	debeziumUrl: string
-	mongoDbURI: string
-	rabbitURI: string
-	kafka: { brokers: string[]; ssl?: boolean; sasl?: Extract<SASLOptions, { mechanism: 'plain' }>; confluent?: boolean }
-	redis: {
-		host?: string
-		port?: number
-		password?: string
-		username?: string
-		tls?: boolean
-		cluster?: boolean
-	}
-	app: string
-	appId: string
-	bullQueueName: string
-	eventColumnName: string
-	rateLimit: {
-		enabled?: boolean
-		periodInMs?: number
-		limit?: number
-	}
-	slowdown: {
-		enabled?: boolean
-		periodInMs?: number
-		delayAfter?: number
-		delayInMs?: number
-	}
-	logLevel: Level
-	hashSaltRounds: number
-	server: {
-		type: ServerTypes
-		publicPath?: string
-		healthPath?: string
-	}
-	openapi: {
-		docsVersion?: string
-		docsBaseUrl?: string[]
-		docsPath?: string
-	}
-	requests: {
-		log?: boolean
-		paginationDefaultLimit: number
-		maxFileUploadSizeInMb: number
-	}
-	requestsAuth: {
-		tokens?: BaseTokensUtility
-		apiKey?: BaseApiKeysUtility
-	}
-}
+export const settingsPipe = v.object({
+	app: v.defaults(v.string(), 'app'),
+	appId: v.defaults(v.string(), 'appId'),
+	bullQueueName: v.defaults(v.string(), 'appTasksQueue'),
+	eventColumnName: v.defaults(v.string(), 'appEventsColumn'),
+	hashSaltRounds: v.defaults(v.number(), 10),
+	logLevel: v.defaults(v.string().pipe(v.in(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const)), 'info'),
+	debeziumUrl: v.string(),
+	mongoDbURI: v.string(),
+	rabbitURI: v.defaults(v.string(), ''),
+	kafka: v.object({
+		brokers: v.defaults(v.array(v.string()), []),
+		ssl: v.optional(v.boolean()),
+		sasl: v.optional(
+			v.object({
+				mechanism: v.string().pipe(v.eq('plain' as const)),
+				username: v.string(),
+				password: v.string(),
+			}),
+		),
+		confluent: v.optional(v.boolean()),
+	}),
+	redis: v.object({
+		host: v.optional(v.string()),
+		port: v.optional(v.number()),
+		password: v.optional(v.string()),
+		username: v.optional(v.string()),
+		tls: v.optional(v.boolean()),
+		cluster: v.optional(v.boolean()),
+	}),
+	rateLimit: v.defaults(
+		v.object({
+			enabled: v.defaults(v.boolean(), false),
+			periodInMs: v.defaults(v.number(), 60 * 60 * 1000),
+			limit: v.defaults(v.number(), 5000),
+		}),
+		{},
+	),
+	slowdown: v.defaults(
+		v.object({
+			enabled: v.defaults(v.boolean(), false),
+			periodInMs: v.defaults(v.number(), 10 * 60 * 1000),
+			delayAfter: v.defaults(v.number(), 2000),
+			delayInMs: v.defaults(v.number(), 500),
+		}),
+		{},
+	),
+	server: v.defaults(
+		v.object({
+			type: v.defaults(v.in(['fastify', 'express'] as const), 'fastify'),
+			publicPath: v.optional(v.string()),
+			healthPath: v.optional(v.string()),
+		}),
+		{},
+	),
+	openapi: v.defaults(
+		v.object({
+			docsVersion: v.defaults(v.string(), '1.0.0'),
+			docsBaseUrl: v.defaults(v.array(v.string()), ['/']),
+			docsPath: v.defaults(v.string(), '/__docs'),
+		}),
+		{},
+	),
+	requests: v.defaults(
+		v.object({
+			log: v.defaults(v.boolean(), true),
+			paginationDefaultLimit: v.defaults(v.number(), 100),
+			maxFileUploadSizeInMb: v.defaults(v.number(), 500),
+		}),
+		{},
+	),
+	requestsAuth: v.defaults(
+		v.object({
+			tokens: v.optional(v.instanceOf(BaseTokensUtility)),
+			apiKey: v.optional(v.instanceOf(BaseApiKeysUtility)),
+		}),
+		{},
+	),
+})
 
-export const defaulInstanceSetting: Settings = {
-	debeziumUrl: '',
-	mongoDbURI: '',
-	rabbitURI: '',
-	redis: {},
-	kafka: { brokers: [] },
-	app: 'app',
-	appId: 'appId',
-	bullQueueName: 'appTasksQueue',
-	eventColumnName: 'appEventsColumn',
-	hashSaltRounds: 10,
-	logLevel: 'info',
-	rateLimit: {
-		enabled: false,
-		periodInMs: 60 * 60 * 1000,
-		limit: 5000,
-	},
-	slowdown: {
-		enabled: false,
-		periodInMs: 10 * 60 * 1000,
-		delayAfter: 2000,
-		delayInMs: 500,
-	},
-	server: {
-		type: 'fastify',
-	},
-	openapi: {
-		docsVersion: '1.0.0',
-		docsBaseUrl: ['/'],
-		docsPath: '/__docs',
-	},
-	requests: {
-		log: true,
-		paginationDefaultLimit: 100,
-		maxFileUploadSizeInMb: 500,
-	},
-	requestsAuth: {},
-}
+export type Settings = PipeOutput<typeof settingsPipe>
