@@ -1,4 +1,4 @@
-import { IsInTypeList, Pipe, PipeInput, Prettify } from 'valleyed'
+import { IsInTypeList, IsType, Pipe, PipeInput, Prettify } from 'valleyed'
 
 import type { Request, Response } from './requests'
 import type { RequestError } from '../errors'
@@ -74,9 +74,22 @@ export type Route<T extends RouteDef> = Omit<RouteConfig<T>, 'schema'> & {
 	handler: RouteDefHandler<T>
 }
 
-export type GetApiPart<T extends RouteDef, K extends keyof RouteDef> = NonNullable<
-	IsInTypeList<T[K], [unknown]> extends true ? RouteDef[K] : T[K]
->
+type GetApiPart<T extends RouteDef, K extends keyof RouteDef> = NonNullable<IsInTypeList<T[K], [unknown]> extends true ? RouteDef[K] : T[K]>
+
+type ArePipes<A, B> = A extends Pipe<any, any, any> ? (B extends Pipe<any, any, any> ? true : false) : false
+type Compare<A, B, CP = true> =
+	IsType<B, unknown> extends true
+		? A
+		: IsType<A, unknown> extends true
+			? B
+			: CP extends true
+				? ArePipes<A, B> extends true
+					? Pipe<PipeInput<A> & PipeInput<B>>
+					: B
+				: B
+export type MergeRouteDefs<A extends RouteDef, B extends RouteDef> = {
+	[K in keyof RouteDef]: Compare<A[K], B[K], K extends 'defaultStatusCode' ? false : true>
+}
 
 export type RouteDefToReqRes<T extends RouteDef> = Prettify<{
 	body: PipeInput<GetApiPart<T, 'body'>>
@@ -97,9 +110,9 @@ type Res<T extends RouteDefToReqRes<any>> = Awaitable<
 		: Response<T>
 >
 export type RouteDefHandler<Def extends RouteDef> = (req: Request<RouteDefToReqRes<Def>>) => Res<RouteDefToReqRes<Def>>
-type RouteMiddlewareHandler<_Def extends RouteDef> = (req: Request<RouteDefToReqRes<any>>) => Awaitable<void>
+type RouteMiddlewareHandler<_Def extends RouteDef> = (req: Request<RouteDefToReqRes<RouteDef>>) => Awaitable<void>
 type ErrorHandler<Def extends RouteDef> = (
-	req: Request<RouteDefToReqRes<any>>,
+	req: Request<RouteDefToReqRes<Def>>,
 	err: Error,
 ) => Res<
 	Omit<RouteDefToReqRes<Def>, 'response' | 'statusCode' | 'responseHeaders'> & {

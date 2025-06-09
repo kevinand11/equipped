@@ -60,7 +60,7 @@ export function queryParamsPipe<T>() {
 		whereType: queryKeys,
 		authType: queryKeys,
 		where: queryWhereClause<T>(),
-		auth: v.any<never>().pipe(() => [] as QueryWhereClause<T>),
+		auth: v.any<never>().pipe(() => [] as unknown as QueryWhereClause<T>[]),
 	})
 }
 
@@ -84,6 +84,6 @@ export function queryResultsPipe<T>(model: Pipe<any, T, any>) {
 
 export type QueryWhere<T = unknown> = PipeOutput<ReturnType<typeof queryWhere<T>>>
 export type QueryWhereBlock<T = unknown> = PipeOutput<ReturnType<typeof queryWhereBlock<T>>>
-export type QueryWhereClause<T> = NonNullable<PipeOutput<ReturnType<typeof queryWhereClause<T>>>>
+export type QueryWhereClause<T> = PipeOutput<ReturnType<typeof queryWhereClause<T>>>[number]
 export type QueryParams<T = unknown> = PipeOutput<ReturnType<typeof queryParamsPipe<T>>>
 export type QueryResults<T> = PipeOutput<ReturnType<typeof queryResultsPipe<T>>>

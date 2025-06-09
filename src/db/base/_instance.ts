@@ -9,7 +9,7 @@ export const TopicPrefix = 'db-changes'
 
 export type TableOptions = { skipAudit?: boolean }
 
-export type Config<Model extends core.Model<any>, Entity extends core.Entity> = {
+export type Config<Model extends core.Model<core.IdType>, Entity extends core.Entity> = {
 	db: string
 	col: string
 	mapper: (model: Model) => Entity
@@ -41,7 +41,7 @@ export abstract class Db<IdKey extends core.IdType> {
 	): core.Table<IdKey, Model, Entity>
 }
 
-export abstract class DbChange<Model extends core.Model<any>, Entity extends core.Entity> {
+export abstract class DbChange<Model extends core.Model<core.IdType>, Entity extends core.Entity> {
 	#callbacks: DbChangeCallbacks<Model, Entity> = {}
 	#mapper: (model: Model) => Entity
 
@@ -88,7 +88,7 @@ export abstract class DbChange<Model extends core.Model<any>, Entity extends cor
 	}
 }
 
-export type DbChangeCallbacks<Model extends core.Model<any>, Entity extends core.Entity> = {
+export type DbChangeCallbacks<Model extends core.Model<core.IdType>, Entity extends core.Entity> = {
 	created?: (data: { before: null; after: Entity }) => Promise<void>
 	updated?: (data: { before: Entity; after: Entity; changes: DeepPartial<Model> }) => Promise<void>
 	deleted?: (data: { before: Entity; after: null }) => Promise<void>

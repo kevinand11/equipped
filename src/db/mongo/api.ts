@@ -25,7 +25,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 	}
 
 	function prepInsertValue(value: core.CreateInput<Model>, id: string, now: Date, skipUpdate?: boolean) {
-		const base: core.Model<any> = {
+		const base: core.Model<IdType> = {
 			[idKey]: id,
 			...(tableOptions.skipAudit
 				? {}

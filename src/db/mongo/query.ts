@@ -54,11 +54,14 @@ export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: st
 	} satisfies QueryResults<Model>
 }
 
-function isWhereBlock<T>(param: QueryWhereClause<T>[number]): param is QueryWhereBlock<T> {
+function isWhereBlock<T>(param: QueryWhereClause<T>): param is QueryWhereBlock<T> {
 	return Object.values(QueryKeys).includes(param.condition as QueryKeys)
 }
 
-const buildWhereQuery = (params: QueryWhereClause<unknown>, key: QueryKeys = QueryKeys.and): Record<string, Record<string, any>> | null => {
+const buildWhereQuery = (
+	params: QueryWhereClause<unknown>[],
+	key: QueryKeys = QueryKeys.and,
+): Record<string, Record<string, any>> | null => {
 	const where = (Array.isArray(params) ? params : [])
 		.map((param) => {
 			if (isWhereBlock<unknown>(param)) return buildWhereQuery(param.value, param.condition)

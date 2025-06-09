@@ -1,4 +1,4 @@
-import { Methods, RouteDefHandler, RouterConfig, Route, MethodsEnum, RouteConfig, RouteDef } from './types'
+import { Methods, RouteDefHandler, RouterConfig, Route, MethodsEnum, RouteConfig, RouteDef, MergeRouteDefs } from './types'
 
 export const cleanPath = (path: string) => {
 	let cleaned = path.replace(/(\/\s*)+/g, '/')
@@ -7,7 +7,7 @@ export const cleanPath = (path: string) => {
 	return cleaned
 }
 
-const groupRoutes = <T extends RouteDef>(config: RouterConfig<T>, routes: Route<T>[]): Route<T>[] =>
+const groupRoutes = <T extends RouteDef, R extends RouteDef>(config: RouterConfig<T>, routes: Route<R>[]): Route<MergeRouteDefs<T, R>>[] =>
 	routes.map((route) => ({
 		...config,
 		...route,
@@ -16,24 +16,25 @@ const groupRoutes = <T extends RouteDef>(config: RouterConfig<T>, routes: Route<
 		middlewares: [...(config.middlewares ?? []), ...(route.middlewares ?? [])],
 		schemas: [...(config.schema ? [config.schema] : []), ...(route.schemas ?? [])],
 		security: [...(config.security ?? []), ...(route.security ?? [])],
-	}))
+	})) as any
 
 export class Router<T extends RouteDef> {
 	#config: RouterConfig<T> = { path: '' }
 	#routes: Route<any>[] = []
-	#children: Router<T>[] = []
+	#children: Router<any>[] = []
 
 	constructor(config: RouterConfig<T> = { path: '' }) {
 		this.#config = config
 	}
 
 	#wrap(method: MethodsEnum) {
-		return <T extends RouteDef>(path: string, config: RouteConfig<T> = {}) =>
-			(handler: RouteDefHandler<T>) => {
-				const schema = config.schema ?? {}
-				const route = groupRoutes(this.#config, [{ ...config, schemas: [schema as any], path, method, handler }])[0]
+		return <R extends RouteDef>(path: string, config: RouteConfig<R> = {}) =>
+			(handler: RouteDefHandler<MergeRouteDefs<T, R>>) => {
+				const route = groupRoutes(this.#config, [
+					{ ...config, schemas: config.schema ? [config.schema] : [], path, method, handler: handler as any },
+				])[0]
 				this.#routes.push(route)
-				return route as unknown as Route<T>
+				return route
 			}
 	}
 
@@ -45,12 +46,12 @@ export class Router<T extends RouteDef> {
 	delete = this.#wrap(Methods.delete)
 	options = this.#wrap(Methods.options)
 
-	add(...routes: Route<any>[]) {
+	add<R extends RouteDef>(...routes: Route<R>[]) {
 		const mapped = groupRoutes(this.#config, routes)
 		this.#routes.push(...mapped)
 	}
 
-	nest(...routers: Router<any>[]) {
+	nest<R extends RouteDef>(...routers: Router<R>[]) {
 		routers.forEach((router) => this.#children.push(router))
 	}
 

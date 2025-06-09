@@ -26,7 +26,7 @@ export class MongoDb extends Db<{ _id: string }> {
 		if (change) this._addToDbChanges(change)
 		this.#cols.push({ db: this.getScopedDb(config.db), col: config.col })
 		const collection = this.#client.db(this.getScopedDb(config.db)).collection<Model>(config.col)
-		return getTable<Model, Entity>(collection, config)
+		return getTable(collection, config)
 	}
 
 	async start() {

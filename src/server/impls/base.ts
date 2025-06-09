@@ -14,15 +14,13 @@ import { pipeErrorToValidationError } from '../../validations'
 import { parseAuthUser } from '../middlewares/parseAuthUser'
 import { type Request, Response } from '../requests'
 import { cleanPath, Router } from '../routes'
-import { Methods, MethodsEnum, RouteDef, RouteDefToReqRes, StatusCodes, StatusCodesEnum, type Route } from '../types'
+import { Methods, MethodsEnum, RouteDef, StatusCodes, StatusCodesEnum, type Route } from '../types'
 
-type FullRoute<T extends RouteDef> = Required<
-	Omit<Route<T>, 'schemas' | 'groups' | 'security' | 'hide' | 'title' | 'descriptions' | 'onError'>
-> & {
+type FullRoute = Required<Omit<Route<any>, 'schemas' | 'groups' | 'security' | 'hide' | 'title' | 'descriptions' | 'onError'>> & {
 	jsonSchema: FastifySchema
-	onError?: Route<T>['onError']
-	validateRequest: (req: Request<any>) => Request<RouteDefToReqRes<T>>
-	validateResponse: (res: Response<any>) => Response<RouteDefToReqRes<T>>
+	onError?: Route<any>['onError']
+	validateRequest: (req: Request<any>) => Request<any>
+	validateResponse: (res: Response<any>) => Response<any>
 }
 
 declare module 'openapi-types' {
@@ -46,7 +44,7 @@ const errorsSchema = Object.fromEntries(
 ) as Record<StatusCodesEnum, Pipe<unknown, unknown>>
 
 export abstract class Server<Req = any, Res = any> {
-	#routesByKey = new Map<string, FullRoute<any>>()
+	#routesByKey = new Map<string, FullRoute>()
 	#listener: Listener | null = null
 	#registeredTags: Record<string, boolean> = {}
 	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
@@ -94,7 +92,7 @@ export abstract class Server<Req = any, Res = any> {
 		protected implementations: {
 			parseRequest: (req: Req) => Promise<Request<any>>
 			handleResponse: (res: Res, response: Response<any>) => Promise<void>
-			registerRoute: (route: FullRoute<any>, cb: (req: Req, res: Res) => Promise<void>) => void
+			registerRoute: (route: FullRoute, cb: (req: Req, res: Res) => Promise<void>) => void
 			registerErrorHandler: (cb: (error: Error, req: Req, res: Res) => Promise<void>) => void
 			registerNotFoundHandler: (cb: (req: Req, res: Res) => Promise<void>) => void
 			start: (port: number) => Promise<boolean>
@@ -197,7 +195,7 @@ export abstract class Server<Req = any, Res = any> {
 			const reserve = def.type === 'res' ? responsePipe : requestPipe
 			reserve[def.key] = (def.reshapePipe ?? ((x) => x))(pipe)
 		})
-		const validateRequest: FullRoute<any>['validateRequest'] = (req) => {
+		const validateRequest: FullRoute['validateRequest'] = (req) => {
 			if (!Object.keys(requestPipe)) return req
 			const validity = v.object(requestPipe, false).safeParse({
 				params: req.params,
@@ -210,10 +208,10 @@ export abstract class Server<Req = any, Res = any> {
 			req.params = validity.value.params
 			req.headers = validity.value.headers
 			req.query = validity.value.query
-			req.body = validity.value.body as any
+			req.body = validity.value.body
 			return req
 		}
-		const validateResponse: FullRoute<any>['validateResponse'] = (res) => {
+		const validateResponse: FullRoute['validateResponse'] = (res) => {
 			if (!Object.keys(responsePipe)) return res
 			status = res.status
 
@@ -235,7 +233,7 @@ export abstract class Server<Req = any, Res = any> {
 		}
 	}
 
-	#regRoute<T extends RouteDef>(route: Route<T>) {
+	#regRoute(route: Route<any>) {
 		const { method, path, handler, schemas = [], hide = false, title, security, onError, middlewares = [] } = route
 
 		middlewares.unshift(parseAuthUser as any)
@@ -249,7 +247,7 @@ export abstract class Server<Req = any, Res = any> {
 		const tag = this.#buildTag(route.groups ?? [])
 		const { validateRequest, validateResponse, jsonSchema, noValidation } = this.#mergeSchemas(method, schemas)
 
-		const fullRoute: FullRoute<T> = {
+		const fullRoute: FullRoute = {
 			method,
 			middlewares,
 			handler,
@@ -271,7 +269,7 @@ export abstract class Server<Req = any, Res = any> {
 		this.implementations.registerRoute(fullRoute, this.#createController(fullRoute))
 	}
 
-	#createController<T extends FullRoute<any>>(route: T) {
+	#createController(route: FullRoute) {
 		return async (req: Req, res: Res) => {
 			const request = route.validateRequest(await this.implementations.parseRequest(req))
 			try {

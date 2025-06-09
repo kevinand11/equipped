@@ -12,7 +12,7 @@ export type Model<IdKey extends IdType> = IdKey & {
 	updatedAt?: number
 }
 
-type Sort<T extends Model<any>> = Exclude<QueryParams<T>['sort'], undefined>[number]
+type Sort<T extends Model<any>> = NonNullable<QueryParams<T>['sort']>[number]
 
 export type Table<Id extends IdType, T extends Model<Id>, Transform = T, Extras extends Record<string, unknown> = {}> = {
 	query: (query: QueryParams) => Promise<QueryResults<Transform>>
