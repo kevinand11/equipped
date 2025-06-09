@@ -5,7 +5,6 @@ import fastifyHelmet from '@fastify/helmet'
 import fastifyMultipart from '@fastify/multipart'
 import fastifyRateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
-import fastifySwagger from '@fastify/swagger'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import Fastify from 'fastify'
 // import fastifySlowDown from 'fastify-slow-down'
@@ -69,14 +68,9 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			handleResponse: async (res, response) => {
 				await res.status(response.status).headers(response.headers).send(response.body)
 			},
-			registerRoute: (route, cb) => {
+			registerRoute: (method, path, cb) => {
 				this.#fastifyApp.register(async (inst) => {
-					inst.route({
-						url: route.path,
-						method: route.method,
-						handler: cb,
-						schema: route.jsonSchema,
-					})
+					inst.route({ url: path, method, handler: cb })
 				})
 			},
 			registerErrorHandler: (cb) => {
@@ -97,13 +91,9 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		app.decorateRequest('savedReq', null)
 		app.setValidatorCompiler(() => () => true)
 		app.setSerializerCompiler(() => (data) => JSON.stringify(data))
-		if (this.staticPath) app.register(fastifyStatic, { root: this.staticPath })
+		if (this.settings.server.publicPath) app.register(fastifyStatic, { root: this.settings.server.publicPath })
 		app.register(fastifyCookie, {})
 		app.register(fastifyCors, this.cors)
-		app.register(fastifySwagger, { openapi: this.baseOpenapiDoc })
-		app.get(this.openapiJsonUrl, (_, res) => {
-			res.code(200).send(app.swagger({}))
-		})
 		app.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
 		app.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' }, contentSecurityPolicy: false })
 		app.register(fastifyMultipart, {

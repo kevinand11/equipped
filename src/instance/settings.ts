@@ -37,6 +37,7 @@ export type Settings = {
 	server: {
 		type: ServerTypes
 		publicPath?: string
+		healthPath?: string
 	}
 	openapi: {
 		docsVersion?: string

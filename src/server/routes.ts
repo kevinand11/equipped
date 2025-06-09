@@ -1,17 +1,10 @@
 import { Methods, RouteDefHandler, RouterConfig, Route, MethodsEnum, RouteConfig, RouteDef, MergeRouteDefs } from './types'
 
-export const cleanPath = (path: string) => {
-	let cleaned = path.replace(/(\/\s*)+/g, '/')
-	if (!cleaned.startsWith('/')) cleaned = `/${cleaned}`
-	if (cleaned !== '/' && cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1)
-	return cleaned
-}
-
 const groupRoutes = <T extends RouteDef, R extends RouteDef>(config: RouterConfig<T>, routes: Route<R>[]): Route<MergeRouteDefs<T, R>>[] =>
 	routes.map((route) => ({
 		...config,
 		...route,
-		path: cleanPath(`${config.path}/${route.path}`),
+		path: `${config.path}/${route.path}`,
 		groups: [...(config.groups ?? []), ...(route.groups ?? [])],
 		middlewares: [...(config.middlewares ?? []), ...(route.middlewares ?? [])],
 		schemas: [...(config.schema ? [config.schema] : []), ...(route.schemas ?? [])],

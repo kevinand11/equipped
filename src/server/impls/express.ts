@@ -1,7 +1,5 @@
 import http from 'http'
 
-import { prepareOpenapiMethod } from '@fastify/swagger/lib/spec/openapi/utils'
-import openapi from '@wesleytodd/openapi'
 import cookie from 'cookie-parser'
 import cors from 'cors'
 import express from 'express'
@@ -9,8 +7,6 @@ import fileUpload from 'express-fileupload'
 import { rateLimit } from 'express-rate-limit'
 // import slowDown from 'express-slow-down'
 import helmet from 'helmet'
-// @ts-ignore
-import resolver from 'json-schema-resolver'
 import { pinoHttp } from 'pino-http'
 
 import { addWaitBeforeExit } from '../../exit'
@@ -22,8 +18,6 @@ import { Server } from './base'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express
-	#oapi = openapi(this.openapiJsonUrl.replace('.json', ''), this.baseOpenapiDoc, { coerce: false })
-	#ref = resolver({ clone: true })
 
 	constructor() {
 		const app = express()
@@ -79,10 +73,8 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 					response.body.pipe(res)
 				}
 			},
-			registerRoute: (route, cb) => {
-				const openapi = prepareOpenapiMethod(route.jsonSchema, this.#ref, this.baseOpenapiDoc, route.path)
-				const controllers = [!route.jsonSchema.hide ? this.#oapi.path(openapi) : undefined, cb].filter(Boolean)
-				this.#expressApp[route.method]?.(route.path, ...controllers)
+			registerRoute: (method, path, cb) => {
+				this.#expressApp[method]?.(path, cb)
 			},
 			registerErrorHandler: (cb) => {
 				this.#expressApp.use(async (err, req, res, _next) => cb(err, req, res))
@@ -115,8 +107,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		)
 		app.use(cors(this.cors))
 		app.use(express.urlencoded({ extended: false }))
-		if (this.staticPath) app.use(express.static(this.staticPath))
-		app.use(this.#oapi)
+		if (this.settings.server.publicPath) app.use(express.static(this.settings.server.publicPath))
 		app.use(
 			fileUpload({
 				limits: { fileSize: this.settings.requests.maxFileUploadSizeInMb * 1024 * 1024 },
