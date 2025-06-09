@@ -67,8 +67,7 @@ export type RouteConfig<T extends RouteDef> = {
 }
 
 export type RouterConfig<T extends RouteDef> = RouteConfig<T> & { path: string }
-export type Route<T extends RouteDef> = Omit<RouteConfig<T>, 'schema'> & {
-	schemas?: T[]
+export type Route<T extends RouteDef> = RouteConfig<T> & {
 	path: string
 	method: MethodsEnum
 	handler: RouteDefHandler<T>

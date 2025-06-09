@@ -1,4 +1,23 @@
+import { v } from 'valleyed'
+
 import { Methods, RouteDefHandler, RouterConfig, Route, MethodsEnum, RouteConfig, RouteDef, MergeRouteDefs } from './types'
+
+function mergeSchemas(...schemas: RouteDef[]) {
+	type Keys = Record<keyof RouteDef, string>
+	const k: Keys = { params: '', headers: '', query: '', body: '', response: '', responseHeaders: '', defaultStatusCode: '' }
+	return Object.fromEntries(
+		Object.keys(k).map((key) => [
+			key,
+			schemas
+				.map((s) => s[key] as RouteDef[keyof Keys])
+				.filter((s) => !!s)
+				.reduce<RouteDef[keyof Keys] | null>(
+					(acc, curr) => (typeof curr === 'number' || typeof acc === 'number' ? curr : acc ? v.and([acc, curr]) : curr),
+					null,
+				),
+		]),
+	) as RouteDef
+}
 
 const groupRoutes = <T extends RouteDef, R extends RouteDef>(config: RouterConfig<T>, routes: Route<R>[]): Route<MergeRouteDefs<T, R>>[] =>
 	routes.map((route) => ({
@@ -7,7 +26,7 @@ const groupRoutes = <T extends RouteDef, R extends RouteDef>(config: RouterConfi
 		path: `${config.path}/${route.path}`,
 		groups: [...(config.groups ?? []), ...(route.groups ?? [])],
 		middlewares: [...(config.middlewares ?? []), ...(route.middlewares ?? [])],
-		schemas: [...(config.schema ? [config.schema] : []), ...(route.schemas ?? [])],
+		schema: mergeSchemas(config.schema ?? {}, route.schema ?? {}),
 		security: [...(config.security ?? []), ...(route.security ?? [])],
 	})) as any
 
@@ -23,9 +42,7 @@ export class Router<T extends RouteDef> {
 	#wrap(method: MethodsEnum) {
 		return <R extends RouteDef>(path: string, config: RouteConfig<R> = {}) =>
 			(handler: RouteDefHandler<MergeRouteDefs<T, R>>) => {
-				const route = groupRoutes(this.#config, [
-					{ ...config, schemas: config.schema ? [config.schema] : [], path, method, handler: handler as any },
-				])[0]
+				const route = groupRoutes(this.#config, [{ ...config, path, method, handler: handler as any }])[0]
 				this.#routes.push(route)
 				return route
 			}

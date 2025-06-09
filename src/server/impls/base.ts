@@ -2,7 +2,7 @@ import type http from 'http'
 
 import io from 'socket.io'
 import supertest from 'supertest'
-import { JsonSchema, Pipe, PipeError, v } from 'valleyed'
+import { PipeError, v } from 'valleyed'
 
 import { EquippedError, NotFoundError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
@@ -17,14 +17,14 @@ import { Methods, MethodsEnum, RouteDef, StatusCodes, StatusCodesEnum, type Rout
 type RequestValidator = (req: Request<any>) => Request<any>
 type ResponseValidator = (res: Response<any>) => Response<any>
 
-const errorsSchema = Object.fromEntries(
-	Object.entries(StatusCodes)
-		.filter(([, value]) => value > 399)
-		.map(([key, value]) => [
-			value.toString(),
-			v.array(v.object({ message: v.string(), field: v.optional(v.string()) })).meta({ description: `${key} Response` }),
-		]),
-) as Record<StatusCodesEnum, Pipe<unknown, unknown>>
+const errorsSchemas = Object.entries(StatusCodes)
+	.filter(([, value]) => value > 399)
+	.map(([key, value]): [StatusCodesEnum, RouteDef] => [
+		value,
+		{
+			response: v.array(v.object({ message: v.string(), field: v.optional(v.string()) })).meta({ description: `${key} Response` }),
+		},
+	])
 
 export abstract class Server<Req = any, Res = any> {
 	#routesByKey = new Map<string, boolean>()
@@ -71,7 +71,7 @@ export abstract class Server<Req = any, Res = any> {
 
 	addRoute<T extends RouteDef>(...routes: Route<T>[]) {
 		routes.forEach((route) => {
-			const { method, path, schemas = [], onError, middlewares = [] } = route
+			const { method, path, schema = {}, onError, middlewares = [] } = route
 
 			middlewares.unshift(parseAuthUser as any)
 			middlewares.forEach((m) => m.onSetup?.(route))
@@ -81,7 +81,7 @@ export abstract class Server<Req = any, Res = any> {
 			if (this.#routesByKey.get(key))
 				throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
 
-			const { validateRequest, validateResponse, jsonSchema } = this.#mergeSchemas(method, schemas)
+			const { validateRequest, validateResponse, jsonSchema } = this.#resolveSchema(method, schema)
 
 			this.#routesByKey.set(key, true)
 			this.#openapi.register(route, jsonSchema)
@@ -110,8 +110,8 @@ export abstract class Server<Req = any, Res = any> {
 		})
 	}
 
-	#mergeSchemas(method: MethodsEnum, schemas: RouteDef[]) {
-		const defaultStatusCode = schemas.findLast((s) => 'defaultStatusCode' in s)?.defaultStatusCode ?? StatusCodes.Ok
+	#resolveSchema(method: MethodsEnum, schema: RouteDef) {
+		const defaultStatusCode = schema?.defaultStatusCode ?? StatusCodes.Ok
 		let status = defaultStatusCode
 		const jsonSchema: OpenApiSchemaDef = { response: {}, request: {} }
 		const requestPipe: Pick<RouteDef, 'body' | 'headers' | 'query' | 'params'> = {}
@@ -119,43 +119,36 @@ export abstract class Server<Req = any, Res = any> {
 
 		const defs: {
 			key: Exclude<keyof RouteDef, 'defaultStatusCode'>
-			type: 'request' | 'response'
-			reshapePipe?: (pipe: Pipe<unknown>) => Pipe<unknown>
+			type: keyof OpenApiSchemaDef
 			skip?: boolean
 		}[] = [
 			{ key: 'params', type: 'request' },
 			{ key: 'headers', type: 'request' },
 			{ key: 'query', type: 'request' },
 			{ key: 'body', type: 'request', skip: !(<MethodsEnum[]>[Methods.post, Methods.put, Methods.patch]).includes(method) },
-			{
-				key: 'response',
-				type: 'response',
-				reshapePipe: (pipe) => {
-					const responses = { ...errorsSchema, [defaultStatusCode]: pipe }
-					return v.any().pipe((input) => {
-						const p = responses[status]
-						if (!p) throw PipeError.root(`schema not defined for status code: ${status}`, input)
-						return p.parse(input)
-					})
-				},
-			},
+			{ key: 'response', type: 'response' },
 			{ key: 'responseHeaders', type: 'response' },
 		]
 		defs.forEach((def) => {
-			const pipes = schemas.map((schema) => schema[def.key]).filter((p) => !!p)
-			if (!pipes.length || def.skip) return
+			const pipe = schema[def.key]
+			if (!pipe || def.skip) return
 
-			const pipe = pipes.length === 1 ? pipes[0] : v.and(pipes)
-			const reshape = (schema: JsonSchema) =>
-				def.type === 'request'
-					? schema
-					: Object.fromEntries([
-							...Object.entries(errorsSchema).map(([key, pipe]) => [key, pipe.toJsonSchema()]),
-							[defaultStatusCode, schema],
-						])
-			jsonSchema[def.type][def.key] = reshape(pipe.toJsonSchema())
-			const reserve = def.type === 'response' ? responsePipe : requestPipe
-			reserve[def.key] = (def.reshapePipe ?? ((x) => x))(pipe)
+			if (def.type === 'request') {
+				requestPipe[def.key] = pipe
+				jsonSchema.request[def.key] = pipe.toJsonSchema()
+			}
+			if (def.type === 'response') {
+				const pipeRecords = [
+					...errorsSchemas.map(([statusCode, d]) => [statusCode, d[def.key]!] as const),
+					[defaultStatusCode, pipe] as const,
+				].filter(([_, p]) => !!p)
+				responsePipe[def.key] = v.any().pipe((input) => {
+					const p = pipeRecords.find((r) => r[0] === status)?.[1]
+					if (!p) throw PipeError.root(`schema not defined for status code: ${status}`, input)
+					return p.parse(input)
+				})
+				jsonSchema.response[def.key] = Object.fromEntries(pipeRecords.map(([statusCode, p]) => [statusCode, p.toJsonSchema()]))
+			}
 		})
 		const validateRequest: RequestValidator = (req) => {
 			if (!Object.keys(requestPipe)) return req

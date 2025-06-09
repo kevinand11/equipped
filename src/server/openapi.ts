@@ -70,8 +70,8 @@ export class OpenApi {
 		return cleaned
 	}
 
-	register(route: Route<any>, { request = {}, response = {} }: OpenApiSchemaDef) {
-		const noValidation = !Object.keys(request).length && !Object.keys(response).length
+	register(route: Route<any>, def: OpenApiSchemaDef) {
+		const noValidation = !Object.keys(def.request).length && !Object.keys(def.response).length
 		if (!noValidation || route.hide) return
 
 		const tag = this.#buildTag(route.groups ?? [])
@@ -79,8 +79,8 @@ export class OpenApi {
 		const operationId = `(${route.method.toUpperCase()}) ${route.path}`
 		const openapiSchema = prepareOpenapiMethod(
 			{
-				...request,
-				...response,
+				...def.request,
+				...def.response,
 				operationId,
 				summary: route.title ?? this.cleanPath(route.path),
 				description: route.descriptions?.join('\n\n'),
