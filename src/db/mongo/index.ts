@@ -2,14 +2,19 @@ import { ClientSession, CollectionInfo, MongoClient, ObjectId } from 'mongodb'
 
 import { getTable } from './api'
 import { MongoDbChange } from './changes'
-import { Instance } from '../../instance'
+import { MongoDbConfig } from '../../schemas'
 import { Db, type Config } from '../base/_instance'
 import * as core from '../base/core'
 
 export class MongoDb extends Db<{ _id: string }> {
+	#client: MongoClient
 	#started = false
 	#cols: { db: string; col: string }[] = []
-	#client = new MongoClient(Instance.get().settings.mongoDbURI)
+
+	constructor(private config: MongoDbConfig) {
+		super()
+		this.#client = new MongoClient(config.uri)
+	}
 
 	async session<T>(callback: (session: ClientSession) => Promise<T>) {
 		return this.#client.withSession(callback)
@@ -21,7 +26,14 @@ export class MongoDb extends Db<{ _id: string }> {
 
 	use<Model extends core.Model<{ _id: string }>, Entity extends core.Entity>(config: Config<Model, Entity>) {
 		const change = config.change
-			? new MongoDbChange<Model, Entity>(this.#client, this.getScopedDb(config.db), config.col, config.change, config.mapper)
+			? new MongoDbChange<Model, Entity>(
+					this.config,
+					this.#client,
+					this.getScopedDb(config.db),
+					config.col,
+					config.change,
+					config.mapper,
+				)
 			: null
 		if (change) this._addToDbChanges(change)
 		this.#cols.push({ db: this.getScopedDb(config.db), col: config.col })

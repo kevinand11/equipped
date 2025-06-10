@@ -1,16 +1,16 @@
 import { Cluster, Redis, RedisOptions } from 'ioredis'
 
+import { Cache } from '../'
 import { EquippedError } from '../../errors'
 import { exit } from '../../exit'
 import { Instance } from '../../instance'
-import { Cache } from '../cache'
+import { RedisConfig } from '../../schemas'
 
 export class RedisCache extends Cache {
 	client: Redis | Cluster
 
-	constructor(extraConfig?: Partial<RedisOptions>) {
+	constructor(settings: RedisConfig, extraConfig?: Partial<RedisOptions>) {
 		super()
-		const settings = Instance.get().settings.redis
 		const node = {
 			...(settings.host ? { host: settings.host } : {}),
 			...(settings.port ? { port: settings.port } : {}),

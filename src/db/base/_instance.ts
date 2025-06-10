@@ -61,7 +61,7 @@ export abstract class DbChange<Model extends core.Model<core.IdType>, Entity ext
 	}
 
 	protected async configureConnector(key: string, data: Record<string, string>) {
-		const baseURL = Instance.get().settings.debeziumUrl
+		const baseURL = Instance.get().settings.dbChanges.debeziumUrl
 		return await axios
 			.put(
 				`/connectors/${key}/config`,

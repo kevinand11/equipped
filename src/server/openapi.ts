@@ -29,8 +29,8 @@ export class OpenApi {
 	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
 	#baseOpenapiDoc: OpenAPIV3_1.Document = {
 		openapi: '3.0.0',
-		info: { title: `${this.#settings.app} ${this.#settings.appId}`, version: this.#settings.openapi.docsVersion ?? '' },
-		servers: this.#settings.openapi.docsBaseUrl?.map((url) => ({ url })),
+		info: { title: `${this.#settings.app} ${this.#settings.app.id}`, version: this.#settings.server.openapi.docsVersion ?? '' },
+		servers: this.#settings.server.openapi.docsBaseUrl?.map((url) => ({ url })),
 		paths: {},
 		components: {
 			schemas: {},
@@ -136,7 +136,7 @@ export class OpenApi {
 
 	router() {
 		const jsonPath = '/openapi.json'
-		const router = new Router({ path: this.#settings.openapi.docsPath ?? '/' })
+		const router = new Router({ path: this.#settings.server.openapi.docsPath ?? '/' })
 		router.get('/')((req) => req.res({ body: this.#html(`.${jsonPath}`), contentType: 'text/html' }))
 		router.get(jsonPath)((req) => req.res({ body: this.#baseOpenapiDoc }))
 		return router
@@ -170,7 +170,7 @@ export class OpenApi {
 	}
 
 	#html(jsonPath: string) {
-		const title = `${this.#settings.app} ${this.#settings.appId}`
+		const title = `${this.#settings.app} ${this.#settings.app.id}`
 		return `
 <!doctype html>
 <html>

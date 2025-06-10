@@ -1,6 +1,6 @@
 import { ClientSession, Filter, UpdateFilter } from 'mongodb'
 
-import { QueryParams, QueryResults } from '../../schemas/db'
+import { QueryParams, QueryResults } from '../../schemas'
 import { DistributiveOmit } from '../../types'
 
 export type IdType = { _id: string } | { id: string }
@@ -11,7 +11,7 @@ export type Model<IdKey extends IdType> = IdKey & {
 	updatedAt?: number
 }
 
-type Sort<T extends Model<any>> = NonNullable<QueryParams<T>['sort']>[number]
+type Sort = NonNullable<QueryParams['sort']>[number]
 
 export type Table<Id extends IdType, T extends Model<Id>, Transform = T, Extras extends Record<string, unknown> = {}> = {
 	query: (query: QueryParams) => Promise<QueryResults<Transform>>
@@ -19,7 +19,7 @@ export type Table<Id extends IdType, T extends Model<Id>, Transform = T, Extras 
 		filter: Filter<T>,
 		options?: Options & {
 			limit?: number
-			sort?: Sort<T> | Sort<T>[]
+			sort?: Sort | Sort[]
 		},
 	) => Promise<Transform[]>
 	findOne: (filter: Filter<T>, options?: Options) => Promise<Transform | null>

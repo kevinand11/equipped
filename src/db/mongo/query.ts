@@ -1,6 +1,6 @@
 import { Collection } from 'mongodb'
 
-import { QueryKeys, type QueryParams, type QueryResults, type QueryWhereBlock, type QueryWhereClause } from '../../schemas/db'
+import { QueryKeys, type QueryParams, type QueryResults, type QueryWhereBlock, type QueryWhereClause } from '../../schemas'
 import * as core from '../base/core'
 
 export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: string }>>(
@@ -54,17 +54,14 @@ export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: st
 	} satisfies QueryResults<Model>
 }
 
-function isWhereBlock<T>(param: QueryWhereClause<T>): param is QueryWhereBlock<T> {
+function isWhereBlock(param: QueryWhereClause): param is QueryWhereBlock {
 	return Object.values(QueryKeys).includes(param.condition as QueryKeys)
 }
 
-const buildWhereQuery = (
-	params: QueryWhereClause<unknown>[],
-	key: QueryKeys = QueryKeys.and,
-): Record<string, Record<string, any>> | null => {
+const buildWhereQuery = (params: QueryWhereClause[], key: QueryKeys = QueryKeys.and): Record<string, Record<string, any>> | null => {
 	const where = (Array.isArray(params) ? params : [])
 		.map((param) => {
-			if (isWhereBlock<unknown>(param)) return buildWhereQuery(param.value, param.condition)
+			if (isWhereBlock(param)) return buildWhereQuery(param.value, param.condition)
 			const { field } = param
 			const checkedField = field === 'id' ? '_id' : (field ?? '')
 			const checkedValue = param.value === undefined ? '' : param.value

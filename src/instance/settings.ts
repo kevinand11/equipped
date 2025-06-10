@@ -1,75 +1,87 @@
-import { PipeOutput, v } from 'valleyed'
+import { PipeInput, PipeOutput, v } from 'valleyed'
 
+import { KafkaEventBus } from '../events/kafka'
 import { BaseApiKeysUtility, BaseTokensUtility } from '../requests-auth'
+import { mongoDbConfigPipe, kafkaConfigPipe, rabbitmqConfigPipe, redisConfigPipe, redisJobsConfigPipe } from '../schemas'
 
-export const settingsPipe = v.object({
-	app: v.defaults(v.string(), 'app'),
-	appId: v.defaults(v.string(), 'appId'),
-	bullQueueName: v.defaults(v.string(), 'appTasksQueue'),
-	eventColumnName: v.defaults(v.string(), 'appEventsColumn'),
-	hashSaltRounds: v.defaults(v.number(), 10),
-	logLevel: v.defaults(v.string().pipe(v.in(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const)), 'info'),
-	debeziumUrl: v.string(),
-	mongoDbURI: v.string(),
-	rabbitURI: v.defaults(v.string(), ''),
-	kafka: v.object({
-		brokers: v.defaults(v.array(v.string()), []),
-		ssl: v.optional(v.boolean()),
-		sasl: v.optional(
+export const instanceSettingsPipe = v.object({
+	app: v.object({
+		id: v.defaults(v.string(), 'appId'),
+		name: v.defaults(v.string(), 'appName'),
+	}),
+	log: v.defaults(
+		v.object({
+			level: v.defaults(v.string().pipe(v.in(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const)), 'info'),
+		}),
+		{},
+	),
+	db: v.object({
+		mongo: mongoDbConfigPipe,
+	}),
+	dbChanges: v
+		.object({
+			debeziumUrl: v.string(),
+			kafkaConfig: kafkaConfigPipe,
+		})
+		.pipe((config) => ({
+			...config,
+			eventBus: new KafkaEventBus(config.kafkaConfig),
+		})),
+	eventBus: v.discriminate((e) => e.type, {
+		kafka: v.object({
+			type: v.is('kafka' as const),
+			config: kafkaConfigPipe,
+		}),
+		rabbitmq: v.object({
+			type: v.is('rabbitmq' as const),
+			config: rabbitmqConfigPipe,
+		}),
+	}),
+	cache: v.discriminate((e) => e.type, {
+		redis: v.object({
+			type: v.is('redis' as const),
+			config: redisConfigPipe,
+		}),
+		memory: v.object({
+			type: v.is('memory' as const),
+		}),
+	}),
+	jobs: redisJobsConfigPipe,
+	server: v.object({
+		type: v.in(['fastify', 'express'] as const),
+		publicPath: v.optional(v.string()),
+		healthPath: v.optional(v.string()),
+		openapi: v.defaults(
 			v.object({
-				mechanism: v.string().pipe(v.eq('plain' as const)),
-				username: v.string(),
-				password: v.string(),
+				docsVersion: v.defaults(v.string(), '1.0.0'),
+				docsBaseUrl: v.defaults(v.array(v.string()), ['/']),
+				docsPath: v.defaults(v.string(), '/__docs'),
 			}),
+			{},
 		),
-		confluent: v.optional(v.boolean()),
 	}),
-	redis: v.object({
-		host: v.optional(v.string()),
-		port: v.optional(v.number()),
-		password: v.optional(v.string()),
-		username: v.optional(v.string()),
-		tls: v.optional(v.boolean()),
-		cluster: v.optional(v.boolean()),
-	}),
-	rateLimit: v.defaults(
-		v.object({
-			enabled: v.defaults(v.boolean(), false),
-			periodInMs: v.defaults(v.number(), 60 * 60 * 1000),
-			limit: v.defaults(v.number(), 5000),
-		}),
-		{},
-	),
-	slowdown: v.defaults(
-		v.object({
-			enabled: v.defaults(v.boolean(), false),
-			periodInMs: v.defaults(v.number(), 10 * 60 * 1000),
-			delayAfter: v.defaults(v.number(), 2000),
-			delayInMs: v.defaults(v.number(), 500),
-		}),
-		{},
-	),
-	server: v.defaults(
-		v.object({
-			type: v.defaults(v.in(['fastify', 'express'] as const), 'fastify'),
-			publicPath: v.optional(v.string()),
-			healthPath: v.optional(v.string()),
-		}),
-		{},
-	),
-	openapi: v.defaults(
-		v.object({
-			docsVersion: v.defaults(v.string(), '1.0.0'),
-			docsBaseUrl: v.defaults(v.array(v.string()), ['/']),
-			docsPath: v.defaults(v.string(), '/__docs'),
-		}),
-		{},
-	),
 	requests: v.defaults(
 		v.object({
 			log: v.defaults(v.boolean(), true),
 			paginationDefaultLimit: v.defaults(v.number(), 100),
 			maxFileUploadSizeInMb: v.defaults(v.number(), 500),
+			rateLimit: v.defaults(
+				v.object({
+					enabled: v.defaults(v.boolean(), false),
+					periodInMs: v.defaults(v.number(), 60 * 60 * 1000),
+					limit: v.defaults(v.number(), 5000),
+				}),
+				{},
+			),
+			slowdown: v.defaults(
+				v.object({
+					enabled: v.defaults(v.boolean(), false),
+					periodInMs: v.defaults(v.number(), 10 * 60 * 1000),
+					delayAfter: v.defaults(v.number(), 2000),
+					delayInMs: v.defaults(v.number(), 500),
+				}),
+				{},
+			),
 		}),
 		{},
 	),
@@ -80,6 +92,13 @@ export const settingsPipe = v.object({
 		}),
 		{},
 	),
+	utils: v.defaults(
+		v.object({
+			hashSaltRounds: v.defaults(v.number(), 10),
+		}),
+		{},
+	),
 })
 
-export type Settings = PipeOutput<typeof settingsPipe>
+export type Settings = PipeOutput<typeof instanceSettingsPipe>
+export type SettingsInput = PipeInput<typeof instanceSettingsPipe>

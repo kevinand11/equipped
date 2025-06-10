@@ -1,4 +1,4 @@
-import { Paths, Pipe, PipeOutput, v } from 'valleyed'
+import { Pipe, PipeOutput, v } from 'valleyed'
 
 import { Instance } from '../instance'
 
@@ -21,26 +21,24 @@ export enum Conditions {
 
 const queryKeys = v.defaultsOnFail(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
 
-const queryWhere = <T>() =>
-	v.objectTrim(
-		v.object({
-			field: v.string() as Pipe<Paths<T, string>>,
-			value: v.any(),
-			condition: v.defaultsOnFail(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
-		}),
-	)
+const queryWhere = v.objectTrim(
+	v.object({
+		field: v.string(),
+		value: v.any(),
+		condition: v.defaultsOnFail(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
+	}),
+)
 
-const queryWhereBlock = <T>() =>
-	v.objectTrim(
-		v.object({
-			condition: queryKeys,
-			value: v.array(queryWhere<T>()),
-		}),
-	)
+const queryWhereBlock = v.objectTrim(
+	v.object({
+		condition: queryKeys,
+		value: v.array(queryWhere),
+	}),
+)
 
-const queryWhereClause = <T>() => v.defaults(v.array(v.or([queryWhere<T>(), queryWhereBlock<T>()])), [])
+const queryWhereClause = v.defaults(v.array(v.or([queryWhere, queryWhereBlock])), [])
 
-export function queryParamsPipe<T>() {
+export function queryParamsPipe() {
 	const pagLimit = Instance.get().settings.requests.paginationDefaultLimit
 	return v
 		.object({
@@ -51,7 +49,7 @@ export function queryParamsPipe<T>() {
 				v.nullish(
 					v.object({
 						value: v.string(),
-						fields: v.array(v.string() as Pipe<Paths<T, string>>),
+						fields: v.array(v.string()),
 					}),
 					//.pipe(v.objectTrim()),
 				),
@@ -61,7 +59,7 @@ export function queryParamsPipe<T>() {
 				v.array(
 					v.objectTrim(
 						v.object({
-							field: v.string() as Pipe<Paths<T, string>>,
+							field: v.string(),
 							desc: v.defaults(v.boolean(), false),
 						}),
 					),
@@ -70,9 +68,9 @@ export function queryParamsPipe<T>() {
 			),
 			whereType: queryKeys,
 			authType: queryKeys,
-			where: queryWhereClause<T>(),
+			where: queryWhereClause,
 		})
-		.pipe((p) => ({ ...p, auth: <QueryWhereClause<T>[]>[] }))
+		.pipe((p) => ({ ...p, auth: <QueryWhereClause[]>[] }))
 }
 
 export function queryResultsPipe<T>(model: Pipe<any, T>) {
@@ -93,8 +91,8 @@ export function queryResultsPipe<T>(model: Pipe<any, T>) {
 	})
 }
 
-export type QueryWhere<T = unknown> = PipeOutput<ReturnType<typeof queryWhere<T>>>
-export type QueryWhereBlock<T = unknown> = PipeOutput<ReturnType<typeof queryWhereBlock<T>>>
-export type QueryWhereClause<T> = PipeOutput<ReturnType<typeof queryWhereClause<T>>>[number]
-export type QueryParams<T = unknown> = PipeOutput<ReturnType<typeof queryParamsPipe<T>>>
+export type QueryWhere = PipeOutput<typeof queryWhere>
+export type QueryWhereBlock = PipeOutput<typeof queryWhereBlock>
+export type QueryWhereClause = PipeOutput<typeof queryWhereClause>[number]
+export type QueryParams = PipeOutput<ReturnType<typeof queryParamsPipe>>
 export type QueryResults<T> = PipeOutput<ReturnType<typeof queryResultsPipe<T>>>

@@ -114,11 +114,11 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 				useTempFiles: false,
 			}),
 		)
-		if (this.settings.rateLimit.enabled)
+		if (this.settings.requests.rateLimit.enabled)
 			app.use(
 				rateLimit({
-					windowMs: this.settings.rateLimit.periodInMs,
-					limit: this.settings.rateLimit.limit,
+					windowMs: this.settings.requests.rateLimit.periodInMs,
+					limit: this.settings.requests.rateLimit.limit,
 					handler: (_: express.Request, res: express.Response) =>
 						res.status(StatusCodes.TooManyRequests).json([{ message: 'Too Many Requests' }]),
 				}),

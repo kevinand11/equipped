@@ -6,17 +6,19 @@ import type { PublishOptions, SubscribeOptions } from '.'
 import { DefaultSubscribeOptions, EventBus } from '.'
 import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
+import { RabbitMQConfig } from '../schemas'
 import type { Events } from '../types/overrides'
 import { parseJSONValue } from '../utils/json'
 import { Random } from '../utils/utils'
 
 export class RabbitEventBus extends EventBus {
 	#client: ChannelWrapper
-	#columnName = Instance.get().settings.eventColumnName
+	#columnName: string
 
-	constructor() {
+	constructor(config: RabbitMQConfig) {
 		super()
-		this.#client = connect([Instance.get().settings.rabbitURI]).createChannel({
+		this.#columnName = config.eventColumnName
+		this.#client = connect([config.uri]).createChannel({
 			json: false,
 			setup: async (channel: ConfirmChannel) => {
 				await channel.assertExchange(this.#columnName, 'direct', { durable: true })
@@ -46,7 +48,7 @@ export class RabbitEventBus extends EventBus {
 			started = true
 			await this.#client.addSetup(async (channel: ConfirmChannel) => {
 				const queueName = options.fanout
-					? Instance.get().getScopedName(`${Instance.get().settings.appId}-fanout-${Random.string(10)}`)
+					? Instance.get().getScopedName(`${Instance.get().settings.app.id}-fanout-${Random.string(10)}`)
 					: topic
 				const { queue } = await channel.assertQueue(queueName, { durable: !options.fanout, exclusive: options.fanout })
 				await channel.bindQueue(queue, this.#columnName, topic)

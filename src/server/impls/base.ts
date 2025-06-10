@@ -206,7 +206,8 @@ export abstract class Server<Req = any, Res = any> {
 			this.addRoute({
 				method: Methods.get,
 				path: this.settings.server.healthPath,
-				handler: async (req) => req.res({ body: `${this.settings.appId} service running`, contentType: 'text/plain' }),
+				handler: async (req) =>
+					req.res({ body: `${this.settings.app.id}(${this.settings.app.name}) service running`, contentType: 'text/plain' }),
 			})
 
 		this.implementations.registerNotFoundHandler(async (req) => {
@@ -230,7 +231,7 @@ export abstract class Server<Req = any, Res = any> {
 
 		await Promise.all(this.#queue.map((cb) => cb()))
 		const started = await this.implementations.start(port)
-		if (started) Instance.get().logger.info(`${this.settings.appId} service listening on port ${port}`)
+		if (started) Instance.get().logger.info(`${this.settings.app.id}(${this.settings.app.name}) service listening on port ${port}`)
 		return started
 	}
 }

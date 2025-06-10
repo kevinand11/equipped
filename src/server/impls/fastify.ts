@@ -119,10 +119,10 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			delayAfter: this.settings.slowdown.delayAfter,
 			delay: this.settings.slowdown.delayInMs
 		}) */
-		if (this.settings.rateLimit.enabled)
+		if (this.settings.requests.rateLimit.enabled)
 			app.register(fastifyRateLimit, {
-				max: this.settings.rateLimit.limit,
-				timeWindow: this.settings.rateLimit.periodInMs,
+				max: this.settings.requests.rateLimit.limit,
+				timeWindow: this.settings.requests.rateLimit.periodInMs,
 				errorResponseBuilder: (_, context) => ({
 					statusCode: StatusCodes.TooManyRequests,
 					message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }]),

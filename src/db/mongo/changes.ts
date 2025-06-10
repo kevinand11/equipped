@@ -3,6 +3,7 @@ import { Filter, MongoClient, ObjectId } from 'mongodb'
 import { EquippedError } from '../../errors'
 import { exit } from '../../exit'
 import { Instance } from '../../instance'
+import { MongoDbConfig } from '../../schemas'
 import { retry } from '../../utils/retry'
 import { differ } from '../../validations'
 import { DbChange, DbChangeCallbacks, TopicPrefix } from '../base/_instance'
@@ -12,6 +13,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 	#started = false
 
 	constructor(
+		private config: MongoDbConfig,
 		private client: MongoClient,
 		private dbName: string,
 		private colName: string,
@@ -43,7 +45,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 					}
 				: undefined
 
-		Instance.get().eventBus.createSubscriber(
+		Instance.get().settings.dbChanges.eventBus.createSubscriber(
 			topic as never,
 			async (data: DbDocumentChange) => {
 				const op = data.op
@@ -80,7 +82,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 				const started = await this.configureConnector(topic, {
 					'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
 					'capture.mode': 'change_streams_update_full_with_pre_image',
-					'mongodb.connection.string': Instance.get().settings.mongoDbURI,
+					'mongodb.connection.string': this.config.uri,
 					'collection.include.list': dbColName,
 					'snapshot.mode': 'when_needed',
 				})

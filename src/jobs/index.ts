@@ -1,7 +1,7 @@
 import Bull from 'bull'
 
 import { RedisCache } from '../cache/types/redis-cache'
-import { Instance } from '../instance'
+import { RedisJobConfig } from '../schemas'
 import { CronLikeJobs, CronTypes, DelayedJobs } from '../types/overrides'
 import { Random } from '../utils/utils'
 
@@ -18,13 +18,14 @@ type DelayedJobCallback = (data: DelayedJobEvent) => Promise<void> | void
 type CronCallback = (name: CronTypes[keyof CronTypes]) => Promise<void> | void
 type CronLikeCallback = (data: CronLikeJobEvent) => Promise<void> | void
 
-export class BullJob {
+export class RedisJob {
 	#queue: Bull.Queue
 
-	constructor() {
-		this.#queue = new Bull(Instance.get().getScopedName(Instance.get().settings.bullQueueName), {
+	constructor(config: RedisJobConfig) {
+		this.#queue = new Bull(config.queueName, {
 			createClient: (type) =>
 				new RedisCache(
+					config.config,
 					type === 'client'
 						? undefined
 						: {
@@ -41,7 +42,7 @@ export class BullJob {
 
 	async addDelayedJob(data: DelayedJobEvent, delayInMs: number): Promise<string> {
 		const job = await this.#queue.add(JobNames.DelayedJob, data, {
-			jobId: BullJob.#getNewId(),
+			jobId: RedisJob.#getNewId(),
 			delay: delayInMs,
 			removeOnComplete: true,
 			backoff: 1000,
@@ -52,7 +53,7 @@ export class BullJob {
 
 	async addCronLikeJob(data: CronLikeJobEvent, cron: string, tz?: string): Promise<string> {
 		const job = await this.#queue.add(JobNames.CronLikeJob, data, {
-			jobId: BullJob.#getNewId(),
+			jobId: RedisJob.#getNewId(),
 			repeat: { cron, ...(tz ? { tz } : {}) },
 			removeOnComplete: true,
 			backoff: 1000,
