@@ -16,6 +16,7 @@ function mergeSchemas(...schemas: RouteDef[]) {
 	}
 	function merge<T extends RouteDef[keyof Keys]>(acc: T | null, cur: T) {
 		if (!acc) return cur
+		if (!cur) return acc
 		if (typeof cur === 'number') return cur
 		if (typeof cur === 'string') return cur
 		return v.and([acc as any, cur])

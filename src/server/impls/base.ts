@@ -29,6 +29,7 @@ const errorsSchemas = Object.entries(StatusCodes)
 	}))
 
 export abstract class Server<Req = any, Res = any> {
+	#queue: (() => void | Promise<void>)[] = []
 	#routesByKey = new Map<string, boolean>()
 	#listener: Listener | null = null
 	#openapi = new OpenApi()
@@ -73,41 +74,43 @@ export abstract class Server<Req = any, Res = any> {
 
 	addRoute<T extends RouteDef>(...routes: Route<T>[]) {
 		routes.forEach((route) => {
-			const { method, path, schema = {}, onError, middlewares = [] } = route
+			this.#queue.push(async () => {
+				const { method, path, schema = {}, onError, middlewares = [] } = route
 
-			middlewares.unshift(parseAuthUser as any)
-			middlewares.forEach((m) => m.onSetup?.(route))
-			onError?.onSetup?.(route)
+				const key = `(${method.toUpperCase()}) ${this.#openapi.cleanPath(path)}`
+				if (this.#routesByKey.get(key))
+					throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
 
-			const key = `(${method.toUpperCase()}) ${path}`
-			if (this.#routesByKey.get(key))
-				throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
+				middlewares.unshift(parseAuthUser as any)
+				middlewares.forEach((m) => m.onSetup?.(route))
+				onError?.onSetup?.(route)
 
-			const { validateRequest, validateResponse, jsonSchema } = this.#resolveSchema(method, schema)
+				const { validateRequest, validateResponse, jsonSchema } = this.#resolveSchema(method, schema)
 
-			this.#routesByKey.set(key, true)
-			this.#openapi.register(route, jsonSchema)
-			this.implementations.registerRoute(method, this.#openapi.cleanPath(path), async (req: Req, res: Res) => {
-				const request = validateRequest(await this.implementations.parseRequest(req))
-				try {
-					for (const middleware of middlewares) await middleware.cb(request)
-					const rawRes = await route.handler(request)
-					const response =
-						rawRes instanceof Response
-							? rawRes
-							: new Response({ body: rawRes, status: StatusCodes.Ok, headers: {}, piped: false })
-					return await this.implementations.handleResponse(res, validateResponse(response))
-				} catch (error) {
-					if (onError?.cb) {
-						const rawResponse = await onError.cb(request, error as Error)
+				this.#routesByKey.set(key, true)
+				await this.#openapi.register(route, jsonSchema)
+				this.implementations.registerRoute(method, this.#openapi.cleanPath(path), async (req: Req, res: Res) => {
+					const request = validateRequest(await this.implementations.parseRequest(req))
+					try {
+						for (const middleware of middlewares) await middleware.cb(request)
+						const rawRes = await route.handler(request)
 						const response =
-							rawResponse instanceof Response
-								? rawResponse
-								: new Response({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
+							rawRes instanceof Response
+								? rawRes
+								: new Response({ body: rawRes, status: StatusCodes.Ok, headers: {}, piped: false })
 						return await this.implementations.handleResponse(res, validateResponse(response))
+					} catch (error) {
+						if (onError?.cb) {
+							const rawResponse = await onError.cb(request, error as Error)
+							const response =
+								rawResponse instanceof Response
+									? rawResponse
+									: new Response({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
+							return await this.implementations.handleResponse(res, validateResponse(response))
+						}
+						throw error
 					}
-					throw error
-				}
+				})
 			})
 		})
 	}
@@ -225,6 +228,7 @@ export abstract class Server<Req = any, Res = any> {
 			return await this.implementations.handleResponse(res, response)
 		})
 
+		await Promise.all(this.#queue.map((cb) => cb()))
 		const started = await this.implementations.start(port)
 		if (started) Instance.get().logger.info(`${this.settings.appId} service listening on port ${port}`)
 		return started

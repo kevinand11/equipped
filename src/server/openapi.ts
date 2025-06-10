@@ -1,8 +1,5 @@
-import { prepareOpenapiMethod } from '@fastify/swagger/lib/spec/openapi/utils'
-// TODO: here to allow us use swagger fastify schema type
-import {} from '@fastify/swagger'
+import { convert } from '@openapi-contrib/json-schema-to-openapi-schema'
 // @ts-ignore
-import resolver from 'json-schema-resolver'
 import { OpenAPIV3_1 } from 'openapi-types'
 import { JsonSchema } from 'valleyed'
 
@@ -30,7 +27,6 @@ export class OpenApi {
 	#settings = Instance.get().settings
 	#registeredTags: Record<string, boolean> = {}
 	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
-	#ref = resolver({ clone: true })
 	#baseOpenapiDoc: OpenAPIV3_1.Document = {
 		openapi: '3.0.0',
 		info: { title: `${this.#settings.app} ${this.#settings.appId}`, version: this.#settings.openapi.docsVersion ?? '' },
@@ -59,9 +55,6 @@ export class OpenApi {
 		tags: [],
 		'x-tagGroups': [],
 	}
-	// @ts-expect-error not impl
-	// eslint-disable-next-line no-undef
-	#oapi = openapi('./openapi.json', this.#baseOpenapiDoc, { coerce: false })
 
 	cleanPath(path: string) {
 		let cleaned = path.replace(/(\/\s*)+/g, '/')
@@ -70,34 +63,81 @@ export class OpenApi {
 		return cleaned
 	}
 
-	register(route: Route<any>, def: OpenApiSchemaDef) {
+	async register(route: Route<any>, def: OpenApiSchemaDef) {
 		const noValidation = !Object.keys(def.request).length && !Object.keys(def.response).length
-		if (!noValidation || route.hide) return
+		if (noValidation || route.hide) return
 
 		const tag = this.#buildTag(route.groups ?? [])
 
-		const operationId = `(${route.method.toUpperCase()}) ${route.path}`
-		const openapiSchema = prepareOpenapiMethod(
-			{
-				...def.request,
-				...def.response,
-				operationId,
-				summary: route.title ?? this.cleanPath(route.path),
-				description: route.descriptions?.join('\n\n'),
-				tags: tag ? [tag] : undefined,
-				security: route.security,
-			},
-			this.#ref,
-			this.#baseOpenapiDoc,
-			route.path,
-		)
-		this.#oapi.path(openapiSchema)
+		const cleanPath = this.cleanPath(route.path)
+		const operationId = `(${route.method.toUpperCase()}) ${cleanPath}`
+		await this.#addRouteToOpenApiDoc(cleanPath, route.method.toLowerCase(), def, {
+			operationId,
+			summary: route.title ?? cleanPath,
+			description: route.descriptions?.join('\n\n'),
+			tags: tag ? [tag] : undefined,
+			security: route.security,
+		})
+	}
+
+	async #addRouteToOpenApiDoc(path: string, method: string, def: OpenApiSchemaDef, methodObj: OpenAPIV3_1.OperationObject) {
+		if (def.response.response?.length) {
+			methodObj.responses ??= {}
+			for (const resp of def.response.response) {
+				methodObj.responses[resp.status] ??= { description: '', content: {} }
+				const res = methodObj.responses[resp.status] as OpenAPIV3_1.ResponseObject
+				res.content![resp.contentType] = { schema: await convert(resp.schema) }
+			}
+		}
+
+		if (def.response.responseHeaders?.length) {
+			methodObj.responses ??= {}
+			for (const resp of def.response.responseHeaders) {
+				methodObj.responses[resp.status] ??= { description: '', content: {} }
+				methodObj.responses[resp.status] as OpenAPIV3_1.ResponseObject
+				// TODO: get to work
+				// res.headers = { schema: await convert(resp.schema) }
+			}
+		}
+
+		if (def.request.body)
+			methodObj.requestBody = {
+				required: true,
+				content: {
+					'application/json': { schema: await convert(def.request.body) },
+				},
+			}
+
+		const parameters: OpenAPIV3_1.ParameterObject[] = []
+
+		const addParams = async (location: 'query' | 'path' | 'header', schema: JsonSchema | undefined) => {
+			if (!schema || !schema.properties) return
+			for (const [name, value] of Object.entries(schema.properties))
+				parameters.push({
+					name,
+					in: location,
+					schema: await convert(value),
+					required: (schema.required || []).includes(name),
+				})
+		}
+
+		await Promise.all([
+			addParams('query', def.request.query),
+			addParams('path', def.request.params),
+			addParams('header', def.request.headers),
+		])
+		if (parameters.length) methodObj.parameters = parameters
+
+		const base = this.#baseOpenapiDoc
+		if (!base.paths) base.paths = {}
+		if (!base.paths[path]) base.paths[path] = {}
+		base.paths[path]![method] = methodObj
 	}
 
 	router() {
-		const jsonPath = './openapi.json'
+		const jsonPath = '/openapi.json'
 		const router = new Router({ path: this.#settings.openapi.docsPath ?? '/' })
-		router.get('/')((req) => req.res({ body: this.#html(jsonPath), contentType: 'text/html' }))
+		router.get('/')((req) => req.res({ body: this.#html(`.${jsonPath}`), contentType: 'text/html' }))
 		router.get(jsonPath)((req) => req.res({ body: this.#baseOpenapiDoc }))
 		return router
 	}
