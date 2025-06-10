@@ -18,23 +18,9 @@ export type Config<Model extends core.Model<core.IdType>, Entity extends core.En
 }
 
 export abstract class Db<IdKey extends core.IdType> {
-	#dbChanges = [] as DbChange<any, any>[]
-
 	protected getScopedDb(db: string) {
 		return Instance.get().getScopedName(db).replaceAll('.', '-')
 	}
-
-	protected _addToDbChanges(dbChange: DbChange<any, any>) {
-		this.#dbChanges.push(dbChange)
-		return this
-	}
-
-	async startAllDbChanges() {
-		await Promise.all(this.#dbChanges.map((change) => change.start()))
-	}
-
-	abstract start(): Promise<void>
-	abstract close(): Promise<void>
 
 	abstract use<Model extends core.Model<IdKey>, Entity extends core.Entity>(
 		config: Config<Model, Entity>,
@@ -49,8 +35,6 @@ export abstract class DbChange<Model extends core.Model<core.IdType>, Entity ext
 		this.#callbacks = callbacks
 		this.#mapper = mapper
 	}
-
-	abstract start(): Promise<void>
 
 	get callbacks() {
 		return Object.freeze(this.#callbacks)

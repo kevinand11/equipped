@@ -2,6 +2,7 @@ import { ClientSession, CollectionInfo, MongoClient, ObjectId } from 'mongodb'
 
 import { getTable } from './api'
 import { MongoDbChange } from './changes'
+import { Instance } from '../../instance'
 import { MongoDbConfig } from '../../schemas'
 import { Db, type Config } from '../base/_instance'
 import * as core from '../base/core'
@@ -14,6 +15,41 @@ export class MongoDb extends Db<{ _id: string }> {
 	constructor(private config: MongoDbConfig) {
 		super()
 		this.#client = new MongoClient(config.uri)
+		Instance.addHook(
+			'pre:start',
+			async () => {
+				if (this.#started) return
+				this.#started = true
+				await this.#client.connect()
+
+				const grouped = this.#cols.reduce<Record<string, string[]>>((acc, cur) => {
+					if (!acc[cur.db]) acc[cur.db] = []
+					acc[cur.db].push(cur.col)
+					return acc
+				}, {})
+
+				const options = {
+					changeStreamPreAndPostImages: { enabled: true },
+				}
+				await Promise.all(
+					Object.entries(grouped).map(async ([dbName, colNames]) => {
+						const db = this.#client.db(dbName)
+						const collections = await db.listCollections<CollectionInfo>().toArray()
+						return colNames.map(async (colName) => {
+							const existing = collections.find((collection) => collection.name === colName)
+							if (existing) {
+								if (
+									existing.options?.changeStreamPreAndPostImages?.enabled !== options.changeStreamPreAndPostImages.enabled
+								)
+									await db.command({ collMod: colName, ...options })
+							} else await db.createCollection(colName, options)
+						})
+					}),
+				)
+			},
+			true,
+		)
+		Instance.addHook('pre:close', async () => this.#client.close())
 	}
 
 	async session<T>(callback: (session: ClientSession) => Promise<T>) {
@@ -25,7 +61,7 @@ export class MongoDb extends Db<{ _id: string }> {
 	}
 
 	use<Model extends core.Model<{ _id: string }>, Entity extends core.Entity>(config: Config<Model, Entity>) {
-		const change = config.change
+		config.change
 			? new MongoDbChange<Model, Entity>(
 					this.config,
 					this.#client,
@@ -35,42 +71,8 @@ export class MongoDb extends Db<{ _id: string }> {
 					config.mapper,
 				)
 			: null
-		if (change) this._addToDbChanges(change)
 		this.#cols.push({ db: this.getScopedDb(config.db), col: config.col })
 		const collection = this.#client.db(this.getScopedDb(config.db)).collection<Model>(config.col)
 		return getTable(collection, config)
-	}
-
-	async start() {
-		if (this.#started) return
-		this.#started = true
-		await this.#client.connect()
-
-		const grouped = this.#cols.reduce<Record<string, string[]>>((acc, cur) => {
-			if (!acc[cur.db]) acc[cur.db] = []
-			acc[cur.db].push(cur.col)
-			return acc
-		}, {})
-
-		const options = {
-			changeStreamPreAndPostImages: { enabled: true },
-		}
-		await Promise.all(
-			Object.entries(grouped).map(async ([dbName, colNames]) => {
-				const db = this.#client.db(dbName)
-				const collections = await db.listCollections<CollectionInfo>().toArray()
-				return colNames.map(async (colName) => {
-					const existing = collections.find((collection) => collection.name === colName)
-					if (existing) {
-						if (existing.options?.changeStreamPreAndPostImages?.enabled !== options.changeStreamPreAndPostImages.enabled)
-							await db.command({ collMod: colName, ...options })
-					} else await db.createCollection(colName, options)
-				})
-			}),
-		)
-	}
-
-	async close() {
-		await this.#client.close()
 	}
 }

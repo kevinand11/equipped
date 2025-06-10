@@ -21,81 +21,81 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 		mapper: (model: Model) => Entity,
 	) {
 		super(callbacks, mapper)
-	}
 
-	async start(): Promise<void> {
-		if (this.#started) return
-		this.#started = true
+		Instance.addHook('pre:start', async () => {
+			if (this.#started) return
+			this.#started = true
 
-		const collection = this.client.db(this.dbName).collection<Model>(this.colName)
-		const dbName = this.dbName
-		const colName = this.colName
-		const dbColName = `${dbName}.${colName}`
-		const topic = `${TopicPrefix}.${dbColName}`
+			const collection = this.client.db(this.dbName).collection<Model>(this.colName)
+			const dbName = this.dbName
+			const colName = this.colName
+			const dbColName = `${dbName}.${colName}`
+			const topic = `${TopicPrefix}.${dbColName}`
 
-		const hexId = '5f5f65717569707065645f5f' // __equipped__
-		const TestId = makeId(hexId)
-		const condition = { _id: TestId } as Filter<Model>
+			const hexId = '5f5f65717569707065645f5f' // __equipped__
+			const TestId = makeId(hexId)
+			const condition = { _id: TestId } as Filter<Model>
 
-		const hydrate = (data: any) =>
-			data._id
-				? {
-						...data,
-						_id: makeId(data._id['$oid'] ?? data._id),
-					}
-				: undefined
+			const hydrate = (data: any) =>
+				data._id
+					? {
+							...data,
+							_id: makeId(data._id['$oid'] ?? data._id),
+						}
+					: undefined
 
-		Instance.get().settings.dbChanges.eventBus.createSubscriber(
-			topic as never,
-			async (data: DbDocumentChange) => {
-				const op = data.op
+			Instance.get().settings.dbChanges.eventBus.createSubscriber(
+				topic as never,
+				async (data: DbDocumentChange) => {
+					const op = data.op
 
-				let before = JSON.parse(data.before ?? 'null')
-				let after = JSON.parse(data.after ?? 'null')
+					let before = JSON.parse(data.before ?? 'null')
+					let after = JSON.parse(data.after ?? 'null')
 
-				if (before) before = hydrate(before)
-				if (after) after = hydrate(after)
-				if (before?.__id === TestId || after?.__id === TestId) return
+					if (before) before = hydrate(before)
+					if (after) after = hydrate(after)
+					if (before?.__id === TestId || after?.__id === TestId) return
 
-				if (op === 'c' && this.callbacks.created && after)
-					await this.callbacks.created({
-						before: null,
-						after: this.mapper(after)!,
+					if (op === 'c' && this.callbacks.created && after)
+						await this.callbacks.created({
+							before: null,
+							after: this.mapper(after)!,
+						})
+					else if (op === 'u' && this.callbacks.updated && before && after)
+						await this.callbacks.updated({
+							before: this.mapper(before)!,
+							after: this.mapper(after)!,
+							changes: differ.from(differ.diff(before, after)),
+						})
+					else if (op === 'd' && this.callbacks.deleted && before)
+						await this.callbacks.deleted({
+							before: this.mapper(before)!,
+							after: null,
+						})
+				},
+				{ skipScope: true },
+			)
+
+			await retry(
+				async () => {
+					const started = await this.configureConnector(topic, {
+						'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
+						'capture.mode': 'change_streams_update_full_with_pre_image',
+						'mongodb.connection.string': this.config.uri,
+						'collection.include.list': dbColName,
+						'snapshot.mode': 'when_needed',
 					})
-				else if (op === 'u' && this.callbacks.updated && before && after)
-					await this.callbacks.updated({
-						before: this.mapper(before)!,
-						after: this.mapper(after)!,
-						changes: differ.from(differ.diff(before, after)),
-					})
-				else if (op === 'd' && this.callbacks.deleted && before)
-					await this.callbacks.deleted({
-						before: this.mapper(before)!,
-						after: null,
-					})
-			},
-			{ skipScope: true },
-		)
 
-		await retry(
-			async () => {
-				const started = await this.configureConnector(topic, {
-					'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
-					'capture.mode': 'change_streams_update_full_with_pre_image',
-					'mongodb.connection.string': this.config.uri,
-					'collection.include.list': dbColName,
-					'snapshot.mode': 'when_needed',
-				})
-
-				if (started) return { done: true, value: true }
-				await collection.findOneAndUpdate(condition, { $set: { colName } as any }, { upsert: true })
-				await collection.findOneAndDelete(condition)
-				Instance.get().logger.warn(`Waiting for db changes for ${dbColName} to start...`)
-				return { done: false }
-			},
-			6,
-			10_000,
-		).catch((err) => exit(new EquippedError(`Failed to start db changes`, { dbColName }, err)))
+					if (started) return { done: true, value: true }
+					await collection.findOneAndUpdate(condition, { $set: { colName } as any }, { upsert: true })
+					await collection.findOneAndDelete(condition)
+					Instance.get().logger.warn(`Waiting for db changes for ${dbColName} to start...`)
+					return { done: false }
+				},
+				6,
+				10_000,
+			).catch((err) => exit(new EquippedError(`Failed to start db changes`, { dbColName }, err)))
+		})
 	}
 }
 

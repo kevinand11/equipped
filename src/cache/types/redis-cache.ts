@@ -32,14 +32,8 @@ export class RedisCache extends Cache {
 		this.client.on('error', async (error) => {
 			exit(new EquippedError(`Redis failed with error`, {}, error))
 		})
-	}
-
-	async start() {
-		await this.client.connect()
-	}
-
-	async close() {
-		this.client.quit()
+		Instance.addHook('pre:start', async () => this.client.connect())
+		Instance.addHook('pre:close', async () => this.client.quit())
 	}
 
 	async delete(key: string) {

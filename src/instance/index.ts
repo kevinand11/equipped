@@ -1,6 +1,7 @@
 import pino from 'pino'
 import { Pipe } from 'valleyed'
 
+import { HookCb, HookEvent, HookRecord, runHooks } from './hooks'
 import { instanceSettingsPipe, Settings, SettingsInput } from './settings'
 import { Cache } from '../cache'
 import { RedisCache } from '../cache/types/redis-cache'
@@ -9,7 +10,7 @@ import { EquippedError } from '../errors'
 import { EventBus } from '../events/'
 import { KafkaEventBus } from '../events/kafka'
 import { RabbitEventBus } from '../events/rabbit'
-import { addWaitBeforeExit, exit } from '../exit'
+import { exit } from '../exit'
 import { RedisJob } from '../jobs'
 import { Server } from '../server'
 import { ExpressServer } from '../server/impls/express'
@@ -64,6 +65,7 @@ function createServer(config: Settings['server']): Server {
 
 export class Instance<T extends object = object> {
 	static #instance: Instance
+	static #hooks: Record<HookEvent, HookRecord[]>
 	readonly envs: T
 	readonly settings: Settings
 	#logger: pino.Logger<any>
@@ -116,6 +118,11 @@ export class Instance<T extends object = object> {
 		return Instance.#instance
 	}
 
+	static addHook(event: HookEvent, cb: HookCb, priority: boolean = false) {
+		Instance.#hooks[event] ??= []
+		Instance.#hooks[event].push({ cb, priority })
+	}
+
 	get logger() {
 		return this.#logger
 	}
@@ -148,19 +155,10 @@ export class Instance<T extends object = object> {
 		return [this.settings.app, name].join(key)
 	}
 
-	async startConnections() {
+	async start() {
 		try {
-			await Instance.get().cache.start()
-			await Instance.get().listener.start()
-			await Promise.all(
-				Object.values(Instance.get().dbs).map(async (db) => {
-					await db.start()
-					await db.startAllDbChanges()
-					addWaitBeforeExit(db.close)
-				}),
-			)
-			await Instance.get().eventBus.startSubscribers()
-			addWaitBeforeExit(Instance.get().cache.close)
+			await runHooks(Instance.#hooks['pre:start'])
+			await runHooks(Instance.#hooks['post:start'])
 		} catch (error) {
 			exit(new EquippedError(`Error starting connections`, {}, error))
 		}
