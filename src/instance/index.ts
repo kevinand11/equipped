@@ -10,7 +10,6 @@ import { EquippedError } from '../errors'
 import { EventBus } from '../events/'
 import { KafkaEventBus } from '../events/kafka'
 import { RabbitEventBus } from '../events/rabbit'
-import { exit } from '../exit'
 import { RedisJob } from '../jobs'
 import { Server } from '../server'
 import { ExpressServer } from '../server/impls/express'
@@ -65,20 +64,22 @@ function createServer(config: Settings['server']): Server {
 
 export class Instance<T extends object = object> {
 	static #instance: Instance
-	static #hooks: Record<HookEvent, HookRecord[]>
+	static #hooks: Partial<Record<HookEvent, HookRecord[]>> = {}
 	readonly envs: T
 	readonly settings: Settings
-	#logger: pino.Logger<any>
-	#cache: Cache
-	#job: RedisJob
-	#eventBus: EventBus
-	#server: Server
-	#dbs: { mongo: MongoDb }
+	readonly logger: pino.Logger<any>
+	readonly cache: Cache
+	readonly job: RedisJob
+	readonly eventBus: EventBus
+	readonly server: Server
+	readonly dbs: { mongo: MongoDb }
+	readonly dbChangesEventBus: KafkaEventBus
 
 	private constructor(envsPipe: Pipe<any, T>, settings: SettingsInput | ((envs: T) => SettingsInput)) {
+		Instance.#instance = this
 		const envValidity = envsPipe.safeParse(process.env)
 		if (!envValidity.valid) {
-			throw exit(
+			Instance.crash(
 				new EquippedError(`Environment variables are not valid\n${envValidity.error.toString()}`, {
 					messages: envValidity.error.messages,
 				}),
@@ -87,64 +88,23 @@ export class Instance<T extends object = object> {
 		this.envs = Object.freeze(envValidity.value)
 		const settingsValidity = instanceSettingsPipe.safeParse(typeof settings === 'function' ? settings(this.envs) : settings)
 		if (!settingsValidity.valid) {
-			throw exit(
+			Instance.crash(
 				new EquippedError(`Settings are not valid\n${settingsValidity.error.toString()}`, {
 					messages: settingsValidity.error.messages,
 				}),
 			)
 		}
 		this.settings = Object.freeze(settingsValidity.value)
-		this.#logger = createLogger(this.settings.log)
-		this.#cache = createCache(this.settings.cache)
-		this.#job = createJobs(this.settings.jobs)
-		this.#dbs = {
+		this.logger = createLogger(this.settings.log)
+		this.cache = createCache(this.settings.cache)
+		this.job = createJobs(this.settings.jobs)
+		this.dbs = {
 			mongo: new MongoDb(this.settings.db.mongo),
 		}
-		this.#eventBus = createEventBus(this.settings.eventBus)
-		this.#server = createServer(this.settings.server)
-		Instance.#instance = this
-	}
-
-	static create<T extends object = object>(envsPipe: Pipe<any, T>, settings: SettingsInput | ((envs: T) => SettingsInput)) {
-		if (Instance.#instance) throw exit(new EquippedError('An instance has already been created. Use that instead', {}))
-		return new Instance(envsPipe, settings)
-	}
-
-	static get() {
-		if (!Instance.#instance)
-			return exit(
-				new EquippedError('Has not been initialized. Make sure an instance has been created before you get an instance', {}),
-			)
-		return Instance.#instance
-	}
-
-	static addHook(event: HookEvent, cb: HookCb, priority: boolean = false) {
-		Instance.#hooks[event] ??= []
-		Instance.#hooks[event].push({ cb, priority })
-	}
-
-	get logger() {
-		return this.#logger
-	}
-
-	get cache() {
-		return this.#cache
-	}
-
-	get job() {
-		return this.#job
-	}
-
-	get dbs() {
-		return this.#dbs
-	}
-
-	get eventBus() {
-		return this.#eventBus
-	}
-
-	get server() {
-		return this.#server
+		this.eventBus = createEventBus(this.settings.eventBus)
+		this.server = createServer(this.settings.server)
+		this.dbChangesEventBus = new KafkaEventBus(this.settings.dbChanges.kafkaConfig)
+		Instance.#registerOnExitHandler()
 	}
 
 	get listener() {
@@ -157,10 +117,55 @@ export class Instance<T extends object = object> {
 
 	async start() {
 		try {
-			await runHooks(Instance.#hooks['pre:start'])
-			await runHooks(Instance.#hooks['post:start'])
+			await runHooks(Instance.#hooks['pre:start'] ?? [])
+			await runHooks(Instance.#hooks['post:start'] ?? [])
 		} catch (error) {
-			exit(new EquippedError(`Error starting connections`, {}, error))
+			Instance.crash(new EquippedError(`Error starting instance`, {}, error))
 		}
+	}
+
+	static create<T extends object = object>(envsPipe: Pipe<any, T>, settings: SettingsInput | ((envs: T) => SettingsInput)) {
+		if (Instance.#instance) throw Instance.crash(new EquippedError('An instance has already been created. Use that instead', {}))
+		return new Instance(envsPipe, settings)
+	}
+
+	static get() {
+		if (!Instance.#instance)
+			return Instance.crash(
+				new EquippedError('Has not been initialized. Make sure an instance has been created before you get an instance', {}),
+			)
+		return Instance.#instance
+	}
+
+	static addHook(event: HookEvent, cb: HookCb, priority: boolean = false) {
+		Instance.#hooks[event] ??= []
+		Instance.#hooks[event].push({ cb, priority })
+	}
+
+	static #registerOnExitHandler() {
+		const signals = {
+			SIGHUP: 1,
+			SIGINT: 2,
+			SIGTERM: 15,
+		}
+
+		Object.entries(signals).forEach(([signal, code]) => {
+			process.on(signal, async () => {
+				await runHooks(Instance.#hooks['pre:close'] ?? [], () => {})
+				process.exit(128 + code)
+			})
+		})
+	}
+
+	static resolveBeforeCrash<T>(cb: () => Promise<T>) {
+		const value = cb()
+		Instance.addHook('pre:close', async () => await value)
+		return value
+	}
+
+	static crash(error: EquippedError): never {
+		// eslint-disable-next-line no-console
+		console.error(error)
+		process.exit(1)
 	}
 }

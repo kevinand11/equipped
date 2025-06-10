@@ -1,7 +1,6 @@
 import { Filter, MongoClient, ObjectId } from 'mongodb'
 
 import { EquippedError } from '../../errors'
-import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { MongoDbConfig } from '../../schemas'
 import { retry } from '../../utils/retry'
@@ -44,7 +43,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 						}
 					: undefined
 
-			Instance.get().settings.dbChanges.eventBus.createSubscriber(
+			Instance.get().dbChangesEventBus.createSubscriber(
 				topic as never,
 				async (data: DbDocumentChange) => {
 					const op = data.op
@@ -94,7 +93,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 				},
 				6,
 				10_000,
-			).catch((err) => exit(new EquippedError(`Failed to start db changes`, { dbColName }, err)))
+			).catch((err) => Instance.crash(new EquippedError(`Failed to start db changes`, { dbColName }, err)))
 		})
 	}
 }

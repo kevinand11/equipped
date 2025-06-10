@@ -3,7 +3,6 @@ import Kafka from 'kafkajs'
 
 import type { PublishOptions, SubscribeOptions } from '.'
 import { DefaultSubscribeOptions, EventBus } from '.'
-import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
 import { KafkaConfig } from '../schemas'
 import type { Events } from '../types/overrides'
@@ -70,17 +69,15 @@ export class KafkaEventBus extends EventBus {
 
 			await consumer.run({
 				eachMessage: async ({ message }) => {
-					addWaitBeforeExit(
-						(async () => {
-							if (!message.value) return
-							await onMessage(parseJSONValue(message.value.toString()))
-						})(),
-					)
+					Instance.resolveBeforeCrash(async () => {
+						if (!message.value) return
+						await onMessage(parseJSONValue(message.value.toString()))
+					})
 				},
 			})
 
 			if (options.fanout)
-				addWaitBeforeExit(async () => {
+				Instance.addHook('pre:close', async () => {
 					await consumer.disconnect()
 					await this.#deleteGroup(groupId)
 				})

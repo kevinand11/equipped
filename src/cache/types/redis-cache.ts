@@ -2,7 +2,6 @@ import { Cluster, Redis, RedisOptions } from 'ioredis'
 
 import { Cache } from '../'
 import { EquippedError } from '../../errors'
-import { exit } from '../../exit'
 import { Instance } from '../../instance'
 import { RedisConfig } from '../../schemas'
 
@@ -30,7 +29,7 @@ export class RedisCache extends Cache {
 				})
 			: new Redis({ ...common, ...node })
 		this.client.on('error', async (error) => {
-			exit(new EquippedError(`Redis failed with error`, {}, error))
+			Instance.crash(new EquippedError(`Redis failed with error`, {}, error))
 		})
 		Instance.addHook('pre:start', async () => this.client.connect())
 		Instance.addHook('pre:close', async () => this.client.quit())

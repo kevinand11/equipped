@@ -4,7 +4,6 @@ import type { ConfirmChannel } from 'amqplib'
 
 import type { PublishOptions, SubscribeOptions } from '.'
 import { DefaultSubscribeOptions, EventBus } from '.'
-import { addWaitBeforeExit } from '../exit'
 import { Instance } from '../instance'
 import { RabbitMQConfig } from '../schemas'
 import type { Events } from '../types/overrides'
@@ -55,17 +54,15 @@ export class RabbitEventBus extends EventBus {
 				channel.consume(
 					queue,
 					async (msg) => {
-						addWaitBeforeExit(
-							(async () => {
-								if (!msg) return
-								try {
-									await onMessage(parseJSONValue(msg.content.toString()))
-									channel.ack(msg)
-								} catch {
-									channel.nack(msg)
-								}
-							})(),
-						)
+						Instance.resolveBeforeCrash(async () => {
+							if (!msg) return
+							try {
+								await onMessage(parseJSONValue(msg.content.toString()))
+								channel.ack(msg)
+							} catch {
+								channel.nack(msg)
+							}
+						})
 					},
 					{ noAck: false },
 				)

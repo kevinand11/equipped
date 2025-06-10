@@ -9,7 +9,6 @@ import { rateLimit } from 'express-rate-limit'
 import helmet from 'helmet'
 import { pinoHttp } from 'pino-http'
 
-import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { getMediaDuration } from '../../utils/media'
 import { Request } from '../requests'
@@ -86,7 +85,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 				new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
 					try {
 						const app = this.server.listen({ host: '0.0.0.0', port }, async () => resolve(true))
-						addWaitBeforeExit(app.close)
+						Instance.addHook('pre:close', app.close)
 					} catch (err) {
 						reject(<Error>err)
 					}

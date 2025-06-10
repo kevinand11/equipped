@@ -1,6 +1,5 @@
 import { PipeInput, PipeOutput, v } from 'valleyed'
 
-import { KafkaEventBus } from '../events/kafka'
 import { BaseApiKeysUtility, BaseTokensUtility } from '../requests-auth'
 import { mongoDbConfigPipe, kafkaConfigPipe, rabbitmqConfigPipe, redisConfigPipe, redisJobsConfigPipe } from '../schemas'
 
@@ -18,15 +17,10 @@ export const instanceSettingsPipe = v.object({
 	db: v.object({
 		mongo: mongoDbConfigPipe,
 	}),
-	dbChanges: v
-		.object({
-			debeziumUrl: v.string(),
-			kafkaConfig: kafkaConfigPipe,
-		})
-		.pipe((config) => ({
-			...config,
-			eventBus: new KafkaEventBus(config.kafkaConfig),
-		})),
+	dbChanges: v.object({
+		debeziumUrl: v.string(),
+		kafkaConfig: kafkaConfigPipe,
+	}),
 	eventBus: v.discriminate((e) => e.type, {
 		kafka: v.object({
 			type: v.is('kafka' as const),

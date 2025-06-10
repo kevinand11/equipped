@@ -1,7 +1,6 @@
 export * from './db'
 export * from './emails'
 export * from './errors'
-export * from './exit'
 export * from './instance'
 export * from './listeners'
 export * from './requests-auth'

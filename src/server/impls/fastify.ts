@@ -11,7 +11,6 @@ import Fastify from 'fastify'
 import qs from 'qs'
 
 import { ValidationError } from '../../errors'
-import { addWaitBeforeExit } from '../../exit'
 import { Instance } from '../../instance'
 import { getMediaDuration } from '../../utils/media'
 import { Request } from '../requests'
@@ -82,7 +81,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			start: async (port) => {
 				await this.#fastifyApp.ready()
 				await this.#fastifyApp.listen({ port, host: '0.0.0.0' })
-				addWaitBeforeExit(this.#fastifyApp.close)
+				Instance.addHook('pre:close', this.#fastifyApp.close)
 				return true
 			},
 		})
