@@ -114,7 +114,7 @@ export class Instance<T extends object = object> {
 	}
 
 	getScopedName(name: string, key = '.') {
-		return [this.settings.app, name].join(key)
+		return [this.settings.app.name, name].join(key)
 	}
 
 	async start() {

@@ -43,12 +43,20 @@ export type IncomingFile = {
 }
 
 export type RouteDef = {
-	body?: Pipe<Record<string, unknown>, Record<string, unknown>>
-	response?: Pipe<unknown, unknown>
-	params?: Pipe<Record<string, ArrayOrValue<string>>, Record<string, ArrayOrValue<string>>>
-	headers?: Pipe<DefaultHeaders, DefaultHeaders>
-	responseHeaders?: Pipe<DefaultHeaders, DefaultHeaders>
-	query?: Pipe<Record<string, ArrayOrValue<unknown>>, Record<string, ArrayOrValue<unknown>>>
+	params?: Pipe<
+		Record<string, ArrayOrValue<string>>,
+		Record<string, ArrayOrValue<string>>,
+		{ request: Request<RouteDefToReqRes<RouteDef>> }
+	>
+	query?: Pipe<
+		Record<string, ArrayOrValue<unknown>>,
+		Record<string, ArrayOrValue<unknown>>,
+		{ request: Request<RouteDefToReqRes<RouteDef>> }
+	>
+	headers?: Pipe<DefaultHeaders, DefaultHeaders, { request: Request<RouteDefToReqRes<RouteDef>> }>
+	body?: Pipe<Record<string, unknown>, Record<string, unknown>, { request: Request<RouteDefToReqRes<RouteDef>> }>
+	response?: Pipe<unknown, unknown, { response: Response<RouteDefToReqRes<RouteDef>> }>
+	responseHeaders?: Pipe<DefaultHeaders, DefaultHeaders, { response: Response<RouteDefToReqRes<RouteDef>> }>
 	defaultStatusCode?: StatusCodesEnum
 	defaultContentType?: string
 }

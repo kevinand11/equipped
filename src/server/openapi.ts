@@ -1,5 +1,4 @@
 import { convert } from '@openapi-contrib/json-schema-to-openapi-schema'
-// @ts-ignore
 import { OpenAPIV3_1 } from 'openapi-types'
 import { JsonSchema } from 'valleyed'
 
@@ -29,7 +28,7 @@ export class OpenApi {
 	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
 	#baseOpenapiDoc: OpenAPIV3_1.Document = {
 		openapi: '3.0.0',
-		info: { title: `${this.#settings.app} ${this.#settings.app.id}`, version: this.#settings.server.openapi.docsVersion ?? '' },
+		info: { title: `${this.#settings.app.name} ${this.#settings.app.id}`, version: this.#settings.server.openapi.docsVersion ?? '' },
 		servers: this.#settings.server.openapi.docsBaseUrl?.map((url) => ({ url })),
 		paths: {},
 		components: {
@@ -95,8 +94,8 @@ export class OpenApi {
 			for (const resp of def.response.responseHeaders) {
 				methodObj.responses[resp.status] ??= { description: '', content: {} }
 				methodObj.responses[resp.status] as OpenAPIV3_1.ResponseObject
-				// TODO: get to work
-				// res.headers = { schema: await convert(resp.schema) }
+				const res = methodObj.responses[resp.status] as OpenAPIV3_1.ResponseObject
+				res.headers = { schema: (await convert(resp.schema)) as any }
 			}
 		}
 
@@ -170,7 +169,7 @@ export class OpenApi {
 	}
 
 	#html(jsonPath: string) {
-		const title = `${this.#settings.app} ${this.#settings.app.id}`
+		const title = `${this.#settings.app.name} ${this.#settings.app.id}`
 		return `
 <!doctype html>
 <html>
@@ -178,7 +177,7 @@ export class OpenApi {
     <title>${title}</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-			<style>
+	<style>
       .darklight-reference {
         display: none;
       }

@@ -21,10 +21,9 @@ const errorsSchemas = Object.entries(StatusCodes)
 	.map(([key, value]) => ({
 		status: value,
 		contentType: 'application/json',
-		pipe: v.array(v.object({ message: v.string(), field: v.optional(v.string()) })).meta({ description: `${key} Response` }) as Pipe<
-			any,
-			any
-		>,
+		pipe: v
+			.array(v.object({ message: v.string(), field: v.optional(v.string()) }))
+			.meta({ description: `${key} Response` }) as Pipe<any>,
 	}))
 
 export abstract class Server<Req = any, Res = any> {
@@ -147,37 +146,55 @@ export abstract class Server<Req = any, Res = any> {
 				}))
 			}
 		})
-		const validateRequest: RequestValidator = (req) => {
-			if (!Object.keys(requestPipe)) return req
-			const validity = v.object(requestPipe).safeParse({
-				params: req.params,
-				headers: req.headers,
-				query: req.query,
-				body: req.body,
-			})
+		const validateRequest: RequestValidator = (request) => {
+			if (!Object.keys(requestPipe)) return request
+			const validity = v
+				.object(
+					Object.fromEntries(
+						Object.entries(requestPipe).map(([key, val]) => [
+							key,
+							v.pipe((input) => input, { context: { request } }).pipe(val),
+						]),
+					),
+				)
+				.safeParse({
+					params: request.params,
+					headers: request.headers,
+					query: request.query,
+					body: request.body,
+				})
 
 			if (!validity.valid) throw pipeErrorToValidationError(validity.error)
-			req.params = validity.value.params
-			req.headers = validity.value.headers
-			req.query = validity.value.query
-			req.body = validity.value.body
-			return req
+			request.params = validity.value.params
+			request.headers = validity.value.headers
+			request.query = validity.value.query
+			request.body = validity.value.body
+			return request
 		}
-		const validateResponse: ResponseValidator = (res) => {
-			if (!Object.keys(responsePipe)) return res
-			status = res.status
-			contentType = res.contentType
+		const validateResponse: ResponseValidator = (response) => {
+			if (!Object.keys(responsePipe)) return response
+			status = response.status
+			contentType = response.contentType
 			contentType
 
-			const validity = v.object(responsePipe).safeParse({
-				responseHeaders: res.headers,
-				response: res.body,
-			})
+			const validity = v
+				.object(
+					Object.fromEntries(
+						Object.entries(responsePipe).map(([key, val]) => [
+							key,
+							v.pipe((input) => input, { context: { response } }).pipe(val),
+						]),
+					),
+				)
+				.safeParse({
+					responseHeaders: response.headers,
+					response: response.body,
+				})
 
 			if (!validity.valid) throw pipeErrorToValidationError(validity.error)
-			res.body = validity.value.response
-			res.headers = validity.value.responseHeaders
-			return res
+			response.body = validity.value.response
+			response.headers = validity.value.responseHeaders
+			return response
 		}
 		return {
 			jsonSchema,

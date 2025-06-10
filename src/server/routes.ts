@@ -1,5 +1,3 @@
-import { v } from 'valleyed'
-
 import { Methods, RouteDefHandler, RouterConfig, Route, MethodsEnum, RouteConfig, RouteDef, MergeRouteDefs } from './types'
 
 function mergeSchemas(...schemas: RouteDef[]) {
@@ -17,9 +15,9 @@ function mergeSchemas(...schemas: RouteDef[]) {
 	function merge<T extends RouteDef[keyof Keys]>(acc: T | null, cur: T) {
 		if (!acc) return cur
 		if (!cur) return acc
-		if (typeof cur === 'number') return cur
-		if (typeof cur === 'string') return cur
-		return v.and([acc as any, cur])
+		if (typeof acc === 'number') return cur
+		if (typeof acc === 'string') return cur
+		return acc.pipe(cur as any) as T
 	}
 	return Object.fromEntries(
 		Object.keys(k).map((key) => [
