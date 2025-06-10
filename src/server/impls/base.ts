@@ -2,7 +2,7 @@ import type http from 'http'
 
 import io from 'socket.io'
 import supertest from 'supertest'
-import { PipeError, v } from 'valleyed'
+import { Pipe, PipeError, v } from 'valleyed'
 
 import { EquippedError, NotFoundError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
@@ -12,19 +12,21 @@ import { parseAuthUser } from '../middlewares/parseAuthUser'
 import { OpenApi, OpenApiSchemaDef } from '../openapi'
 import { type Request, Response } from '../requests'
 import { Router } from '../routes'
-import { Methods, MethodsEnum, RouteDef, StatusCodes, StatusCodesEnum, type Route } from '../types'
+import { Methods, MethodsEnum, RouteDef, StatusCodes, type Route } from '../types'
 
 type RequestValidator = (req: Request<any>) => Request<any>
 type ResponseValidator = (res: Response<any>) => Response<any>
 
 const errorsSchemas = Object.entries(StatusCodes)
 	.filter(([, value]) => value > 399)
-	.map(([key, value]): [StatusCodesEnum, RouteDef] => [
-		value,
-		{
-			response: v.array(v.object({ message: v.string(), field: v.optional(v.string()) })).meta({ description: `${key} Response` }),
-		},
-	])
+	.map(([key, value]) => ({
+		status: value,
+		contentType: 'application/json',
+		pipe: v.array(v.object({ message: v.string(), field: v.optional(v.string()) })).meta({ description: `${key} Response` }) as Pipe<
+			any,
+			any
+		>,
+	}))
 
 export abstract class Server<Req = any, Res = any> {
 	#routesByKey = new Map<string, boolean>()
@@ -112,13 +114,15 @@ export abstract class Server<Req = any, Res = any> {
 
 	#resolveSchema(method: MethodsEnum, schema: RouteDef) {
 		const defaultStatusCode = schema?.defaultStatusCode ?? StatusCodes.Ok
+		const defaultContentType = schema?.defaultContentType ?? 'application/json'
 		let status = defaultStatusCode
+		let contentType = defaultContentType
 		const jsonSchema: OpenApiSchemaDef = { response: {}, request: {} }
 		const requestPipe: Pick<RouteDef, 'body' | 'headers' | 'query' | 'params'> = {}
 		const responsePipe: Pick<RouteDef, 'response' | 'responseHeaders'> = {}
 
 		const defs: {
-			key: Exclude<keyof RouteDef, 'defaultStatusCode'>
+			key: Exclude<keyof RouteDef, `default${string}`>
 			type: keyof OpenApiSchemaDef
 			skip?: boolean
 		}[] = [
@@ -135,19 +139,20 @@ export abstract class Server<Req = any, Res = any> {
 
 			if (def.type === 'request') {
 				requestPipe[def.key] = pipe
-				jsonSchema.request[def.key] = pipe.toJsonSchema()
+				jsonSchema.request[def.key as keyof typeof jsonSchema.request] = pipe.toJsonSchema()
 			}
 			if (def.type === 'response') {
-				const pipeRecords = [
-					...errorsSchemas.map(([statusCode, d]) => [statusCode, d[def.key]!] as const),
-					[defaultStatusCode, pipe] as const,
-				].filter(([_, p]) => !!p)
+				const pipeRecords = errorsSchemas.concat({ status: defaultStatusCode, contentType, pipe })
 				responsePipe[def.key] = v.any().pipe((input) => {
-					const p = pipeRecords.find((r) => r[0] === status)?.[1]
+					const p = pipeRecords.find((r) => r.status === status)?.pipe
 					if (!p) throw PipeError.root(`schema not defined for status code: ${status}`, input)
 					return p.parse(input)
 				})
-				jsonSchema.response[def.key] = Object.fromEntries(pipeRecords.map(([statusCode, p]) => [statusCode, p.toJsonSchema()]))
+				jsonSchema.response[def.key as keyof typeof jsonSchema.response] = pipeRecords.map((record) => ({
+					status: record.status,
+					contentType: record.contentType,
+					schema: record.pipe.toJsonSchema(),
+				}))
 			}
 		})
 		const validateRequest: RequestValidator = (req) => {
@@ -169,6 +174,8 @@ export abstract class Server<Req = any, Res = any> {
 		const validateResponse: ResponseValidator = (res) => {
 			if (!Object.keys(responsePipe)) return res
 			status = res.status
+			contentType = res.contentType
+			contentType
 
 			const validity = v.object(responsePipe).safeParse({
 				responseHeaders: res.headers,
@@ -196,8 +203,7 @@ export abstract class Server<Req = any, Res = any> {
 			this.addRoute({
 				method: Methods.get,
 				path: this.settings.server.healthPath,
-				handler: async (req) =>
-					req.res({ body: `${this.settings.appId} service running`, headers: { 'Content-Type': 'text/plain' } }),
+				handler: async (req) => req.res({ body: `${this.settings.appId} service running`, contentType: 'text/plain' }),
 			})
 
 		this.implementations.registerNotFoundHandler(async (req) => {

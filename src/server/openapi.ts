@@ -23,7 +23,7 @@ declare module 'openapi-types' {
 
 export type OpenApiSchemaDef = {
 	request: Partial<Record<'body' | 'query' | 'params' | 'headers' | 'response', JsonSchema>>
-	response: Partial<Record<'response' | 'responseHeaders', Record<number, JsonSchema>>>
+	response: Partial<Record<'response' | 'responseHeaders', { status: number; schema: JsonSchema; contentType: string }[]>>
 }
 
 export class OpenApi {
@@ -97,7 +97,7 @@ export class OpenApi {
 	router() {
 		const jsonPath = './openapi.json'
 		const router = new Router({ path: this.#settings.openapi.docsPath ?? '/' })
-		router.get('/')((req) => req.res({ body: this.#html(jsonPath), headers: { 'Content-Type': 'text/html' } }))
+		router.get('/')((req) => req.res({ body: this.#html(jsonPath), contentType: 'text/html' }))
 		router.get(jsonPath)((req) => req.res({ body: this.#baseOpenapiDoc }))
 		return router
 	}

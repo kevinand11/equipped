@@ -1,7 +1,7 @@
 import type { Readable } from 'stream'
 
 import type { RequestError } from '../errors'
-import type { DefaultHeaders, IncomingFile, MethodsEnum, RouteDefToReqRes, StatusCodesEnum } from './types'
+import type { DefaultHeaders, IncomingFile, MethodsEnum, RouteDef, RouteDefToReqRes } from './types'
 import type { DistributiveOmit, IsInTypeList } from '../types'
 import type { AuthUser, RefreshUser } from '../types/overrides'
 import { parseJSONObject } from '../utils/json'
@@ -70,10 +70,11 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 	}
 
 	error<
-		T extends Omit<Def, 'response' | 'statusCode' | 'responseHeaders'> & {
+		T extends Omit<Def, 'response' | 'statusCode' | 'responseHeaders' | 'contentType'> & {
 			response: RequestError['serializedErrors']
 			statusCode: RequestError['statusCode']
 			responseHeaders: DefaultHeaders
+			contentType: 'application/json'
 		},
 	>(params: DistributiveOmit<RequestParams<T>, 'piped'>) {
 		return new Response<T>(<any>{ ...params, piped: false })
@@ -82,10 +83,13 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 
 type RequestParams<Def extends RouteDefToReqRes<any>, T = Def['response']> = { body: T; piped?: boolean } & (IsInTypeList<
 	Def['statusCode'],
-	[StatusCodesEnum, 200]
+	[NonNullable<RouteDef['defaultStatusCode']>, 200]
 > extends true
 	? { status?: Def['statusCode'] }
 	: { status: Def['statusCode'] }) &
+	(IsInTypeList<Def['contentType'], [NonNullable<RouteDef['defaultContentType']>, 'application/json']> extends true
+		? { contentType?: Def['contentType'] }
+		: { contentType: Def['contentType'] }) &
 	(IsInTypeList<Def['responseHeaders'], [DefaultHeaders]> extends true
 		? { headers?: Def['responseHeaders'] }
 		: { headers: Def['responseHeaders'] })
@@ -94,18 +98,19 @@ export class Response<Def extends RouteDefToReqRes<any>> {
 	body: Def['response'] | undefined
 	headers: Def['responseHeaders']
 	readonly status: Def['statusCode']
+	readonly contentType: Def['contentType']
 	readonly piped: boolean
 
-	constructor({ body, status = <any>200, headers = <any>{}, piped = false }: RequestParams<Def>) {
+	constructor({ body, status = <any>200, headers = <any>{}, piped = false, contentType = <any>'application/json' }: RequestParams<Def>) {
 		this.body = body
 		this.status = status
+		this.contentType = contentType
 		this.headers = headers
 		this.piped = piped
 
 		if (!this.piped) {
-			const contentType = Object.keys(this.headers as any).find((key) => key.toLowerCase() === 'content-type')
 			// @ts-expect-error indexing on generic
-			if (!contentType) this.headers['Content-Type'] = 'application/json'
+			this.headers['Content-Type'] = contentType
 		}
 	}
 }

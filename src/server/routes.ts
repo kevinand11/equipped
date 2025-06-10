@@ -4,17 +4,26 @@ import { Methods, RouteDefHandler, RouterConfig, Route, MethodsEnum, RouteConfig
 
 function mergeSchemas(...schemas: RouteDef[]) {
 	type Keys = Record<keyof RouteDef, string>
-	const k: Keys = { params: '', headers: '', query: '', body: '', response: '', responseHeaders: '', defaultStatusCode: '' }
+	const k: Keys = {
+		params: '',
+		headers: '',
+		query: '',
+		body: '',
+		response: '',
+		responseHeaders: '',
+		defaultStatusCode: '',
+		defaultContentType: '',
+	}
+	function merge<T extends RouteDef[keyof Keys]>(acc: T | null, cur: T) {
+		if (!acc) return cur
+		if (typeof cur === 'number') return cur
+		if (typeof cur === 'string') return cur
+		return v.and([acc as any, cur])
+	}
 	return Object.fromEntries(
 		Object.keys(k).map((key) => [
 			key,
-			schemas
-				.map((s) => s[key] as RouteDef[keyof Keys])
-				.filter((s) => !!s)
-				.reduce<RouteDef[keyof Keys] | null>(
-					(acc, curr) => (typeof curr === 'number' || typeof acc === 'number' ? curr : acc ? v.and([acc, curr]) : curr),
-					null,
-				),
+			schemas.map((s) => s[key] as RouteDef[keyof Keys]).reduce<RouteDef[keyof Keys] | null>(merge, null),
 		]),
 	) as RouteDef
 }
