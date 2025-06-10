@@ -22,7 +22,7 @@ export type OnJoinFn = (
 	params: Record<string, any>,
 	query: Record<string, any>,
 ) => Promise<string | null>
-export type SocketCallers = {
+export type SocketCallbacks = {
 	onConnect: (userId: string, socketId: string) => Promise<void>
 	onDisconnect: (userId: string, socketId: string) => Promise<void>
 }
@@ -31,7 +31,7 @@ const defaultTo = '*'
 
 export class Listener {
 	#socket: io.Server
-	#callers: SocketCallers
+	#connectionCallbacks: SocketCallbacks = { onConnect: async () => {}, onDisconnect: async () => {} }
 	#routes = {} as Record<string, OnJoinFn>
 	#subscriber = Instance.get().eventBus.createSubscriber(
 		EmitterEvent as never,
@@ -42,9 +42,8 @@ export class Listener {
 	)
 	#publisher = Instance.get().eventBus.createPublisher(EmitterEvent as never)
 
-	constructor(socket: io.Server, callers: SocketCallers) {
+	constructor(socket: io.Server) {
 		this.#socket = socket
-		this.#callers = callers
 		this.#setupSocketConnection()
 		Instance.addHook('pre:start', async () => this.#subscriber.subscribe())
 	}
@@ -72,8 +71,8 @@ export class Listener {
 		)
 	}
 
-	set callers(callers: SocketCallers) {
-		this.#callers = callers
+	set connectionCallbacks(callbacks: SocketCallbacks) {
+		this.#connectionCallbacks = callbacks
 		this.#setupSocketConnection()
 	}
 
@@ -156,9 +155,9 @@ export class Listener {
 					})
 				)
 			})
-			if (user) await this.#callers.onConnect(user.id, socketId)
+			if (user) await this.#connectionCallbacks.onConnect(user.id, socketId)
 			socket.on('disconnect', async () => {
-				if (user) await this.#callers.onDisconnect(user.id, socketId)
+				if (user) await this.#connectionCallbacks.onDisconnect(user.id, socketId)
 			})
 		})
 	}

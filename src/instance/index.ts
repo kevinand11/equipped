@@ -70,7 +70,7 @@ export class Instance<T extends object = object> {
 	readonly settings: Settings
 	readonly logger: pino.Logger<any>
 	readonly cache: Cache
-	readonly job: RedisJob
+	readonly jobs: RedisJob
 	readonly eventBus: EventBus
 	readonly server: Server
 	readonly dbs: { mongo: MongoDb }
@@ -99,17 +99,14 @@ export class Instance<T extends object = object> {
 		this.settings = Object.freeze(settingsValidity.value)
 		this.logger = createLogger(this.settings.log)
 		this.cache = createCache(this.settings.cache)
-		this.job = createJobs(this.settings.jobs)
+		this.jobs = createJobs(this.settings.jobs)
 		this.dbs = {
-			mongo: new MongoDb(this.settings.db.mongo),
+			mongo: new MongoDb(this.settings.dbs.mongo),
 		}
 		this.eventBus = createEventBus(this.settings.eventBus)
 		this.server = createServer(this.settings.server)
 		this.dbChangesEventBus = new KafkaEventBus(this.settings.dbChanges.kafkaConfig)
-		this.listener = new Listener(this.server.socket, {
-			onConnect: async () => {},
-			onDisconnect: async () => {},
-		})
+		this.listener = new Listener(this.server.socket)
 		Instance.#registerOnExitHandler()
 	}
 

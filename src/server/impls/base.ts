@@ -207,7 +207,8 @@ export abstract class Server<Req = any, Res = any> {
 		return supertest(this.server)
 	}
 
-	async start(port: number) {
+	async start() {
+		const port = this.settings.server.port
 		if (this.settings.server.healthPath)
 			this.addRoute({
 				method: Methods.get,

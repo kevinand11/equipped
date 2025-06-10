@@ -14,7 +14,7 @@ export const instanceSettingsPipe = v.object({
 		}),
 		{},
 	),
-	db: v.object({
+	dbs: v.object({
 		mongo: mongoDbConfigPipe,
 	}),
 	dbChanges: v.object({
@@ -43,6 +43,7 @@ export const instanceSettingsPipe = v.object({
 	jobs: redisJobsConfigPipe,
 	server: v.object({
 		type: v.in(['fastify', 'express'] as const),
+		port: v.number(),
 		publicPath: v.optional(v.string()),
 		healthPath: v.optional(v.string()),
 		openapi: v.defaults(
