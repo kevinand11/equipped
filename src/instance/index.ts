@@ -11,7 +11,8 @@ import { EventBus } from '../events/'
 import { KafkaEventBus } from '../events/kafka'
 import { RabbitEventBus } from '../events/rabbit'
 import { RedisJob } from '../jobs'
-import { Server } from '../server'
+import { Listener } from '../listeners'
+import { Server } from '../server/impls/base'
 import { ExpressServer } from '../server/impls/express'
 import { FastifyServer } from '../server/impls/fastify'
 
@@ -74,6 +75,7 @@ export class Instance<T extends object = object> {
 	readonly server: Server
 	readonly dbs: { mongo: MongoDb }
 	readonly dbChangesEventBus: KafkaEventBus
+	readonly listener: Listener
 
 	private constructor(envsPipe: Pipe<any, T>, settings: SettingsInput | ((envs: T) => SettingsInput)) {
 		Instance.#instance = this
@@ -104,11 +106,11 @@ export class Instance<T extends object = object> {
 		this.eventBus = createEventBus(this.settings.eventBus)
 		this.server = createServer(this.settings.server)
 		this.dbChangesEventBus = new KafkaEventBus(this.settings.dbChanges.kafkaConfig)
+		this.listener = new Listener(this.server.socket, {
+			onConnect: async () => {},
+			onDisconnect: async () => {},
+		})
 		Instance.#registerOnExitHandler()
-	}
-
-	get listener() {
-		return this.server.listener
 	}
 
 	getScopedName(name: string, key = '.') {

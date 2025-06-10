@@ -6,7 +6,6 @@ import { Pipe, PipeError, v } from 'valleyed'
 
 import { EquippedError, NotFoundError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
-import { Listener } from '../../listeners'
 import { pipeErrorToValidationError } from '../../validations'
 import { parseAuthUser } from '../middlewares/parseAuthUser'
 import { OpenApi, OpenApiSchemaDef } from '../openapi'
@@ -31,7 +30,6 @@ const errorsSchemas = Object.entries(StatusCodes)
 export abstract class Server<Req = any, Res = any> {
 	#queue: (() => void | Promise<void>)[] = []
 	#routesByKey = new Map<string, boolean>()
-	#listener: Listener | null = null
 	#openapi = new OpenApi()
 	protected server: http.Server
 	protected settings = Instance.get().settings
@@ -41,6 +39,7 @@ export abstract class Server<Req = any, Res = any> {
 			.filter((m) => m !== Methods.options)
 			.map((m) => m.toUpperCase()),
 	}
+	readonly socket: io.Server
 
 	constructor(
 		server: http.Server,
@@ -54,18 +53,8 @@ export abstract class Server<Req = any, Res = any> {
 		},
 	) {
 		this.server = server
+		this.socket = new io.Server(this.server, { cors: this.cors })
 		this.addRouter(this.#openapi.router())
-	}
-
-	get listener() {
-		if (!this.#listener) {
-			const socket = new io.Server(this.server, { cors: { origin: '*' } })
-			this.#listener = new Listener(socket, {
-				onConnect: async () => {},
-				onDisconnect: async () => {},
-			})
-		}
-		return this.#listener
 	}
 
 	addRouter(...routers: Router<any>[]) {

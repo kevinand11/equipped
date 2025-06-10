@@ -96,9 +96,8 @@ export class Listener {
 	}
 
 	#setupSocketConnection = () => {
-		const event = 'connection'
-		this.#socket.removeAllListeners(event)
-		this.#socket.on(event, async (socket) => {
+		this.#socket.removeAllListeners('connection')
+		this.#socket.on('connection', async (socket) => {
 			const socketId = socket.id
 			let user = null as AuthUser | null
 			const tokensUtil = Instance.get().settings.requestsAuth.tokens

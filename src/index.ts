@@ -1,5 +1,4 @@
 export * from './db'
-export * from './emails'
 export * from './errors'
 export * from './instance'
 export * from './listeners'
