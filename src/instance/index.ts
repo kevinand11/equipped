@@ -136,9 +136,9 @@ export class Instance<T extends object = object> {
 		return Instance.#instance
 	}
 
-	static addHook(event: HookEvent, cb: HookCb, priority: boolean = false) {
+	static addHook(event: HookEvent, cb: HookCb, order: number) {
 		Instance.#hooks[event] ??= []
-		Instance.#hooks[event].push({ cb, priority })
+		Instance.#hooks[event].push({ cb, order })
 	}
 
 	static #registerOnExitHandler() {
@@ -158,7 +158,7 @@ export class Instance<T extends object = object> {
 
 	static resolveBeforeCrash<T>(cb: () => Promise<T>) {
 		const value = cb()
-		Instance.addHook('pre:close', async () => await value)
+		Instance.addHook('pre:close', async () => await value, 10)
 		return value
 	}
 

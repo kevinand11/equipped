@@ -1,16 +1,9 @@
-import { Instance } from '../instance'
 import { Events } from '../types/overrides'
 
 export type PublishOptions = { skipScope?: boolean }
 export type SubscribeOptions = PublishOptions & { fanout: boolean }
 
 export abstract class EventBus {
-	protected _subscribers: (() => Promise<void>)[] = []
-
-	constructor() {
-		Instance.addHook('pre:start', () => Promise.all(this._subscribers.map((sub) => sub())))
-	}
-
 	abstract createPublisher<Event extends Events[keyof Events]>(
 		topic: Event['topic'],
 		options?: Partial<SubscribeOptions>,

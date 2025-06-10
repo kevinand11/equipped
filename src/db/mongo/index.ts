@@ -47,9 +47,9 @@ export class MongoDb extends Db<{ _id: string }> {
 					}),
 				)
 			},
-			true,
+			1,
 		)
-		Instance.addHook('pre:close', async () => this.#client.close())
+		Instance.addHook('pre:close', async () => this.#client.close(), 1)
 	}
 
 	async session<T>(callback: (session: ClientSession) => Promise<T>) {

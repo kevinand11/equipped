@@ -45,7 +45,7 @@ export class Listener {
 	constructor(socket: io.Server) {
 		this.#socket = socket
 		this.#setupSocketConnection()
-		Instance.addHook('pre:start', async () => this.#subscriber.subscribe())
+		Instance.addHook('pre:start', async () => this.#subscriber.subscribe(), 1)
 	}
 
 	async created<T extends Entity>(channels: string[], data: T, to: string | string[] | null) {

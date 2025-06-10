@@ -69,7 +69,7 @@ export class RabbitEventBus extends EventBus {
 			})
 		}
 
-		this._subscribers.push(subscribe)
+		Instance.addHook('pre:start', subscribe, 1)
 
 		return { subscribe }
 	}

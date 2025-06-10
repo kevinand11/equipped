@@ -77,12 +77,16 @@ export class KafkaEventBus extends EventBus {
 			})
 
 			if (options.fanout)
-				Instance.addHook('pre:close', async () => {
-					await consumer.disconnect()
-					await this.#deleteGroup(groupId)
-				})
+				Instance.addHook(
+					'pre:close',
+					async () => {
+						await consumer.disconnect()
+						await this.#deleteGroup(groupId)
+					},
+					10,
+				)
 		}
-		this._subscribers.push(subscribe)
+		Instance.addHook('pre:start', subscribe, 1)
 
 		return { subscribe }
 	}

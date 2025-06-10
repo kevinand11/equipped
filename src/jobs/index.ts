@@ -40,15 +40,19 @@ export class RedisJob {
 				).client as any,
 		})
 
-		Instance.addHook('pre:start', async () => {
-			await this.#cleanup()
-			await Promise.all(this.#crons.map(({ cron, name }) => this.#addCron(name, cron)))
-			Promise.all([
-				this.#queue.process(JobNames.DelayedJob, async (job) => await (this.#callbacks.onDelayed as any)?.(job.data)),
-				this.#queue.process(JobNames.CronJob, async (job) => await (this.#callbacks.onCron as any)?.(job.data.type)),
-				this.#queue.process(JobNames.RepeatableJob, async (job) => await (this.#callbacks.onRepeatable as any)?.(job.data)),
-			])
-		})
+		Instance.addHook(
+			'pre:start',
+			async () => {
+				await this.#cleanup()
+				await Promise.all(this.#crons.map(({ cron, name }) => this.#addCron(name, cron)))
+				Promise.all([
+					this.#queue.process(JobNames.DelayedJob, async (job) => await (this.#callbacks.onDelayed as any)?.(job.data)),
+					this.#queue.process(JobNames.CronJob, async (job) => await (this.#callbacks.onCron as any)?.(job.data.type)),
+					this.#queue.process(JobNames.RepeatableJob, async (job) => await (this.#callbacks.onRepeatable as any)?.(job.data)),
+				])
+			},
+			10,
+		)
 	}
 
 	set callbacks(callbacks: JobCallbacks) {

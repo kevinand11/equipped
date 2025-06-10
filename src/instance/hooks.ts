@@ -1,11 +1,6 @@
 export type HookEvent = 'pre:start' | 'post:start' | 'pre:close' | 'post:close'
 export type HookCb = Promise<unknown | void> | (() => void | unknown | Promise<void | unknown>)
-export type HookRecord = { cb: HookCb; priority: boolean }
-
-async function runCb(cb: HookCb) {
-	if (typeof cb === 'function') return await cb()
-	return await cb
-}
+export type HookRecord = { cb: HookCb; order: number }
 
 export async function runHooks(
 	hooks: HookRecord[],
@@ -13,8 +8,24 @@ export async function runHooks(
 		throw error
 	},
 ) {
-	const serial = hooks.filter((h) => h.priority)
-	const parallel = hooks.filter((h) => !h.priority)
-	for (const hook of serial) await runCb(hook.cb).catch(onError)
-	await Promise.all(parallel.map((h) => runCb(h.cb).catch(onError)))
+	const grouped = hooks.reduce<Record<string, HookRecord[]>>((acc, cur) => {
+		const key = cur.order.toString()
+		if (!acc[key]) acc[key] = []
+		acc[key].push(cur)
+		return acc
+	}, {})
+	const groups = Object.keys(grouped)
+		.sort((a, b) => parseInt(a) - parseInt(b))
+		.map((key) => grouped[key])
+	for (const group of groups)
+		await Promise.all(
+			group.map(async (h) => {
+				try {
+					if (typeof h.cb === 'function') return await h.cb()
+					return await h.cb
+				} catch (error) {
+					return onError(error instanceof Error ? error : new Error(`${error}`))
+				}
+			}),
+		)
 }
