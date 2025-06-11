@@ -27,18 +27,11 @@ export class RedisJob {
 	#crons: { name: Cron; cron: string }[] = []
 
 	constructor(config: RedisJobConfig) {
-		this.#queue = new Bull(config.queueName, {
-			createClient: (type) =>
-				new RedisCache(
-					config.config,
-					type === 'client'
-						? undefined
-						: {
-								maxRetriesPerRequest: null,
-								enableReadyCheck: false,
-							},
-				).client as any,
+		const redisCache = new RedisCache(config.config, {
+			maxRetriesPerRequest: null,
+			enableReadyCheck: false,
 		})
+		this.#queue = new Bull(config.queueName, { createClient: () => redisCache.client as any })
 
 		Instance.addHook(
 			'pre:start',

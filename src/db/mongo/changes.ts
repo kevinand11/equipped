@@ -14,12 +14,59 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 	constructor(
 		private config: MongoDbConfig,
 		private client: MongoClient,
-		private dbName: string,
-		private colName: string,
+		dbName: string,
+		colName: string,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model) => Entity,
 	) {
 		super(callbacks, mapper)
+
+		const hydrate = (data: any) =>
+			data._id
+				? {
+						...data,
+						_id: makeId(data._id['$oid'] ?? data._id),
+					}
+				: undefined
+
+		const dbColName = `${dbName}.${colName}`
+		const topic = `${TopicPrefix}.${dbColName}`
+
+		const hexId = '5f5f65717569707065645f5f' // __equipped__
+		const TestId = makeId(hexId)
+		const condition = { _id: TestId } as Filter<Model>
+
+		Instance.get().dbChangesEventBus.createSubscriber(
+			topic as never,
+			async (data: DbDocumentChange) => {
+				const op = data.op
+
+				let before = JSON.parse(data.before ?? 'null')
+				let after = JSON.parse(data.after ?? 'null')
+
+				if (before) before = hydrate(before)
+				if (after) after = hydrate(after)
+				if (before?.__id === TestId || after?.__id === TestId) return
+
+				if (op === 'c' && this.callbacks.created && after)
+					await this.callbacks.created({
+						before: null,
+						after: this.mapper(after)!,
+					})
+				else if (op === 'u' && this.callbacks.updated && before && after)
+					await this.callbacks.updated({
+						before: this.mapper(before)!,
+						after: this.mapper(after)!,
+						changes: differ.from(differ.diff(before, after)),
+					})
+				else if (op === 'd' && this.callbacks.deleted && before)
+					await this.callbacks.deleted({
+						before: this.mapper(before)!,
+						after: null,
+					})
+			},
+			{ skipScope: true },
+		)
 
 		Instance.addHook(
 			'pre:start',
@@ -27,55 +74,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 				if (this.#started) return
 				this.#started = true
 
-				const collection = this.client.db(this.dbName).collection<Model>(this.colName)
-				const dbName = this.dbName
-				const colName = this.colName
-				const dbColName = `${dbName}.${colName}`
-				const topic = `${TopicPrefix}.${dbColName}`
-
-				const hexId = '5f5f65717569707065645f5f' // __equipped__
-				const TestId = makeId(hexId)
-				const condition = { _id: TestId } as Filter<Model>
-
-				const hydrate = (data: any) =>
-					data._id
-						? {
-								...data,
-								_id: makeId(data._id['$oid'] ?? data._id),
-							}
-						: undefined
-
-				Instance.get().dbChangesEventBus.createSubscriber(
-					topic as never,
-					async (data: DbDocumentChange) => {
-						const op = data.op
-
-						let before = JSON.parse(data.before ?? 'null')
-						let after = JSON.parse(data.after ?? 'null')
-
-						if (before) before = hydrate(before)
-						if (after) after = hydrate(after)
-						if (before?.__id === TestId || after?.__id === TestId) return
-
-						if (op === 'c' && this.callbacks.created && after)
-							await this.callbacks.created({
-								before: null,
-								after: this.mapper(after)!,
-							})
-						else if (op === 'u' && this.callbacks.updated && before && after)
-							await this.callbacks.updated({
-								before: this.mapper(before)!,
-								after: this.mapper(after)!,
-								changes: differ.from(differ.diff(before, after)),
-							})
-						else if (op === 'd' && this.callbacks.deleted && before)
-							await this.callbacks.deleted({
-								before: this.mapper(before)!,
-								after: null,
-							})
-					},
-					{ skipScope: true },
-				)
+				const collection = this.client.db(dbName).collection<Model>(colName)
 
 				await retry(
 					async () => {

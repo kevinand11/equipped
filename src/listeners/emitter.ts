@@ -33,19 +33,18 @@ export class Listener {
 	#socket: io.Server
 	#connectionCallbacks: SocketCallbacks = { onConnect: async () => {}, onDisconnect: async () => {} }
 	#routes = {} as Record<string, OnJoinFn>
-	#subscriber = Instance.get().eventBus.createSubscriber(
-		EmitterEvent as never,
-		async (data: EmitData) => {
-			this.#socket.to(data.channel).emit(data.channel, data)
-		},
-		{ fanout: true },
-	)
 	#publisher = Instance.get().eventBus.createPublisher(EmitterEvent as never)
 
 	constructor(socket: io.Server) {
 		this.#socket = socket
 		this.#setupSocketConnection()
-		Instance.addHook('pre:start', async () => this.#subscriber.subscribe(), 1)
+		Instance.get().eventBus.createSubscriber(
+			EmitterEvent as never,
+			async (data: EmitData) => {
+				this.#socket.to(data.channel).emit(data.channel, data)
+			},
+			{ fanout: true },
+		)
 	}
 
 	async created<T extends Entity>(channels: string[], data: T, to: string | string[] | null) {
