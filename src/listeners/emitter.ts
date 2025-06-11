@@ -65,7 +65,7 @@ export class Listener {
 		await Promise.all(
 			channelMap.map(async (channel) => {
 				const emitData: EmitData = { channel, type, before, after }
-				await this.#publisher.publish(emitData as never)
+				await this.#publisher(emitData as never)
 			}),
 		)
 	}

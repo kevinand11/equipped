@@ -30,7 +30,7 @@ export class KafkaEventBus extends EventBus {
 
 	createPublisher<Event extends Events[keyof Events]>(topicName: Event['topic'], options: Partial<PublishOptions> = {}) {
 		const topic = options.skipScope ? topicName : Instance.get().getScopedName(topicName)
-		const publish = async (data: Event['data']) => {
+		return async (data: Event['data']) => {
 			try {
 				const producer = this.#client.producer()
 				await producer.connect()
@@ -43,8 +43,6 @@ export class KafkaEventBus extends EventBus {
 				return false
 			}
 		}
-
-		return { publish }
 	}
 
 	createSubscriber<Event extends Events[keyof Events]>(
@@ -87,8 +85,6 @@ export class KafkaEventBus extends EventBus {
 				)
 		}
 		Instance.addHook('pre:start', subscribe, 1)
-
-		return { subscribe }
 	}
 
 	async #getAdmin() {
