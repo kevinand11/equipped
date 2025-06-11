@@ -77,7 +77,7 @@ export class Instance<T extends object = object> {
 	readonly dbChangesEventBus: KafkaEventBus
 	readonly listener: Listener
 
-	private constructor(envsPipe: Pipe<any, T>, settings: SettingsInput | ((envs: T) => SettingsInput)) {
+	private constructor(envsPipe: Pipe<any, T, any>, settings: SettingsInput | ((envs: T) => SettingsInput)) {
 		Instance.#instance = this
 		const envValidity = envsPipe.safeParse(process.env)
 		if (!envValidity.valid) {
@@ -123,7 +123,7 @@ export class Instance<T extends object = object> {
 		}
 	}
 
-	static create<T extends object = object>(envsPipe: Pipe<any, T>, settings: SettingsInput | ((envs: T) => SettingsInput)) {
+	static create<T extends object = object>(envsPipe: Pipe<any, T, any>, settings: SettingsInput | ((envs: T) => SettingsInput)) {
 		if (Instance.#instance) throw Instance.crash(new EquippedError('An instance has already been created. Use that instead', {}))
 		return new Instance(envsPipe, settings)
 	}

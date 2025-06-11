@@ -5,7 +5,7 @@ export const kafkaConfigPipe = v.object({
 	ssl: v.optional(v.boolean()),
 	sasl: v.optional(
 		v.object({
-			mechanism: v.string().pipe(v.eq('plain' as const)),
+			mechanism: v.is('plain' as const),
 			username: v.string(),
 			password: v.string(),
 		}),

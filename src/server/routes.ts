@@ -17,7 +17,7 @@ function mergeSchemas(...schemas: RouteDef[]) {
 		if (!cur) return acc
 		if (typeof acc === 'number') return cur
 		if (typeof acc === 'string') return cur
-		return acc.pipe(cur as any) as T
+		return (acc.pipe as any)(cur)
 	}
 	return Object.fromEntries(
 		Object.keys(k).map((key) => [

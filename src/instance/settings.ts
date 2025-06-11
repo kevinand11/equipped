@@ -10,7 +10,7 @@ export const instanceSettingsPipe = v.object({
 	}),
 	log: v.defaults(
 		v.object({
-			level: v.defaults(v.string().pipe(v.in(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const)), 'info'),
+			level: v.defaults(v.in(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const), 'info'),
 		}),
 		{},
 	),

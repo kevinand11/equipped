@@ -16,14 +16,14 @@ const filePipe = (err?: string) =>
 	)
 
 export const incomingFile = (err?: string) =>
-	v.pipe<IncomingFile>(
+	v.pipe<unknown, IncomingFile, any>(
 		(input) =>
 			filePipe(err)
 				.pipe(v.min(1, 'no file provided'))
 				.pipe((files) => files[0])
 				.parse(input),
-		{ schema: { type: 'string', format: 'binary' } },
+		{ schema: () => ({ type: 'string', format: 'binary' }) },
 	)
 
 export const incomingFiles = (err?: string) =>
-	v.pipe<IncomingFile[]>((input) => filePipe(err).parse(input), { schema: { type: 'string', format: 'binary' } })
+	v.pipe<unknown, IncomingFile[], any>((input) => filePipe(err).parse(input), { schema: () => ({ type: 'string', format: 'binary' }) })

@@ -21,20 +21,16 @@ export enum Conditions {
 
 const queryKeys = v.defaultsOnFail(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
 
-const queryWhere = v.objectTrim(
-	v.object({
-		field: v.string(),
-		value: v.any(),
-		condition: v.defaultsOnFail(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
-	}),
-)
+const queryWhere = v.object({
+	field: v.string(),
+	value: v.any(),
+	condition: v.defaultsOnFail(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
+})
 
-const queryWhereBlock = v.objectTrim(
-	v.object({
-		condition: queryKeys,
-		value: v.array(queryWhere),
-	}),
-)
+const queryWhereBlock = v.object({
+	condition: queryKeys,
+	value: v.array(queryWhere),
+})
 
 const queryWhereClause = v.defaults(v.array(v.or([queryWhere, queryWhereBlock])), [])
 
@@ -51,18 +47,15 @@ export function queryParamsPipe() {
 						value: v.string(),
 						fields: v.array(v.string()),
 					}),
-					//.pipe(v.objectTrim()),
 				),
 				null,
 			),
 			sort: v.defaults(
 				v.array(
-					v.objectTrim(
-						v.object({
-							field: v.string(),
-							desc: v.defaults(v.boolean(), false),
-						}),
-					),
+					v.object({
+						field: v.string(),
+						desc: v.defaults(v.boolean(), false),
+					}),
 				),
 				[],
 			),
@@ -72,7 +65,7 @@ export function queryParamsPipe() {
 		.pipe((p) => ({ ...p, auth: <QueryWhereClause[]>[], authType: QueryKeys.and }))
 }
 
-export function queryResultsPipe<T>(model: Pipe<any, T>) {
+export function queryResultsPipe<T>(model: Pipe<any, T, any>) {
 	return v.object({
 		pages: v.object({
 			current: v.number(),

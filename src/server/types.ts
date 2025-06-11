@@ -84,7 +84,7 @@ export type Route<T extends RouteDef> = RouteConfig<T> & {
 
 type GetApiPart<T extends RouteDef, K extends keyof RouteDef> = NonNullable<IsInTypeList<T[K], [unknown]> extends true ? RouteDef[K] : T[K]>
 
-type ArePipes<A, B> = A extends Pipe<any, any> ? (B extends Pipe<any, any> ? true : false) : false
+type ArePipes<A, B> = A extends Pipe<any, any, any> ? (B extends Pipe<any, any, any> ? true : false) : false
 type Compare<A, B, CP = true> =
 	IsType<B, unknown> extends true
 		? A
@@ -92,7 +92,7 @@ type Compare<A, B, CP = true> =
 			? B
 			: CP extends true
 				? ArePipes<A, B> extends true
-					? Pipe<PipeOutput<A> & PipeOutput<B>>
+					? A & B //Pipe<PipeInput<A> & PipeInput<B>, PipeOutput<A> & PipeOutput<B>, PipeContext<A>>
 					: B
 				: B
 export type MergeRouteDefs<A extends RouteDef, B extends RouteDef> = {
