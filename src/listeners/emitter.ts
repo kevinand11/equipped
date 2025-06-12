@@ -2,6 +2,7 @@ import { match as Match } from 'path-to-regexp'
 import type io from 'socket.io'
 
 import { Entity } from '../db/base/core'
+import { EventBus } from '../events'
 import { Instance } from '../instance'
 import { StatusCodes, StatusCodesEnum } from '../server'
 import type { AuthUser } from '../types/overrides'
@@ -33,12 +34,17 @@ export class Listener {
 	#socket: io.Server
 	#connectionCallbacks: SocketCallbacks = { onConnect: async () => {}, onDisconnect: async () => {} }
 	#routes = {} as Record<string, OnJoinFn>
-	#publisher = Instance.get().eventBus.createPublisher(EmitterEvent as never)
+	#publish: (data: EmitData) => Promise<void>
 
-	constructor(socket: io.Server) {
+	constructor(socket: io.Server, eventBus?: EventBus) {
 		this.#socket = socket
 		this.#setupSocketConnection()
-		Instance.get().eventBus.createSubscriber(
+		this.#publish = eventBus
+			? (eventBus.createPublisher(EmitterEvent as never) as unknown as (data: EmitData) => Promise<void>)
+			: async (data: EmitData) => {
+					this.#socket.to(data.channel).emit(data.channel, data)
+				}
+		eventBus?.createSubscriber(
 			EmitterEvent as never,
 			async (data: EmitData) => {
 				this.#socket.to(data.channel).emit(data.channel, data)
@@ -62,12 +68,7 @@ export class Listener {
 	async #emit(channels: string[], type: EmitTypes, { before, after }: { after: any; before: any }, to: string | string[] | null) {
 		const toArray = Array.isArray(to) ? to : [to ?? defaultTo]
 		const channelMap = channels.flatMap((c) => toArray.map((to) => `${to}:${c}`))
-		await Promise.all(
-			channelMap.map(async (channel) => {
-				const emitData: EmitData = { channel, type, before, after }
-				await this.#publisher(emitData as never)
-			}),
-		)
+		await Promise.all(channelMap.map(async (channel) => this.#publish({ channel, type, before, after })))
 	}
 
 	set connectionCallbacks(callbacks: SocketCallbacks) {

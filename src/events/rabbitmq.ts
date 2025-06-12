@@ -10,7 +10,7 @@ import type { Events } from '../types/overrides'
 import { parseJSONValue } from '../utils/json'
 import { Random } from '../utils/utils'
 
-export class RabbitEventBus extends EventBus {
+export class RabbitMQEventBus extends EventBus {
 	#client: ChannelWrapper
 	#columnName: string
 

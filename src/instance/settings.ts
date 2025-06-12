@@ -5,7 +5,7 @@ import { Cache } from '../cache'
 import { RedisCache } from '../cache/types/redis-cache'
 import { EventBus } from '../events'
 import { KafkaEventBus } from '../events/kafka'
-import { RabbitEventBus } from '../events/rabbit'
+import { RabbitMQEventBus } from '../events/rabbitmq'
 import { RedisJob } from '../jobs'
 import { Listener } from '../listeners'
 import { mongoDbConfigPipe, kafkaConfigPipe, rabbitmqConfigPipe, redisConfigPipe, redisJobsConfigPipe } from '../schemas'
@@ -32,16 +32,18 @@ export const instanceSettingsPipe = v.object({
 		debeziumUrl: v.string(),
 		kafkaConfig: kafkaConfigPipe,
 	}),
-	eventBus: v.discriminate((e: any) => e?.type, {
-		kafka: v.object({
-			type: v.is('kafka' as const),
-			config: kafkaConfigPipe,
+	eventBus: v.optional(
+		v.discriminate((e: any) => e?.type, {
+			kafka: v.object({
+				type: v.is('kafka' as const),
+				config: kafkaConfigPipe,
+			}),
+			rabbitmq: v.object({
+				type: v.is('rabbitmq' as const),
+				config: rabbitmqConfigPipe,
+			}),
 		}),
-		rabbitmq: v.object({
-			type: v.is('rabbitmq' as const),
-			config: rabbitmqConfigPipe,
-		}),
-	}),
+	),
 	cache: v.discriminate((e: any) => e?.type, {
 		redis: v.object({
 			type: v.is('redis' as const),
@@ -106,13 +108,14 @@ export const instanceSettingsPipe = v.object({
 export type Settings = PipeOutput<typeof instanceSettingsPipe>
 export type SettingsInput = ConditionalObjectKeys<PipeInput<typeof instanceSettingsPipe>>
 
+type AddUndefined<T, C> = undefined extends C ? T | undefined : T
 export type MapSettingsToInstance<T extends SettingsInput> = {
 	app: T['app']
 	log: Logger<any, boolean>
-	eventBus: undefined extends T['eventBus'] ? undefined : EventBus
-	cache: undefined extends T['cache'] ? undefined : Cache
-	jobs: undefined extends T['jobs'] ? undefined : RedisJob
-	server: undefined extends T['server'] ? undefined : Server
+	eventBus: AddUndefined<EventBus, T['eventBus']>
+	cache: AddUndefined<Cache, T['cache']>
+	jobs: AddUndefined<RedisJob, T['jobs']>
+	server: AddUndefined<Server, T['server']>
 	listener: Listener
 	dbChangesEventBus: KafkaEventBus
 	utils: T['utils']
@@ -131,7 +134,11 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 	const cache = new RedisCache(settings.cache.config)
 	const jobs = new RedisJob(settings.jobs)
 	const eventBus =
-		settings.eventBus.type === 'kafka' ? new KafkaEventBus(settings.eventBus.config) : new RabbitEventBus(settings.eventBus.config)
+		settings.eventBus?.type === 'kafka'
+			? new KafkaEventBus(settings.eventBus.config)
+			: settings.eventBus?.type === 'rabbitmq'
+				? new RabbitMQEventBus(settings.eventBus.config)
+				: undefined
 
 	const serverConfig = {
 		app: settings.app,
@@ -139,7 +146,7 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 		log,
 	}
 	const server = settings.server.type === 'express' ? new ExpressServer(serverConfig) : new FastifyServer(serverConfig)
-	const listener = new Listener(server.socket)
+	const listener = new Listener(server.socket, eventBus)
 
 	const dbChangesEventBus = new KafkaEventBus(settings.dbChanges.kafkaConfig)
 
