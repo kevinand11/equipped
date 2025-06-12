@@ -34,23 +34,14 @@ export const instanceSettingsPipe = v.object({
 	}),
 	eventBus: v.optional(
 		v.discriminate((e: any) => e?.type, {
-			kafka: v.object({
-				type: v.is('kafka' as const),
-				config: kafkaConfigPipe,
-			}),
-			rabbitmq: v.object({
-				type: v.is('rabbitmq' as const),
-				config: rabbitmqConfigPipe,
-			}),
+			kafka: v.objectExtends(kafkaConfigPipe, { type: v.is('kafka' as const) }),
+			rabbitmq: v.objectExtends(rabbitmqConfigPipe, { type: v.is('rabbitmq' as const) }),
 		}),
 	),
 	cache: v.discriminate((e: any) => e?.type, {
-		redis: v.object({
-			type: v.is('redis' as const),
-			config: redisConfigPipe,
-		}),
+		redis: v.objectExtends(redisConfigPipe, { type: v.is('redis' as const) }),
 	}),
-	jobs: redisJobsConfigPipe,
+	jobs: v.optional(v.objectExtends(redisJobsConfigPipe, { type: v.is('redis' as const) })),
 	server: v.object({
 		type: v.in(['fastify', 'express'] as const),
 		port: v.number(),
@@ -131,13 +122,13 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 			res: pino.stdSerializers.res,
 		},
 	})
-	const cache = new RedisCache(settings.cache.config)
-	const jobs = new RedisJob(settings.jobs)
+	const cache = new RedisCache(settings.cache)
+	const jobs = settings.jobs ? new RedisJob(settings.jobs) : undefined
 	const eventBus =
 		settings.eventBus?.type === 'kafka'
-			? new KafkaEventBus(settings.eventBus.config)
+			? new KafkaEventBus(settings.eventBus)
 			: settings.eventBus?.type === 'rabbitmq'
-				? new RabbitMQEventBus(settings.eventBus.config)
+				? new RabbitMQEventBus(settings.eventBus)
 				: undefined
 
 	const serverConfig = {

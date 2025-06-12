@@ -27,7 +27,7 @@ export class RedisJob {
 	#crons: { name: Cron; cron: string }[] = []
 
 	constructor(config: RedisJobConfig) {
-		const redisCache = new RedisCache(config.config, {
+		const redisCache = new RedisCache(config.redisConfig, {
 			maxRetriesPerRequest: null,
 			enableReadyCheck: false,
 		})

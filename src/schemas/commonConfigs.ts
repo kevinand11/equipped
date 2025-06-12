@@ -11,13 +11,13 @@ export const kafkaConfigPipe = v.object({
 		}),
 	),
 	confluent: v.optional(v.boolean()),
-	clientId: v.defaults(v.string(), 'appEventsColumn'),
+	clientId: v.string(),
 })
 
 export type KafkaConfig = PipeOutput<typeof kafkaConfigPipe>
 
 export const redisConfigPipe = v.object({
-	host: v.optional(v.string()),
+	host: v.string(),
 	port: v.optional(v.number()),
 	password: v.optional(v.string()),
 	username: v.optional(v.string()),
@@ -29,7 +29,7 @@ export type RedisConfig = PipeOutput<typeof redisConfigPipe>
 
 export const rabbitmqConfigPipe = v.object({
 	uri: v.string(),
-	eventColumnName: v.defaults(v.string(), 'appEventsColumn'),
+	eventColumnName: v.string(),
 })
 
 export type RabbitMQConfig = PipeOutput<typeof rabbitmqConfigPipe>
@@ -41,8 +41,8 @@ export const mongoDbConfigPipe = v.object({
 export type MongoDbConfig = PipeOutput<typeof mongoDbConfigPipe>
 
 export const redisJobsConfigPipe = v.object({
-	config: redisConfigPipe,
-	queueName: v.defaults(v.string(), 'appTasksQueue'),
+	redisConfig: redisConfigPipe,
+	queueName: v.string(),
 })
 
 export type RedisJobConfig = PipeOutput<typeof redisJobsConfigPipe>
