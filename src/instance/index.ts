@@ -5,21 +5,21 @@ import { instanceSettingsPipe, mapSettingsToInstance, MapSettingsToInstance, Set
 import { MongoDb } from '../db/mongo'
 import { EquippedError } from '../errors'
 
-export class Instance<E extends object, S extends Settings> extends DataClass<MapSettingsToInstance<S>> {
-	static #instance: Instance<object, Settings>
+export class Instance<E extends object, S extends SettingsInput> extends DataClass<MapSettingsToInstance<S>> {
+	static #instance: Instance<object, SettingsInput>
 	static #hooks: Partial<Record<HookEvent, HookRecord[]>> = {}
 	readonly envs: Readonly<E>
-	readonly settings: Readonly<S>
+	readonly settings: Readonly<Settings>
 	readonly dbs: { mongo: MongoDb }
 
 	private constructor(envs: E, settings: S) {
-		super(mapSettingsToInstance(settings))
-		Instance.#instance = this as any
+		super(mapSettingsToInstance(settings as any))
 		this.envs = Object.freeze(envs)
-		this.settings = Object.freeze(settings)
+		this.settings = Object.freeze(settings) as any
 		this.dbs = {
 			mongo: new MongoDb(this.settings.dbs.mongo),
 		}
+		Instance.#instance = this as any
 		Instance.#registerOnExitHandler()
 	}
 
@@ -36,7 +36,7 @@ export class Instance<E extends object, S extends Settings> extends DataClass<Ma
 		}
 	}
 
-	static create<E extends object>(envsPipe: Pipe<E, E, any>, settings: (envs: E) => SettingsInput) {
+	static create<E extends object, S extends SettingsInput>(envsPipe: Pipe<E, E, any>, settings: (envs: E) => S) {
 		if (Instance.#instance) throw Instance.crash(new EquippedError('An instance has already been created. Use that instead', {}))
 		const envValidity = envsPipe.safeParse(process.env)
 		if (!envValidity.valid) {
@@ -54,7 +54,7 @@ export class Instance<E extends object, S extends Settings> extends DataClass<Ma
 				}),
 			)
 		}
-		return new Instance(envValidity.value, settingsValidity.value)
+		return new Instance<E, S>(envValidity.value, settingsValidity.value as S)
 	}
 
 	static get() {

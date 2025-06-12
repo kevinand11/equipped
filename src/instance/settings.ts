@@ -1,5 +1,5 @@
 import pino, { Logger } from 'pino'
-import { PipeInput, PipeOutput, v } from 'valleyed'
+import { ConditionalObjectKeys, PipeInput, PipeOutput, v } from 'valleyed'
 
 import { Cache } from '../cache'
 import { RedisCache } from '../cache/types/redis-cache'
@@ -104,15 +104,15 @@ export const instanceSettingsPipe = v.object({
 })
 
 export type Settings = PipeOutput<typeof instanceSettingsPipe>
-export type SettingsInput = PipeInput<typeof instanceSettingsPipe>
+export type SettingsInput = ConditionalObjectKeys<PipeInput<typeof instanceSettingsPipe>>
 
-export type MapSettingsToInstance<T extends Settings> = {
+export type MapSettingsToInstance<T extends SettingsInput> = {
 	app: T['app']
 	log: Logger<any, boolean>
-	eventBus: EventBus
-	cache: Cache
-	jobs: RedisJob
-	server: Server
+	eventBus: undefined extends T['eventBus'] ? undefined : EventBus
+	cache: undefined extends T['cache'] ? undefined : Cache
+	jobs: undefined extends T['jobs'] ? undefined : RedisJob
+	server: undefined extends T['server'] ? undefined : Server
 	listener: Listener
 	dbChangesEventBus: KafkaEventBus
 	utils: T['utils']
@@ -147,10 +147,10 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 		app: settings.app,
 		utils: settings.utils,
 		log,
-		eventBus,
-		cache,
-		jobs,
-		server,
+		eventBus: eventBus as any,
+		cache: cache as any,
+		jobs: jobs as any,
+		server: server as any,
 		listener,
 		dbChangesEventBus,
 	}
