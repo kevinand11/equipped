@@ -11,10 +11,11 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 	readonly settings: Readonly<Settings>
 
 	private constructor(envs: E, settings: S) {
-		super(mapSettingsToInstance(settings as any))
+		super({} as any)
+		Instance.#instance = this as any
 		this.envs = Object.freeze(envs)
 		this.settings = Object.freeze(settings) as any
-		Instance.#instance = this as any
+		this.__update(mapSettingsToInstance(this.settings as any))
 		Instance.#registerOnExitHandler()
 	}
 

@@ -1,5 +1,5 @@
 import pino, { Logger } from 'pino'
-import { ConditionalObjectKeys, IsType, PipeInput, PipeOutput, v } from 'valleyed'
+import { ConditionalObjectKeys, IsInTypeList, PipeInput, PipeOutput, v } from 'valleyed'
 
 import { Cache } from '../cache'
 import { RedisCache } from '../cache/types/redis-cache'
@@ -25,11 +25,14 @@ export const instanceSettingsPipe = v.object({
 		}),
 		{},
 	),
-	dbs: v.object({
-		mongo: mongoDbConfigPipe,
-	}),
-	db: v.optional(
+	dbs: v.optional(
 		v.object({
+			types: v.record(
+				v.string(),
+				v.discriminate((e) => e?.type, {
+					mongo: v.objectExtends(mongoDbConfigPipe, { type: v.is('mongo' as const) }),
+				}),
+			),
 			changes: v.object({
 				debeziumUrl: v.string(),
 				kafkaConfig: kafkaConfigPipe,
@@ -105,7 +108,17 @@ export const instanceSettingsPipe = v.object({
 export type Settings = PipeOutput<typeof instanceSettingsPipe>
 export type SettingsInput = ConditionalObjectKeys<PipeInput<typeof instanceSettingsPipe>>
 
-type AddUndefined<T, C> = IsType<C, undefined> extends true ? undefined : T
+type DbTypesMap = { mongo: MongoDb }
+type ReshapeDbs<T extends SettingsInput> =
+	IsInTypeList<NonNullable<T['dbs']>['types'], [unknown]> extends true
+		? {}
+		: {
+				[K in keyof NonNullable<T['dbs']>['types']]: NonNullable<T['dbs']>['types'][K] extends { type: keyof DbTypesMap }
+					? DbTypesMap[NonNullable<T['dbs']>['types'][K]['type']]
+					: never
+			}
+
+type AddUndefined<T, C> = IsInTypeList<C, [undefined, unknown]> extends true ? undefined : T
 export type MapSettingsToInstance<T extends SettingsInput> = {
 	app: T['app']
 	log: Logger<any, boolean>
@@ -113,7 +126,7 @@ export type MapSettingsToInstance<T extends SettingsInput> = {
 	cache: AddUndefined<Cache, T['cache']>
 	jobs: AddUndefined<RedisJob, T['jobs']>
 	server: AddUndefined<Server, T['server']>
-	dbs: { mongo: MongoDb }
+	dbs: ReshapeDbs<T>
 	utils: T['utils']
 }
 
@@ -148,16 +161,19 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 				? new FastifyServer({ ...serverConfig, config: settings.server })
 				: undefined
 
-	const changesConfig = settings.db?.changes
+	const changesConfig = settings.dbs?.changes
 		? {
-				debeziumUrl: settings.db.changes.debeziumUrl,
-				eventBus: new KafkaEventBus(settings.db.changes.kafkaConfig),
+				debeziumUrl: settings.dbs.changes.debeziumUrl,
+				eventBus: new KafkaEventBus(settings.dbs.changes.kafkaConfig),
 			}
 		: undefined
 
-	const dbs = {
-		mongo: new MongoDb(settings.dbs.mongo, { changes: changesConfig }),
-	}
+	const dbs = Object.fromEntries(
+		Object.entries(settings.dbs?.types ?? {}).map(([key, config]) => [
+			key,
+			config.type === 'mongo' ? new MongoDb(config, { changes: changesConfig }) : undefined,
+		]),
+	)
 
 	return {
 		app: settings.app,
@@ -167,6 +183,6 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 		cache: cache as any,
 		jobs: jobs as any,
 		server: server as any,
-		dbs,
+		dbs: dbs as any,
 	}
 }

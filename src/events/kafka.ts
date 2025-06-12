@@ -17,15 +17,11 @@ export class KafkaEventBus extends EventBus {
 		super()
 		const { confluent = false, ...kafkaSettings } = config
 		this.#confluent = confluent
-		const fullConfig = {
-			...kafkaSettings,
-			clientId: Instance.get().getScopedName(kafkaSettings.clientId),
-		}
 		this.#client = confluent
 			? new Confluent.KafkaJS.Kafka({
-					kafkaJS: { ...fullConfig, logLevel: Confluent.KafkaJS.logLevel.NOTHING },
+					kafkaJS: { ...kafkaSettings, logLevel: Confluent.KafkaJS.logLevel.NOTHING },
 				})
-			: new Kafka.Kafka({ ...fullConfig, logLevel: Kafka.logLevel.NOTHING })
+			: new Kafka.Kafka({ ...kafkaSettings, logLevel: Kafka.logLevel.NOTHING })
 	}
 
 	createPublisher<Event extends Events[keyof Events]>(topicName: Event['topic'], options: Partial<PublishOptions> = {}) {
