@@ -3,7 +3,8 @@ import { Instance } from '../../instance'
 import { makeMiddleware } from '../types'
 
 export const parseAuthUser = makeMiddleware(async (request) => {
-	const { requestsAuth } = Instance.get().settings.server
+	const requestsAuth = Instance.get().settings.server?.requestsAuth
+	if (!requestsAuth) return
 	const { Authorization, ApiKey } = request.headers
 	function makeErrorHandler(key: 'access' | 'apiKey') {
 		return function (err: any) {

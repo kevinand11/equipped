@@ -51,7 +51,7 @@ export const requireRefreshTokenUser = makeMiddleware(
 		if (request.users.refresh.error) throw request.users.refresh.error
 		const refreshToken = request.headers.RefreshToken
 		if (!refreshToken) throw new NotAuthorizedError('x-refresh-token header missing')
-		request.users.refresh.value = await Instance.get().settings.server.requestsAuth.tokens?.verifyRefreshToken(refreshToken)
+		request.users.refresh.value = await Instance.get().settings.server?.requestsAuth.tokens?.verifyRefreshToken(refreshToken)
 		if (!request.users.refresh.value) throw new NotAuthorizedError()
 	},
 	(route) => {

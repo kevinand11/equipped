@@ -1,5 +1,5 @@
 import pino, { Logger } from 'pino'
-import { ConditionalObjectKeys, PipeInput, PipeOutput, v } from 'valleyed'
+import { ConditionalObjectKeys, IsType, PipeInput, PipeOutput, v } from 'valleyed'
 
 import { Cache } from '../cache'
 import { RedisCache } from '../cache/types/redis-cache'
@@ -47,52 +47,54 @@ export const instanceSettingsPipe = v.object({
 		redis: v.objectExtends(redisConfigPipe, { type: v.is('redis' as const) }),
 	}),
 	jobs: v.optional(v.objectExtends(redisJobsConfigPipe, { type: v.is('redis' as const) })),
-	server: v.object({
-		type: v.in(['fastify', 'express'] as const),
-		port: v.number(),
-		publicPath: v.optional(v.string()),
-		healthPath: v.optional(v.string()),
-		openapi: v.defaults(
-			v.object({
-				docsVersion: v.defaults(v.string(), '1.0.0'),
-				docsBaseUrl: v.defaults(v.array(v.string()), ['/']),
-				docsPath: v.defaults(v.string(), '/__docs'),
-			}),
-			{},
-		),
-		requests: v.defaults(
-			v.object({
-				log: v.defaults(v.boolean(), true),
-				paginationDefaultLimit: v.defaults(v.number(), 100),
-				maxFileUploadSizeInMb: v.defaults(v.number(), 500),
-				rateLimit: v.defaults(
-					v.object({
-						enabled: v.defaults(v.boolean(), false),
-						periodInMs: v.defaults(v.number(), 60 * 60 * 1000),
-						limit: v.defaults(v.number(), 5000),
-					}),
-					{},
-				),
-				slowdown: v.defaults(
-					v.object({
-						enabled: v.defaults(v.boolean(), false),
-						periodInMs: v.defaults(v.number(), 10 * 60 * 1000),
-						delayAfter: v.defaults(v.number(), 2000),
-						delayInMs: v.defaults(v.number(), 500),
-					}),
-					{},
-				),
-			}),
-			{},
-		),
-		requestsAuth: v.defaults(
-			v.object({
-				tokens: v.optional(v.instanceOf(BaseTokensUtility)),
-				apiKey: v.optional(v.instanceOf(BaseApiKeysUtility)),
-			}),
-			{},
-		),
-	}),
+	server: v.optional(
+		v.object({
+			type: v.in(['fastify', 'express'] as const),
+			port: v.number(),
+			publicPath: v.optional(v.string()),
+			healthPath: v.optional(v.string()),
+			openapi: v.defaults(
+				v.object({
+					docsVersion: v.defaults(v.string(), '1.0.0'),
+					docsBaseUrl: v.defaults(v.array(v.string()), ['/']),
+					docsPath: v.defaults(v.string(), '/__docs'),
+				}),
+				{},
+			),
+			requests: v.defaults(
+				v.object({
+					log: v.defaults(v.boolean(), true),
+					paginationDefaultLimit: v.defaults(v.number(), 100),
+					maxFileUploadSizeInMb: v.defaults(v.number(), 500),
+					rateLimit: v.defaults(
+						v.object({
+							enabled: v.defaults(v.boolean(), false),
+							periodInMs: v.defaults(v.number(), 60 * 60 * 1000),
+							limit: v.defaults(v.number(), 5000),
+						}),
+						{},
+					),
+					slowdown: v.defaults(
+						v.object({
+							enabled: v.defaults(v.boolean(), false),
+							periodInMs: v.defaults(v.number(), 10 * 60 * 1000),
+							delayAfter: v.defaults(v.number(), 2000),
+							delayInMs: v.defaults(v.number(), 500),
+						}),
+						{},
+					),
+				}),
+				{},
+			),
+			requestsAuth: v.defaults(
+				v.object({
+					tokens: v.optional(v.instanceOf(BaseTokensUtility)),
+					apiKey: v.optional(v.instanceOf(BaseApiKeysUtility)),
+				}),
+				{},
+			),
+		}),
+	),
 	utils: v.defaults(
 		v.object({
 			hashSaltRounds: v.defaults(v.number(), 10),
@@ -104,7 +106,7 @@ export const instanceSettingsPipe = v.object({
 export type Settings = PipeOutput<typeof instanceSettingsPipe>
 export type SettingsInput = ConditionalObjectKeys<PipeInput<typeof instanceSettingsPipe>>
 
-type AddUndefined<T, C> = undefined extends C ? T | undefined : T
+type AddUndefined<T, C> = IsType<C, undefined> extends true ? undefined : T
 export type MapSettingsToInstance<T extends SettingsInput> = {
 	app: T['app']
 	log: Logger<any, boolean>
@@ -112,7 +114,7 @@ export type MapSettingsToInstance<T extends SettingsInput> = {
 	cache: AddUndefined<Cache, T['cache']>
 	jobs: AddUndefined<RedisJob, T['jobs']>
 	server: AddUndefined<Server, T['server']>
-	listener: Listener
+	listener: AddUndefined<Listener, T['server']>
 	dbs: { mongo: MongoDb }
 	utils: T['utils']
 }
@@ -138,11 +140,15 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 
 	const serverConfig = {
 		app: settings.app,
-		config: settings.server,
 		log,
 	}
-	const server = settings.server.type === 'express' ? new ExpressServer(serverConfig) : new FastifyServer(serverConfig)
-	const listener = new Listener(server.socket, eventBus)
+	const server =
+		settings.server?.type === 'express'
+			? new ExpressServer({ ...serverConfig, config: settings.server })
+			: settings.server?.type === 'fastify'
+				? new FastifyServer({ ...serverConfig, config: settings.server })
+				: undefined
+	const listener = server ? new Listener(server.socket, eventBus) : undefined
 
 	const changesConfig = settings.db?.changes
 		? {
@@ -163,7 +169,7 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 		cache: cache as any,
 		jobs: jobs as any,
 		server: server as any,
-		listener,
+		listener: listener as any,
 		dbs,
 	}
 }

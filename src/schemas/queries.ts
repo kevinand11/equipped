@@ -35,7 +35,7 @@ const queryWhereBlock = v.object({
 const queryWhereClause = v.defaults(v.array(v.or([queryWhere, queryWhereBlock])), [])
 
 export function queryParamsPipe() {
-	const pagLimit = Instance.get().settings.server.requests.paginationDefaultLimit
+	const pagLimit = Instance.get().settings.server?.requests.paginationDefaultLimit ?? 100
 	return v
 		.object({
 			all: v.defaults(v.boolean(), false),
