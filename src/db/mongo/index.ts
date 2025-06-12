@@ -2,24 +2,26 @@ import { ClientSession, CollectionInfo, MongoClient, ObjectId } from 'mongodb'
 
 import { getTable } from './api'
 import { MongoDbChange } from './changes'
+import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import { MongoDbConfig } from '../../schemas'
 import { Db, type Config } from '../base/_instance'
 import * as core from '../base/core'
+import { DbConfig } from '../base/types'
 
 export class MongoDb extends Db<{ _id: string }> {
 	#client: MongoClient
-	#started = false
 	#cols: { db: string; col: string }[] = []
 
-	constructor(private config: MongoDbConfig) {
-		super()
-		this.#client = new MongoClient(config.uri)
+	constructor(
+		private mongoConfig: MongoDbConfig,
+		dbConfig: DbConfig,
+	) {
+		super(dbConfig)
+		this.#client = new MongoClient(mongoConfig.uri)
 		Instance.addHook(
 			'pre:start',
 			async () => {
-				if (this.#started) return
-				this.#started = true
 				await this.#client.connect()
 
 				const grouped = this.#cols.reduce<Record<string, string[]>>((acc, cur) => {
@@ -61,16 +63,18 @@ export class MongoDb extends Db<{ _id: string }> {
 	}
 
 	use<Model extends core.Model<{ _id: string }>, Entity extends core.Entity>(config: Config<Model, Entity>) {
-		config.change
-			? new MongoDbChange<Model, Entity>(
-					this.config,
-					this.#client,
-					this.getScopedDb(config.db),
-					config.col,
-					config.change,
-					config.mapper,
-				)
-			: null
+		if (config.change) {
+			if (!this.config.changes) Instance.crash(new EquippedError('Db changes are not enabled in the configuration.', { config }))
+			new MongoDbChange<Model, Entity>(
+				this.mongoConfig,
+				this.config.changes,
+				this.#client,
+				this.getScopedDb(config.db),
+				config.col,
+				config.change,
+				config.mapper,
+			)
+		}
 		this.#cols.push({ db: this.getScopedDb(config.db), col: config.col })
 		const collection = this.#client.db(this.getScopedDb(config.db)).collection<Model>(config.col)
 		return getTable(collection, config)

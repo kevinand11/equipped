@@ -2,7 +2,6 @@ import { DataClass, Pipe } from 'valleyed'
 
 import { HookCb, HookEvent, HookRecord, runHooks } from './hooks'
 import { instanceSettingsPipe, mapSettingsToInstance, MapSettingsToInstance, Settings, SettingsInput } from './settings'
-import { MongoDb } from '../db/mongo'
 import { EquippedError } from '../errors'
 
 export class Instance<E extends object, S extends SettingsInput> extends DataClass<MapSettingsToInstance<S>> {
@@ -10,15 +9,11 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 	static #hooks: Partial<Record<HookEvent, HookRecord[]>> = {}
 	readonly envs: Readonly<E>
 	readonly settings: Readonly<Settings>
-	readonly dbs: { mongo: MongoDb }
 
 	private constructor(envs: E, settings: S) {
 		super(mapSettingsToInstance(settings as any))
 		this.envs = Object.freeze(envs)
 		this.settings = Object.freeze(settings) as any
-		this.dbs = {
-			mongo: new MongoDb(this.settings.dbs.mongo),
-		}
 		Instance.#instance = this as any
 		Instance.#registerOnExitHandler()
 	}

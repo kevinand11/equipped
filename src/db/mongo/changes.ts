@@ -7,19 +7,21 @@ import { retry } from '../../utils/retry'
 import { differ } from '../../validations'
 import { DbChange, DbChangeCallbacks, TopicPrefix } from '../base/_instance'
 import * as core from '../base/core'
+import { DbChangeConfig } from '../base/types'
 
 export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity extends core.Entity> extends DbChange<Model, Entity> {
 	#started = false
 
 	constructor(
 		config: MongoDbConfig,
+		change: DbChangeConfig,
 		client: MongoClient,
 		dbName: string,
 		colName: string,
 		callbacks: DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model) => Entity,
 	) {
-		super(callbacks, mapper)
+		super(change, callbacks, mapper)
 
 		const hydrate = (data: any) =>
 			data._id
@@ -36,7 +38,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 		const TestId = makeId(hexId)
 		const condition = { _id: TestId } as Filter<Model>
 
-		Instance.get().dbChangesEventBus.createSubscriber(
+		change.eventBus.createSubscriber(
 			topic as never,
 			async (data: DbDocumentChange) => {
 				const op = data.op

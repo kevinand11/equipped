@@ -3,6 +3,7 @@ import { ConditionalObjectKeys, PipeInput, PipeOutput, v } from 'valleyed'
 
 import { Cache } from '../cache'
 import { RedisCache } from '../cache/types/redis-cache'
+import { MongoDb } from '../db/mongo'
 import { EventBus } from '../events'
 import { KafkaEventBus } from '../events/kafka'
 import { RabbitMQEventBus } from '../events/rabbitmq'
@@ -28,10 +29,14 @@ export const instanceSettingsPipe = v.object({
 	dbs: v.object({
 		mongo: mongoDbConfigPipe,
 	}),
-	dbChanges: v.object({
-		debeziumUrl: v.string(),
-		kafkaConfig: kafkaConfigPipe,
-	}),
+	db: v.optional(
+		v.object({
+			changes: v.object({
+				debeziumUrl: v.string(),
+				kafkaConfig: kafkaConfigPipe,
+			}),
+		}),
+	),
 	eventBus: v.optional(
 		v.discriminate((e: any) => e?.type, {
 			kafka: v.objectExtends(kafkaConfigPipe, { type: v.is('kafka' as const) }),
@@ -108,7 +113,7 @@ export type MapSettingsToInstance<T extends SettingsInput> = {
 	jobs: AddUndefined<RedisJob, T['jobs']>
 	server: AddUndefined<Server, T['server']>
 	listener: Listener
-	dbChangesEventBus: KafkaEventBus
+	dbs: { mongo: MongoDb }
 	utils: T['utils']
 }
 
@@ -139,7 +144,16 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 	const server = settings.server.type === 'express' ? new ExpressServer(serverConfig) : new FastifyServer(serverConfig)
 	const listener = new Listener(server.socket, eventBus)
 
-	const dbChangesEventBus = new KafkaEventBus(settings.dbChanges.kafkaConfig)
+	const changesConfig = settings.db?.changes
+		? {
+				debeziumUrl: settings.db.changes.debeziumUrl,
+				eventBus: new KafkaEventBus(settings.db.changes.kafkaConfig),
+			}
+		: undefined
+
+	const dbs = {
+		mongo: new MongoDb(settings.dbs.mongo, { changes: changesConfig }),
+	}
 
 	return {
 		app: settings.app,
@@ -150,6 +164,6 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 		jobs: jobs as any,
 		server: server as any,
 		listener,
-		dbChangesEventBus,
+		dbs,
 	}
 }
