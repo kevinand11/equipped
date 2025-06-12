@@ -14,13 +14,14 @@ import { getMediaDuration } from '../../utils/media'
 import { Request } from '../requests'
 import { IncomingFile, StatusCodes } from '../types'
 import { Server } from './base'
+import { ServerConfig } from '../../schemas/servers'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express
 
-	constructor() {
+	constructor(config: ServerConfig) {
 		const app = express()
-		super(http.createServer(app), {
+		super(http.createServer(app), config, {
 			parseRequest: async (req) => {
 				const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 				const headers = {
@@ -94,7 +95,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		this.#expressApp = app
 
 		app.disable('x-powered-by')
-		if (this.settings.server.requests.log) app.use(pinoHttp({ logger: Instance.get().logger }))
+		if (config.config.requests.log) app.use(pinoHttp({ logger: config.log }))
 		app.use(express.json())
 		app.use(express.text())
 		app.use(cookie())
@@ -106,18 +107,18 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		)
 		app.use(cors(this.cors))
 		app.use(express.urlencoded({ extended: false }))
-		if (this.settings.server.publicPath) app.use(express.static(this.settings.server.publicPath))
+		if (config.config.publicPath) app.use(express.static(config.config.publicPath))
 		app.use(
 			fileUpload({
-				limits: { fileSize: this.settings.server.requests.maxFileUploadSizeInMb * 1024 * 1024 },
+				limits: { fileSize: config.config.requests.maxFileUploadSizeInMb * 1024 * 1024 },
 				useTempFiles: false,
 			}),
 		)
-		if (this.settings.server.requests.rateLimit.enabled)
+		if (config.config.requests.rateLimit.enabled)
 			app.use(
 				rateLimit({
-					windowMs: this.settings.server.requests.rateLimit.periodInMs,
-					limit: this.settings.server.requests.rateLimit.limit,
+					windowMs: config.config.requests.rateLimit.periodInMs,
+					limit: config.config.requests.rateLimit.limit,
 					handler: (_: express.Request, res: express.Response) =>
 						res.status(StatusCodes.TooManyRequests).json([{ message: 'Too Many Requests' }]),
 				}),

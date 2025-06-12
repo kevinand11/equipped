@@ -1,112 +1,25 @@
-import pino from 'pino'
-import { Pipe } from 'valleyed'
+import { DataClass, Pipe } from 'valleyed'
 
 import { HookCb, HookEvent, HookRecord, runHooks } from './hooks'
-import { instanceSettingsPipe, Settings, SettingsInput } from './settings'
-import { Cache } from '../cache'
-import { RedisCache } from '../cache/types/redis-cache'
+import { instanceSettingsPipe, mapSettingsToInstance, MapSettingsToInstance, Settings, SettingsInput } from './settings'
 import { MongoDb } from '../db/mongo'
 import { EquippedError } from '../errors'
-import { EventBus } from '../events/'
-import { KafkaEventBus } from '../events/kafka'
-import { RabbitEventBus } from '../events/rabbit'
-import { RedisJob } from '../jobs'
-import { Listener } from '../listeners'
-import { Server } from '../server/impls/base'
-import { ExpressServer } from '../server/impls/express'
-import { FastifyServer } from '../server/impls/fastify'
 
-function createLogger(config: Settings['log']) {
-	return pino<any>({
-		level: config.level,
-		serializers: {
-			err: pino.stdSerializers.err,
-			error: pino.stdSerializers.err,
-			req: pino.stdSerializers.req,
-			res: pino.stdSerializers.res,
-		},
-	})
-}
-
-function createCache(config: Settings['cache']): Cache {
-	switch (config.type) {
-		case 'redis':
-			return new RedisCache(config.config)
-		default:
-			throw new EquippedError(`unsupported type`, { config })
-	}
-}
-
-function createJobs(config: Settings['jobs']): RedisJob {
-	return new RedisJob(config)
-}
-
-function createEventBus(config: Settings['eventBus']): EventBus {
-	switch (config.type) {
-		case 'kafka':
-			return new KafkaEventBus(config.config)
-		case 'rabbitmq':
-			return new RabbitEventBus(config.config)
-		default:
-			throw new EquippedError(`unsupported type`, { config })
-	}
-}
-
-function createServer(config: Settings['server']): Server {
-	switch (config.type) {
-		case 'express':
-			return new ExpressServer()
-		case 'fastify':
-			return new FastifyServer()
-		default:
-			throw new EquippedError(`unsupported type`, { config })
-	}
-}
-
-export class Instance<T extends object = object> {
-	static #instance: Instance
+export class Instance<E extends object, S extends Settings> extends DataClass<MapSettingsToInstance<S>> {
+	static #instance: Instance<object, Settings>
 	static #hooks: Partial<Record<HookEvent, HookRecord[]>> = {}
-	readonly envs: T
-	readonly settings: Settings
-	readonly logger: pino.Logger<any>
-	readonly cache: Cache
-	readonly jobs: RedisJob
-	readonly eventBus: EventBus
-	readonly server: Server
+	readonly envs: Readonly<E>
+	readonly settings: Readonly<S>
 	readonly dbs: { mongo: MongoDb }
-	readonly dbChangesEventBus: KafkaEventBus
-	readonly listener: Listener
 
-	private constructor(envsPipe: Pipe<any, T, any>, settings: SettingsInput | ((envs: T) => SettingsInput)) {
-		Instance.#instance = this
-		const envValidity = envsPipe.safeParse(process.env)
-		if (!envValidity.valid) {
-			Instance.crash(
-				new EquippedError(`Environment variables are not valid\n${envValidity.error.toString()}`, {
-					messages: envValidity.error.messages,
-				}),
-			)
-		}
-		this.envs = Object.freeze(envValidity.value)
-		const settingsValidity = instanceSettingsPipe.safeParse(typeof settings === 'function' ? settings(this.envs) : settings)
-		if (!settingsValidity.valid) {
-			Instance.crash(
-				new EquippedError(`Settings are not valid\n${settingsValidity.error.toString()}`, {
-					messages: settingsValidity.error.messages,
-				}),
-			)
-		}
-		this.settings = Object.freeze(settingsValidity.value)
-		this.logger = createLogger(this.settings.log)
-		this.cache = createCache(this.settings.cache)
-		this.jobs = createJobs(this.settings.jobs)
+	private constructor(envs: E, settings: S) {
+		super(mapSettingsToInstance(settings))
+		Instance.#instance = this as any
+		this.envs = Object.freeze(envs)
+		this.settings = Object.freeze(settings)
 		this.dbs = {
 			mongo: new MongoDb(this.settings.dbs.mongo),
 		}
-		this.eventBus = createEventBus(this.settings.eventBus)
-		this.server = createServer(this.settings.server)
-		this.dbChangesEventBus = new KafkaEventBus(this.settings.dbChanges.kafkaConfig)
-		this.listener = new Listener(this.server.socket)
 		Instance.#registerOnExitHandler()
 	}
 
@@ -123,9 +36,25 @@ export class Instance<T extends object = object> {
 		}
 	}
 
-	static create<T extends object = object>(envsPipe: Pipe<any, T, any>, settings: SettingsInput | ((envs: T) => SettingsInput)) {
+	static create<E extends object>(envsPipe: Pipe<E, E, any>, settings: (envs: E) => SettingsInput) {
 		if (Instance.#instance) throw Instance.crash(new EquippedError('An instance has already been created. Use that instead', {}))
-		return new Instance(envsPipe, settings)
+		const envValidity = envsPipe.safeParse(process.env)
+		if (!envValidity.valid) {
+			Instance.crash(
+				new EquippedError(`Environment variables are not valid\n${envValidity.error.toString()}`, {
+					messages: envValidity.error.messages,
+				}),
+			)
+		}
+		const settingsValidity = instanceSettingsPipe.safeParse(settings(envValidity.value))
+		if (!settingsValidity.valid) {
+			Instance.crash(
+				new EquippedError(`Settings are not valid\n${settingsValidity.error.toString()}`, {
+					messages: settingsValidity.error.messages,
+				}),
+			)
+		}
+		return new Instance(envValidity.value, settingsValidity.value)
 	}
 
 	static get() {

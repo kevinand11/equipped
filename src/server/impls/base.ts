@@ -6,6 +6,7 @@ import { Pipe, PipeError, v } from 'valleyed'
 
 import { EquippedError, NotFoundError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
+import { ServerConfig } from '../../schemas/servers'
 import { pipeErrorToValidationError } from '../../validations'
 import { parseAuthUser } from '../middlewares/parseAuthUser'
 import { OpenApi, OpenApiSchemaDef } from '../openapi'
@@ -31,9 +32,8 @@ const errorsSchemas = Object.entries(StatusCodes)
 export abstract class Server<Req = any, Res = any> {
 	#queue: (() => void | Promise<void>)[] = []
 	#routesByKey = new Map<string, boolean>()
-	#openapi = new OpenApi()
+	#openapi: OpenApi
 	protected server: http.Server
-	protected settings = Instance.get().settings
 	protected cors = {
 		origin: '*',
 		methods: Object.values(Methods)
@@ -44,6 +44,7 @@ export abstract class Server<Req = any, Res = any> {
 
 	constructor(
 		server: http.Server,
+		private config: ServerConfig,
 		protected implementations: {
 			parseRequest: (req: Req) => Promise<Request<any>>
 			handleResponse: (res: Res, response: Response<any>) => Promise<void>
@@ -55,6 +56,7 @@ export abstract class Server<Req = any, Res = any> {
 	) {
 		this.server = server
 		this.socket = new io.Server(this.server, { cors: this.cors })
+		this.#openapi = new OpenApi(this.config)
 		this.addRouter(this.#openapi.router())
 	}
 
@@ -210,13 +212,16 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	async start() {
-		const port = this.settings.server.port
-		if (this.settings.server.healthPath)
+		const port = this.config.config.port
+		if (this.config.config.healthPath)
 			this.addRoute({
 				method: Methods.get,
-				path: this.settings.server.healthPath,
+				path: this.config.config.healthPath,
 				handler: async (req) =>
-					req.res({ body: `${this.settings.app.id}(${this.settings.app.name}) service running`, contentType: 'text/plain' }),
+					req.res({
+						body: `${this.config.app.id}(${this.config.app.name}) service running`,
+						contentType: 'text/plain',
+					}),
 			})
 
 		this.implementations.registerNotFoundHandler(async (req) => {
@@ -224,7 +229,7 @@ export abstract class Server<Req = any, Res = any> {
 			throw new NotFoundError(`Route ${request.path} not found`)
 		})
 		this.implementations.registerErrorHandler(async (error, _, res) => {
-			Instance.get().logger.error(error)
+			Instance.get().log.error(error)
 			const response =
 				error instanceof RequestError
 					? new Response({
@@ -240,7 +245,7 @@ export abstract class Server<Req = any, Res = any> {
 
 		await Promise.all(this.#queue.map((cb) => cb()))
 		const started = await this.implementations.start(port)
-		if (started) Instance.get().logger.info(`${this.settings.app.id}(${this.settings.app.name}) service listening on port ${port}`)
+		if (started) Instance.get().log.info(`${this.config.app.id}(${this.config.app.name}) service listening on port ${port}`)
 		return started
 	}
 }

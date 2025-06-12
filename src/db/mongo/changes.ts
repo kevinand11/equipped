@@ -12,8 +12,8 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 	#started = false
 
 	constructor(
-		private config: MongoDbConfig,
-		private client: MongoClient,
+		config: MongoDbConfig,
+		client: MongoClient,
 		dbName: string,
 		colName: string,
 		callbacks: DbChangeCallbacks<Model, Entity>,
@@ -74,14 +74,14 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 				if (this.#started) return
 				this.#started = true
 
-				const collection = this.client.db(dbName).collection<Model>(colName)
+				const collection = client.db(dbName).collection<Model>(colName)
 
 				await retry(
 					async () => {
 						const started = await this.configureConnector(topic, {
 							'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
 							'capture.mode': 'change_streams_update_full_with_pre_image',
-							'mongodb.connection.string': this.config.uri,
+							'mongodb.connection.string': config.uri,
 							'collection.include.list': dbColName,
 							'snapshot.mode': 'when_needed',
 						})
@@ -89,7 +89,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 						if (started) return { done: true, value: true }
 						await collection.findOneAndUpdate(condition, { $set: { colName } as any }, { upsert: true })
 						await collection.findOneAndDelete(condition)
-						Instance.get().logger.warn(`Waiting for db changes for ${dbColName} to start...`)
+						Instance.get().log.warn(`Waiting for db changes for ${dbColName} to start...`)
 						return { done: false }
 					},
 					6,

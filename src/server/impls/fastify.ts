@@ -16,29 +16,25 @@ import { getMediaDuration } from '../../utils/media'
 import { Request } from '../requests'
 import { IncomingFile, StatusCodes } from '../types'
 import { Server } from './base'
-
-function getFastifyApp() {
-	const instance = Instance.get()
-	return Fastify({
-		ignoreTrailingSlash: true,
-		caseSensitive: false,
-		disableRequestLogging: !instance.settings.server.requests.log,
-		loggerInstance: instance.settings.server.requests.log ? instance.logger : undefined,
-		ajv: { customOptions: { coerceTypes: false } },
-		schemaErrorFormatter: (errors, data) =>
-			new ValidationError(
-				errors.map((error) => ({ messages: [error.message ?? ''], field: `${data}${error.instancePath}`.replaceAll('/', '.') })),
-			),
-	})
-}
-type FastifyInstance = ReturnType<typeof getFastifyApp>
+import { ServerConfig } from '../../schemas/servers'
 
 export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
-	#fastifyApp: FastifyInstance
-
-	constructor() {
-		const app = getFastifyApp()
-		super(app.server, {
+	constructor(config: ServerConfig) {
+		const app = Fastify({
+			ignoreTrailingSlash: true,
+			caseSensitive: false,
+			disableRequestLogging: !config.config.requests.log,
+			loggerInstance: config.config.requests.log ? config.log : undefined,
+			ajv: { customOptions: { coerceTypes: false } },
+			schemaErrorFormatter: (errors, data) =>
+				new ValidationError(
+					errors.map((error) => ({
+						messages: [error.message ?? ''],
+						field: `${data}${error.instancePath}`.replaceAll('/', '.'),
+					})),
+				),
+		})
+		super(app.server, config, {
 			parseRequest: async (req) => {
 				const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
 				const headers = {
@@ -68,29 +64,28 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 				await res.status(response.status).headers(response.headers).send(response.body)
 			},
 			registerRoute: (method, path, cb) => {
-				this.#fastifyApp.register(async (inst) => {
+				app.register(async (inst) => {
 					inst.route({ url: path, method, handler: cb })
 				})
 			},
 			registerErrorHandler: (cb) => {
-				this.#fastifyApp.setErrorHandler(cb)
+				app.setErrorHandler(cb)
 			},
 			registerNotFoundHandler: (cb) => {
-				this.#fastifyApp.setNotFoundHandler(cb)
+				app.setNotFoundHandler(cb)
 			},
 			start: async (port) => {
-				await this.#fastifyApp.ready()
-				await this.#fastifyApp.listen({ port, host: '0.0.0.0' })
-				Instance.addHook('pre:close', this.#fastifyApp.close, 1)
+				await app.ready()
+				await app.listen({ port, host: '0.0.0.0' })
+				Instance.addHook('pre:close', app.close, 1)
 				return true
 			},
 		})
-		this.#fastifyApp = app
 
 		app.decorateRequest('savedReq', null)
 		app.setValidatorCompiler(() => () => true)
 		app.setSerializerCompiler(() => (data) => JSON.stringify(data))
-		if (this.settings.server.publicPath) app.register(fastifyStatic, { root: this.settings.server.publicPath })
+		if (config.config.publicPath) app.register(fastifyStatic, { root: config.config.publicPath })
 		app.register(fastifyCookie, {})
 		app.register(fastifyCors, this.cors)
 		app.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
@@ -98,7 +93,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		app.register(fastifyMultipart, {
 			attachFieldsToBody: 'keyValues',
 			throwFileSizeLimit: false,
-			limits: { fileSize: this.settings.server.requests.maxFileUploadSizeInMb * 1024 * 1024 },
+			limits: { fileSize: config.config.requests.maxFileUploadSizeInMb * 1024 * 1024 },
 			onFile: async (f) => {
 				const buffer = await f.toBuffer()
 				const parsed: IncomingFile = {
@@ -118,10 +113,10 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			delayAfter: this.settings.slowdown.delayAfter,
 			delay: this.settings.slowdown.delayInMs
 		}) */
-		if (this.settings.server.requests.rateLimit.enabled)
+		if (config.config.requests.rateLimit.enabled)
 			app.register(fastifyRateLimit, {
-				max: this.settings.server.requests.rateLimit.limit,
-				timeWindow: this.settings.server.requests.rateLimit.periodInMs,
+				max: config.config.requests.rateLimit.limit,
+				timeWindow: config.config.requests.rateLimit.periodInMs,
 				errorResponseBuilder: (_, context) => ({
 					statusCode: StatusCodes.TooManyRequests,
 					message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }]),

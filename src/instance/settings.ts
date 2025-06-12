@@ -1,12 +1,23 @@
+import pino, { Logger } from 'pino'
 import { PipeInput, PipeOutput, v } from 'valleyed'
 
+import { Cache } from '../cache'
+import { RedisCache } from '../cache/types/redis-cache'
+import { EventBus } from '../events'
+import { KafkaEventBus } from '../events/kafka'
+import { RabbitEventBus } from '../events/rabbit'
+import { RedisJob } from '../jobs'
+import { Listener } from '../listeners'
 import { mongoDbConfigPipe, kafkaConfigPipe, rabbitmqConfigPipe, redisConfigPipe, redisJobsConfigPipe } from '../schemas'
+import { Server } from '../server/impls/base'
+import { ExpressServer } from '../server/impls/express'
+import { FastifyServer } from '../server/impls/fastify'
 import { BaseApiKeysUtility, BaseTokensUtility } from '../server/requests-auth'
 
 export const instanceSettingsPipe = v.object({
 	app: v.object({
-		id: v.defaults(v.string(), 'appId'),
-		name: v.defaults(v.string(), 'appName'),
+		id: v.string(),
+		name: v.string(),
 	}),
 	log: v.defaults(
 		v.object({
@@ -35,9 +46,6 @@ export const instanceSettingsPipe = v.object({
 		redis: v.object({
 			type: v.is('redis' as const),
 			config: redisConfigPipe,
-		}),
-		memory: v.object({
-			type: v.is('memory' as const),
 		}),
 	}),
 	jobs: redisJobsConfigPipe,
@@ -97,3 +105,53 @@ export const instanceSettingsPipe = v.object({
 
 export type Settings = PipeOutput<typeof instanceSettingsPipe>
 export type SettingsInput = PipeInput<typeof instanceSettingsPipe>
+
+export type MapSettingsToInstance<T extends Settings> = {
+	app: T['app']
+	log: Logger<any, boolean>
+	eventBus: EventBus
+	cache: Cache
+	jobs: RedisJob
+	server: Server
+	listener: Listener
+	dbChangesEventBus: KafkaEventBus
+	utils: T['utils']
+}
+
+export function mapSettingsToInstance<T extends Settings>(settings: T): MapSettingsToInstance<T> {
+	const log = pino<any>({
+		level: settings.log.level,
+		serializers: {
+			err: pino.stdSerializers.err,
+			error: pino.stdSerializers.err,
+			req: pino.stdSerializers.req,
+			res: pino.stdSerializers.res,
+		},
+	})
+	const cache = new RedisCache(settings.cache.config)
+	const jobs = new RedisJob(settings.jobs)
+	const eventBus =
+		settings.eventBus.type === 'kafka' ? new KafkaEventBus(settings.eventBus.config) : new RabbitEventBus(settings.eventBus.config)
+
+	const serverConfig = {
+		app: settings.app,
+		config: settings.server,
+		log,
+	}
+	const server = settings.server.type === 'express' ? new ExpressServer(serverConfig) : new FastifyServer(serverConfig)
+	const listener = new Listener(server.socket)
+
+	const dbChangesEventBus = new KafkaEventBus(settings.dbChanges.kafkaConfig)
+
+	return {
+		app: settings.app,
+		utils: settings.utils,
+		log,
+		eventBus,
+		cache,
+		jobs,
+		server,
+		listener,
+		dbChangesEventBus,
+	}
+}

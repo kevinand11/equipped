@@ -2,9 +2,9 @@ import { convert } from '@openapi-contrib/json-schema-to-openapi-schema'
 import { OpenAPIV3_1 } from 'openapi-types'
 import { JsonSchema } from 'valleyed'
 
-import { Route } from './types'
-import { Instance } from '../instance'
 import { Router } from './routes'
+import { Route } from './types'
+import { ServerConfig } from '../schemas/servers'
 
 declare module 'openapi-types' {
 	namespace OpenAPIV3 {
@@ -23,36 +23,42 @@ export type OpenApiSchemaDef = {
 }
 
 export class OpenApi {
-	#settings = Instance.get().settings
 	#registeredTags: Record<string, boolean> = {}
 	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
-	#baseOpenapiDoc: OpenAPIV3_1.Document = {
-		openapi: '3.0.0',
-		info: { title: `${this.#settings.app.name} ${this.#settings.app.id}`, version: this.#settings.server.openapi.docsVersion ?? '' },
-		servers: this.#settings.server.openapi.docsBaseUrl?.map((url) => ({ url })),
-		paths: {},
-		components: {
-			schemas: {},
-			securitySchemes: {
-				Authorization: {
-					type: 'apiKey',
-					name: 'authorization',
-					in: 'header',
-				},
-				RefreshToken: {
-					type: 'apiKey',
-					name: 'x-refresh-token',
-					in: 'header',
-				},
-				ApiKey: {
-					type: 'apiKey',
-					name: 'x-api-key',
-					in: 'header',
+	#baseOpenapiDoc: OpenAPIV3_1.Document
+
+	constructor(private config: ServerConfig) {
+		this.#baseOpenapiDoc = {
+			openapi: '3.0.0',
+			info: {
+				title: `${config.app.name} ${config.app.id}`,
+				version: config.config.openapi.docsVersion ?? '',
+			},
+			servers: config.config.openapi.docsBaseUrl?.map((url) => ({ url })),
+			paths: {},
+			components: {
+				schemas: {},
+				securitySchemes: {
+					Authorization: {
+						type: 'apiKey',
+						name: 'authorization',
+						in: 'header',
+					},
+					RefreshToken: {
+						type: 'apiKey',
+						name: 'x-refresh-token',
+						in: 'header',
+					},
+					ApiKey: {
+						type: 'apiKey',
+						name: 'x-api-key',
+						in: 'header',
+					},
 				},
 			},
-		},
-		tags: [],
-		'x-tagGroups': [],
+			tags: [],
+			'x-tagGroups': [],
+		}
 	}
 
 	cleanPath(path: string) {
@@ -135,7 +141,7 @@ export class OpenApi {
 
 	router() {
 		const jsonPath = '/openapi.json'
-		const router = new Router({ path: this.#settings.server.openapi.docsPath ?? '/' })
+		const router = new Router({ path: this.config.config.openapi.docsPath ?? '/' })
 		router.get('/')((req) => req.res({ body: this.#html(`.${jsonPath}`), contentType: 'text/html' }))
 		router.get(jsonPath)((req) => req.res({ body: this.#baseOpenapiDoc }))
 		return router
@@ -169,7 +175,7 @@ export class OpenApi {
 	}
 
 	#html(jsonPath: string) {
-		const title = `${this.#settings.app.name} ${this.#settings.app.id}`
+		const title = `${this.config.app.name} ${this.config.app.id}`
 		return `
 <!doctype html>
 <html>
