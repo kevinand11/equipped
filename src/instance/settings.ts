@@ -8,7 +8,6 @@ import { EventBus } from '../events'
 import { KafkaEventBus } from '../events/kafka'
 import { RabbitMQEventBus } from '../events/rabbitmq'
 import { RedisJob } from '../jobs'
-import { Listener } from '../listeners'
 import { mongoDbConfigPipe, kafkaConfigPipe, rabbitmqConfigPipe, redisConfigPipe, redisJobsConfigPipe } from '../schemas'
 import { Server } from '../server/impls/base'
 import { ExpressServer } from '../server/impls/express'
@@ -114,7 +113,6 @@ export type MapSettingsToInstance<T extends SettingsInput> = {
 	cache: AddUndefined<Cache, T['cache']>
 	jobs: AddUndefined<RedisJob, T['jobs']>
 	server: AddUndefined<Server, T['server']>
-	listener: AddUndefined<Listener, T['server']>
 	dbs: { mongo: MongoDb }
 	utils: T['utils']
 }
@@ -141,6 +139,7 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 	const serverConfig = {
 		app: settings.app,
 		log,
+		eventBus,
 	}
 	const server =
 		settings.server?.type === 'express'
@@ -148,7 +147,6 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 			: settings.server?.type === 'fastify'
 				? new FastifyServer({ ...serverConfig, config: settings.server })
 				: undefined
-	const listener = server ? new Listener(server.socket, eventBus) : undefined
 
 	const changesConfig = settings.db?.changes
 		? {
@@ -169,7 +167,6 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 		cache: cache as any,
 		jobs: jobs as any,
 		server: server as any,
-		listener: listener as any,
 		dbs,
 	}
 }

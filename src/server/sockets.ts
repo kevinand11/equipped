@@ -4,7 +4,7 @@ import type io from 'socket.io'
 import { Entity } from '../db/base/core'
 import { EventBus } from '../events'
 import { Instance } from '../instance'
-import { StatusCodes, StatusCodesEnum } from '../server'
+import { StatusCodes, StatusCodesEnum } from './types'
 import type { AuthUser } from '../types/overrides'
 
 enum EmitTypes {
@@ -30,24 +30,24 @@ export type SocketCallbacks = {
 
 const defaultTo = '*'
 
-export class Listener {
-	#socket: io.Server
+export class SocketEmitter {
+	readonly socketInstance: io.Server
 	#connectionCallbacks: SocketCallbacks = { onConnect: async () => {}, onDisconnect: async () => {} }
 	#routes = {} as Record<string, OnJoinFn>
 	#publish: (data: EmitData) => Promise<void>
 
 	constructor(socket: io.Server, eventBus?: EventBus) {
-		this.#socket = socket
+		this.socketInstance = socket
 		this.#setupSocketConnection()
 		this.#publish = eventBus
 			? (eventBus.createPublisher(EmitterEvent as never) as unknown as (data: EmitData) => Promise<void>)
 			: async (data: EmitData) => {
-					this.#socket.to(data.channel).emit(data.channel, data)
+					socket.to(data.channel).emit(data.channel, data)
 				}
 		eventBus?.createSubscriber(
 			EmitterEvent as never,
 			async (data: EmitData) => {
-				this.#socket.to(data.channel).emit(data.channel, data)
+				socket.to(data.channel).emit(data.channel, data)
 			},
 			{ fanout: true },
 		)
@@ -95,8 +95,8 @@ export class Listener {
 	}
 
 	#setupSocketConnection = () => {
-		this.#socket.removeAllListeners('connection')
-		this.#socket.on('connection', async (socket) => {
+		this.socketInstance.removeAllListeners('connection')
+		this.socketInstance.on('connection', async (socket) => {
 			const socketId = socket.id
 			let user = null as AuthUser | null
 			const tokensUtil = Instance.get().settings.server?.requestsAuth.tokens

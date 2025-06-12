@@ -1,5 +1,6 @@
 import { PipeOutput, v } from 'valleyed'
 
+import { EventBus } from '../events'
 import { Instance } from '../instance'
 import { BaseTokensUtility, BaseApiKeysUtility } from '../server'
 
@@ -54,4 +55,5 @@ export type ServerConfig = {
 	config: PipeOutput<typeof serverPipe>
 	app: { id: string; name: string }
 	log: Instance<any, any>['log']
+	eventBus?: EventBus
 }

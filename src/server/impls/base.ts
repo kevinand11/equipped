@@ -12,6 +12,7 @@ import { parseAuthUser } from '../middlewares/parseAuthUser'
 import { OpenApi, OpenApiSchemaDef } from '../openapi'
 import { type Request, Response } from '../requests'
 import { Router } from '../routes'
+import { SocketEmitter } from '../sockets'
 import { Methods, MethodsEnum, RouteDef, StatusCodes, type Route } from '../types'
 
 type RequestValidator = (req: Request<any>) => Request<any>
@@ -33,6 +34,7 @@ export abstract class Server<Req = any, Res = any> {
 	#queue: (() => void | Promise<void>)[] = []
 	#routesByKey = new Map<string, boolean>()
 	#openapi: OpenApi
+	socket: SocketEmitter
 	protected server: http.Server
 	protected cors = {
 		origin: '*',
@@ -40,7 +42,6 @@ export abstract class Server<Req = any, Res = any> {
 			.filter((m) => m !== Methods.options)
 			.map((m) => m.toUpperCase()),
 	}
-	readonly socket: io.Server
 
 	constructor(
 		server: http.Server,
@@ -55,8 +56,9 @@ export abstract class Server<Req = any, Res = any> {
 		},
 	) {
 		this.server = server
-		this.socket = new io.Server(this.server, { cors: this.cors })
 		this.#openapi = new OpenApi(this.config)
+		const socketInstance = new io.Server(server, { cors: this.cors })
+		this.socket = new SocketEmitter(socketInstance, config.eventBus)
 		this.addRouter(this.#openapi.router())
 	}
 
