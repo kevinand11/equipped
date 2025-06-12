@@ -33,7 +33,7 @@ export class RedisJob {
 		})
 		this.#queue = new Bull(config.queueName, { createClient: () => redisCache.client })
 
-		Instance.addHook(
+		Instance.on(
 			'pre:start',
 			async () => {
 				await this.#cleanup()

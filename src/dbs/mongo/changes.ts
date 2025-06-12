@@ -70,7 +70,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 			{ skipScope: true },
 		)
 
-		Instance.addHook(
+		Instance.on(
 			'pre:start',
 			async () => {
 				if (this.#started) return

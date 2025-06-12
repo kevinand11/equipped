@@ -61,7 +61,7 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 		return Instance.#instance
 	}
 
-	static addHook(event: HookEvent, cb: HookCb, order: number) {
+	static on(event: HookEvent, cb: HookCb, order: number) {
 		Instance.#hooks[event] ??= []
 		Instance.#hooks[event].push({ cb, order })
 	}
@@ -83,7 +83,7 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 
 	static resolveBeforeCrash<T>(cb: () => Promise<T>) {
 		const value = cb()
-		Instance.addHook('pre:close', async () => await value, 10)
+		Instance.on('pre:close', async () => await value, 10)
 		return value
 	}
 

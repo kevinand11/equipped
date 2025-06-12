@@ -71,7 +71,7 @@ export class KafkaEventBus extends EventBus {
 			})
 
 			if (options.fanout)
-				Instance.addHook(
+				Instance.on(
 					'pre:close',
 					async () => {
 						await consumer.disconnect()
@@ -80,7 +80,7 @@ export class KafkaEventBus extends EventBus {
 					10,
 				)
 		}
-		Instance.addHook('pre:start', subscribe, 1)
+		Instance.on('pre:start', subscribe, 1)
 	}
 
 	async #getAdmin() {

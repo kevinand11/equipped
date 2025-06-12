@@ -3,7 +3,7 @@ import { ConditionalObjectKeys, IsInTypeList, PipeInput, PipeOutput, v } from 'v
 
 import { Cache } from '../cache'
 import { RedisCache } from '../cache/types/redis-cache'
-import { MongoDb } from '../db/mongo'
+import { MongoDb } from '../dbs/mongo'
 import { EventBus } from '../events'
 import { KafkaEventBus } from '../events/kafka'
 import { RabbitMQEventBus } from '../events/rabbitmq'

@@ -1,4 +1,4 @@
-export * from './db'
+export * from './dbs'
 export * from './errors'
 export * from './instance'
 export * from './schemas'

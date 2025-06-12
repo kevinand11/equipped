@@ -1,6 +1,6 @@
 import { convert } from '@openapi-contrib/json-schema-to-openapi-schema'
 import { OpenAPIV3_1 } from 'openapi-types'
-import { JsonSchema } from 'valleyed'
+import { capitalize, JsonSchema } from 'valleyed'
 
 import { Router } from './routes'
 import { Route } from './types'
@@ -175,7 +175,7 @@ export class OpenApi {
 	}
 
 	#html(jsonPath: string) {
-		const title = `${this.config.app.name} ${this.config.app.id}`
+		const title = capitalize(`${this.config.app.name} ${this.config.app.id}`)
 		return `
 <!doctype html>
 <html>
