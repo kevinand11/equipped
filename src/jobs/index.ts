@@ -31,7 +31,7 @@ export class RedisJob {
 			maxRetriesPerRequest: null,
 			enableReadyCheck: false,
 		})
-		this.#queue = new Bull(config.queueName, { createClient: () => redisCache.client as any })
+		this.#queue = new Bull(config.queueName, { createClient: () => redisCache.client })
 
 		Instance.addHook(
 			'pre:start',

@@ -21,7 +21,7 @@ export const instanceSettingsPipe = v.object({
 		debeziumUrl: v.string(),
 		kafkaConfig: kafkaConfigPipe,
 	}),
-	eventBus: v.discriminate((e) => e.type, {
+	eventBus: v.discriminate((e: any) => e?.type, {
 		kafka: v.object({
 			type: v.is('kafka' as const),
 			config: kafkaConfigPipe,
@@ -31,7 +31,7 @@ export const instanceSettingsPipe = v.object({
 			config: rabbitmqConfigPipe,
 		}),
 	}),
-	cache: v.discriminate((e) => e.type, {
+	cache: v.discriminate((e: any) => e?.type, {
 		redis: v.object({
 			type: v.is('redis' as const),
 			config: redisConfigPipe,

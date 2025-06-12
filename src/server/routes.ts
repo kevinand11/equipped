@@ -27,7 +27,7 @@ function mergeSchemas(...schemas: RouteDef[]) {
 	) as RouteDef
 }
 
-const groupRoutes = <T extends RouteDef, R extends RouteDef>(config: RouterConfig<T>, routes: Route<R>[]): Route<MergeRouteDefs<T, R>>[] =>
+const groupRoutes = <T extends RouteDef, R extends RouteDef>(config: RouterConfig<T>, routes: Route<R>[]) =>
 	routes.map((route) => ({
 		...config,
 		...route,
@@ -36,7 +36,7 @@ const groupRoutes = <T extends RouteDef, R extends RouteDef>(config: RouterConfi
 		middlewares: [...(config.middlewares ?? []), ...(route.middlewares ?? [])],
 		schema: mergeSchemas(config.schema ?? {}, route.schema ?? {}),
 		security: [...(config.security ?? []), ...(route.security ?? [])],
-	})) as any
+	})) as Route<MergeRouteDefs<T, R>>[]
 
 export class Router<T extends RouteDef> {
 	#config: RouterConfig<T> = { path: '' }

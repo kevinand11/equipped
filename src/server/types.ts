@@ -43,20 +43,12 @@ export type IncomingFile = {
 }
 
 export type RouteDef = {
-	params?: Pipe<
-		Record<string, ArrayOrValue<string>>,
-		Record<string, ArrayOrValue<string>>,
-		{ request: Request<RouteDefToReqRes<RouteDef>> }
-	>
-	query?: Pipe<
-		Record<string, ArrayOrValue<unknown>>,
-		Record<string, ArrayOrValue<unknown>>,
-		{ request: Request<RouteDefToReqRes<RouteDef>> }
-	>
-	headers?: Pipe<DefaultHeaders, DefaultHeaders, { request: Request<RouteDefToReqRes<RouteDef>> }>
-	body?: Pipe<Record<string, unknown>, Record<string, unknown>, { request: Request<RouteDefToReqRes<RouteDef>> }>
+	params?: Pipe<unknown, Record<string, ArrayOrValue<string>>, { request: Request<RouteDefToReqRes<RouteDef>> }>
+	query?: Pipe<unknown, Record<string, ArrayOrValue<unknown>>, { request: Request<RouteDefToReqRes<RouteDef>> }>
+	headers?: Pipe<unknown, DefaultHeaders, { request: Request<RouteDefToReqRes<RouteDef>> }>
+	body?: Pipe<unknown, Record<string, unknown>, { request: Request<RouteDefToReqRes<RouteDef>> }>
 	response?: Pipe<unknown, unknown, { response: Response<RouteDefToReqRes<RouteDef>> }>
-	responseHeaders?: Pipe<DefaultHeaders, DefaultHeaders, { response: Response<RouteDefToReqRes<RouteDef>> }>
+	responseHeaders?: Pipe<unknown, DefaultHeaders, { response: Response<RouteDefToReqRes<RouteDef>> }>
 	defaultStatusCode?: StatusCodesEnum
 	defaultContentType?: string
 }

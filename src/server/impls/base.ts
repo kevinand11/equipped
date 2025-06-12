@@ -155,7 +155,7 @@ export abstract class Server<Req = any, Res = any> {
 					Object.fromEntries(
 						Object.entries(requestPipe).map(([key, val]) => [
 							key,
-							v.pipe((input) => input, { context: () => ({ request }) }).pipe(val as any),
+							v.pipe((input) => input, { context: () => ({ request }) }).pipe(val),
 						]),
 					),
 				)
@@ -184,7 +184,7 @@ export abstract class Server<Req = any, Res = any> {
 					Object.fromEntries(
 						Object.entries(responsePipe).map(([key, val]) => [
 							key,
-							v.pipe((input) => input, { context: () => ({ response }) }).pipe(val as any),
+							v.pipe((input) => input, { context: () => ({ response }) }).pipe(val),
 						]),
 					),
 				)
