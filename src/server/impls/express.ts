@@ -94,7 +94,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		this.#expressApp = app
 
 		app.disable('x-powered-by')
-		if (this.settings.requests.log) app.use(pinoHttp({ logger: Instance.get().logger }))
+		if (this.settings.server.requests.log) app.use(pinoHttp({ logger: Instance.get().logger }))
 		app.use(express.json())
 		app.use(express.text())
 		app.use(cookie())
@@ -109,15 +109,15 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		if (this.settings.server.publicPath) app.use(express.static(this.settings.server.publicPath))
 		app.use(
 			fileUpload({
-				limits: { fileSize: this.settings.requests.maxFileUploadSizeInMb * 1024 * 1024 },
+				limits: { fileSize: this.settings.server.requests.maxFileUploadSizeInMb * 1024 * 1024 },
 				useTempFiles: false,
 			}),
 		)
-		if (this.settings.requests.rateLimit.enabled)
+		if (this.settings.server.requests.rateLimit.enabled)
 			app.use(
 				rateLimit({
-					windowMs: this.settings.requests.rateLimit.periodInMs,
-					limit: this.settings.requests.rateLimit.limit,
+					windowMs: this.settings.server.requests.rateLimit.periodInMs,
+					limit: this.settings.server.requests.rateLimit.limit,
 					handler: (_: express.Request, res: express.Response) =>
 						res.status(StatusCodes.TooManyRequests).json([{ message: 'Too Many Requests' }]),
 				}),

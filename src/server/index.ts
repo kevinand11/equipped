@@ -1,4 +1,5 @@
 export * from './middlewares'
 export * from './requests'
+export * from './requests-auth'
 export * from './routes'
 export * from './types'

@@ -22,8 +22,8 @@ function getFastifyApp() {
 	return Fastify({
 		ignoreTrailingSlash: true,
 		caseSensitive: false,
-		disableRequestLogging: !instance.settings.requests.log,
-		loggerInstance: instance.settings.requests.log ? instance.logger : undefined,
+		disableRequestLogging: !instance.settings.server.requests.log,
+		loggerInstance: instance.settings.server.requests.log ? instance.logger : undefined,
 		ajv: { customOptions: { coerceTypes: false } },
 		schemaErrorFormatter: (errors, data) =>
 			new ValidationError(
@@ -98,7 +98,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		app.register(fastifyMultipart, {
 			attachFieldsToBody: 'keyValues',
 			throwFileSizeLimit: false,
-			limits: { fileSize: this.settings.requests.maxFileUploadSizeInMb * 1024 * 1024 },
+			limits: { fileSize: this.settings.server.requests.maxFileUploadSizeInMb * 1024 * 1024 },
 			onFile: async (f) => {
 				const buffer = await f.toBuffer()
 				const parsed: IncomingFile = {
@@ -118,10 +118,10 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			delayAfter: this.settings.slowdown.delayAfter,
 			delay: this.settings.slowdown.delayInMs
 		}) */
-		if (this.settings.requests.rateLimit.enabled)
+		if (this.settings.server.requests.rateLimit.enabled)
 			app.register(fastifyRateLimit, {
-				max: this.settings.requests.rateLimit.limit,
-				timeWindow: this.settings.requests.rateLimit.periodInMs,
+				max: this.settings.server.requests.rateLimit.limit,
+				timeWindow: this.settings.server.requests.rateLimit.periodInMs,
 				errorResponseBuilder: (_, context) => ({
 					statusCode: StatusCodes.TooManyRequests,
 					message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }]),
