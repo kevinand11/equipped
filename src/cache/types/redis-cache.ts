@@ -19,19 +19,19 @@ export class RedisCache extends Cache {
 			...(settings.password ? { password: settings.password } : {}),
 			...(settings.username ? { username: settings.username } : {}),
 			...(settings.tls ? { tls: {} } : {}),
-			lazyConnect: !extraConfig,
+			lazyConnect: true,
 		}
 		this.client = settings.cluster
 			? new Cluster([node], {
 					...extraConfig,
 					redisOptions: common,
-					lazyConnect: !extraConfig,
+					lazyConnect: true,
 				})
 			: new Redis({ ...common, ...node })
 		this.client.on('error', async (error) => {
 			Instance.crash(new EquippedError(`Redis failed with error`, {}, error))
 		})
-		Instance.on('pre:start', async () => this.client.connect(), 1)
+		if (!extraConfig) Instance.on('pre:start', async () => this.client.connect(), 1)
 		Instance.on('pre:close', async () => this.client.quit(), 1)
 	}
 

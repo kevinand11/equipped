@@ -47,11 +47,8 @@ export class KafkaEventBus extends EventBus {
 		options: Partial<SubscribeOptions> = {},
 	) {
 		options = { ...DefaultSubscribeOptions, ...options }
-		let started = false
 		const topic = options.skipScope ? topicName : Instance.get().getScopedName(topicName)
 		const subscribe = async () => {
-			if (started) return
-			started = true
 			await this.#createTopic(topic)
 			const groupId = options.fanout
 				? Instance.get().getScopedName(`${Instance.get().settings.app.id}-fanout-${Random.string(10)}`)

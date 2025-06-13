@@ -38,11 +38,8 @@ export class RabbitMQEventBus extends EventBus {
 		options: Partial<SubscribeOptions> = {},
 	) {
 		options = { ...DefaultSubscribeOptions, ...options }
-		let started = false
 		const topic = options.skipScope ? topicName : Instance.get().getScopedName(topicName)
 		const subscribe = async () => {
-			if (started) return
-			started = true
 			await this.#client.addSetup(async (channel: ConfirmChannel) => {
 				const queueName = options.fanout
 					? Instance.get().getScopedName(`${Instance.get().settings.app.id}-fanout-${Random.string(10)}`)

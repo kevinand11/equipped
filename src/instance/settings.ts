@@ -144,9 +144,9 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 	const jobs = settings.jobs ? new RedisJob(settings.jobs) : undefined
 	const eventBus =
 		settings.eventBus?.type === 'kafka'
-			? new KafkaEventBus(settings.eventBus)
+			? new KafkaEventBus(deleteKeys(settings.eventBus, ['type']))
 			: settings.eventBus?.type === 'rabbitmq'
-				? new RabbitMQEventBus(settings.eventBus)
+				? new RabbitMQEventBus(deleteKeys(settings.eventBus, ['type']))
 				: undefined
 
 	const serverConfig = {
@@ -185,4 +185,9 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 		server: server as any,
 		dbs: dbs as any,
 	}
+}
+
+function deleteKeys<T extends object, K extends keyof T>(data: T, keys: K[]) {
+	for (const key of keys) delete data[key]
+	return data
 }
