@@ -63,6 +63,7 @@ export function queryParamsPipe() {
 			where: queryWhereClause,
 		})
 		.pipe((p) => ({ ...p, auth: <QueryWhereClause[]>[], authType: QueryKeys.and }))
+		.meta({ title: 'Query Params', $refId: 'QueryParams' })
 }
 
 export function queryResultsPipe<T>(model: Pipe<any, T, any>) {

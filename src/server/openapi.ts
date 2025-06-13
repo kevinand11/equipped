@@ -91,7 +91,7 @@ export class OpenApi {
 			for (const resp of def.response.response) {
 				methodObj.responses[resp.status] ??= { description: '', content: {} }
 				const res = methodObj.responses[resp.status] as OpenAPIV3_1.ResponseObject
-				res.content![resp.contentType] = { schema: await convert(resp.schema) }
+				res.content![resp.contentType] = { schema: await convert(this.#visit(resp.schema)) }
 			}
 		}
 
@@ -101,7 +101,7 @@ export class OpenApi {
 				methodObj.responses[resp.status] ??= { description: '', content: {} }
 				methodObj.responses[resp.status] as OpenAPIV3_1.ResponseObject
 				const res = methodObj.responses[resp.status] as OpenAPIV3_1.ResponseObject
-				res.headers = { schema: (await convert(resp.schema)) as any }
+				res.headers = { schema: (await convert(this.#visit(resp.schema))) as any }
 			}
 		}
 
@@ -109,7 +109,7 @@ export class OpenApi {
 			methodObj.requestBody = {
 				required: true,
 				content: {
-					'application/json': { schema: await convert(def.request.body) },
+					'application/json': { schema: await convert(this.#visit(def.request.body)) },
 				},
 			}
 
@@ -121,7 +121,7 @@ export class OpenApi {
 				parameters.push({
 					name,
 					in: location,
-					schema: await convert(value),
+					schema: await convert(this.#visit(value)),
 					required: (schema.required || []).includes(name),
 				})
 		}
@@ -145,6 +145,21 @@ export class OpenApi {
 		router.get('/')((req) => req.res({ body: this.#html(`.${jsonPath}`), contentType: 'text/html' }))
 		router.get(jsonPath)((req) => req.res({ body: this.#baseOpenapiDoc }))
 		return router
+	}
+
+	#visit(node: JsonSchema) {
+		if (!node || typeof node !== 'object') return node
+		if (typeof node.$refId === 'string') {
+			const { $refId: id, ...rest } = node
+			const res = this.#visit(rest)
+			if (this.#baseOpenapiDoc.components?.schemas) {
+				this.#baseOpenapiDoc.components.schemas[id] = res
+				return { $ref: `#/components/schemas/${id}` }
+			} else return res
+		}
+
+		if (Array.isArray(node)) return node.map((n) => this.#visit(n)) as any
+		return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, this.#visit(value as any)]))
 	}
 
 	#buildTag(groups: NonNullable<Route<any>['groups']>) {
