@@ -2,13 +2,11 @@ import type { ChannelWrapper } from 'amqp-connection-manager'
 import { connect } from 'amqp-connection-manager'
 import type { ConfirmChannel } from 'amqplib'
 
-import type { PublishOptions, SubscribeOptions } from '.'
-import { DefaultSubscribeOptions, EventBus } from '.'
-import { Instance } from '../instance'
-import type { Events } from '../types/overrides'
-import { parseJSONValue } from '../utils/json'
-import { Random } from '../utils/utils'
-import { RabbitMQConfig } from '../validations/schemas'
+import { Instance } from '../../instance'
+import type { Events } from '../../types'
+import { Random, parseJSONValue } from '../../utilities'
+import { DefaultSubscribeOptions, EventBus, PublishOptions, SubscribeOptions } from '../base'
+import { RabbitMQConfig } from '../pipes'
 
 export class RabbitMQEventBus extends EventBus {
 	#client: ChannelWrapper

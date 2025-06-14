@@ -1,8 +1,8 @@
 import { PipeOutput, v } from 'valleyed'
 
-import { EventBus } from '../../events'
-import { Instance } from '../../instance'
-import { BaseTokensUtility, BaseApiKeysUtility } from '../../server'
+import { BaseApiKeysUtility, BaseTokensUtility } from './requests-auth'
+import { EventBus } from '../events'
+import { Instance } from '../instance'
 
 export const serverPipe = v.object({
 	type: v.in(['fastify', 'express'] as const),

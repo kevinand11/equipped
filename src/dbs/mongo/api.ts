@@ -1,8 +1,8 @@
 import { Collection, ObjectId, OptionalUnlessRequiredId, SortDirection, WithId } from 'mongodb'
 
+import { QueryParams } from '../pipes'
 import { parseMongodbQueryParams } from './query'
 import { EquippedError } from '../../errors'
-import { QueryParams } from '../../validations'
 import { Config } from '../base/_instance'
 import * as core from '../base/core'
 

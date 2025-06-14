@@ -12,11 +12,11 @@ import qs from 'qs'
 
 import { ValidationError } from '../../errors'
 import { Instance } from '../../instance'
-import { getMediaDuration } from '../../utils/media'
+import { getMediaDuration } from '../../utilities'
+import { ServerConfig } from '../pipes'
 import { Request } from '../requests'
 import { IncomingFile, StatusCodes } from '../types'
 import { Server } from './base'
-import { ServerConfig } from '../../validations/schemas/servers'
 
 export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	constructor(config: ServerConfig) {

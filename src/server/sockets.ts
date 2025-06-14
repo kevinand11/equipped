@@ -5,7 +5,7 @@ import { Entity } from '../dbs/base/core'
 import { EventBus } from '../events'
 import { Instance } from '../instance'
 import { StatusCodes, StatusCodesEnum } from './types'
-import type { AuthUser } from '../types/overrides'
+import type { AuthUser } from '../types'
 
 enum EmitTypes {
 	created = 'created',

@@ -1,6 +1,6 @@
-import { Pipe, PipeOutput, v } from 'valleyed'
+import { ConditionalObjectKeys, Pipe, PipeInput, PipeOutput, v } from 'valleyed'
 
-import { Instance } from '../../instance'
+import { Instance } from '../instance'
 
 export enum QueryKeys {
 	and = 'and',
@@ -62,7 +62,7 @@ export function queryParamsPipe() {
 			whereType: queryKeys,
 			where: queryWhereClause,
 		})
-		.pipe((p) => ({ ...p, auth: <QueryWhereClause[]>[], authType: QueryKeys.and }))
+		.pipe((p) => ({ ...p, auth: <(typeof p)['where']>[], authType: QueryKeys.and }))
 		.meta({ title: 'Query Params', $refId: 'QueryParams' })
 }
 
@@ -84,8 +84,21 @@ export function queryResultsPipe<T>(model: Pipe<any, T, any>) {
 	})
 }
 
-export type QueryWhere = PipeOutput<typeof queryWhere>
-export type QueryWhereBlock = PipeOutput<typeof queryWhereBlock>
-export type QueryWhereClause = PipeOutput<typeof queryWhereClause>[number]
+export function wrapQueryParams(params: QueryParamsInput): QueryParams {
+	return queryParamsPipe().parse(params)
+}
+
 export type QueryParams = PipeOutput<ReturnType<typeof queryParamsPipe>>
+export type QueryParamsInput = ConditionalObjectKeys<PipeInput<ReturnType<typeof queryParamsPipe>>>
+export type QueryWhereClause = QueryParams['where'][number]
+export type QueryWhere = Extract<QueryWhereClause, { field: string }>
+export type QueryWhereBlock = Exclude<QueryWhereClause, { field: string }>
 export type QueryResults<T> = PipeOutput<ReturnType<typeof queryResultsPipe<T>>>
+
+export const mongoDbConfigPipe = v
+	.object({
+		uri: v.string(),
+	})
+	.meta({ title: 'Mongodb Config', $refId: 'MongodbConfig' })
+
+export type MongoDbConfig = PipeOutput<typeof mongoDbConfigPipe>

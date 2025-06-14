@@ -64,12 +64,12 @@ export class Router<T extends RouteDef> {
 	delete = this.#wrap(Methods.delete)
 	options = this.#wrap(Methods.options)
 
-	add<R extends RouteDef>(...routes: Route<R>[]) {
+	add(...routes: Route<any>[]) {
 		const mapped = groupRoutes(this.#config, routes)
 		this.#routes.push(...mapped)
 	}
 
-	nest<R extends RouteDef>(...routers: Router<R>[]) {
+	nest(...routers: Router<any>[]) {
 		routers.forEach((router) => this.#children.push(router))
 	}
 

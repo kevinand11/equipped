@@ -10,11 +10,11 @@ import helmet from 'helmet'
 import { pinoHttp } from 'pino-http'
 
 import { Instance } from '../../instance'
-import { getMediaDuration } from '../../utils/media'
+import { getMediaDuration } from '../../utilities'
+import { ServerConfig } from '../pipes'
 import { Request } from '../requests'
 import { IncomingFile, StatusCodes } from '../types'
 import { Server } from './base'
-import { ServerConfig } from '../../validations/schemas/servers'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
 	#expressApp: express.Express

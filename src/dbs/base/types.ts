@@ -1,4 +1,4 @@
-import { KafkaEventBus } from '../../events/kafka'
+import { KafkaEventBus } from '../../events'
 
 export type DbChangeConfig = {
 	eventBus: KafkaEventBus

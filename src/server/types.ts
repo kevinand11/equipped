@@ -1,4 +1,4 @@
-import { IsInTypeList, IsType, Pipe, PipeOutput, Prettify } from 'valleyed'
+import { IsInTypeList, IsType, Pipe, PipeContext, PipeInput, PipeOutput, Prettify } from 'valleyed'
 
 import type { Request, Response } from './requests'
 import type { RequestError } from '../errors'
@@ -43,12 +43,20 @@ export type IncomingFile = {
 }
 
 export type RouteDef = {
-	params?: Pipe<unknown, Record<string, ArrayOrValue<string>>, { request: Request<RouteDefToReqRes<RouteDef>> }>
-	query?: Pipe<unknown, Record<string, ArrayOrValue<unknown>>, { request: Request<RouteDefToReqRes<RouteDef>> }>
-	headers?: Pipe<unknown, DefaultHeaders, { request: Request<RouteDefToReqRes<RouteDef>> }>
-	body?: Pipe<unknown, Record<string, unknown>, { request: Request<RouteDefToReqRes<RouteDef>> }>
+	params?: Pipe<
+		Record<string, ArrayOrValue<string>>,
+		Record<string, ArrayOrValue<string>>,
+		{ request: Request<RouteDefToReqRes<RouteDef>> }
+	>
+	query?: Pipe<
+		Record<string, ArrayOrValue<unknown>>,
+		Record<string, ArrayOrValue<unknown>>,
+		{ request: Request<RouteDefToReqRes<RouteDef>> }
+	>
+	headers?: Pipe<DefaultHeaders, DefaultHeaders, { request: Request<RouteDefToReqRes<RouteDef>> }>
+	body?: Pipe<Record<string, unknown>, Record<string, unknown>, { request: Request<RouteDefToReqRes<RouteDef>> }>
 	response?: Pipe<unknown, unknown, { response: Response<RouteDefToReqRes<RouteDef>> }>
-	responseHeaders?: Pipe<unknown, DefaultHeaders, { response: Response<RouteDefToReqRes<RouteDef>> }>
+	responseHeaders?: Pipe<DefaultHeaders, DefaultHeaders, { response: Response<RouteDefToReqRes<RouteDef>> }>
 	defaultStatusCode?: StatusCodesEnum
 	defaultContentType?: string
 }
@@ -57,7 +65,7 @@ type RouteGroup = { name: string; description?: string }
 type HandlerSetup<T extends RouteDef> = (route: Route<T>) => void
 
 export type RouteConfig<T extends RouteDef> = {
-	middlewares?: ReturnType<typeof makeMiddleware<T>>[]
+	middlewares?: ReturnType<typeof makeMiddleware<RouteDef>>[]
 	onError?: ReturnType<typeof makeErrorMiddleware<T>>
 	groups?: (RouteGroup | RouteGroup['name'])[]
 	title?: string
@@ -84,7 +92,7 @@ type Compare<A, B, CP = true> =
 			? B
 			: CP extends true
 				? ArePipes<A, B> extends true
-					? A & B //Pipe<PipeInput<A> & PipeInput<B>, PipeOutput<A> & PipeOutput<B>, PipeContext<A>>
+					? Pipe<PipeInput<A> & PipeInput<B>, PipeOutput<A> & PipeOutput<B>, PipeContext<A> & PipeContext<B>>
 					: B
 				: B
 export type MergeRouteDefs<A extends RouteDef, B extends RouteDef> = {

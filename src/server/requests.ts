@@ -2,9 +2,8 @@ import type { Readable } from 'stream'
 
 import type { RequestError } from '../errors'
 import type { DefaultHeaders, IncomingFile, MethodsEnum, RouteDef, RouteDefToReqRes } from './types'
-import type { DistributiveOmit, IsInTypeList } from '../types'
-import type { AuthUser, RefreshUser } from '../types/overrides'
-import { parseJSONObject } from '../utils/json'
+import type { AuthUser, RefreshUser, DistributiveOmit, IsInTypeList } from '../types'
+import { parseJSONObject } from '../utilities'
 
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 type ReqUser<T> = { error?: RequestError; value?: T }

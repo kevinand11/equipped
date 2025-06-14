@@ -1,13 +1,11 @@
 import Confluent from '@confluentinc/kafka-javascript'
 import Kafka from 'kafkajs'
 
-import type { PublishOptions, SubscribeOptions } from '.'
-import { DefaultSubscribeOptions, EventBus } from '.'
-import { Instance } from '../instance'
-import type { Events } from '../types/overrides'
-import { parseJSONValue } from '../utils/json'
-import { Random } from '../utils/utils'
-import { KafkaConfig } from '../validations'
+import { Instance } from '../../instance'
+import type { Events } from '../../types'
+import { Random, parseJSONValue } from '../../utilities'
+import { DefaultSubscribeOptions, EventBus, PublishOptions, SubscribeOptions } from '../base'
+import { KafkaConfig } from '../pipes'
 
 export class KafkaEventBus extends EventBus {
 	#client: Kafka.Kafka | Confluent.KafkaJS.Kafka

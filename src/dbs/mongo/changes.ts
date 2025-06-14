@@ -2,11 +2,12 @@ import { Filter, MongoClient, ObjectId } from 'mongodb'
 
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
-import { retry } from '../../utils/retry'
-import { differ, MongoDbConfig } from '../../validations'
+import { retry } from '../../utilities'
+import { differ } from '../../validations'
 import { DbChange, DbChangeCallbacks, TopicPrefix } from '../base/_instance'
 import * as core from '../base/core'
 import { DbChangeConfig } from '../base/types'
+import { MongoDbConfig } from '../pipes'
 
 export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity extends core.Entity> extends DbChange<Model, Entity> {
 	#started = false

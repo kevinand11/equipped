@@ -18,8 +18,15 @@
 	},
 	"exports": {
 		".": "./lib/index.js",
-		"./validations": "./lib/validations/index.js",
-		"./overrides": "./lib/types/overrides.js"
+		"./cache": "./lib/cache/index.js",
+		"./dbs": "./lib/dbs/index.js",
+		"./errors": "./lib/errors/index.js",
+		"./events": "./lib/events/index.js",
+		"./jobs": "./lib/jobs/index.js",
+		"./server": "./lib/server/index.js",
+		"./types": "./lib/types/index.js",
+		"./utilities": "./lib/utilities/index.js",
+		"./validations": "./lib/validations/index.js"
 	},
 	"author": "",
 	"license": "ISC",

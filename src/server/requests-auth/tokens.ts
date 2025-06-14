@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken'
 import type { RequestError } from '../../errors'
 import { AuthorizationExpired, EquippedError, NotAuthenticatedError } from '../../errors'
 import { Instance } from '../../instance'
-import type { AuthUser, RefreshUser } from '../../types/overrides'
+import type { AuthUser, RefreshUser } from '../../types'
 import { StatusCodes } from '../types'
 
 export abstract class BaseTokensUtility {

@@ -1,18 +1,12 @@
 import pino, { Logger } from 'pino'
 import { ConditionalObjectKeys, IsInTypeList, PipeInput, PipeOutput, v } from 'valleyed'
 
-import { Cache } from '../cache'
-import { RedisCache } from '../cache/types/redis-cache'
-import { MongoDb } from '../dbs/mongo'
-import { EventBus } from '../events'
-import { KafkaEventBus } from '../events/kafka'
-import { RabbitMQEventBus } from '../events/rabbitmq'
-import { RedisJob } from '../jobs'
-import { Server } from '../server/impls/base'
-import { ExpressServer } from '../server/impls/express'
-import { FastifyServer } from '../server/impls/fastify'
+import { Cache, RedisCache, redisConfigPipe } from '../cache'
+import { MongoDb, mongoDbConfigPipe } from '../dbs'
+import { EventBus, KafkaEventBus, RabbitMQEventBus, kafkaConfigPipe, rabbitmqConfigPipe } from '../events'
+import { RedisJob, redisJobsConfigPipe } from '../jobs'
+import { ExpressServer, FastifyServer, Server } from '../server'
 import { BaseApiKeysUtility, BaseTokensUtility } from '../server/requests-auth'
-import { mongoDbConfigPipe, kafkaConfigPipe, rabbitmqConfigPipe, redisConfigPipe, redisJobsConfigPipe } from '../validations'
 
 export const instanceSettingsPipe = v.object({
 	app: v.object({

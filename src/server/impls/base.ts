@@ -7,9 +7,9 @@ import { Pipe, PipeError, v } from 'valleyed'
 import { EquippedError, NotFoundError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
 import { pipeErrorToValidationError } from '../../validations'
-import { ServerConfig } from '../../validations/schemas/servers'
 import { parseAuthUser } from '../middlewares/parseAuthUser'
 import { OpenApi, OpenApiSchemaDef } from '../openapi'
+import { ServerConfig } from '../pipes'
 import { type Request, Response } from '../requests'
 import { Router } from '../routes'
 import { SocketEmitter } from '../sockets'
@@ -24,7 +24,7 @@ const errorsSchemas = Object.entries(StatusCodes)
 		status: value,
 		contentType: 'application/json',
 		pipe: v
-			.array(v.object({ message: v.string(), field: v.optional(v.string()) }))
+			.array(v.objectTrim(v.object({ message: v.string(), field: v.optional(v.string()) })))
 			.meta({ $refId: `Errors/${key}Response`, description: `${key} Response` }) as Pipe<any, any, any>,
 	}))
 
@@ -74,7 +74,7 @@ export abstract class Server<Req = any, Res = any> {
 					throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
 
 				middlewares.unshift(parseAuthUser as any)
-				middlewares.forEach((m) => m.onSetup?.(route))
+				middlewares.forEach((m) => m.onSetup?.(route as any))
 				onError?.onSetup?.(route)
 
 				const { validateRequest, validateResponse, jsonSchema } = this.#resolveSchema(method, schema)

@@ -1,10 +1,10 @@
 import { ClientSession, CollectionInfo, MongoClient, ObjectId } from 'mongodb'
 
 import { getTable } from './api'
+import { MongoDbConfig } from '../pipes'
 import { MongoDbChange } from './changes'
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
-import { MongoDbConfig } from '../../validations'
 import { Db, type Config } from '../base/_instance'
 import * as core from '../base/core'
 import { DbConfig } from '../base/types'
