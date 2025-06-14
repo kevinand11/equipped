@@ -1,4 +1,5 @@
 export * from 'valleyed'
+export * from './schemas'
 export * as v from './valleyed'
 import { Pipe, PipeError, PipeOutput } from 'valleyed'
 

@@ -16,6 +16,11 @@
 		"release": "standard-version",
 		"prepare": "husky"
 	},
+	"exports": {
+		".": "./lib/index.js",
+		"./validations": "./lib/validations/index.js",
+		"./overrides": "./lib/types/overrides.js"
+	},
 	"author": "",
 	"license": "ISC",
 	"devDependencies": {

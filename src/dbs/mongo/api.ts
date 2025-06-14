@@ -2,7 +2,7 @@ import { Collection, ObjectId, OptionalUnlessRequiredId, SortDirection, WithId }
 
 import { parseMongodbQueryParams } from './query'
 import { EquippedError } from '../../errors'
-import { QueryParams } from '../../schemas'
+import { QueryParams } from '../../validations'
 import { Config } from '../base/_instance'
 import * as core from '../base/core'
 

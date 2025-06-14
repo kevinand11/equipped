@@ -4,7 +4,7 @@ import { capitalize, JsonSchema } from 'valleyed'
 
 import { Router } from './routes'
 import { Route } from './types'
-import { ServerConfig } from '../schemas/servers'
+import { ServerConfig } from '../validations/schemas/servers'
 
 declare module 'openapi-types' {
 	namespace OpenAPIV3 {

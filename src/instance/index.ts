@@ -32,7 +32,7 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 		}
 	}
 
-	static create<E extends object, S extends SettingsInput>(envsPipe: Pipe<E, E, any>, settings: (envs: E) => S) {
+	static create<E extends object, S extends SettingsInput>(envsPipe: Pipe<unknown, E, any>, settings: (envs: E) => S) {
 		if (Instance.#instance) throw Instance.crash(new EquippedError('An instance has already been created. Use that instead', {}))
 		const envValidity = envsPipe.safeParse(process.env)
 		if (!envValidity.valid) {

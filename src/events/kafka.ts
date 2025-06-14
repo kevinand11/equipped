@@ -4,10 +4,10 @@ import Kafka from 'kafkajs'
 import type { PublishOptions, SubscribeOptions } from '.'
 import { DefaultSubscribeOptions, EventBus } from '.'
 import { Instance } from '../instance'
-import { KafkaConfig } from '../schemas'
 import type { Events } from '../types/overrides'
 import { parseJSONValue } from '../utils/json'
 import { Random } from '../utils/utils'
+import { KafkaConfig } from '../validations'
 
 export class KafkaEventBus extends EventBus {
 	#client: Kafka.Kafka | Confluent.KafkaJS.Kafka

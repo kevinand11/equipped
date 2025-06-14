@@ -1,6 +1,6 @@
 import { Pipe, PipeOutput, v } from 'valleyed'
 
-import { Instance } from '../instance'
+import { Instance } from '../../instance'
 
 export enum QueryKeys {
 	and = 'and',

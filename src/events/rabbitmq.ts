@@ -5,10 +5,10 @@ import type { ConfirmChannel } from 'amqplib'
 import type { PublishOptions, SubscribeOptions } from '.'
 import { DefaultSubscribeOptions, EventBus } from '.'
 import { Instance } from '../instance'
-import { RabbitMQConfig } from '../schemas'
 import type { Events } from '../types/overrides'
 import { parseJSONValue } from '../utils/json'
 import { Random } from '../utils/utils'
+import { RabbitMQConfig } from '../validations/schemas'
 
 export class RabbitMQEventBus extends EventBus {
 	#client: ChannelWrapper

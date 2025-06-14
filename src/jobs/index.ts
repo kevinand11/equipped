@@ -2,9 +2,9 @@ import Bull from 'bull'
 
 import { RedisCache } from '../cache/types/redis-cache'
 import { Instance } from '../instance'
-import { RedisJobConfig } from '../schemas'
 import { CronTypes, DelayedJobs, RepeatableJobs } from '../types/overrides'
 import { Random } from '../utils/utils'
+import { RedisJobConfig } from '../validations/schemas'
 
 enum JobNames {
 	CronJob = 'CronJob',
@@ -91,6 +91,11 @@ export class RedisJob {
 		await this.#queue.removeRepeatableByKey(jobKey)
 	}
 
+	async retryAllFailedJobs() {
+		const failedJobs = await this.#queue.getFailed()
+		await Promise.all(failedJobs.map((job) => job.retry()))
+	}
+
 	async #addCron(type: Cron | string, cron: string): Promise<string> {
 		const job = await this.#queue.add(
 			JobNames.CronJob,
@@ -107,8 +112,7 @@ export class RedisJob {
 	}
 
 	async #cleanup() {
-		const failedJobs = await this.#queue.getFailed()
-		await Promise.all(failedJobs.map((job) => job.retry()))
+		await this.retryAllFailedJobs()
 		const repeatableJobs = await this.#queue.getRepeatableJobs()
 		await Promise.all(
 			repeatableJobs.filter((job) => job.name === JobNames.CronJob).map((job) => this.#queue.removeRepeatableByKey(job.key)),

@@ -1,7 +1,7 @@
 import { ClientSession, Filter, UpdateFilter } from 'mongodb'
 
-import { QueryParams, QueryResults } from '../../schemas'
 import { DistributiveOmit } from '../../types'
+import { QueryParams, QueryResults } from '../../validations'
 
 export type IdType = { _id: string } | { id: string }
 export type Entity = { toJSON: () => Record<string, unknown> }

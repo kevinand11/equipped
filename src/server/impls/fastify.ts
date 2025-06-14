@@ -16,7 +16,7 @@ import { getMediaDuration } from '../../utils/media'
 import { Request } from '../requests'
 import { IncomingFile, StatusCodes } from '../types'
 import { Server } from './base'
-import { ServerConfig } from '../../schemas/servers'
+import { ServerConfig } from '../../validations/schemas/servers'
 
 export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	constructor(config: ServerConfig) {

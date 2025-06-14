@@ -1,6 +1,6 @@
 import { Collection } from 'mongodb'
 
-import { QueryKeys, type QueryParams, type QueryResults, type QueryWhereBlock, type QueryWhereClause } from '../../schemas'
+import { QueryKeys, type QueryParams, type QueryResults, type QueryWhereBlock, type QueryWhereClause } from '../../validations'
 import * as core from '../base/core'
 
 export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: string }>>(
