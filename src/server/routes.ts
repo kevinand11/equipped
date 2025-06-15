@@ -64,16 +64,11 @@ export class Router<T extends RouteDef> {
 	delete = this.#wrap(Methods.delete)
 	options = this.#wrap(Methods.options)
 
-	add(...routes: Route<any>[]) {
-		const mapped = groupRoutes(this.#config, routes)
-		this.#routes.push(...mapped)
-	}
-
 	nest(...routers: Router<any>[]) {
 		routers.forEach((router) => this.#children.push(router))
 	}
 
 	get routes() {
-		return [...this.#routes].concat(this.#children.flatMap((child) => groupRoutes(this.#config, child.#routes)))
+		return [...this.#routes].concat(this.#children.flatMap((child) => groupRoutes(this.#config, child.routes)))
 	}
 }

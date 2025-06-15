@@ -21,16 +21,20 @@ export enum Conditions {
 
 const queryKeys = v.defaultsOnFail(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
 
-const queryWhere = v.object({
-	field: v.string(),
-	value: v.any(),
-	condition: v.defaultsOnFail(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
-})
+const queryWhere = v.objectTrim(
+	v.object({
+		field: v.string(),
+		value: v.any(),
+		condition: v.defaultsOnFail(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
+	}),
+)
 
-const queryWhereBlock = v.object({
-	condition: queryKeys,
-	value: v.array(queryWhere),
-})
+const queryWhereBlock = v.objectTrim(
+	v.object({
+		condition: queryKeys,
+		value: v.array(queryWhere),
+	}),
+)
 
 const queryWhereClause = v.defaults(v.array(v.or([queryWhere, queryWhereBlock])), [])
 
@@ -43,19 +47,23 @@ export function queryParamsPipe() {
 			page: v.defaultsOnFail(v.defaults(v.number().pipe(v.gte(1)), 1), 1),
 			search: v.defaults(
 				v.nullish(
-					v.object({
-						value: v.string(),
-						fields: v.array(v.string()),
-					}),
+					v.objectTrim(
+						v.object({
+							value: v.string(),
+							fields: v.array(v.string()),
+						}),
+					),
 				),
 				null,
 			),
 			sort: v.defaults(
 				v.array(
-					v.object({
-						field: v.string(),
-						desc: v.defaults(v.boolean(), false),
-					}),
+					v.objectTrim(
+						v.object({
+							field: v.string(),
+							desc: v.defaults(v.boolean(), false),
+						}),
+					),
 				),
 				[],
 			),
@@ -67,21 +75,27 @@ export function queryParamsPipe() {
 }
 
 export function queryResultsPipe<T>(model: Pipe<any, T, any>) {
-	return v.object({
-		pages: v.object({
-			current: v.number(),
-			start: v.number(),
-			last: v.number(),
-			previous: v.nullable(v.number()),
-			next: v.nullable(v.number()),
+	return v.objectTrim(
+		v.object({
+			pages: v.objectTrim(
+				v.object({
+					current: v.number(),
+					start: v.number(),
+					last: v.number(),
+					previous: v.nullable(v.number()),
+					next: v.nullable(v.number()),
+				}),
+			),
+			docs: v.objectTrim(
+				v.object({
+					limit: v.number(),
+					total: v.number(),
+					count: v.number(),
+				}),
+			),
+			results: v.array(model),
 		}),
-		docs: v.object({
-			limit: v.number(),
-			total: v.number(),
-			count: v.number(),
-		}),
-		results: v.array(model),
-	})
+	)
 }
 
 export function wrapQueryParams(params: QueryParamsInput): QueryParams {

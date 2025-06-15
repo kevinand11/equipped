@@ -25,7 +25,7 @@ const errorsSchemas = Object.entries(StatusCodes)
 		contentType: 'application/json',
 		pipe: v
 			.array(v.objectTrim(v.object({ message: v.string(), field: v.optional(v.string()) })))
-			.meta({ $refId: `Errors/${key}Response`, description: `${key} Response` }) as Pipe<any, any, any>,
+			.meta({ $refId: `Errors.${key}Response`, description: `${key} Response` }) as Pipe<any, any, any>,
 	}))
 
 export abstract class Server<Req = any, Res = any> {

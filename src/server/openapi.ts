@@ -69,8 +69,7 @@ export class OpenApi {
 	}
 
 	async register(route: Route<any>, def: OpenApiSchemaDef) {
-		const noValidation = !Object.keys(def.request).length && !Object.keys(def.response).length
-		if (noValidation || route.hide) return
+		if (route.hide) return
 
 		const tag = this.#buildTag(route.groups ?? [])
 
@@ -141,7 +140,7 @@ export class OpenApi {
 
 	router() {
 		const jsonPath = '/openapi.json'
-		const router = new Router({ path: this.config.config.openapi.docsPath ?? '/' })
+		const router = new Router({ path: this.config.config.openapi.docsPath ?? '/', hide: true })
 		router.get('/')((req) => req.res({ body: this.#html(`.${jsonPath}`), contentType: 'text/html' }))
 		router.get(jsonPath)((req) => req.res({ body: this.#baseOpenapiDoc }))
 		return router
