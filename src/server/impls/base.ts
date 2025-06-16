@@ -16,8 +16,8 @@ import { Router } from '../routes'
 import { SocketEmitter } from '../sockets'
 import { Methods, MethodsEnum, RouteDef, StatusCodes, type Route } from '../types'
 
-type RequestValidator = (req: Request<any>) => Request<any>
-type ResponseValidator = (res: Response<any>) => Response<any>
+type RequestValidator = (req: Request<any>) => Promise<Request<any>>
+type ResponseValidator = (res: Response<any>) => Promise<Response<any>>
 
 const errorsSchemas = Object.entries(StatusCodes)
 	.filter(([, value]) => value > 399)
@@ -83,7 +83,7 @@ export abstract class Server<Req = any, Res = any> {
 				this.#routesByKey.set(key, true)
 				await this.#openapi.register(route, jsonSchema)
 				this.implementations.registerRoute(method, this.#openapi.cleanPath(path), async (req: Req, res: Res) => {
-					const request = validateRequest(await this.implementations.parseRequest(req))
+					const request = await validateRequest(await this.implementations.parseRequest(req))
 					try {
 						for (const middleware of middlewares) await middleware.cb(request)
 						const rawRes = await route.handler(request)
@@ -91,7 +91,7 @@ export abstract class Server<Req = any, Res = any> {
 							rawRes instanceof Response
 								? rawRes
 								: new Response({ body: rawRes, status: StatusCodes.Ok, headers: {}, piped: false })
-						return await this.implementations.handleResponse(res, validateResponse(response))
+						return await this.implementations.handleResponse(res, await validateResponse(response))
 					} catch (error) {
 						if (onError?.cb) {
 							const rawResponse = await onError.cb(request, error as Error)
@@ -99,7 +99,7 @@ export abstract class Server<Req = any, Res = any> {
 								rawResponse instanceof Response
 									? rawResponse
 									: new Response({ body: rawResponse, status: StatusCodes.BadRequest, headers: {} })
-							return await this.implementations.handleResponse(res, validateResponse(response))
+							return await this.implementations.handleResponse(res, await validateResponse(response))
 						}
 						throw error
 					}
@@ -118,7 +118,7 @@ export abstract class Server<Req = any, Res = any> {
 		const responsePipe: Pick<RouteDef, 'response' | 'responseHeaders'> = {}
 
 		const defs: {
-			key: Exclude<keyof RouteDef, `default${string}`>
+			key: Exclude<keyof RouteDef, `default${string}` | 'context'>
 			type: keyof OpenApiSchemaDef
 			skip?: boolean
 		}[] = [
@@ -151,8 +151,10 @@ export abstract class Server<Req = any, Res = any> {
 				}))
 			}
 		})
-		const validateRequest: RequestValidator = (request) => {
+		const validateRequest: RequestValidator = async (request) => {
 			if (!Object.keys(requestPipe)) return request
+			const context = schema.context ? await schema.context(request) : {}
+			request.context = context
 			const validity = requestLocalStorage.run(request, () =>
 				v.object(requestPipe).safeParse({
 					params: request.params,
@@ -169,7 +171,7 @@ export abstract class Server<Req = any, Res = any> {
 			request.body = validity.value.body
 			return request
 		}
-		const validateResponse: ResponseValidator = (response) => {
+		const validateResponse: ResponseValidator = async (response) => {
 			if (!Object.keys(responsePipe)) return response
 			status = response.status
 			contentType = response.contentType

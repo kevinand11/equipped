@@ -11,12 +11,14 @@ function mergeSchemas(...schemas: RouteDef[]) {
 		responseHeaders: '',
 		defaultStatusCode: '',
 		defaultContentType: '',
+		context: '',
 	}
 	function merge<T extends RouteDef[keyof Keys]>(acc: T | null, cur: T) {
 		if (!acc) return cur
 		if (!cur) return acc
 		if (typeof acc === 'number') return cur
 		if (typeof acc === 'string') return cur
+		if (typeof acc === 'function') return cur
 		return (acc.pipe as any)(cur)
 	}
 	return Object.fromEntries(

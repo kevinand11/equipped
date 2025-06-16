@@ -51,6 +51,7 @@ export type RouteDef = {
 	responseHeaders?: Pipe<DefaultHeaders, DefaultHeaders, any>
 	defaultStatusCode?: StatusCodesEnum
 	defaultContentType?: string
+	context?: (req: Request<RouteDefToReqRes<RouteDef>>) => Awaitable<Record<string, unknown>>
 }
 
 type RouteGroup = { name: string; description?: string }
@@ -88,7 +89,7 @@ type Compare<A, B, CP = true> =
 					: B
 				: B
 export type MergeRouteDefs<A extends RouteDef, B extends RouteDef> = {
-	[K in keyof RouteDef]: Compare<A[K], B[K], K extends `default${string}` ? false : true>
+	[K in keyof RouteDef]: Compare<A[K], B[K], K extends `default${string}` | 'context' ? false : true>
 }
 
 export type RouteDefToReqRes<T extends RouteDef> = Prettify<{
@@ -100,6 +101,7 @@ export type RouteDefToReqRes<T extends RouteDef> = Prettify<{
 	responseHeaders: PipeOutput<GetApiPart<T, 'responseHeaders'>>
 	statusCode: GetApiPart<T, 'defaultStatusCode'>
 	contentType: GetApiPart<T, 'defaultContentType'>
+	context: Awaited<ReturnType<GetApiPart<T, 'context'>>>
 }>
 
 type Awaitable<T> = Promise<T> | T

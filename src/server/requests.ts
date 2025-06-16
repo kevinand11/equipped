@@ -17,6 +17,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 	params: Def['params']
 	query: Def['query']
 	headers: Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & FallbackHeadersType
+	context: Def['context']
 	readonly cookies: Record<string, any>
 	users: {
 		access: ReqUser<AuthUser>
@@ -37,6 +38,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		query,
 		method,
 		path,
+		context,
 		headers,
 		files,
 	}: {
@@ -49,6 +51,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		files: Record<string, IncomingFile[]>
 		method: MethodsEnum
 		path: string
+		context: Def['context']
 	}) {
 		this.ip = ip
 		this.method = method
@@ -58,6 +61,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		this.headers = headers
 		this.query = parseJSONObject(query)
 		this.body = <any>Object.assign(parseJSONObject(body), files)
+		this.context = context
 	}
 
 	pipe(stream: Readable, opts: { headers?: Def['responseHeaders']; status?: Def['statusCode'] } = {}) {
