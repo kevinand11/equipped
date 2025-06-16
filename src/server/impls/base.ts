@@ -7,6 +7,7 @@ import { Pipe, PipeError, v } from 'valleyed'
 import { EquippedError, NotFoundError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
 import { pipeErrorToValidationError } from '../../validations'
+import { requestLocalStorage, responseLocalStorage } from '../../validations/valleyed'
 import { parseAuthUser } from '../middlewares/parseAuthUser'
 import { OpenApi, OpenApiSchemaDef } from '../openapi'
 import { ServerConfig } from '../pipes'
@@ -152,21 +153,14 @@ export abstract class Server<Req = any, Res = any> {
 		})
 		const validateRequest: RequestValidator = (request) => {
 			if (!Object.keys(requestPipe)) return request
-			const validity = v
-				.object(
-					Object.fromEntries(
-						Object.entries(requestPipe).map(([key, val]) => [
-							key,
-							v.pipe((input) => input, { context: () => ({ request }) }).pipe(val),
-						]),
-					),
-				)
-				.safeParse({
+			const validity = requestLocalStorage.run(request, () =>
+				v.object(requestPipe).safeParse({
 					params: request.params,
 					headers: request.headers,
 					query: request.query,
 					body: request.body,
-				})
+				}),
+			)
 
 			if (!validity.valid) throw pipeErrorToValidationError(validity.error)
 			request.params = validity.value.params
@@ -181,19 +175,12 @@ export abstract class Server<Req = any, Res = any> {
 			contentType = response.contentType
 			contentType
 
-			const validity = v
-				.object(
-					Object.fromEntries(
-						Object.entries(responsePipe).map(([key, val]) => [
-							key,
-							v.pipe((input) => input, { context: () => ({ response }) }).pipe(val),
-						]),
-					),
-				)
-				.safeParse({
+			const validity = responseLocalStorage.run(response, () =>
+				v.object(responsePipe).safeParse({
 					responseHeaders: response.headers,
 					response: response.body,
-				})
+				}),
+			)
 
 			if (!validity.valid) throw pipeErrorToValidationError(validity.error)
 			response.body = validity.value.response

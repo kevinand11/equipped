@@ -1,7 +1,9 @@
-import { PipeError, v } from 'valleyed'
+import { AsyncLocalStorage } from 'node:async_hooks'
+
+import { Pipe, PipeError, PipeInput, PipeOutput, v } from 'valleyed'
 
 import { Instance } from '../instance'
-import type { IncomingFile } from '../server'
+import type { IncomingFile, Response, Request, RouteDef, RouteDefToReqRes } from '../server'
 
 export * from 'valleyed/lib/api/externals'
 
@@ -27,3 +29,20 @@ export const incomingFile = (err?: string) =>
 
 export const incomingFiles = (err?: string) =>
 	v.pipe<unknown, IncomingFile[], any>((input) => filePipe(err).parse(input), { schema: () => ({ type: 'string', format: 'binary' }) })
+
+export const requestLocalStorage = new AsyncLocalStorage<Request<RouteDefToReqRes<RouteDef>>>()
+export const responseLocalStorage = new AsyncLocalStorage<Response<RouteDefToReqRes<RouteDef>>>()
+
+export const withRequest = <T extends Pipe<any, any, any>>(fn: (req: Request<RouteDefToReqRes<RouteDef>>) => T) =>
+	v.pipe<PipeInput<T>, PipeOutput<T>, any>((input) => {
+		const req = requestLocalStorage.getStore()
+		if (!req) throw PipeError.root('Request not found in context', input)
+		return fn(req).parse(input)
+	})
+
+export const withResponse = <T extends Pipe<any, any, any>>(fn: (req: Response<RouteDefToReqRes<RouteDef>>) => T) =>
+	v.pipe<PipeInput<T>, PipeOutput<T>, any>((input) => {
+		const res = responseLocalStorage.getStore()
+		if (!res) throw PipeError.root('Response not found in context', input)
+		return fn(res).parse(input)
+	})
