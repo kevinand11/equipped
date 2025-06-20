@@ -42,7 +42,7 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 				}),
 			)
 		}
-		const settingsValidity = instanceSettingsPipe.safeParse(settings(envValidity.value))
+		const settingsValidity = instanceSettingsPipe().safeParse(settings(envValidity.value))
 		if (!settingsValidity.valid) {
 			Instance.crash(
 				new EquippedError(`Settings are not valid\n${settingsValidity.error.toString()}`, {

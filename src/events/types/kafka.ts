@@ -88,7 +88,7 @@ export class KafkaEventBus extends EventBus {
 
 	async #createTopic(topic: string) {
 		const admin = await this.#getAdmin()
-		await admin.createTopics({ topics: [{ topic }] })
+		await admin.createTopics({ topics: [{ topic }], timeout: 5000 })
 	}
 
 	async #deleteGroup(groupId: string) {
