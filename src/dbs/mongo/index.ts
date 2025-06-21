@@ -20,7 +20,7 @@ export class MongoDb extends Db<{ _id: string }> {
 		super(dbConfig)
 		this.#client = new MongoClient(mongoConfig.uri)
 		Instance.on(
-			'pre:start',
+			'start',
 			async () => {
 				await this.#client.connect()
 
@@ -51,7 +51,7 @@ export class MongoDb extends Db<{ _id: string }> {
 			},
 			1,
 		)
-		Instance.on('pre:close', async () => this.#client.close(), 1)
+		Instance.on('close', async () => this.#client.close(), 1)
 	}
 
 	async session<T>(callback: (session: ClientSession) => Promise<T>) {

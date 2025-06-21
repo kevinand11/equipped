@@ -1,4 +1,4 @@
-export type HookEvent = 'pre:start' | 'post:start' | 'pre:close' | 'post:close'
+export type HookEvent = 'setup' | 'start' | 'close'
 export type HookCb = Promise<unknown | void> | (() => void | unknown | Promise<void | unknown>)
 export type HookRecord = { cb: HookCb; order: number }
 

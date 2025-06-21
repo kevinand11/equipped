@@ -67,7 +67,7 @@ export class KafkaEventBus extends EventBus {
 
 			if (options.fanout)
 				Instance.on(
-					'pre:close',
+					'close',
 					async () => {
 						await consumer.disconnect()
 						await this.#deleteGroup(groupId)
@@ -75,7 +75,7 @@ export class KafkaEventBus extends EventBus {
 					10,
 				)
 		}
-		Instance.on('pre:start', subscribe, 1)
+		Instance.on('start', subscribe, 1)
 	}
 
 	async #getAdmin() {

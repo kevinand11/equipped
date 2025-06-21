@@ -71,7 +71,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 		)
 
 		Instance.on(
-			'pre:start',
+			'start',
 			async () => {
 				if (this.#started) return
 				this.#started = true

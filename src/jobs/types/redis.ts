@@ -34,7 +34,7 @@ export class RedisJob {
 		this.#queue = new Bull(config.queueName, { createClient: () => redisCache.client })
 
 		Instance.on(
-			'pre:start',
+			'start',
 			async () => {
 				await this.#cleanup()
 				await Promise.all(this.#crons.map(({ cron, name }) => this.#addCron(name, cron)))

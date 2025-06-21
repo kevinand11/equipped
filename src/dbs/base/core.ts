@@ -1,6 +1,6 @@
 import { ClientSession, Filter, UpdateFilter } from 'mongodb'
 
-import { DistributiveOmit } from '../../types'
+import { ConditionalObjectKeys, DistributiveOmit } from '../../types'
 import { QueryParams, QueryResults } from '../pipes'
 
 export type IdType = { _id: string } | { id: string }
@@ -51,7 +51,7 @@ export type Options = {
 export type { Filter }
 
 type AllKeys<T> = T extends any ? keyof T : never
-export type EntityInput<T extends Model<any>> = DistributiveOmit<T, AllKeys<IdType> | keyof Model<IdType>>
+export type EntityInput<T extends Model<any>> = ConditionalObjectKeys<DistributiveOmit<T, AllKeys<IdType> | keyof Model<IdType>>>
 
 export type CreateInput<T extends Model<any>> = EntityInput<T>
 // TODO: Updatefilter no type safe

@@ -34,22 +34,28 @@ export class SocketEmitter {
 	readonly socketInstance: io.Server
 	#connectionCallbacks: SocketCallbacks = { onConnect: async () => {}, onDisconnect: async () => {} }
 	#routes = {} as Record<string, OnJoinFn>
-	#publish: (data: EmitData) => Promise<void>
+	#publish: (data: EmitData) => Promise<void> = async () => {}
 
 	constructor(socket: io.Server, eventBus?: EventBus) {
 		this.socketInstance = socket
 		this.#setupSocketConnection()
-		this.#publish = eventBus
-			? (eventBus.createPublisher(EmitterEvent as never) as unknown as (data: EmitData) => Promise<void>)
-			: async (data: EmitData) => {
-					socket.to(data.channel).emit(data.channel, data)
-				}
-		eventBus?.createSubscriber(
-			EmitterEvent as never,
-			async (data: EmitData) => {
-				socket.to(data.channel).emit(data.channel, data)
+		Instance.on(
+			'setup',
+			() => {
+				this.#publish = eventBus
+					? (eventBus.createPublisher(EmitterEvent as never) as unknown as (data: EmitData) => Promise<void>)
+					: async (data: EmitData) => {
+							socket.to(data.channel).emit(data.channel, data)
+						}
+				eventBus?.createSubscriber(
+					EmitterEvent as never,
+					async (data: EmitData) => {
+						socket.to(data.channel).emit(data.channel, data)
+					},
+					{ fanout: true },
+				)
 			},
-			{ fanout: true },
+			1,
 		)
 	}
 

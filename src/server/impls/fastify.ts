@@ -78,7 +78,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			start: async (port) => {
 				await app.ready()
 				await app.listen({ port, host: '0.0.0.0' })
-				Instance.on('pre:close', app.close, 1)
+				Instance.on('close', app.close, 1)
 				return true
 			},
 		})

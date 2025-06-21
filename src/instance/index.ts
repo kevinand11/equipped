@@ -11,11 +11,10 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 	readonly settings: Readonly<Settings>
 
 	private constructor(envs: E, settings: S) {
-		super({} as any)
+		super(mapSettingsToInstance(settings as any))
 		Instance.#instance = this as any
 		this.envs = Object.freeze(envs)
 		this.settings = Object.freeze(settings) as any
-		this.__update(mapSettingsToInstance(this.settings as any))
 		Instance.#registerOnExitHandler()
 	}
 
@@ -25,8 +24,8 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 
 	async start() {
 		try {
-			await runHooks(Instance.#hooks['pre:start'] ?? [])
-			await runHooks(Instance.#hooks['post:start'] ?? [])
+			await runHooks(Instance.#hooks['setup'] ?? [])
+			await runHooks(Instance.#hooks['start'] ?? [])
 		} catch (error) {
 			Instance.crash(new EquippedError(`Error starting instance`, {}, error))
 		}
@@ -75,7 +74,7 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 
 		Object.entries(signals).forEach(([signal, code]) => {
 			process.on(signal, async () => {
-				await runHooks(Instance.#hooks['pre:close'] ?? [], () => {})
+				await runHooks(Instance.#hooks['close'] ?? [], () => {})
 				process.exit(128 + code)
 			})
 		})
@@ -83,7 +82,7 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 
 	static resolveBeforeCrash<T>(cb: () => Promise<T>) {
 		const value = cb()
-		Instance.on('pre:close', async () => await value, 10)
+		Instance.on('close', async () => await value, 10)
 		return value
 	}
 
