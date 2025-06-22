@@ -15,7 +15,7 @@ export function pipeErrorToValidationError(error: PipeError) {
 }
 
 export function validate<T extends Pipe<unknown, unknown, any>>(pipe: T, value: unknown): PipeOutput<T> {
-	const validity = pipe.safeParse(value)
+	const validity = pipe.validate(value)
 	if (validity.valid) return validity.value as PipeOutput<T>
 	throw pipeErrorToValidationError(validity.error)
 }

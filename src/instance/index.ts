@@ -33,7 +33,7 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 
 	static create<E extends object, S extends SettingsInput>(envsPipe: Pipe<unknown, E, any>, settings: (envs: E) => S) {
 		if (Instance.#instance) throw Instance.crash(new EquippedError('An instance has already been created. Use that instead', {}))
-		const envValidity = envsPipe.safeParse(process.env)
+		const envValidity = envsPipe.validate(process.env)
 		if (!envValidity.valid) {
 			Instance.crash(
 				new EquippedError(`Environment variables are not valid\n${envValidity.error.toString()}`, {
@@ -41,7 +41,7 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 				}),
 			)
 		}
-		const settingsValidity = instanceSettingsPipe().safeParse(settings(envValidity.value))
+		const settingsValidity = instanceSettingsPipe().validate(settings(envValidity.value))
 		if (!settingsValidity.valid) {
 			Instance.crash(
 				new EquippedError(`Settings are not valid\n${settingsValidity.error.toString()}`, {

@@ -156,7 +156,7 @@ export abstract class Server<Req = any, Res = any> {
 			const context = schema.context ? await schema.context(request) : {}
 			request.context = context
 			const validity = requestLocalStorage.run(request, () =>
-				v.object(requestPipe).safeParse({
+				v.object(requestPipe).validate({
 					params: request.params,
 					headers: request.headers,
 					query: request.query,
@@ -178,7 +178,7 @@ export abstract class Server<Req = any, Res = any> {
 			contentType
 
 			const validity = responseLocalStorage.run(response, () =>
-				v.object(responsePipe).safeParse({
+				v.object(responsePipe).validate({
 					responseHeaders: response.headers,
 					response: response.body,
 				}),
