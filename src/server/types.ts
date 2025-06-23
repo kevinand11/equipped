@@ -1,4 +1,4 @@
-import { IsInTypeList, IsType, Pipe, PipeContext, PipeInput, PipeOutput, Prettify } from 'valleyed'
+import { IsInTypeList, Pipe, PipeContext, PipeInput, PipeOutput, Prettify } from 'valleyed'
 
 import type { Request, Response } from './requests'
 import type { RequestError } from '../errors'
@@ -59,7 +59,7 @@ type HandlerSetup<T extends RouteDef> = (route: Route<T>) => void
 
 export type RouteConfig<T extends RouteDef> = {
 	middlewares?: ReturnType<typeof makeMiddleware<RouteDef>>[]
-	onError?: ReturnType<typeof makeErrorMiddleware<T>>
+	onError?: ReturnType<typeof makeErrorMiddleware<RouteDef>>
 	groups?: (RouteGroup | RouteGroup['name'])[]
 	title?: string
 	descriptions?: string[]
@@ -78,18 +78,19 @@ export type Route<T extends RouteDef> = RouteConfig<T> & {
 type GetApiPart<T extends RouteDef, K extends keyof RouteDef> = NonNullable<IsInTypeList<T[K], [unknown]> extends true ? RouteDef[K] : T[K]>
 
 type ArePipes<A, B> = A extends Pipe<any, any, any> ? (B extends Pipe<any, any, any> ? true : false) : false
-type Compare<A, B, CP = true> =
-	IsType<B, unknown> extends true
+type Compare<K extends keyof RouteDef, A, B> =
+	IsInTypeList<B, [unknown]> extends true
 		? A
-		: IsType<A, unknown> extends true
+		: IsInTypeList<A, [unknown]> extends true
 			? B
-			: CP extends true
-				? ArePipes<A, B> extends true
+			: K extends `default${string}` | 'context'
+				? B
+				: ArePipes<A, B> extends true
 					? Pipe<PipeInput<A> & PipeInput<B>, PipeOutput<A> & PipeOutput<B>, PipeContext<A> & PipeContext<B>>
 					: B
-				: B
+
 export type MergeRouteDefs<A extends RouteDef, B extends RouteDef> = {
-	[K in keyof RouteDef]: Compare<A[K], B[K], K extends `default${string}` | 'context' ? false : true>
+	[K in keyof RouteDef]: Compare<K, A[K], B[K]>
 }
 
 export type RouteDefToReqRes<T extends RouteDef> = Prettify<{

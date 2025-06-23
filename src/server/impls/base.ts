@@ -25,7 +25,7 @@ const errorsSchemas = Object.entries(StatusCodes)
 		status: value,
 		contentType: 'application/json',
 		pipe: v
-			.array(v.objectTrim(v.object({ message: v.string(), field: v.optional(v.string()) })))
+			.array(v.object({ message: v.string(), field: v.optional(v.string()) }))
 			.meta({ $refId: `Errors.${key}Response`, description: `${key} Response` }) as Pipe<any, any, any>,
 	}))
 
@@ -76,7 +76,7 @@ export abstract class Server<Req = any, Res = any> {
 
 				middlewares.unshift(parseAuthUser as any)
 				middlewares.forEach((m) => m.onSetup?.(route as any))
-				onError?.onSetup?.(route)
+				onError?.onSetup?.(route as any)
 
 				const { validateRequest, validateResponse, jsonSchema } = this.#resolveSchema(method, schema)
 
