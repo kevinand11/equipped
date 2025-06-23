@@ -90,7 +90,7 @@
 		"redis": "5.1.1",
 		"socket.io": "4.8.1",
 		"supertest": "7.1.1",
-		"valleyed": "link:../valleyed"
+		"valleyed": "^4.5.2"
 	},
 	"repository": {
 		"url": "git://github.com/kevinand11/equipped.git"

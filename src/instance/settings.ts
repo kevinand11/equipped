@@ -24,7 +24,7 @@ export const instanceSettingsPipe = () =>
 				types: v.record(
 					v.string(),
 					v.discriminate((e) => e?.type, {
-						mongo: v.objectExtends(mongoDbConfigPipe, { type: v.is('mongo' as const) }),
+						mongo: v.merge(mongoDbConfigPipe, v.object({ type: v.is('mongo' as const) })),
 					}),
 				),
 				changes: v.optional(
@@ -37,14 +37,14 @@ export const instanceSettingsPipe = () =>
 		),
 		eventBus: v.optional(
 			v.discriminate((e: any) => e?.type, {
-				kafka: v.objectExtends(kafkaConfigPipe, { type: v.is('kafka' as const) }),
-				rabbitmq: v.objectExtends(rabbitmqConfigPipe, { type: v.is('rabbitmq' as const) }),
+				kafka: v.merge(kafkaConfigPipe, v.object({ type: v.is('kafka' as const) })),
+				rabbitmq: v.merge(rabbitmqConfigPipe, v.object({ type: v.is('rabbitmq' as const) })),
 			}),
 		),
 		cache: v.discriminate((e: any) => e?.type, {
-			redis: v.objectExtends(redisConfigPipe, { type: v.is('redis' as const) }),
+			redis: v.merge(redisConfigPipe, v.object({ type: v.is('redis' as const) })),
 		}),
-		jobs: v.optional(v.objectExtends(redisJobsConfigPipe, { type: v.is('redis' as const) })),
+		jobs: v.optional(v.merge(redisJobsConfigPipe, v.object({ type: v.is('redis' as const) }))),
 		server: v.optional(
 			v.object({
 				type: v.in(['fastify', 'express'] as const),
