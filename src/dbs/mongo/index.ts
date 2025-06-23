@@ -49,7 +49,7 @@ export class MongoDb extends Db<{ _id: string }> {
 					}),
 				)
 			},
-			1,
+			3,
 		)
 		Instance.on('close', async () => this.#client.close(), 1)
 	}

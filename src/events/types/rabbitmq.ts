@@ -62,6 +62,6 @@ export class RabbitMQEventBus extends EventBus {
 			})
 		}
 
-		Instance.on('start', subscribe, 1)
+		Instance.on('start', subscribe, 2)
 	}
 }

@@ -75,7 +75,7 @@ export class KafkaEventBus extends EventBus {
 					10,
 				)
 		}
-		Instance.on('start', subscribe, 1)
+		Instance.on('start', subscribe, 2)
 	}
 
 	async #getAdmin() {
