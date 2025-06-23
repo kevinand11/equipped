@@ -115,14 +115,18 @@ export class OpenApi {
 		const parameters: OpenAPIV3_1.ParameterObject[] = []
 
 		const addParams = async (location: 'query' | 'path' | 'header', schema: JsonSchema | undefined) => {
-			if (!schema || !schema.properties) return
-			for (const [name, value] of Object.entries(schema.properties))
-				parameters.push({
-					name,
-					in: location,
-					schema: await convert(this.#visit(value)),
-					required: (schema.required || []).includes(name),
-				})
+			if (!schema) return
+			const flat = this.#flattenForParameters(schema)
+			for (const schema of flat) {
+				if (!schema.properties) continue
+				for (const [name, value] of Object.entries(schema.properties))
+					parameters.push({
+						name,
+						in: location,
+						schema: await convert(this.#visit(value)),
+						required: (schema.required || []).includes(name),
+					})
+			}
 		}
 
 		await Promise.all([
@@ -144,6 +148,12 @@ export class OpenApi {
 		router.get('/')((req) => req.res({ body: this.#html(`.${jsonPath}`), contentType: 'text/html' }))
 		router.get(jsonPath)((req) => req.res({ body: this.#baseOpenapiDoc }))
 		return router
+	}
+
+	#flattenForParameters(node: JsonSchema): JsonSchema[] {
+		const { allOf, oneOf, anyOf, ...schema } = node
+		if (allOf) return allOf.flatMap((n) => this.#flattenForParameters(n))
+		return [schema]
 	}
 
 	#visit(node: JsonSchema) {

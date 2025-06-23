@@ -130,8 +130,8 @@ export abstract class Server<Req = any, Res = any> {
 			{ key: 'responseHeaders', type: 'response' },
 		]
 		defs.forEach((def) => {
-			const pipe = schema[def.key]
-			if (!pipe || def.skip) return
+			const pipe = schema[def.key] ?? v.any()
+			if (def.skip) return
 
 			if (def.type === 'request') {
 				requestPipe[def.key] = pipe
