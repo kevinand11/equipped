@@ -2,6 +2,60 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.40...v5.0.0) (2025-06-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **events:** change Events subscribe and publish api
+
+### Features
+
+* add Instance crash ([a385d4d](https://github.com/kevinand11/equipped/commit/a385d4df17bb2874b480caee98b8c6f8e6085ab2))
+* can specify multiple dbs ([8f7f649](https://github.com/kevinand11/equipped/commit/8f7f649e1f4204ba256f7364c6b71a5825c7bf50))
+* compile $refId schemas into openapi component schemas ([a43ecae](https://github.com/kevinand11/equipped/commit/a43ecae2be5ff097f86967eff4503484889038f5))
+* complete route def for openapi ([eb7a064](https://github.com/kevinand11/equipped/commit/eb7a064d16217247164b6c6164477636ba59feaf))
+* consume fromJson pipe ([cc33995](https://github.com/kevinand11/equipped/commit/cc33995e426cf0837bdcc1ebd2a92de0604363e3))
+* context in schema ([30abe71](https://github.com/kevinand11/equipped/commit/30abe71ae4ee7c4796f8d8ad57cc3537953f1913))
+* define common schemas used in code ([1b8f7bf](https://github.com/kevinand11/equipped/commit/1b8f7bf01cb3d2849172abd28bfc13aed9e9e731))
+* **events:** change Events subscribe and publish api ([537d3a3](https://github.com/kevinand11/equipped/commit/537d3a3c9dc0d15a948ecef39be4ad95a8dea981))
+* forward errors cause properly ([702272c](https://github.com/kevinand11/equipped/commit/702272c4186995b928c403d568788c536865bfa5))
+* incoming file schema ([53f8780](https://github.com/kevinand11/equipped/commit/53f87807f596dfe3461c3c86c25ce82ea323c1b2))
+* initialize Instance with envs ([6c27d4f](https://github.com/kevinand11/equipped/commit/6c27d4fddf1ba9106318a23db5d7ff931ff6ba6b))
+* make db changes options optional ([60e1488](https://github.com/kevinand11/equipped/commit/60e14889c6239aac544e1d1396044743d160a632))
+* make eventBus optional ([d623654](https://github.com/kevinand11/equipped/commit/d623654cd3ad27c11770fa3e1f9e8f0f8d913653))
+* make jobs optional ([24d2f43](https://github.com/kevinand11/equipped/commit/24d2f437df92a66608b3d123e266e3a35be0f6ec))
+* make server optional ([c640e35](https://github.com/kevinand11/equipped/commit/c640e35427b35c3b7c40da50ed649abf0df76371))
+* merge Router and Route RouteDef ([b3dbfd5](https://github.com/kevinand11/equipped/commit/b3dbfd530fe8e511cd0ea5dc04b89f1a07ed2b53))
+* migrate to pipe api for valleyed ([def6215](https://github.com/kevinand11/equipped/commit/def6215392ad507a56673ba28500db49ad0209e8))
+* move validations to its own export ([ae7669f](https://github.com/kevinand11/equipped/commit/ae7669f570769ec7f00e493204ef457b3800c4aa))
+* pass request and response in root pipe ([17e6ce1](https://github.com/kevinand11/equipped/commit/17e6ce142677dd0b08f0505f27ecafbaff1adb4c))
+* refactor router to expect schema by pipes ([36aec73](https://github.com/kevinand11/equipped/commit/36aec73ab5ba4a5eb5fa4cd93a386ec2ed56e48e))
+* restructure exports ([0b5c6fc](https://github.com/kevinand11/equipped/commit/0b5c6fcafdd30d1f00ad30cfc1b2a490ef5ed2bd))
+* routes inherit config from routers ([440f0d1](https://github.com/kevinand11/equipped/commit/440f0d1d38b8e5581289f90aa31e2adf307d32ba))
+* support for hooks on Instance ([c2eae60](https://github.com/kevinand11/equipped/commit/c2eae600f2efecb2d364fecd053a3a9cb529ae24))
+* support specifying content type ([d57f3e6](https://github.com/kevinand11/equipped/commit/d57f3e63976a49c56ea6818083f17898b13167b6))
+* use pipe to validate settings ([90ab69f](https://github.com/kevinand11/equipped/commit/90ab69f013261a8b8639d13ebb209f486c1e393b))
+* validate if requests.schemaValidation ([efcd5ad](https://github.com/kevinand11/equipped/commit/efcd5ad013c28a83e1408529b10bcb2d9b05914f))
+* validating reqs and res ([cc5e1fc](https://github.com/kevinand11/equipped/commit/cc5e1fc2f5725c07d5a933ea3a031938fdc0362b))
+* withRequest and withResponse context ([91ea4a6](https://github.com/kevinand11/equipped/commit/91ea4a6d9769be3e90db960cce08f66964fbcb38))
+
+
+### Bug Fixes
+
+* change order of starting connections ([b1d33f0](https://github.com/kevinand11/equipped/commit/b1d33f02ce3a3735cf3e442d4d5cb8e7c3016f32))
+* connect to redis before other services ([94a8d20](https://github.com/kevinand11/equipped/commit/94a8d20e6fae4aa15dd2fd51ee45dfa3131e5f3e))
+* middlewares expect generic requests ([9535897](https://github.com/kevinand11/equipped/commit/9535897a7b0e53fbe83af5242f3725f6a5a06741))
+* migrate to v.merge ([a9fdcc9](https://github.com/kevinand11/equipped/commit/a9fdcc94cf919a723b251a13d0beb27ae92978e3))
+* parse json in request body and query ([b67e696](https://github.com/kevinand11/equipped/commit/b67e696c2e68811c96df85b4d1cfd255a2a8b99e))
+* pipes ([9085cae](https://github.com/kevinand11/equipped/commit/9085cae1d7b98a28115a7ff3ff61d66ee5f197ed))
+* remove need for DataClass __update ([fb8ea3c](https://github.com/kevinand11/equipped/commit/fb8ea3ca2f80e4649a993d81d20b90e774a1f6d9))
+* remove v.objectTrim for v.merge ([c0d2e0e](https://github.com/kevinand11/equipped/commit/c0d2e0ee809524eb2caee7c0c51f0663ea306129))
+* request body must be object ([7fce39c](https://github.com/kevinand11/equipped/commit/7fce39c7ad5db79330a69f9146a45324e941e339))
+* typings for route request and response ([a69125b](https://github.com/kevinand11/equipped/commit/a69125bcd5f7650009f36d84b3196217b2746ecd))
+* valleyed safeParse -> validate ([7a78ff6](https://github.com/kevinand11/equipped/commit/7a78ff626e971770aebeff77cf29098fa54ede35))
+* wrap instanceSettingsPipe in function to prevent imported undefined ([c4d9911](https://github.com/kevinand11/equipped/commit/c4d9911de1720c05cd2e4547f01d582b61ea53fc))
+
 ## [5.0.0-rc.40](https://github.com/kevinand11/equipped/compare/v5.0.0-rc.39...v5.0.0-rc.40) (2025-06-04)
 
 
