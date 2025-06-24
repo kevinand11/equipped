@@ -2,8 +2,7 @@
 	"extends": "@k11/ts-config/lib",
 	"compilerOptions": {
 		"outDir": "lib",
-		"types": ["@types/node"],
-		"target": "ES2021"
+		"types": ["@types/node"]
 	},
 	"include": ["src"],
 	"exclude": ["node_modules", "lib"]
