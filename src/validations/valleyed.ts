@@ -20,15 +20,19 @@ const filePipe = (err?: string) =>
 export const incomingFile = (err?: string) =>
 	v.pipe<unknown, IncomingFile, any>(
 		(input) =>
-			filePipe(err)
-				.pipe(v.min(1, 'no file provided'))
-				.pipe((files) => files[0])
-				.parse(input),
+			v.assert(
+				filePipe(err)
+					.pipe(v.min(1, 'no file provided'))
+					.pipe((files) => files[0]),
+				input,
+			),
 		{ schema: () => ({ type: 'string', format: 'binary' }) },
 	)
 
 export const incomingFiles = (err?: string) =>
-	v.pipe<unknown, IncomingFile[], any>((input) => filePipe(err).parse(input), { schema: () => ({ type: 'string', format: 'binary' }) })
+	v.pipe<unknown, IncomingFile[], any>((input) => v.assert(filePipe(err), input), {
+		schema: () => ({ type: 'string', format: 'binary' }),
+	})
 
 export const requestLocalStorage = new AsyncLocalStorage<Request<RouteDefToReqRes<RouteDef>>>()
 export const responseLocalStorage = new AsyncLocalStorage<Response<RouteDefToReqRes<RouteDef>>>()
@@ -37,12 +41,12 @@ export const withRequest = <T extends Pipe<any, any, any>>(fn: (req: Request<Rou
 	v.pipe<PipeInput<T>, PipeOutput<T>, any>((input) => {
 		const req = requestLocalStorage.getStore()
 		if (!req) throw PipeError.root('Request not found in context', input)
-		return fn(req).parse(input)
+		return v.assert(fn(req), input)
 	})
 
 export const withResponse = <T extends Pipe<any, any, any>>(fn: (req: Response<RouteDefToReqRes<RouteDef>>) => T) =>
 	v.pipe<PipeInput<T>, PipeOutput<T>, any>((input) => {
 		const res = responseLocalStorage.getStore()
 		if (!res) throw PipeError.root('Response not found in context', input)
-		return fn(res).parse(input)
+		return v.assert(fn(res), input)
 	})

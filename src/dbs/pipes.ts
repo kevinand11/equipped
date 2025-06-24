@@ -19,12 +19,12 @@ export enum Conditions {
 	exists = 'exists',
 }
 
-const queryKeys = v.defaultsOnFail(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
+const queryKeys = v.catch(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
 
 const queryWhere = v.object({
 	field: v.string(),
 	value: v.any(),
-	condition: v.defaultsOnFail(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
+	condition: v.catch(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
 })
 
 const queryWhereBlock = v.object({
@@ -36,34 +36,36 @@ const queryWhereClause = v.defaults(v.array(v.or([queryWhere, queryWhereBlock]))
 
 export function queryParamsPipe() {
 	const pagLimit = Instance.get().settings.server?.requests.paginationDefaultLimit ?? 100
-	return v
-		.object({
-			all: v.defaults(v.boolean(), false),
-			limit: v.defaultsOnFail(v.defaults(v.number().pipe(v.lte(pagLimit)), pagLimit), pagLimit),
-			page: v.defaultsOnFail(v.defaults(v.number().pipe(v.gte(1)), 1), 1),
-			search: v.defaults(
-				v.nullish(
-					v.object({
-						value: v.string(),
-						fields: v.array(v.string()),
-					}),
+	return v.meta(
+		v
+			.object({
+				all: v.defaults(v.boolean(), false),
+				limit: v.catch(v.defaults(v.number().pipe(v.lte(pagLimit)), pagLimit), pagLimit),
+				page: v.catch(v.defaults(v.number().pipe(v.gte(1)), 1), 1),
+				search: v.defaults(
+					v.nullish(
+						v.object({
+							value: v.string(),
+							fields: v.array(v.string()),
+						}),
+					),
+					null,
 				),
-				null,
-			),
-			sort: v.defaults(
-				v.array(
-					v.object({
-						field: v.string(),
-						desc: v.defaults(v.boolean(), false),
-					}),
+				sort: v.defaults(
+					v.array(
+						v.object({
+							field: v.string(),
+							desc: v.defaults(v.boolean(), false),
+						}),
+					),
+					[],
 				),
-				[],
-			),
-			whereType: queryKeys,
-			where: queryWhereClause,
-		})
-		.pipe((p) => ({ ...p, auth: <(typeof p)['where']>[], authType: QueryKeys.and }))
-		.meta({ title: 'Query Params', $refId: 'QueryParams' })
+				whereType: queryKeys,
+				where: queryWhereClause,
+			})
+			.pipe((p) => ({ ...p, auth: <(typeof p)['where']>[], authType: QueryKeys.and })),
+		{ title: 'Query Params', $refId: 'QueryParams' },
+	)
 }
 
 export function queryResultsPipe<T>(model: Pipe<any, T, any>) {
@@ -85,7 +87,7 @@ export function queryResultsPipe<T>(model: Pipe<any, T, any>) {
 }
 
 export function wrapQueryParams(params: QueryParamsInput): QueryParams {
-	return queryParamsPipe().parse(params)
+	return v.assert(queryParamsPipe(), params)
 }
 
 export type QueryParams = PipeOutput<ReturnType<typeof queryParamsPipe>>
@@ -95,10 +97,11 @@ export type QueryWhere = Extract<QueryWhereClause, { field: string }>
 export type QueryWhereBlock = Exclude<QueryWhereClause, { field: string }>
 export type QueryResults<T> = PipeOutput<ReturnType<typeof queryResultsPipe<T>>>
 
-export const mongoDbConfigPipe = v
-	.object({
+export const mongoDbConfigPipe = v.meta(
+	v.object({
 		uri: v.string(),
-	})
-	.meta({ title: 'Mongodb Config', $refId: 'MongodbConfig' })
+	}),
+	{ title: 'Mongodb Config', $refId: 'MongodbConfig' },
+)
 
 export type MongoDbConfig = PipeOutput<typeof mongoDbConfigPipe>

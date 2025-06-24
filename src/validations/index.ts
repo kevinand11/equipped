@@ -1,6 +1,6 @@
 export * from 'valleyed'
 export * as v from './valleyed'
-import { Pipe, PipeError, PipeOutput } from 'valleyed'
+import { Pipe, PipeError, PipeOutput, v } from 'valleyed'
 
 import { ValidationError } from '../errors'
 
@@ -15,7 +15,7 @@ export function pipeErrorToValidationError(error: PipeError) {
 }
 
 export function validate<T extends Pipe<unknown, unknown, any>>(pipe: T, value: unknown): PipeOutput<T> {
-	const validity = pipe.validate(value)
+	const validity = v.validate(pipe, value)
 	if (validity.valid) return validity.value as PipeOutput<T>
 	throw pipeErrorToValidationError(validity.error)
 }

@@ -24,9 +24,10 @@ const errorsSchemas = Object.entries(StatusCodes)
 	.map(([key, value]) => ({
 		status: value,
 		contentType: 'application/json',
-		pipe: v
-			.array(v.object({ message: v.string(), field: v.optional(v.string()) }))
-			.meta({ $refId: `Errors.${key}Response`, description: `${key} Response` }) as Pipe<any, any, any>,
+		pipe: v.meta(v.array(v.object({ message: v.string(), field: v.optional(v.string()) })), {
+			$refId: `Errors.${key}Response`,
+			description: `${key} Response`,
+		}) as Pipe<any, any, any>,
 	}))
 
 export abstract class Server<Req = any, Res = any> {
@@ -135,19 +136,19 @@ export abstract class Server<Req = any, Res = any> {
 
 			if (def.type === 'request') {
 				requestPipe[def.key] = pipe
-				jsonSchema.request[def.key as keyof typeof jsonSchema.request] = pipe.toJsonSchema()
+				jsonSchema.request[def.key as keyof typeof jsonSchema.request] = v.schema(pipe)
 			}
 			if (def.type === 'response') {
 				const pipeRecords = errorsSchemas.concat({ status: defaultStatusCode, contentType, pipe })
 				responsePipe[def.key] = v.any().pipe((input) => {
 					const p = pipeRecords.find((r) => r.status === status)?.pipe
 					if (!p) throw PipeError.root(`schema not defined for status code: ${status}`, input)
-					return p.parse(input)
+					return v.assert(p, input)
 				})
 				jsonSchema.response[def.key as keyof typeof jsonSchema.response] = pipeRecords.map((record) => ({
 					status: record.status,
 					contentType: record.contentType,
-					schema: record.pipe.toJsonSchema(),
+					schema: v.schema(record.pipe),
 				}))
 			}
 		})
@@ -156,7 +157,7 @@ export abstract class Server<Req = any, Res = any> {
 			const context = schema.context ? await schema.context(request) : {}
 			request.context = context
 			const validity = requestLocalStorage.run(request, () =>
-				v.object(requestPipe).validate({
+				v.validate(v.object(requestPipe), {
 					params: request.params,
 					headers: request.headers,
 					query: request.query,
@@ -178,7 +179,7 @@ export abstract class Server<Req = any, Res = any> {
 			contentType
 
 			const validity = responseLocalStorage.run(response, () =>
-				v.object(responsePipe).validate({
+				v.validate(v.object(responsePipe), {
 					responseHeaders: response.headers,
 					response: response.body,
 				}),
