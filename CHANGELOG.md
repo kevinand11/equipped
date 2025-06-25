@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.4](https://github.com/kevinand11/equipped/compare/v5.0.3...v5.0.4) (2025-06-25)
+
+
+### Bug Fixes
+
+* always read config from original object instead of destructuring ([777677b](https://github.com/kevinand11/equipped/commit/777677bcbd5bba4a0b788bf28a8590b85d02be0a))
+
 ### [5.0.3](https://github.com/kevinand11/equipped/compare/v5.0.2...v5.0.3) (2025-06-25)
 
 
