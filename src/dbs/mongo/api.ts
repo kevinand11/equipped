@@ -3,16 +3,16 @@ import { Collection, ObjectId, OptionalUnlessRequiredId, SortDirection, WithId }
 import { QueryParams } from '../pipes'
 import { parseMongodbQueryParams } from './query'
 import { EquippedError } from '../../errors'
-import { Config } from '../base/_instance'
 import * as core from '../base/core'
 
 const idKey = '_id'
 type IdType = { _id: string }
 
 export function getTable<Model extends core.Model<IdType>, Entity extends core.Entity>(
+	config: core.Config<Model, Entity>,
 	collection: Collection<Model>,
-	{ mapper, options: tableOptions = {} }: Config<Model, Entity>,
 ) {
+	const { mapper, options: tableOptions = {} } = config
 	type WI = Model | WithId<Model>
 	async function transform(doc: WI): Promise<Entity>
 	// eslint-disable-next-line no-redeclare
@@ -55,6 +55,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 	}
 
 	const table: core.Table<IdType, Model, Entity, { collection: Collection<Model> }> = {
+		config,
 		extras: { collection },
 
 		query: async (params: QueryParams) => {

@@ -1,6 +1,6 @@
 import { ClientSession, Filter, UpdateFilter } from 'mongodb'
 
-import { ConditionalObjectKeys, DistributiveOmit } from '../../types'
+import { ConditionalObjectKeys, DeepPartial, DistributiveOmit } from '../../types'
 import { QueryParams, QueryResults } from '../pipes'
 
 export type IdType = { _id: string } | { id: string }
@@ -13,35 +13,33 @@ export type Model<IdKey extends IdType> = IdKey & {
 
 type Sort = NonNullable<QueryParams['sort']>[number]
 
-export type Table<Id extends IdType, T extends Model<Id>, Transform = T, Extras extends Record<string, unknown> = {}> = {
-	query: (query: QueryParams) => Promise<QueryResults<Transform>>
+export type Table<Id extends IdType, T extends Model<Id>, E extends Entity, Extras extends Record<string, unknown> = {}> = {
+	query: (query: QueryParams) => Promise<QueryResults<E>>
 	findMany: (
 		filter: Filter<T>,
 		options?: Options & {
 			limit?: number
 			sort?: Sort | Sort[]
 		},
-	) => Promise<Transform[]>
-	findOne: (filter: Filter<T>, options?: Options) => Promise<Transform | null>
-	findById: (id: ModelId<T>, options?: Options) => Promise<Transform | null>
-	insertOne: (values: CreateInput<T>, options?: Options & { makeId?: () => string; getTime?: () => Date }) => Promise<Transform>
-	insertMany: (
-		values: CreateInput<T>[],
-		options?: Options & { makeId?: (i: number) => string; getTime?: () => Date },
-	) => Promise<Transform[]>
-	updateMany: (filter: Filter<T>, values: UpdateInput<T>, options?: Options & { getTime?: () => Date }) => Promise<Transform[]>
-	updateOne: (filter: Filter<T>, values: UpdateInput<T>, options?: Options & { getTime?: () => Date }) => Promise<Transform | null>
-	updateById: (id: ModelId<T>, values: UpdateInput<T>, options?: Options & { getTime?: () => Date }) => Promise<Transform | null>
+	) => Promise<E[]>
+	findOne: (filter: Filter<T>, options?: Options) => Promise<E | null>
+	findById: (id: ModelId<T>, options?: Options) => Promise<E | null>
+	insertOne: (values: CreateInput<T>, options?: Options & { makeId?: () => string; getTime?: () => Date }) => Promise<E>
+	insertMany: (values: CreateInput<T>[], options?: Options & { makeId?: (i: number) => string; getTime?: () => Date }) => Promise<E[]>
+	updateMany: (filter: Filter<T>, values: UpdateInput<T>, options?: Options & { getTime?: () => Date }) => Promise<E[]>
+	updateOne: (filter: Filter<T>, values: UpdateInput<T>, options?: Options & { getTime?: () => Date }) => Promise<E | null>
+	updateById: (id: ModelId<T>, values: UpdateInput<T>, options?: Options & { getTime?: () => Date }) => Promise<E | null>
 	upsertOne: (
 		filter: Filter<T>,
 		values: { insert: CreateInput<T> } | { insert: Partial<CreateInput<T>>; update: UpdateInput<T> },
 		options?: Options & { makeId?: () => string; getTime?: () => Date },
-	) => Promise<Transform>
-	deleteOne: (filter: Filter<T>, options?: Options) => Promise<Transform | null>
-	deleteById: (id: ModelId<T>, options?: Options) => Promise<Transform | null>
-	deleteMany: (filter: Filter<T>, options?: Options) => Promise<Transform[]>
+	) => Promise<E>
+	deleteOne: (filter: Filter<T>, options?: Options) => Promise<E | null>
+	deleteById: (id: ModelId<T>, options?: Options) => Promise<E | null>
+	deleteMany: (filter: Filter<T>, options?: Options) => Promise<E[]>
 	bulkWrite: (operations: BulkWriteOperation<T>[], options?: Options & { getTime?: () => Date }) => Promise<void>
-	extras: Extras
+	readonly config: Config<T, E>
+	readonly extras: Extras
 }
 
 export type Options = {
@@ -65,3 +63,17 @@ export type BulkWriteOperation<T extends Model<any>> =
 			| { insert: Partial<CreateInput<T>>; update: UpdateInput<T> }
 	  ))
 	| { op: 'delete'; filter: Filter<T> }
+
+export type DbChangeCallbacks<M extends Model<IdType>, E extends Entity> = {
+	created?: (data: { before: null; after: E }) => Promise<void>
+	updated?: (data: { before: E; after: Entity; changes: DeepPartial<M> }) => Promise<void>
+	deleted?: (data: { before: E; after: null }) => Promise<void>
+}
+
+export type Config<M extends Model<IdType>, E extends Entity> = {
+	db: string
+	col: string
+	mapper: (model: M) => E
+	change?: DbChangeCallbacks<M, E>
+	options?: { skipAudit?: boolean }
+}

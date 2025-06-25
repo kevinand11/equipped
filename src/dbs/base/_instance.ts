@@ -4,19 +4,10 @@ import * as core from './core'
 import { DbChangeConfig, DbConfig } from './types'
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
-import type { DeepPartial } from '../../types'
 
 export const TopicPrefix = 'db-changes'
 
 export type TableOptions = { skipAudit?: boolean }
-
-export type Config<Model extends core.Model<core.IdType>, Entity extends core.Entity> = {
-	db: string
-	col: string
-	mapper: (model: Model) => Entity
-	change?: DbChangeCallbacks<Model, Entity>
-	options?: { skipAudit?: boolean }
-}
 
 export abstract class Db<IdKey extends core.IdType> {
 	constructor(protected config: DbConfig) {}
@@ -26,17 +17,17 @@ export abstract class Db<IdKey extends core.IdType> {
 	}
 
 	abstract use<Model extends core.Model<IdKey>, Entity extends core.Entity>(
-		config: Config<Model, Entity>,
+		config: core.Config<Model, Entity>,
 	): core.Table<IdKey, Model, Entity>
 }
 
 export abstract class DbChange<Model extends core.Model<core.IdType>, Entity extends core.Entity> {
-	#callbacks: DbChangeCallbacks<Model, Entity> = {}
+	#callbacks: core.DbChangeCallbacks<Model, Entity> = {}
 	#mapper: (model: Model) => Entity
 
 	constructor(
 		private config: DbChangeConfig,
-		callbacks: DbChangeCallbacks<Model, Entity>,
+		callbacks: core.DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model) => Entity,
 	) {
 		this.#callbacks = callbacks
@@ -73,10 +64,4 @@ export abstract class DbChange<Model extends core.Model<core.IdType>, Entity ext
 				throw new EquippedError(`Failed to configure watcher`, { key }, err)
 			})
 	}
-}
-
-export type DbChangeCallbacks<Model extends core.Model<core.IdType>, Entity extends core.Entity> = {
-	created?: (data: { before: null; after: Entity }) => Promise<void>
-	updated?: (data: { before: Entity; after: Entity; changes: DeepPartial<Model> }) => Promise<void>
-	deleted?: (data: { before: Entity; after: null }) => Promise<void>
 }

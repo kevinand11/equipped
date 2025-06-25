@@ -4,7 +4,7 @@ import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import { retry } from '../../utilities'
 import { differ } from '../../validations'
-import { DbChange, DbChangeCallbacks, TopicPrefix } from '../base/_instance'
+import { DbChange, TopicPrefix } from '../base/_instance'
 import * as core from '../base/core'
 import { DbChangeConfig } from '../base/types'
 import { MongoDbConfig } from '../pipes'
@@ -18,7 +18,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 		client: MongoClient,
 		dbName: string,
 		colName: string,
-		callbacks: DbChangeCallbacks<Model, Entity>,
+		callbacks: core.DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model) => Entity,
 	) {
 		super(change, callbacks, mapper)

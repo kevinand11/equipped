@@ -5,7 +5,7 @@ import { MongoDbConfig } from '../pipes'
 import { MongoDbChange } from './changes'
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
-import { Db, type Config } from '../base/_instance'
+import { Db } from '../base/_instance'
 import * as core from '../base/core'
 import { DbConfig } from '../base/types'
 
@@ -62,7 +62,7 @@ export class MongoDb extends Db<{ _id: string }> {
 		return new ObjectId()
 	}
 
-	use<Model extends core.Model<{ _id: string }>, Entity extends core.Entity>(config: Config<Model, Entity>) {
+	use<Model extends core.Model<{ _id: string }>, Entity extends core.Entity>(config: core.Config<Model, Entity>) {
 		if (config.change) {
 			if (!this.config.changes) Instance.crash(new EquippedError('Db changes are not enabled in the configuration.', { config }))
 			new MongoDbChange<Model, Entity>(
@@ -77,6 +77,6 @@ export class MongoDb extends Db<{ _id: string }> {
 		}
 		this.#cols.push({ db: this.getScopedDb(config.db), col: config.col })
 		const collection = this.#client.db(this.getScopedDb(config.db)).collection<Model>(config.col)
-		return getTable(collection, config)
+		return getTable(config, collection)
 	}
 }
