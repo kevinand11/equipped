@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.3](https://github.com/kevinand11/equipped/compare/v5.0.2...v5.0.3) (2025-06-25)
+
+
+### Features
+
+* dbs add config on table ([3a0b248](https://github.com/kevinand11/equipped/commit/3a0b2485f98fd8c30268bf231b81f2a9ec513a95))
+
 ### [5.0.2](https://github.com/kevinand11/equipped/compare/v5.0.1...v5.0.2) (2025-06-24)
 
 
