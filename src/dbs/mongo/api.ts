@@ -12,7 +12,6 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 	config: core.Config<Model, Entity>,
 	collection: Collection<Model>,
 ) {
-	const { mapper, options: tableOptions = {} } = config
 	type WI = Model | WithId<Model>
 	async function transform(doc: WI): Promise<Entity>
 	// eslint-disable-next-line no-redeclare
@@ -20,14 +19,14 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 	// eslint-disable-next-line no-redeclare
 	async function transform(doc: WI | WI[]) {
 		const docs = Array.isArray(doc) ? doc : [doc]
-		const mapped = docs.map((d) => mapper(d as Model))
+		const mapped = docs.map((d) => config.mapper(d as Model))
 		return Array.isArray(doc) ? mapped : mapped[0]
 	}
 
 	function prepInsertValue(value: core.CreateInput<Model>, id: string, now: Date, skipUpdate?: boolean) {
 		const base: core.Model<IdType> = {
 			[idKey]: id,
-			...(tableOptions.skipAudit
+			...(config.options?.skipAudit
 				? {}
 				: {
 						createdAt: now.getTime(),
@@ -45,7 +44,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 			...value,
 			$set: {
 				...value.$set,
-				...(Object.keys(value).length > 0 && !tableOptions.skipAudit
+				...(Object.keys(value).length > 0 && !config.options?.skipAudit
 					? {
 							updatedAt: now.getTime(),
 						}
