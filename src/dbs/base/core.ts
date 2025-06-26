@@ -66,7 +66,7 @@ export type BulkWriteOperation<T extends Model<any>> =
 
 export type DbChangeCallbacks<M extends Model<IdType>, E extends Entity> = {
 	created?: (data: { before: null; after: E }) => Promise<void>
-	updated?: (data: { before: E; after: Entity; changes: DeepPartial<M> }) => Promise<void>
+	updated?: (data: { before: E; after: E; changes: DeepPartial<M> }) => Promise<void>
 	deleted?: (data: { before: E; after: null }) => Promise<void>
 }
 
