@@ -1,6 +1,6 @@
 import { ClientSession, Filter, UpdateFilter } from 'mongodb'
+import { ConditionalObjectKeys, DeepPartial, DistributiveOmit } from 'valleyed'
 
-import { ConditionalObjectKeys, DeepPartial, DistributiveOmit } from '../../types'
 import { QueryParams, QueryResults } from '../pipes'
 
 export type IdType = { _id: string } | { id: string }

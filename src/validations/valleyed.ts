@@ -5,8 +5,6 @@ import { Pipe, PipeError, PipeInput, PipeOutput, v } from 'valleyed'
 import { Instance } from '../instance'
 import type { IncomingFile, Response, Request, RouteDef, RouteDefToReqRes } from '../server'
 
-export * from 'valleyed/lib/api/externals'
-
 const filePipe = (err?: string) =>
 	v.array(
 		v.file<IncomingFile>(err).pipe((input) => {

@@ -1,8 +1,10 @@
 import type { Readable } from 'stream'
 
+import { DistributiveOmit, IsInTypeList } from 'valleyed'
+
 import type { RequestError } from '../errors'
 import type { DefaultHeaders, IncomingFile, MethodsEnum, RouteDef, RouteDefToReqRes } from './types'
-import type { AuthUser, RefreshUser, DistributiveOmit, IsInTypeList } from '../types'
+import type { AuthUser, RefreshUser } from '../types'
 import { parseJSONObject } from '../utilities'
 
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'

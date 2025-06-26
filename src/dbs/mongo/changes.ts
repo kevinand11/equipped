@@ -1,9 +1,9 @@
 import { Filter, MongoClient, ObjectId } from 'mongodb'
+import { differ } from 'valleyed'
 
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import { retry } from '../../utilities'
-import { differ } from '../../validations'
 import { DbChange, TopicPrefix } from '../base/_instance'
 import * as core from '../base/core'
 import { DbChangeConfig } from '../base/types'

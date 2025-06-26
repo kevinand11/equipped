@@ -1,5 +1,5 @@
 export * from 'valleyed'
-export * as v from './valleyed'
+export * as ve from './valleyed'
 import { Pipe, PipeError, PipeOutput, v } from 'valleyed'
 
 import { ValidationError } from '../errors'
