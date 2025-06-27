@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.9](https://github.com/kevinand11/equipped/compare/v5.0.8...v5.0.9) (2025-06-27)
+
+
+### Bug Fixes
+
+* sockets not importable in esm ([d28dc81](https://github.com/kevinand11/equipped/commit/d28dc811d48582bc194367c7ef8e6fdaae754168))
+
 ### [5.0.8](https://github.com/kevinand11/equipped/compare/v5.0.7...v5.0.8) (2025-06-27)
 
 ### [5.0.7](https://github.com/kevinand11/equipped/compare/v5.0.6...v5.0.7) (2025-06-27)
