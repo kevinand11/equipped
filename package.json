@@ -209,7 +209,7 @@
 		"LICENSE",
 		"CHANGELOG.md",
 		"README.md",
-		"lib"
+		"dist"
 	],
 	"standard-version": {}
 }
