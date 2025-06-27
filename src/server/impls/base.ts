@@ -1,6 +1,6 @@
 import type http from 'http'
 
-import io from 'socket.io'
+import { Server as SocketServer } from 'socket.io'
 import supertest from 'supertest'
 import { Pipe, PipeError, v } from 'valleyed'
 
@@ -57,7 +57,7 @@ export abstract class Server<Req = any, Res = any> {
 	) {
 		this.server = server
 		this.#openapi = new OpenApi(this.config)
-		const socketInstance = new io.Server(server, { cors: this.cors })
+		const socketInstance = new SocketServer(server, { cors: this.cors })
 		this.socket = new SocketEmitter(socketInstance, config.eventBus)
 		this.addRouter(this.#openapi.router())
 	}

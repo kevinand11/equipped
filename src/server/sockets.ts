@@ -1,5 +1,5 @@
 import { match as Match } from 'path-to-regexp'
-import type io from 'socket.io'
+import type { Server } from 'socket.io'
 
 import { Entity } from '../dbs/base/core'
 import { EventBus } from '../events'
@@ -31,12 +31,12 @@ export type SocketCallbacks = {
 const defaultTo = '*'
 
 export class SocketEmitter {
-	readonly socketInstance: io.Server
+	readonly socketInstance: Server
 	#connectionCallbacks: SocketCallbacks = { onConnect: async () => {}, onDisconnect: async () => {} }
 	#routes = {} as Record<string, OnJoinFn>
 	#publish: (data: EmitData) => Promise<void> = async () => {}
 
-	constructor(socket: io.Server, eventBus?: EventBus) {
+	constructor(socket: Server, eventBus?: EventBus) {
 		this.socketInstance = socket
 		this.#setupSocketConnection()
 		Instance.on(
