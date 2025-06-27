@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.6](https://github.com/kevinand11/equipped/compare/v5.0.5...v5.0.6) (2025-06-27)
+
+
+### Features
+
+* support esm and cjs on build ([7f6d1cf](https://github.com/kevinand11/equipped/commit/7f6d1cf3d6adca5da5a0837d325191c5d1a112c5))
+
 ### [5.0.5](https://github.com/kevinand11/equipped/compare/v5.0.4...v5.0.5) (2025-06-26)
 
 
