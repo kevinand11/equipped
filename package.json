@@ -32,102 +32,102 @@
 			}
 		},
 		"./cache": {
-			"types": "./dist/types/cache.d.ts",
+			"types": "./dist/types/cache/index.d.ts",
 			"require": {
-				"min": "./dist/cjs/cache.min.cjs",
-				"default": "./dist/cjs/cache.cjs"
+				"min": "./dist/cjs/cache/index.min.cjs",
+				"default": "./dist/cjs/cache/index.cjs"
 			},
 			"import": {
-				"min": "./dist/esm/cache.min.mjs",
-				"default": "./dist/esm/cache.mjs"
+				"min": "./dist/esm/cache/index.min.mjs",
+				"default": "./dist/esm/cache/index.mjs"
 			}
 		},
 		"./dbs": {
-			"types": "./dist/types/dbs.d.ts",
+			"types": "./dist/types/dbs/index.d.ts",
 			"require": {
-				"min": "./dist/cjs/dbs.min.cjs",
-				"default": "./dist/cjs/dbs.cjs"
+				"min": "./dist/cjs/dbs/index.min.cjs",
+				"default": "./dist/cjs/dbs/index.cjs"
 			},
 			"import": {
-				"min": "./dist/esm/dbs.min.mjs",
-				"default": "./dist/esm/dbs.mjs"
+				"min": "./dist/esm/dbs/index.min.mjs",
+				"default": "./dist/esm/dbs/index.mjs"
 			}
 		},
 		"./errors": {
-			"types": "./dist/types/errors.d.ts",
+			"types": "./dist/types/errors/index.d.ts",
 			"require": {
-				"min": "./dist/cjs/errors.min.cjs",
-				"default": "./dist/cjs/errors.cjs"
+				"min": "./dist/cjs/errors/index.min.cjs",
+				"default": "./dist/cjs/errors/index.cjs"
 			},
 			"import": {
-				"min": "./dist/esm/errors.min.mjs",
-				"default": "./dist/esm/errors.mjs"
+				"min": "./dist/esm/errors/index.min.mjs",
+				"default": "./dist/esm/errors/index.mjs"
 			}
 		},
 		"./events": {
-			"types": "./dist/types/events.d.ts",
+			"types": "./dist/types/events/index.d.ts",
 			"require": {
-				"min": "./dist/cjs/events.min.cjs",
-				"default": "./dist/cjs/events.cjs"
+				"min": "./dist/cjs/events/index.min.cjs",
+				"default": "./dist/cjs/events/index.cjs"
 			},
 			"import": {
-				"min": "./dist/esm/events.min.mjs",
-				"default": "./dist/esm/events.mjs"
+				"min": "./dist/esm/events/index.min.mjs",
+				"default": "./dist/esm/events/index.mjs"
 			}
 		},
 		"./jobs": {
-			"types": "./dist/types/jobs.d.ts",
+			"types": "./dist/types/jobs/index.d.ts",
 			"require": {
-				"min": "./dist/cjs/jobs.min.cjs",
-				"default": "./dist/cjs/jobs.cjs"
+				"min": "./dist/cjs/jobs/index.min.cjs",
+				"default": "./dist/cjs/jobs/index.cjs"
 			},
 			"import": {
-				"min": "./dist/esm/jobs.min.mjs",
-				"default": "./dist/esm/jobs.mjs"
+				"min": "./dist/esm/jobs/index.min.mjs",
+				"default": "./dist/esm/jobs/index.mjs"
 			}
 		},
 		"./server": {
-			"types": "./dist/types/server.d.ts",
+			"types": "./dist/types/server/index.d.ts",
 			"require": {
-				"min": "./dist/cjs/server.min.cjs",
-				"default": "./dist/cjs/server.cjs"
+				"min": "./dist/cjs/server/index.min.cjs",
+				"default": "./dist/cjs/server/index.cjs"
 			},
 			"import": {
-				"min": "./dist/esm/server.min.mjs",
-				"default": "./dist/esm/server.mjs"
+				"min": "./dist/esm/server/index.min.mjs",
+				"default": "./dist/esm/server/index.mjs"
 			}
 		},
 		"./types": {
-			"types": "./dist/types/types.d.ts",
+			"types": "./dist/types/types/index.d.ts",
 			"require": {
-				"min": "./dist/cjs/types.min.cjs",
-				"default": "./dist/cjs/types.cjs"
+				"min": "./dist/cjs/types/index.min.cjs",
+				"default": "./dist/cjs/types/index.cjs"
 			},
 			"import": {
-				"min": "./dist/esm/types.min.mjs",
-				"default": "./dist/esm/types.mjs"
+				"min": "./dist/esm/types/index.min.mjs",
+				"default": "./dist/esm/types/index.mjs"
 			}
 		},
 		"./utilities": {
-			"types": "./dist/types/utilities.d.ts",
+			"types": "./dist/types/utilities/index.d.ts",
 			"require": {
-				"min": "./dist/cjs/utilities.min.cjs",
-				"default": "./dist/cjs/utilities.cjs"
+				"min": "./dist/cjs/utilities/index.min.cjs",
+				"default": "./dist/cjs/utilities/index.cjs"
 			},
 			"import": {
-				"min": "./dist/esm/utilities.min.mjs",
-				"default": "./dist/esm/utilities.mjs"
+				"min": "./dist/esm/utilities/index.min.mjs",
+				"default": "./dist/esm/utilities/index.mjs"
 			}
 		},
 		"./validations": {
-			"types": "./dist/types/validations.d.ts",
+			"types": "./dist/types/validations/index.d.ts",
 			"require": {
-				"min": "./dist/cjs/validations.min.cjs",
-				"default": "./dist/cjs/validations.cjs"
+				"min": "./dist/cjs/validations/index.min.cjs",
+				"default": "./dist/cjs/validations/index.cjs"
 			},
 			"import": {
-				"min": "./dist/esm/validations.min.mjs",
-				"default": "./dist/esm/validations.mjs"
+				"min": "./dist/esm/validations/index.min.mjs",
+				"default": "./dist/esm/validations/index.mjs"
 			}
 		}
 	},
@@ -148,6 +148,7 @@
 		"@types/node": "^24.0.4",
 		"@types/pug": "^2.0.10",
 		"@types/supertest": "^6.0.3",
+		"esbuild-fix-imports-plugin": "^1.0.21",
 		"eslint": "^9.29.0",
 		"husky": "^9.1.7",
 		"standard-version": "^9.5.0",
@@ -192,7 +193,7 @@
 		"redis": "5.5.6",
 		"socket.io": "4.8.1",
 		"supertest": "7.1.1",
-		"valleyed": "^4.5.8"
+		"valleyed": "^4.5.9"
 	},
 	"repository": {
 		"url": "git://github.com/kevinand11/equipped.git"
