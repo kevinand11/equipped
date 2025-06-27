@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.10](https://github.com/kevinand11/equipped/compare/v5.0.9...v5.0.10) (2025-06-27)
+
+
+### Features
+
+* do not bundle ([7800947](https://github.com/kevinand11/equipped/commit/7800947e373315cfaaa6e56dd3d502524152157f))
+
 ### [5.0.9](https://github.com/kevinand11/equipped/compare/v5.0.8...v5.0.9) (2025-06-27)
 
 
