@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.11](https://github.com/kevinand11/equipped/compare/v5.0.10...v5.0.11) (2025-06-28)
+
+
+### Features
+
+* add inmemory cache, make cache optional on instance and pass cache impl to CacheTokenImpl ([4338693](https://github.com/kevinand11/equipped/commit/43386931a1da6b1680d48e76a522d5398236c946))
+
 ### [5.0.10](https://github.com/kevinand11/equipped/compare/v5.0.9...v5.0.10) (2025-06-27)
 
 
