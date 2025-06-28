@@ -1,7 +1,7 @@
 import pino, { Logger } from 'pino'
 import { ConditionalObjectKeys, IsInTypeList, PipeInput, PipeOutput, v } from 'valleyed'
 
-import { Cache, RedisCache, redisConfigPipe } from '../cache'
+import { Cache, InMemoryCache, RedisCache, redisConfigPipe } from '../cache'
 import { MongoDb, mongoDbConfigPipe } from '../dbs'
 import { EventBus, KafkaEventBus, RabbitMQEventBus, kafkaConfigPipe, rabbitmqConfigPipe } from '../events'
 import { RedisJob, redisJobsConfigPipe } from '../jobs'
@@ -41,9 +41,12 @@ export const instanceSettingsPipe = () =>
 				rabbitmq: v.merge(rabbitmqConfigPipe, v.object({ type: v.is('rabbitmq' as const) })),
 			}),
 		),
-		cache: v.discriminate((e: any) => e?.type, {
-			redis: v.merge(redisConfigPipe, v.object({ type: v.is('redis' as const) })),
-		}),
+		cache: v.optional(
+			v.discriminate((e: any) => e?.type, {
+				'in-memory': v.object({ type: v.is('in-memory' as const) }),
+				redis: v.merge(redisConfigPipe, v.object({ type: v.is('redis' as const) })),
+			}),
+		),
 		jobs: v.optional(v.merge(redisJobsConfigPipe, v.object({ type: v.is('redis' as const) }))),
 		server: v.optional(
 			v.object({
@@ -136,7 +139,12 @@ export function mapSettingsToInstance<T extends Settings>(settings: T): MapSetti
 			res: pino.stdSerializers.res,
 		},
 	})
-	const cache = new RedisCache(settings.cache)
+	const cache =
+		settings.cache?.type === 'in-memory'
+			? new InMemoryCache()
+			: settings.cache?.type === 'redis'
+				? new RedisCache(settings.cache)
+				: undefined
 	const jobs = settings.jobs ? new RedisJob(settings.jobs) : undefined
 	const eventBus =
 		settings.eventBus?.type === 'kafka'

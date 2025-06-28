@@ -1,8 +1,8 @@
 import jwt from 'jsonwebtoken'
 
+import type { Cache } from '../../cache'
 import type { RequestError } from '../../errors'
 import { AuthorizationExpired, EquippedError, NotAuthenticatedError } from '../../errors'
-import { Instance } from '../../instance'
 import type { AuthUser, RefreshUser } from '../../types'
 import { StatusCodes } from '../types'
 
@@ -60,19 +60,20 @@ export abstract class BaseTokensUtility {
 }
 
 type CacheTokensUtilityOptions = {
-	accessTokenKey: string
-	refreshTokenKey: string
-	accessTokenTTL: number
-	refreshTokenTTL: number
-	accessTokenPrefix: string
-	refreshTokenPrefix: string
+	cache: () => Cache
+	accessTokenKey?: string
+	refreshTokenKey?: string
+	accessTokenTTL?: number
+	refreshTokenTTL?: number
+	accessTokenPrefix?: string
+	refreshTokenPrefix?: string
 }
 
 export class CacheTokensUtility extends BaseTokensUtility {
 	#getAccessTokenKey: (userId: string) => string
 	#getRefreshTokenKey: (userId: string) => string
-	private options: CacheTokensUtilityOptions
-	constructor(options?: Partial<CacheTokensUtilityOptions>) {
+	private options: Required<CacheTokensUtilityOptions>
+	constructor(options: CacheTokensUtilityOptions) {
 		super()
 		this.options = {
 			accessTokenKey: 'accessTokenKey',
@@ -89,13 +90,13 @@ export class CacheTokensUtility extends BaseTokensUtility {
 
 	async createAccessToken(payload: AuthUser) {
 		const token = jwt.sign(payload, this.options.accessTokenKey, { expiresIn: this.options.accessTokenTTL })
-		await Instance.get().cache.set(this.#getAccessTokenKey(payload.id), token, this.options.accessTokenTTL)
+		await this.options.cache().set(this.#getAccessTokenKey(payload.id), token, this.options.accessTokenTTL)
 		return token
 	}
 
 	async createRefreshToken(payload: RefreshUser) {
 		const token = jwt.sign(payload, this.options.refreshTokenKey, { expiresIn: this.options.refreshTokenTTL })
-		await Instance.get().cache.set(this.#getRefreshTokenKey(payload.id), token, this.options.refreshTokenTTL)
+		await this.options.cache().set(this.#getRefreshTokenKey(payload.id), token, this.options.refreshTokenTTL)
 		return token
 	}
 
@@ -126,18 +127,18 @@ export class CacheTokensUtility extends BaseTokensUtility {
 	}
 
 	async retrieveAccessTokenFor(userId: string) {
-		return Instance.get().cache.get(this.#getAccessTokenKey(userId))
+		return this.options.cache().get(this.#getAccessTokenKey(userId))
 	}
 
 	async retrieveRefreshTokenFor(userId: string) {
-		return Instance.get().cache.get(this.#getRefreshTokenKey(userId))
+		return this.options.cache().get(this.#getRefreshTokenKey(userId))
 	}
 
 	async deleteAccessTokenFor(userId: string) {
-		await Instance.get().cache.delete(this.#getAccessTokenKey(userId))
+		await this.options.cache().delete(this.#getAccessTokenKey(userId))
 	}
 
 	async deleteRefreshTokenFor(userId: string) {
-		await Instance.get().cache.delete(this.#getRefreshTokenKey(userId))
+		await this.options.cache().delete(this.#getRefreshTokenKey(userId))
 	}
 }

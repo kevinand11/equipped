@@ -35,24 +35,28 @@ export class RedisCache extends Cache {
 		Instance.on('close', async () => this.client.quit(), 1)
 	}
 
+	private getScopedKey(key: string): string {
+		return Instance.get().getScopedName(key, ':')
+	}
+
 	async delete(key: string) {
-		await this.client.del(Instance.get().getScopedName(key, ':'))
+		await this.client.del(this.getScopedKey(key))
 	}
 
 	async get(key: string) {
-		return await this.client.get(Instance.get().getScopedName(key, ':'))
+		return await this.client.get(this.getScopedKey(key))
 	}
 
 	async set(key: string, data: string, ttlInSecs: number) {
-		if (ttlInSecs > 0) await this.client.setex(Instance.get().getScopedName(key, ':'), ttlInSecs, data)
-		else this.client.set(Instance.get().getScopedName(key), data)
+		if (ttlInSecs > 0) await this.client.setex(this.getScopedKey(key), ttlInSecs, data)
+		else this.client.set(this.getScopedKey(key), data)
 	}
 
 	async getOrSet<T>(key: string, fn: () => Promise<T>, ttlInSecs: number) {
-		const cached = await this.get(Instance.get().getScopedName(key, ':'))
+		const cached = await this.get(this.getScopedKey(key))
 		if (cached) return JSON.parse(cached)
 
 		const result = await fn()
-		await this.set(Instance.get().getScopedName(key, ':'), JSON.stringify(result), ttlInSecs)
+		await this.set(this.getScopedKey(key), JSON.stringify(result), ttlInSecs)
 	}
 }
