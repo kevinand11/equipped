@@ -27,7 +27,7 @@ const errorsSchemas = Object.entries(StatusCodes)
 		pipe: v.meta(v.array(v.object({ message: v.string(), field: v.optional(v.string()) })), {
 			$refId: `Errors.${key}Response`,
 			description: `${key} Response`,
-		}) as Pipe<any, any, any>,
+		}) as Pipe<any, any>,
 	}))
 
 export abstract class Server<Req = any, Res = any> {
@@ -132,6 +132,7 @@ export abstract class Server<Req = any, Res = any> {
 		]
 		defs.forEach((def) => {
 			const pipe = schema[def.key] ?? v.any()
+			v.compile(pipe, { failEarly: false })
 			if (def.skip) return
 
 			if (def.type === 'request') {

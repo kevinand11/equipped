@@ -68,7 +68,7 @@ export function queryParamsPipe() {
 	)
 }
 
-export function queryResultsPipe<T>(model: Pipe<any, T, any>) {
+export function queryResultsPipe<T>(model: Pipe<any, T>) {
 	return v.object({
 		pages: v.object({
 			current: v.number(),
