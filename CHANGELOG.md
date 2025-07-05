@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.13](https://github.com/kevinand11/equipped/compare/v5.0.12...v5.0.13) (2025-07-05)
+
 ### [5.0.12](https://github.com/kevinand11/equipped/compare/v5.0.11...v5.0.12) (2025-07-05)
 
 
