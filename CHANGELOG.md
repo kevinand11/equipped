@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.12](https://github.com/kevinand11/equipped/compare/v5.0.11...v5.0.12) (2025-07-05)
+
+
+### Features
+
+* upgrade valleyed ([f5afa37](https://github.com/kevinand11/equipped/commit/f5afa373894fb16a405e1f82e191a2a294bb4497))
+
 ### [5.0.11](https://github.com/kevinand11/equipped/compare/v5.0.10...v5.0.11) (2025-06-28)
 
 
