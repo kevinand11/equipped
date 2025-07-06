@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.15](https://github.com/kevinand11/equipped/compare/v5.0.14...v5.0.15) (2025-07-06)
+
+
+### Bug Fixes
+
+* docs is hosted at ./index.html instead of ./ ([98e999c](https://github.com/kevinand11/equipped/commit/98e999c004b03697f87a908f04979a7c0e647e9f))
+* updatedAt for upsert ([b956e7a](https://github.com/kevinand11/equipped/commit/b956e7ae6d37ded65e260376dc2527902a6b0373))
+
 ### [5.0.14](https://github.com/kevinand11/equipped/compare/v5.0.13...v5.0.14) (2025-07-06)
 
 
