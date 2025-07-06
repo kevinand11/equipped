@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.14](https://github.com/kevinand11/equipped/compare/v5.0.13...v5.0.14) (2025-07-06)
+
+
+### Features
+
+* make ttl in cache optional ([4e38b24](https://github.com/kevinand11/equipped/commit/4e38b241b7ecb36821e0c6418f8efc9e38db1fef))
+
 ### [5.0.13](https://github.com/kevinand11/equipped/compare/v5.0.12...v5.0.13) (2025-07-05)
 
 ### [5.0.12](https://github.com/kevinand11/equipped/compare/v5.0.11...v5.0.12) (2025-07-05)
