@@ -10,7 +10,7 @@ import * as core from '../base/core'
 import { DbConfig } from '../base/types'
 
 export class MongoDb extends Db<{ _id: string }> {
-	#client: MongoClient
+	client: MongoClient
 	#cols: { db: string; col: string }[] = []
 
 	constructor(
@@ -18,11 +18,11 @@ export class MongoDb extends Db<{ _id: string }> {
 		dbConfig: DbConfig,
 	) {
 		super(dbConfig)
-		this.#client = new MongoClient(mongoConfig.uri)
+		this.client = new MongoClient(mongoConfig.uri)
 		Instance.on(
 			'start',
 			async () => {
-				await this.#client.connect()
+				await this.client.connect()
 
 				const grouped = this.#cols.reduce<Record<string, string[]>>((acc, cur) => {
 					if (!acc[cur.db]) acc[cur.db] = []
@@ -35,7 +35,7 @@ export class MongoDb extends Db<{ _id: string }> {
 				}
 				await Promise.all(
 					Object.entries(grouped).map(async ([dbName, colNames]) => {
-						const db = this.#client.db(dbName)
+						const db = this.client.db(dbName)
 						const collections = await db.listCollections<CollectionInfo>().toArray()
 						return colNames.map(async (colName) => {
 							const existing = collections.find((collection) => collection.name === colName)
@@ -51,11 +51,11 @@ export class MongoDb extends Db<{ _id: string }> {
 			},
 			3,
 		)
-		Instance.on('close', async () => this.#client.close(), 1)
+		Instance.on('close', async () => this.client.close(), 1)
 	}
 
 	async session<T>(callback: (session: ClientSession) => Promise<T>) {
-		return this.#client.withSession(callback)
+		return this.client.withSession(callback)
 	}
 
 	id() {
@@ -68,7 +68,7 @@ export class MongoDb extends Db<{ _id: string }> {
 			new MongoDbChange<Model, Entity>(
 				this.mongoConfig,
 				this.config.changes,
-				this.#client,
+				this.client,
 				this.getScopedDb(config.db),
 				config.col,
 				config.change,
@@ -76,7 +76,7 @@ export class MongoDb extends Db<{ _id: string }> {
 			)
 		}
 		this.#cols.push({ db: this.getScopedDb(config.db), col: config.col })
-		const collection = this.#client.db(this.getScopedDb(config.db)).collection<Model>(config.col)
+		const collection = this.client.db(this.getScopedDb(config.db)).collection<Model>(config.col)
 		return getTable(config, collection)
 	}
 }

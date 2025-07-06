@@ -39,16 +39,12 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 		} as unknown as OptionalUnlessRequiredId<Model>
 	}
 
-	function prepUpdateValue(value: core.UpdateInput<Model>, now: Date) {
+	function prepUpdateValue(value: core.UpdateInput<Model>, now: Date, upsert = false) {
 		return {
 			...value,
 			$set: {
 				...value.$set,
-				...(Object.keys(value).length > 0 && !config.options?.skipAudit
-					? {
-							updatedAt: now.getTime(),
-						}
-					: {}),
+				...(upsert || (Object.keys(value).length > 0 && !config.options?.skipAudit) ? { updatedAt: now.getTime() } : {}),
 			},
 		}
 	}
@@ -128,7 +124,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 			const doc = await collection.findOneAndUpdate(
 				filter,
 				{
-					...prepUpdateValue('update' in values ? values.update : {}, now),
+					...prepUpdateValue('update' in values ? values.update : {}, now, true),
 					// @ts-expect-error fighting ts
 					$setOnInsert: prepInsertValue(values.insert, options.makeId?.() ?? new ObjectId().toString(), now, true),
 				},
@@ -172,7 +168,7 @@ export function getTable<Model extends core.Model<IdType>, Entity extends core.E
 						bulk.find(operation.filter)
 							.upsert()
 							.update({
-								...prepUpdateValue('update' in operation ? operation.update : {}, now),
+								...prepUpdateValue('update' in operation ? operation.update : {}, now, true),
 								$setOnInsert: prepInsertValue(
 									operation.insert as any,
 									operation.makeId?.(i) ?? new ObjectId().toString(),
