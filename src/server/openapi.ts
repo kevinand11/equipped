@@ -145,7 +145,7 @@ export class OpenApi {
 	router() {
 		const jsonPath = '/openapi.json'
 		const router = new Router({ path: this.config.config.openapi.docsPath ?? '/', hide: true })
-		router.get('/')((req) => req.res({ body: this.#html(`.${jsonPath}`), contentType: 'text/html' }))
+		router.get('/index.html')((req) => req.res({ body: this.#html(`.${jsonPath}`), contentType: 'text/html' }))
 		router.get(jsonPath)((req) => req.res({ body: this.#baseOpenapiDoc }))
 		return router
 	}
