@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
-import { Pipe, PipeError, v } from 'valleyed'
+import { Pipe, PipeError, PipeInput, PipeOutput, v } from 'valleyed'
 
 import { Instance } from '../instance'
 import type { IncomingFile, Response, Request, RouteDef, RouteDefToReqRes } from '../server'
@@ -34,15 +34,17 @@ export const requestLocalStorage = new AsyncLocalStorage<Request<RouteDefToReqRe
 export const responseLocalStorage = new AsyncLocalStorage<Response<RouteDefToReqRes<RouteDef>>>()
 
 export const withRequest = <T extends Pipe<any, any>>(fn: (req: Request<RouteDefToReqRes<RouteDef>>) => T) =>
-	v.lazy(() => {
+	v.define<PipeInput<T>, PipeOutput<T>>((input) => {
 		const req = requestLocalStorage.getStore()
 		if (!req) throw new Error('Request not found in context')
-		return fn(req)
+		const validated = v.validate(fn(req), input)
+		return validated.valid ? validated.value : validated.error
 	})
 
 export const withResponse = <T extends Pipe<any, any>>(fn: (req: Response<RouteDefToReqRes<RouteDef>>) => T) =>
-	v.lazy(() => {
+	v.define<PipeInput<T>, PipeOutput<T>>((input) => {
 		const res = responseLocalStorage.getStore()
 		if (!res) throw new Error('Response not found in context')
-		return fn(res)
+		const validated = v.validate(fn(res), input)
+		return validated.valid ? validated.value : validated.error
 	})
