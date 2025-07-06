@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.16](https://github.com/kevinand11/equipped/compare/v5.0.15...v5.0.16) (2025-07-06)
+
+
+### Bug Fixes
+
+* withRequest and withResponse ([80c5a7f](https://github.com/kevinand11/equipped/commit/80c5a7fda7c4e4f221ef8ad427a55b12bfd6087d))
+
 ### [5.0.15](https://github.com/kevinand11/equipped/compare/v5.0.14...v5.0.15) (2025-07-06)
 
 
