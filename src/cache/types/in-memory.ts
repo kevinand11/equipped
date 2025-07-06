@@ -3,7 +3,7 @@ import { Cache } from '../base'
 
 type CacheEntry = {
 	data: string
-	expiredAt: number
+	expiredAt?: number
 }
 
 export class InMemoryCache extends Cache {
@@ -18,7 +18,7 @@ export class InMemoryCache extends Cache {
 				interval = setInterval(() => {
 					const now = Date.now()
 					for (const [key, record] of this.cache.entries()) {
-						if (record.expiredAt <= now) this.cache.delete(key)
+						if (record.expiredAt && record.expiredAt <= now) this.cache.delete(key)
 					}
 				}, 5000)
 			},
@@ -37,15 +37,15 @@ export class InMemoryCache extends Cache {
 
 	async get(key: string) {
 		const record = this.cache.get(this.getScopedKey(key))
-		if (record && record.expiredAt > Date.now()) return record.data
+		if (record && (record.expiredAt === undefined || record.expiredAt > Date.now())) return record.data
 		return null
 	}
 
-	async set(key: string, data: string, ttlInSecs: number) {
-		this.cache.set(this.getScopedKey(key), { data, expiredAt: Date.now() + ttlInSecs * 1000 })
+	async set(key: string, data: string, ttlInSecs?: number) {
+		this.cache.set(this.getScopedKey(key), { data, expiredAt: ttlInSecs ? Date.now() + ttlInSecs * 1000 : undefined })
 	}
 
-	async getOrSet<T>(key: string, fn: () => Promise<T>, ttlInSecs: number): Promise<T> {
+	async getOrSet<T>(key: string, fn: () => Promise<T>, ttlInSecs?: number): Promise<T> {
 		const cached = await this.get(key)
 		if (cached) return JSON.parse(cached) as T
 

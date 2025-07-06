@@ -47,12 +47,12 @@ export class RedisCache extends Cache {
 		return await this.client.get(this.getScopedKey(key))
 	}
 
-	async set(key: string, data: string, ttlInSecs: number) {
-		if (ttlInSecs > 0) await this.client.setex(this.getScopedKey(key), ttlInSecs, data)
+	async set(key: string, data: string, ttlInSecs?: number) {
+		if (ttlInSecs) await this.client.setex(this.getScopedKey(key), ttlInSecs, data)
 		else this.client.set(this.getScopedKey(key), data)
 	}
 
-	async getOrSet<T>(key: string, fn: () => Promise<T>, ttlInSecs: number) {
+	async getOrSet<T>(key: string, fn: () => Promise<T>, ttlInSecs?: number) {
 		const cached = await this.get(this.getScopedKey(key))
 		if (cached) return JSON.parse(cached)
 
