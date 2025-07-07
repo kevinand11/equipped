@@ -132,7 +132,7 @@ export abstract class Server<Req = any, Res = any> {
 		]
 		defs.forEach((def) => {
 			const pipe = schema[def.key] ?? v.any()
-			v.compile(pipe, { failEarly: false })
+			v.compile(pipe, { allErrors: true })
 			if (def.skip) return
 
 			if (def.type === 'request') {
