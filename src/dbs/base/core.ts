@@ -2,6 +2,7 @@ import { ClientSession, Filter, UpdateFilter } from 'mongodb'
 import { ConditionalObjectKeys, DeepPartial, DistributiveOmit } from 'valleyed'
 
 import { QueryParams, QueryResults } from '../pipes'
+import type { DbChange } from './changes'
 
 export type IdType = { _id: string } | { id: string }
 export type Entity = { toJSON: () => Record<string, unknown> }
@@ -40,6 +41,7 @@ export type Table<Id extends IdType, T extends Model<Id>, E extends Entity, Extr
 	bulkWrite: (operations: BulkWriteOperation<T>[], options?: Options & { getTime?: () => Date }) => Promise<void>
 	readonly config: Config<T, E>
 	readonly extras: Extras
+	watch: (callbacks: DbChangeCallbacks<T, E>) => DbChange<T, E>
 }
 
 export type Options = {
@@ -74,6 +76,5 @@ export type Config<M extends Model<IdType>, E extends Entity> = {
 	db: string
 	col: string
 	mapper: (model: M) => E
-	change?: DbChangeCallbacks<M, E>
 	options?: { skipAudit?: boolean }
 }

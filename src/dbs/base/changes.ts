@@ -1,46 +1,17 @@
 import axios from 'axios'
 
 import * as core from './core'
-import { DbChangeConfig, DbConfig } from './types'
+import { DbChangeConfig } from './types'
 import { EquippedError } from '../../errors'
-import { Instance } from '../../instance'
 
 export const TopicPrefix = 'db-changes'
 
-export type TableOptions = { skipAudit?: boolean }
-
-export abstract class Db<IdKey extends core.IdType> {
-	constructor(protected config: DbConfig) {}
-
-	protected getScopedDb(db: string) {
-		return Instance.get().getScopedName(db).replaceAll('.', '-')
-	}
-
-	abstract use<Model extends core.Model<IdKey>, Entity extends core.Entity>(
-		config: core.Config<Model, Entity>,
-	): core.Table<IdKey, Model, Entity>
-}
-
 export abstract class DbChange<Model extends core.Model<core.IdType>, Entity extends core.Entity> {
-	#callbacks: core.DbChangeCallbacks<Model, Entity> = {}
-	#mapper: (model: Model) => Entity
-
 	constructor(
-		private config: DbChangeConfig,
-		callbacks: core.DbChangeCallbacks<Model, Entity>,
-		mapper: (model: Model) => Entity,
-	) {
-		this.#callbacks = callbacks
-		this.#mapper = mapper
-	}
-
-	get callbacks() {
-		return Object.freeze(this.#callbacks)
-	}
-
-	get mapper() {
-		return this.#mapper
-	}
+		protected config: DbChangeConfig,
+		protected callbacks: core.DbChangeCallbacks<Model, Entity>,
+		protected mapper: (model: Model) => Entity,
+	) {}
 
 	protected async configureConnector(key: string, data: Record<string, string>) {
 		const instance = axios.create({ baseURL: this.config.debeziumUrl })

@@ -1,10 +1,10 @@
-import { Filter, MongoClient, ObjectId } from 'mongodb'
+import { Collection, Filter, ObjectId } from 'mongodb'
 import { differ } from 'valleyed'
 
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import { retry } from '../../utilities'
-import { DbChange, TopicPrefix } from '../base/_instance'
+import { DbChange, TopicPrefix } from '../base/changes'
 import * as core from '../base/core'
 import { DbChangeConfig } from '../base/types'
 import { MongoDbConfig } from '../pipes'
@@ -15,9 +15,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 	constructor(
 		config: MongoDbConfig,
 		change: DbChangeConfig,
-		client: MongoClient,
-		dbName: string,
-		colName: string,
+		collection: Collection<Model>,
 		callbacks: core.DbChangeCallbacks<Model, Entity>,
 		mapper: (model: Model) => Entity,
 	) {
@@ -31,6 +29,8 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 					}
 				: undefined
 
+		const dbName = collection.dbName
+		const colName = collection.collectionName
 		const dbColName = `${dbName}.${colName}`
 		const topic = `${TopicPrefix}.${dbColName}`
 
@@ -75,8 +75,6 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 			async () => {
 				if (this.#started) return
 				this.#started = true
-
-				const collection = client.db(dbName).collection<Model>(colName)
 
 				await retry(
 					async () => {
