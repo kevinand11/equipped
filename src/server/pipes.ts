@@ -54,6 +54,6 @@ export const serverPipe = v.object({
 export type ServerConfig = {
 	config: PipeOutput<typeof serverPipe>
 	app: { id: string; name: string }
-	log: Instance<any, any>['log']
+	log: Instance<any>['log']
 	eventBus?: EventBus
 }

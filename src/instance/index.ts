@@ -4,16 +4,14 @@ import { HookCb, HookEvent, HookRecord, runHooks } from './hooks'
 import { instanceSettingsPipe, mapSettingsToInstance, MapSettingsToInstance, Settings, SettingsInput } from './settings'
 import { EquippedError } from '../errors'
 
-export class Instance<E extends object, S extends SettingsInput> extends DataClass<MapSettingsToInstance<S>> {
-	static #instance: Instance<object, SettingsInput>
+export class Instance<S extends SettingsInput> extends DataClass<MapSettingsToInstance<S>> {
+	static #instance: Instance<SettingsInput>
 	static #hooks: Partial<Record<HookEvent, HookRecord[]>> = {}
-	readonly envs: Readonly<E>
 	readonly settings: Readonly<Settings>
 
-	private constructor(envs: E, settings: S) {
+	private constructor(settings: S) {
 		super(mapSettingsToInstance(settings as any))
 		Instance.#instance = this as any
-		this.envs = Object.freeze(envs)
 		this.settings = Object.freeze(settings) as any
 		Instance.#registerOnExitHandler()
 	}
@@ -31,8 +29,7 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 		}
 	}
 
-	static create<E extends object, S extends SettingsInput>(envsPipe: Pipe<unknown, E>, settings: (envs: E) => S) {
-		if (Instance.#instance) throw Instance.crash(new EquippedError('An instance has already been created. Use that instead', {}))
+	static envs<E extends object>(envsPipe: Pipe<unknown, E>): E {
 		const envValidity = v.validate(envsPipe, process.env)
 		if (!envValidity.valid) {
 			Instance.crash(
@@ -41,7 +38,11 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 				}),
 			)
 		}
-		const settingsValidity = v.validate(instanceSettingsPipe(), settings(envValidity.value))
+		return envValidity.value
+	}
+
+	static create<S extends SettingsInput>(settings: S) {
+		const settingsValidity = v.validate(instanceSettingsPipe(), settings)
 		if (!settingsValidity.valid) {
 			Instance.crash(
 				new EquippedError(`Settings are not valid\n${settingsValidity.error.toString()}`, {
@@ -49,7 +50,7 @@ export class Instance<E extends object, S extends SettingsInput> extends DataCla
 				}),
 			)
 		}
-		return new Instance<E, S>(envValidity.value, settingsValidity.value as S)
+		return new Instance<S>(settingsValidity.value as S)
 	}
 
 	static get() {
