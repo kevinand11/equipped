@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.21](https://github.com/kevinand11/equipped/compare/v5.0.20...v5.0.21) (2025-07-13)
+
+
+### Features
+
+* events streams ([1cd6df1](https://github.com/kevinand11/equipped/commit/1cd6df19e6504d5ed1834401c230cf40fea9d9c5))
+* events streams ([b0d9c5b](https://github.com/kevinand11/equipped/commit/b0d9c5bfddf692c64d8eb5e9c10dfd277cdce73d))
+
 ### [5.0.20](https://github.com/kevinand11/equipped/compare/v5.0.19...v5.0.20) (2025-07-13)
 
 
