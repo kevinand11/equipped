@@ -1,4 +1,4 @@
-import { Pipe, PipeInput, PipeOutput, v } from 'valleyed'
+import { ConditionalObjectKeys, Pipe, PipeInput, PipeOutput, v } from 'valleyed'
 
 import { HookCb, HookEvent, HookRecord, runHooks } from './hooks'
 import {
@@ -108,27 +108,27 @@ export class Instance {
 		process.exit(1)
 	}
 
-	static createLog<T extends PipeInput<typeof logPipe>>(input: T) {
+	static createLog<T extends PipeInput<typeof logPipe>>(input: ConditionalObjectKeys<T>) {
 		return v.assert(logPipe, input)
 	}
 
-	static createCache<T extends PipeInput<typeof cachePipe>>(input: T) {
+	static createCache<T extends PipeInput<typeof cachePipe>>(input: ConditionalObjectKeys<T>) {
 		return v.assert(cachePipe, input) as CacheTypes[T['type']]
 	}
 
-	static createJobs<T extends PipeInput<typeof jobsPipe>>(input: T) {
+	static createJobs<T extends PipeInput<typeof jobsPipe>>(input: ConditionalObjectKeys<T>) {
 		return v.assert(jobsPipe, input) as JobTypes[T['type']]
 	}
 
-	static createEventBus<T extends PipeInput<typeof eventBusPipe>>(input: T) {
+	static createEventBus<T extends PipeInput<typeof eventBusPipe>>(input: ConditionalObjectKeys<T>) {
 		return v.assert(eventBusPipe, input) as EventBusTypes[T['type']]
 	}
 
-	static createDb<T extends PipeInput<typeof dbPipe>>(input: T) {
+	static createDb<T extends PipeInput<typeof dbPipe>>(input: ConditionalObjectKeys<T>) {
 		return v.assert(dbPipe, input) as DbTypes[T['db']['type']]
 	}
 
-	createServer<T extends PipeInput<typeof serverTypePipe>>(input: T) {
+	createServer<T extends PipeInput<typeof serverTypePipe>>(input: ConditionalObjectKeys<T>) {
 		return v.assert(serverTypePipe, input)
 	}
 }
