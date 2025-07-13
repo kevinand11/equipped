@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.20](https://github.com/kevinand11/equipped/compare/v5.0.19...v5.0.20) (2025-07-13)
+
+
+### Bug Fixes
+
+* add ConditionalObjectKeys ([7103659](https://github.com/kevinand11/equipped/commit/7103659dd037ad00afb795a7cf08e56635b1031e))
+
 ### [5.0.19](https://github.com/kevinand11/equipped/compare/v5.0.18...v5.0.19) (2025-07-13)
 
 ### [5.0.18](https://github.com/kevinand11/equipped/compare/v5.0.17...v5.0.18) (2025-07-07)
