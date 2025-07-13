@@ -42,18 +42,15 @@ export class SocketEmitter {
 		Instance.on(
 			'setup',
 			() => {
-				this.#publish = config.eventBus
-					? (config.eventBus.createPublisher(EmitterEvent as never) as unknown as (data: EmitData) => Promise<void>)
+				const stream = config.eventBus?.createStream(EmitterEvent as never, { fanout: true })
+				this.#publish = stream
+					? (stream.publish as unknown as (data: EmitData) => Promise<void>)
 					: async (data: EmitData) => {
 							socket.to(data.channel).emit(data.channel, data)
 						}
-				config.eventBus?.createSubscriber(
-					EmitterEvent as never,
-					async (data: EmitData) => {
-						socket.to(data.channel).emit(data.channel, data)
-					},
-					{ fanout: true },
-				)
+				stream?.subscribe(async (data: EmitData) => {
+					socket.to(data.channel).emit(data.channel, data)
+				})
 			},
 			1,
 		)

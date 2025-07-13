@@ -38,37 +38,33 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 		const TestId = makeId(hexId)
 		const condition = { _id: TestId } as Filter<Model>
 
-		change.eventBus.createSubscriber(
-			topic as never,
-			async (data: DbDocumentChange) => {
-				const op = data.op
+		change.eventBus.createStream(topic as never, { skipScope: true }).subscribe(async (data: DbDocumentChange) => {
+			const op = data.op
 
-				let before = JSON.parse(data.before ?? 'null')
-				let after = JSON.parse(data.after ?? 'null')
+			let before = JSON.parse(data.before ?? 'null')
+			let after = JSON.parse(data.after ?? 'null')
 
-				if (before) before = hydrate(before)
-				if (after) after = hydrate(after)
-				if (before?.__id === TestId || after?.__id === TestId) return
+			if (before) before = hydrate(before)
+			if (after) after = hydrate(after)
+			if (before?.__id === TestId || after?.__id === TestId) return
 
-				if (op === 'c' && this.callbacks.created && after)
-					await this.callbacks.created({
-						before: null,
-						after: this.mapper(after)!,
-					})
-				else if (op === 'u' && this.callbacks.updated && before && after)
-					await this.callbacks.updated({
-						before: this.mapper(before)!,
-						after: this.mapper(after)!,
-						changes: differ.from(differ.diff(before, after)),
-					})
-				else if (op === 'd' && this.callbacks.deleted && before)
-					await this.callbacks.deleted({
-						before: this.mapper(before)!,
-						after: null,
-					})
-			},
-			{ skipScope: true },
-		)
+			if (op === 'c' && this.callbacks.created && after)
+				await this.callbacks.created({
+					before: null,
+					after: this.mapper(after)!,
+				})
+			else if (op === 'u' && this.callbacks.updated && before && after)
+				await this.callbacks.updated({
+					before: this.mapper(before)!,
+					after: this.mapper(after)!,
+					changes: differ.from(differ.diff(before, after)),
+				})
+			else if (op === 'd' && this.callbacks.deleted && before)
+				await this.callbacks.deleted({
+					before: this.mapper(before)!,
+					after: null,
+				})
+		})
 
 		Instance.on(
 			'start',
