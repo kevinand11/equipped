@@ -1,4 +1,4 @@
-import { ClientSession, Filter, UpdateFilter } from 'mongodb'
+import { Filter, UpdateFilter } from 'mongodb'
 import { ConditionalObjectKeys, DeepPartial, DistributiveOmit } from 'valleyed'
 
 import { QueryParams, QueryResults } from '../pipes'
@@ -18,34 +18,30 @@ export type Table<Id extends IdType, T extends Model<Id>, E extends Entity, Extr
 	query: (query: QueryParams) => Promise<QueryResults<E>>
 	findMany: (
 		filter: Filter<T>,
-		options?: Options & {
+		options?: {
 			limit?: number
 			sort?: Sort | Sort[]
 		},
 	) => Promise<E[]>
-	findOne: (filter: Filter<T>, options?: Options) => Promise<E | null>
-	findById: (id: ModelId<T>, options?: Options) => Promise<E | null>
-	insertOne: (values: CreateInput<T>, options?: Options & { makeId?: () => string; getTime?: () => Date }) => Promise<E>
-	insertMany: (values: CreateInput<T>[], options?: Options & { makeId?: (i: number) => string; getTime?: () => Date }) => Promise<E[]>
-	updateMany: (filter: Filter<T>, values: UpdateInput<T>, options?: Options & { getTime?: () => Date }) => Promise<E[]>
-	updateOne: (filter: Filter<T>, values: UpdateInput<T>, options?: Options & { getTime?: () => Date }) => Promise<E | null>
-	updateById: (id: ModelId<T>, values: UpdateInput<T>, options?: Options & { getTime?: () => Date }) => Promise<E | null>
+	findOne: (filter: Filter<T>) => Promise<E | null>
+	findById: (id: ModelId<T>) => Promise<E | null>
+	insertOne: (values: CreateInput<T>, options?: { makeId?: () => string; getTime?: () => Date }) => Promise<E>
+	insertMany: (values: CreateInput<T>[], options?: { makeId?: (i: number) => string; getTime?: () => Date }) => Promise<E[]>
+	updateMany: (filter: Filter<T>, values: UpdateInput<T>, options?: { getTime?: () => Date }) => Promise<E[]>
+	updateOne: (filter: Filter<T>, values: UpdateInput<T>, options?: { getTime?: () => Date }) => Promise<E | null>
+	updateById: (id: ModelId<T>, values: UpdateInput<T>, options?: { getTime?: () => Date }) => Promise<E | null>
 	upsertOne: (
 		filter: Filter<T>,
 		values: { insert: CreateInput<T> } | { insert: Partial<CreateInput<T>>; update: UpdateInput<T> },
-		options?: Options & { makeId?: () => string; getTime?: () => Date },
+		options?: { makeId?: () => string; getTime?: () => Date },
 	) => Promise<E>
-	deleteOne: (filter: Filter<T>, options?: Options) => Promise<E | null>
-	deleteById: (id: ModelId<T>, options?: Options) => Promise<E | null>
-	deleteMany: (filter: Filter<T>, options?: Options) => Promise<E[]>
-	bulkWrite: (operations: BulkWriteOperation<T>[], options?: Options & { getTime?: () => Date }) => Promise<void>
+	deleteOne: (filter: Filter<T>) => Promise<E | null>
+	deleteById: (id: ModelId<T>) => Promise<E | null>
+	deleteMany: (filter: Filter<T>) => Promise<E[]>
+	bulkWrite: (operations: BulkWriteOperation<T>[], options?: { getTime?: () => Date }) => Promise<void>
 	readonly config: Config<T, E>
 	readonly extras: Extras
 	watch: (callbacks: DbChangeCallbacks<T, E>) => DbChange<T, E>
-}
-
-export type Options = {
-	session?: ClientSession
 }
 
 export type { Filter }

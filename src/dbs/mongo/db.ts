@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+
 import { ClientSession, Collection, CollectionInfo, MongoClient, ObjectId, OptionalUnlessRequiredId, SortDirection, WithId } from 'mongodb'
 
 import { MongoDbConfig, QueryParams } from '../pipes'
@@ -11,6 +13,8 @@ import { DbConfig } from '../base/types'
 
 const idKey = '_id'
 type IdType = { _id: string }
+
+const sessionStore = new AsyncLocalStorage<ClientSession | undefined>(undefined)
 
 export class MongoDb extends Db<{ _id: string }> {
 	client: MongoClient
@@ -57,8 +61,8 @@ export class MongoDb extends Db<{ _id: string }> {
 		Instance.on('close', async () => this.client.close(), 1)
 	}
 
-	async session<T>(callback: (session: ClientSession) => Promise<T>) {
-		return this.client.withSession(callback)
+	async session<T>(callback: () => Promise<T>) {
+		return this.client.withSession(async (session) => sessionStore.run(session, callback))
 	}
 
 	id() {
@@ -131,7 +135,7 @@ export class MongoDb extends Db<{ _id: string }> {
 				const sort = sortArray.map((p) => [p.field, p.desc ? 'desc' : 'asc'] as [string, SortDirection])
 				const docs = await collection
 					.find(filter, {
-						session: options.session,
+						session: sessionStore.getStore(),
 						limit: options.limit,
 						sort,
 					})
@@ -139,22 +143,22 @@ export class MongoDb extends Db<{ _id: string }> {
 				return transform(docs)
 			},
 
-			findOne: async (filter, options = {}) => {
-				const result = await table.findMany(filter, { ...options, limit: 1 })
+			findOne: async (filter) => {
+				const result = await table.findMany(filter, { limit: 1 })
 				return result.at(0) ?? null
 			},
 
-			findById: async (id, options = {}) => {
-				const result = await table.findOne({ [idKey]: id } as core.Filter<Model>, options)
+			findById: async (id) => {
+				const result = await table.findOne({ [idKey]: id } as core.Filter<Model>)
 				return result
 			},
 
 			insertMany: async (values, options = {}) => {
 				const now = options.getTime?.() ?? new Date()
 				const payload = values.map((value, i) => prepInsertValue(value, options.makeId?.(i) ?? new ObjectId().toString(), now))
-				await collection.insertMany(payload, { session: options.session })
+				await collection.insertMany(payload, { session: sessionStore.getStore() })
 
-				const insertedData = await Promise.all(payload.map(async (data) => await table.findById(data[idKey] as any, options)))
+				const insertedData = await Promise.all(payload.map(async (data) => await table.findById(data[idKey] as any)))
 				return insertedData.filter((value) => !!value)
 			},
 
@@ -165,15 +169,19 @@ export class MongoDb extends Db<{ _id: string }> {
 
 			updateMany: async (filter, values, options = {}) => {
 				const now = options.getTime?.() ?? new Date()
-				await collection.updateMany(filter, prepUpdateValue(values, now), { session: options.session })
-				return table.findMany(filter, options)
+				const session = sessionStore.getStore()
+				const data = await collection.find(filter, { session, projection: { [idKey]: 1 } }).toArray()
+				const ids = data.map((doc) => doc[idKey])
+				const filterUpd = { [idKey]: { $in: ids } } as core.Filter<Model>
+				await collection.updateMany(filterUpd, prepUpdateValue(values, now), { session })
+				return table.findMany(filterUpd)
 			},
 
 			updateOne: async (filter, values, options = {}) => {
 				const now = options.getTime?.() ?? new Date()
 				const doc = await collection.findOneAndUpdate(filter, prepUpdateValue(values, now), {
 					returnDocument: 'after',
-					session: options.session,
+					session: sessionStore.getStore(),
 				})
 				return doc ? transform(doc) : null
 			},
@@ -193,7 +201,7 @@ export class MongoDb extends Db<{ _id: string }> {
 						// @ts-expect-error fighting ts
 						$setOnInsert: prepInsertValue(values.insert, options.makeId?.() ?? new ObjectId().toString(), now, true),
 					},
-					{ returnDocument: 'after', session: options.session, upsert: true },
+					{ returnDocument: 'after', session: sessionStore.getStore(), upsert: true },
 				)
 
 				return transform(doc)
@@ -201,22 +209,22 @@ export class MongoDb extends Db<{ _id: string }> {
 
 			deleteMany: async (filter, options = {}) => {
 				const docs = await table.findMany(filter, options)
-				await collection.deleteMany(filter, { session: options.session })
+				await collection.deleteMany(filter, { session: sessionStore.getStore() })
 				return docs
 			},
 
-			deleteOne: async (filter, options) => {
-				const doc = await collection.findOneAndDelete(filter, { session: options?.session })
+			deleteOne: async (filter) => {
+				const doc = await collection.findOneAndDelete(filter, { session: sessionStore.getStore() })
 				return doc ? transform(doc) : null
 			},
 
-			deleteById: async (id, options) => {
-				const result = await table.deleteOne({ [idKey]: id } as core.Filter<Model>, options)
+			deleteById: async (id) => {
+				const result = await table.deleteOne({ [idKey]: id } as core.Filter<Model>)
 				return result
 			},
 
 			bulkWrite: async (operations, options = {}) => {
-				const bulk = collection.initializeUnorderedBulkOp({ session: options.session })
+				const bulk = collection.initializeUnorderedBulkOp({ session: sessionStore.getStore() })
 				const now = options.getTime?.() ?? new Date()
 				operations.forEach((operation, i) => {
 					switch (operation.op) {
@@ -246,7 +254,7 @@ export class MongoDb extends Db<{ _id: string }> {
 							throw new EquippedError(`Unknown bulkWrite operation`, { operation })
 					}
 				})
-				await bulk.execute({ session: options.session })
+				await bulk.execute({ session: sessionStore.getStore() })
 			},
 
 			watch(callbacks) {

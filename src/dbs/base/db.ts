@@ -14,4 +14,6 @@ export abstract class Db<IdKey extends core.IdType> {
 	abstract use<Model extends core.Model<IdKey>, Entity extends core.Entity>(
 		config: core.Config<Model, Entity>,
 	): core.Table<IdKey, Model, Entity>
+
+	abstract session<T>(callback: () => Promise<T>): Promise<T>
 }
