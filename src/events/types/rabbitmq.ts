@@ -5,7 +5,7 @@ import type { ConfirmChannel } from 'amqplib'
 import { Instance } from '../../instance'
 import type { Events } from '../../types'
 import { Random, parseJSONValue } from '../../utilities'
-import { DefaultSubscribeOptions, EventBus, PublishOptions, SubscribeOptions } from '../base'
+import { EventBus, StreamOptions } from '../base'
 import { RabbitMQConfig } from '../pipes'
 
 export class RabbitMQEventBus extends EventBus {
@@ -24,44 +24,39 @@ export class RabbitMQEventBus extends EventBus {
 		})
 	}
 
-	createPublisher<Event extends Events[keyof Events]>(topicName: Event['topic'], options: Partial<PublishOptions> = {}) {
+	createStream<Event extends Events[keyof Events]>(topicName: Event['topic'], options: Partial<StreamOptions> = {}) {
 		const topic = options.skipScope ? topicName : Instance.get().getScopedName(topicName)
-		return async (data: Event['data']) =>
-			await this.#client.publish(this.#columnName, topic, JSON.stringify(data), { persistent: true })
-	}
+		return {
+			publish: async (data: Event['data']) =>
+				await this.#client.publish(this.#columnName, topic, JSON.stringify(data), { persistent: true }),
+			subscribe: async (onMessage: (data: Event['data']) => Promise<void>) => {
+				const subscribe = async () => {
+					await this.#client.addSetup(async (channel: ConfirmChannel) => {
+						const queueName = options.fanout
+							? Instance.get().getScopedName(`${Instance.get().settings.app.id}-fanout-${Random.string(10)}`)
+							: topic
+						const { queue } = await channel.assertQueue(queueName, { durable: !options.fanout, exclusive: options.fanout })
+						await channel.bindQueue(queue, this.#columnName, topic)
+						channel.consume(
+							queue,
+							async (msg) => {
+								Instance.resolveBeforeCrash(async () => {
+									if (!msg) return
+									try {
+										await onMessage(parseJSONValue(msg.content.toString()))
+										channel.ack(msg)
+									} catch {
+										channel.nack(msg)
+									}
+								})
+							},
+							{ noAck: false },
+						)
+					})
+				}
 
-	createSubscriber<Event extends Events[keyof Events]>(
-		topicName: Event['topic'],
-		onMessage: (data: Event['data']) => Promise<void>,
-		options: Partial<SubscribeOptions> = {},
-	) {
-		options = { ...DefaultSubscribeOptions, ...options }
-		const topic = options.skipScope ? topicName : Instance.get().getScopedName(topicName)
-		const subscribe = async () => {
-			await this.#client.addSetup(async (channel: ConfirmChannel) => {
-				const queueName = options.fanout
-					? Instance.get().getScopedName(`${Instance.get().settings.app.id}-fanout-${Random.string(10)}`)
-					: topic
-				const { queue } = await channel.assertQueue(queueName, { durable: !options.fanout, exclusive: options.fanout })
-				await channel.bindQueue(queue, this.#columnName, topic)
-				channel.consume(
-					queue,
-					async (msg) => {
-						Instance.resolveBeforeCrash(async () => {
-							if (!msg) return
-							try {
-								await onMessage(parseJSONValue(msg.content.toString()))
-								channel.ack(msg)
-							} catch {
-								channel.nack(msg)
-							}
-						})
-					},
-					{ noAck: false },
-				)
-			})
+				Instance.on('start', subscribe, 2)
+			},
 		}
-
-		Instance.on('start', subscribe, 2)
 	}
 }
