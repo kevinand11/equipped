@@ -2,10 +2,10 @@ import { match as Match } from 'path-to-regexp'
 import type { Server } from 'socket.io'
 
 import { Entity } from '../dbs/base/core'
-import { EventBus } from '../events'
 import { Instance } from '../instance'
 import { StatusCodes, StatusCodesEnum } from './types'
 import type { AuthUser } from '../types'
+import { ServerConfig } from './pipes'
 
 enum EmitTypes {
 	created = 'created',
@@ -36,18 +36,18 @@ export class SocketEmitter {
 	#routes = {} as Record<string, OnJoinFn>
 	#publish: (data: EmitData) => Promise<void> = async () => {}
 
-	constructor(socket: Server, eventBus?: EventBus) {
+	constructor(socket: Server, config: ServerConfig) {
 		this.socketInstance = socket
 		this.#setupSocketConnection()
 		Instance.on(
 			'setup',
 			() => {
-				this.#publish = eventBus
-					? (eventBus.createPublisher(EmitterEvent as never) as unknown as (data: EmitData) => Promise<void>)
+				this.#publish = config.eventBus
+					? (config.eventBus.createPublisher(EmitterEvent as never) as unknown as (data: EmitData) => Promise<void>)
 					: async (data: EmitData) => {
 							socket.to(data.channel).emit(data.channel, data)
 						}
-				eventBus?.createSubscriber(
+				config.eventBus?.createSubscriber(
 					EmitterEvent as never,
 					async (data: EmitData) => {
 						socket.to(data.channel).emit(data.channel, data)

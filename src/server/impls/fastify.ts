@@ -20,11 +20,12 @@ import { Server } from './base'
 
 export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	constructor(config: ServerConfig) {
+		const settings = Instance.get().settings.server
 		const app = Fastify({
 			ignoreTrailingSlash: true,
 			caseSensitive: false,
-			disableRequestLogging: !config.config.requests.log,
-			loggerInstance: config.config.requests.log ? config.log : undefined,
+			disableRequestLogging: !settings.requests.log,
+			loggerInstance: settings.requests.log ? Instance.get().log : undefined,
 			ajv: { customOptions: { coerceTypes: false } },
 			schemaErrorFormatter: (errors, data) =>
 				new ValidationError(
@@ -86,7 +87,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		app.decorateRequest('savedReq', null)
 		app.setValidatorCompiler(() => () => true)
 		app.setSerializerCompiler(() => (data) => JSON.stringify(data))
-		if (config.config.publicPath) app.register(fastifyStatic, { root: config.config.publicPath })
+		if (settings.publicPath) app.register(fastifyStatic, { root: settings.publicPath })
 		app.register(fastifyCookie, {})
 		app.register(fastifyCors, this.cors)
 		app.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
@@ -94,7 +95,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		app.register(fastifyMultipart, {
 			attachFieldsToBody: 'keyValues',
 			throwFileSizeLimit: false,
-			limits: { fileSize: config.config.requests.maxFileUploadSizeInMb * 1024 * 1024 },
+			limits: { fileSize: settings.requests.maxFileUploadSizeInMb * 1024 * 1024 },
 			onFile: async (f) => {
 				const buffer = await f.toBuffer()
 				const parsed: IncomingFile = {
@@ -114,10 +115,10 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 			delayAfter: this.settings.slowdown.delayAfter,
 			delay: this.settings.slowdown.delayInMs
 		}) */
-		if (config.config.requests.rateLimit.enabled)
+		if (settings.requests.rateLimit.enabled)
 			app.register(fastifyRateLimit, {
-				max: config.config.requests.rateLimit.limit,
-				timeWindow: config.config.requests.rateLimit.periodInMs,
+				max: settings.requests.rateLimit.limit,
+				timeWindow: settings.requests.rateLimit.periodInMs,
 				errorResponseBuilder: (_, context) => ({
 					statusCode: StatusCodes.TooManyRequests,
 					message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }]),

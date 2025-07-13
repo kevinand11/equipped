@@ -46,7 +46,7 @@ export abstract class Server<Req = any, Res = any> {
 	constructor(
 		server: http.Server,
 		private config: ServerConfig,
-		protected implementations: {
+		private implementations: {
 			parseRequest: (req: Req) => Promise<Request<any>>
 			handleResponse: (res: Res, response: Response<any>) => Promise<void>
 			registerRoute: (method: MethodsEnum, path: string, cb: (req: Req, res: Res) => Promise<void>) => void
@@ -56,9 +56,9 @@ export abstract class Server<Req = any, Res = any> {
 		},
 	) {
 		this.server = server
-		this.#openapi = new OpenApi(this.config)
+		this.#openapi = new OpenApi()
 		const socketInstance = new SocketServer(server, { cors: this.cors })
-		this.socket = new SocketEmitter(socketInstance, config.eventBus)
+		this.socket = new SocketEmitter(socketInstance, config)
 		this.addRouter(this.#openapi.router())
 	}
 
@@ -203,14 +203,15 @@ export abstract class Server<Req = any, Res = any> {
 	}
 
 	async start() {
-		const port = this.config.config.port
-		if (this.config.config.healthPath)
+		const port = this.config.port
+		const { app, server } = Instance.get().settings
+		if (server.healthPath)
 			this.addRoute({
 				method: Methods.get,
-				path: this.config.config.healthPath,
+				path: server.healthPath,
 				handler: async (req) =>
 					req.res({
-						body: `${this.config.app.id}(${this.config.app.name}) service running`,
+						body: `${app.id}(${app.name}) service running`,
 						contentType: 'text/plain',
 					}),
 			})
@@ -236,7 +237,7 @@ export abstract class Server<Req = any, Res = any> {
 
 		await Promise.all(this.#queue.map((cb) => cb()))
 		const started = await this.implementations.start(port)
-		if (started) Instance.get().log.info(`${this.config.app.id}(${this.config.app.name}) service listening on port ${port}`)
+		if (started) Instance.get().log.info(`${app.id}(${app.name}) service listening on port ${port}`)
 		return started
 	}
 }

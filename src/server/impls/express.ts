@@ -21,6 +21,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 
 	constructor(config: ServerConfig) {
 		const app = express()
+		const settings = Instance.get().settings.server
 		super(http.createServer(app), config, {
 			parseRequest: async (req) => {
 				const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
@@ -96,7 +97,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		this.#expressApp = app
 
 		app.disable('x-powered-by')
-		if (config.config.requests.log) app.use(pinoHttp({ logger: config.log }))
+		if (settings.requests.log) app.use(pinoHttp({ logger: Instance.get().log }))
 		app.use(express.json())
 		app.use(express.text())
 		app.use(cookie())
@@ -108,18 +109,18 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		)
 		app.use(cors(this.cors))
 		app.use(express.urlencoded({ extended: false }))
-		if (config.config.publicPath) app.use(express.static(config.config.publicPath))
+		if (settings.publicPath) app.use(express.static(settings.publicPath))
 		app.use(
 			fileUpload({
-				limits: { fileSize: config.config.requests.maxFileUploadSizeInMb * 1024 * 1024 },
+				limits: { fileSize: settings.requests.maxFileUploadSizeInMb * 1024 * 1024 },
 				useTempFiles: false,
 			}),
 		)
-		if (config.config.requests.rateLimit.enabled)
+		if (settings.requests.rateLimit.enabled)
 			app.use(
 				rateLimit({
-					windowMs: config.config.requests.rateLimit.periodInMs,
-					limit: config.config.requests.rateLimit.limit,
+					windowMs: settings.requests.rateLimit.periodInMs,
+					limit: settings.requests.rateLimit.limit,
 					handler: (_: express.Request, res: express.Response) =>
 						res.status(StatusCodes.TooManyRequests).json([{ message: 'Too Many Requests' }]),
 				}),

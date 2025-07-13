@@ -1,18 +1,33 @@
-import { DataClass, Pipe, v } from 'valleyed'
+import { Pipe, PipeInput, PipeOutput, v } from 'valleyed'
 
 import { HookCb, HookEvent, HookRecord, runHooks } from './hooks'
-import { instanceSettingsPipe, mapSettingsToInstance, MapSettingsToInstance, Settings, SettingsInput } from './settings'
+import {
+	cachePipe,
+	CacheTypes,
+	dbPipe,
+	DbTypes,
+	eventBusPipe,
+	EventBusTypes,
+	instanceSettingsPipe,
+	jobsPipe,
+	JobTypes,
+	logPipe,
+	serverTypePipe,
+	Settings,
+	SettingsInput,
+} from './settings'
 import { EquippedError } from '../errors'
 
-export class Instance<S extends SettingsInput> extends DataClass<MapSettingsToInstance<S>> {
-	static #instance: Instance<SettingsInput>
+export class Instance {
+	static #instance: Instance
 	static #hooks: Partial<Record<HookEvent, HookRecord[]>> = {}
 	readonly settings: Readonly<Settings>
+	readonly log: PipeOutput<typeof logPipe>
 
-	private constructor(settings: S) {
-		super(mapSettingsToInstance(settings as any))
-		Instance.#instance = this as any
-		this.settings = Object.freeze(settings) as any
+	private constructor(settings: Settings) {
+		Instance.#instance = this
+		this.settings = Object.freeze(settings)
+		this.log = Instance.createLog(this.settings.log)
 		Instance.#registerOnExitHandler()
 	}
 
@@ -41,7 +56,7 @@ export class Instance<S extends SettingsInput> extends DataClass<MapSettingsToIn
 		return envValidity.value
 	}
 
-	static create<S extends SettingsInput>(settings: S) {
+	static create(settings: SettingsInput) {
 		const settingsValidity = v.validate(instanceSettingsPipe(), settings)
 		if (!settingsValidity.valid) {
 			Instance.crash(
@@ -50,7 +65,7 @@ export class Instance<S extends SettingsInput> extends DataClass<MapSettingsToIn
 				}),
 			)
 		}
-		return new Instance<S>(settingsValidity.value as S)
+		return new Instance(settingsValidity.value)
 	}
 
 	static get() {
@@ -91,5 +106,29 @@ export class Instance<S extends SettingsInput> extends DataClass<MapSettingsToIn
 		// eslint-disable-next-line no-console
 		console.error(error)
 		process.exit(1)
+	}
+
+	static createLog<T extends PipeInput<typeof logPipe>>(input: T) {
+		return v.assert(logPipe, input)
+	}
+
+	static createCache<T extends PipeInput<typeof cachePipe>>(input: T) {
+		return v.assert(cachePipe, input) as CacheTypes[T['type']]
+	}
+
+	static createJobs<T extends PipeInput<typeof jobsPipe>>(input: T) {
+		return v.assert(jobsPipe, input) as JobTypes[T['type']]
+	}
+
+	static createEventBus<T extends PipeInput<typeof eventBusPipe>>(input: T) {
+		return v.assert(eventBusPipe, input) as EventBusTypes[T['type']]
+	}
+
+	static createDb<T extends PipeInput<typeof dbPipe>>(input: T) {
+		return v.assert(dbPipe, input) as DbTypes[T['db']['type']]
+	}
+
+	createServer<T extends PipeInput<typeof serverTypePipe>>(input: T) {
+		return v.assert(serverTypePipe, input)
 	}
 }
