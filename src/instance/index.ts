@@ -13,6 +13,7 @@ import {
 	JobTypes,
 	logPipe,
 	serverTypePipe,
+	ServerTypes,
 	Settings,
 	SettingsInput,
 } from './settings'
@@ -129,6 +130,6 @@ export class Instance {
 	}
 
 	createServer<T extends PipeInput<typeof serverTypePipe>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(serverTypePipe, input)
+		return v.assert(serverTypePipe, input) as ServerTypes[T['type']]
 	}
 }
