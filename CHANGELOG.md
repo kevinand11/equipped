@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.23](https://github.com/kevinand11/equipped/compare/v5.0.22...v5.0.23) (2025-07-19)
+
+
+### Bug Fixes
+
+* undefined imports ([754d6e1](https://github.com/kevinand11/equipped/commit/754d6e1584bc81d2bfaabdfc60e3970f256a4261))
+
 ### [5.0.22](https://github.com/kevinand11/equipped/compare/v5.0.21...v5.0.22) (2025-07-19)
 
 
