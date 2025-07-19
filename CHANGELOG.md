@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.22](https://github.com/kevinand11/equipped/compare/v5.0.21...v5.0.22) (2025-07-19)
+
+
+### Bug Fixes
+
+* return type of createServer ([6622adc](https://github.com/kevinand11/equipped/commit/6622adc01e9391e22d98c6af6528f82933c384f2))
+
 ### [5.0.21](https://github.com/kevinand11/equipped/compare/v5.0.20...v5.0.21) (2025-07-13)
 
 
