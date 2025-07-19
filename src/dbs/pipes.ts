@@ -97,11 +97,12 @@ export type QueryWhere = Extract<QueryWhereClause, { field: string }>
 export type QueryWhereBlock = Exclude<QueryWhereClause, { field: string }>
 export type QueryResults<T> = PipeOutput<ReturnType<typeof queryResultsPipe<T>>>
 
-export const mongoDbConfigPipe = v.meta(
-	v.object({
-		uri: v.string(),
-	}),
-	{ title: 'Mongodb Config', $refId: 'MongodbConfig' },
-)
+export const mongoDbConfigPipe = () =>
+	v.meta(
+		v.object({
+			uri: v.string(),
+		}),
+		{ title: 'Mongodb Config', $refId: 'MongodbConfig' },
+	)
 
-export type MongoDbConfig = PipeOutput<typeof mongoDbConfigPipe>
+export type MongoDbConfig = PipeOutput<ReturnType<typeof mongoDbConfigPipe>>

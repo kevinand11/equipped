@@ -1,4 +1,5 @@
-import { ConditionalObjectKeys, Pipe, PipeInput, PipeOutput, v } from 'valleyed'
+import pino, { Logger } from 'pino'
+import { ConditionalObjectKeys, Pipe, PipeInput, v } from 'valleyed'
 
 import { HookCb, HookEvent, HookRecord, runHooks } from './hooks'
 import {
@@ -11,7 +12,6 @@ import {
 	instanceSettingsPipe,
 	jobsPipe,
 	JobTypes,
-	logPipe,
 	serverTypePipe,
 	ServerTypes,
 	Settings,
@@ -23,12 +23,20 @@ export class Instance {
 	static #instance: Instance
 	static #hooks: Partial<Record<HookEvent, HookRecord[]>> = {}
 	readonly settings: Readonly<Settings>
-	readonly log: PipeOutput<typeof logPipe>
+	readonly log: Logger<never>
 
 	private constructor(settings: Settings) {
 		Instance.#instance = this
 		this.settings = Object.freeze(settings)
-		this.log = Instance.createLog(this.settings.log)
+		this.log = pino<never>({
+			level: this.settings.log.level,
+			serializers: {
+				err: pino.stdSerializers.err,
+				error: pino.stdSerializers.err,
+				req: pino.stdSerializers.req,
+				res: pino.stdSerializers.res,
+			},
+		})
 		Instance.#registerOnExitHandler()
 	}
 
@@ -109,27 +117,23 @@ export class Instance {
 		process.exit(1)
 	}
 
-	static createLog<T extends PipeInput<typeof logPipe>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(logPipe, input)
+	static createCache<T extends PipeInput<ReturnType<typeof cachePipe>>>(input: ConditionalObjectKeys<T>) {
+		return v.assert(cachePipe(), input) as CacheTypes[T['type']]
 	}
 
-	static createCache<T extends PipeInput<typeof cachePipe>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(cachePipe, input) as CacheTypes[T['type']]
+	static createJobs<T extends PipeInput<ReturnType<typeof jobsPipe>>>(input: ConditionalObjectKeys<T>) {
+		return v.assert(jobsPipe(), input) as JobTypes[T['type']]
 	}
 
-	static createJobs<T extends PipeInput<typeof jobsPipe>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(jobsPipe, input) as JobTypes[T['type']]
+	static createEventBus<T extends PipeInput<ReturnType<typeof eventBusPipe>>>(input: ConditionalObjectKeys<T>) {
+		return v.assert(eventBusPipe(), input) as EventBusTypes[T['type']]
 	}
 
-	static createEventBus<T extends PipeInput<typeof eventBusPipe>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(eventBusPipe, input) as EventBusTypes[T['type']]
+	static createDb<T extends PipeInput<ReturnType<typeof dbPipe>>>(input: ConditionalObjectKeys<T>) {
+		return v.assert(dbPipe(), input) as DbTypes[T['db']['type']]
 	}
 
-	static createDb<T extends PipeInput<typeof dbPipe>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(dbPipe, input) as DbTypes[T['db']['type']]
-	}
-
-	createServer<T extends PipeInput<typeof serverTypePipe>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(serverTypePipe, input) as ServerTypes[T['type']]
+	createServer<T extends PipeInput<ReturnType<typeof serverTypePipe>>>(input: ConditionalObjectKeys<T>) {
+		return v.assert(serverTypePipe(), input) as ServerTypes[T['type']]
 	}
 }
