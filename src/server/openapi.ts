@@ -28,11 +28,12 @@ export class OpenApi {
 	#baseOpenapiDoc: OpenAPIV3_1.Document
 
 	constructor() {
-		const { app, server } = Instance.get().settings
+		const instance = Instance.get()
+		const { app, server } = instance.settings
 		this.#baseOpenapiDoc = {
 			openapi: '3.0.0',
 			info: {
-				title: `${app.name} ${app.id}`,
+				title: `${app.name} ${instance.id}`,
 				version: server.openapi.docsVersion ?? '',
 			},
 			servers: server.openapi.docsBaseUrl?.map((url) => ({ url })),
@@ -200,8 +201,8 @@ export class OpenApi {
 	}
 
 	#html(jsonPath: string) {
-		const app = Instance.get().settings.app
-		const title = capitalize(`${app.name} ${app.id}`)
+		const instance = Instance.get()
+		const title = capitalize(`${instance.settings.app.name} ${instance.id}`)
 		return `
 <!doctype html>
 <html>

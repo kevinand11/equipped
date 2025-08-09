@@ -42,7 +42,7 @@ export class KafkaEventBus extends EventBus {
 				const subscribe = async () => {
 					await this.#createTopic(topic)
 					const groupId = options.fanout
-						? Instance.get().getScopedName(`${Instance.get().settings.app.id}-fanout-${Random.string(10)}`)
+						? Instance.get().getScopedName(`${Instance.get().id}-fanout-${Random.string(10)}`)
 						: topic
 					const consumer = this.#client.consumer(this.#confluent ? ({ kafkaJS: { groupId } } as any) : { groupId })
 

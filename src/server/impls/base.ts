@@ -204,14 +204,15 @@ export abstract class Server<Req = any, Res = any> {
 
 	async start() {
 		const port = this.config.port
-		const { app, server } = Instance.get().settings
+		const instance = Instance.get()
+		const { app, server } = instance.settings
 		if (server.healthPath)
 			this.addRoute({
 				method: Methods.get,
 				path: server.healthPath,
 				handler: async (req) =>
 					req.res({
-						body: `${app.id}(${app.name}) service running`,
+						body: `${instance.id}(${app.name}) service running`,
 						contentType: 'text/plain',
 					}),
 			})
@@ -237,7 +238,7 @@ export abstract class Server<Req = any, Res = any> {
 
 		await Promise.all(this.#queue.map((cb) => cb()))
 		const started = await this.implementations.start(port)
-		if (started) Instance.get().log.info(`${app.id}(${app.name}) service listening on port ${port}`)
+		if (started) Instance.get().log.info(`${instance.id}(${app.name}) service listening on port ${port}`)
 		return started
 	}
 }

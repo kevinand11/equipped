@@ -9,7 +9,6 @@ import { BaseApiKeysUtility, BaseTokensUtility, ExpressServer, FastifyServer, se
 export const instanceSettingsPipe = () =>
 	v.object({
 		app: v.object({
-			id: v.string(),
 			name: v.string(),
 		}),
 		log: v.defaults(

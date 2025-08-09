@@ -20,6 +20,7 @@ import {
 import { EquippedError } from '../errors'
 
 export class Instance {
+	static #id: string | undefined
 	static #instance: Instance
 	static #hooks: Partial<Record<HookEvent, HookRecord[]>> = {}
 	readonly settings: Readonly<Settings>
@@ -36,12 +37,45 @@ export class Instance {
 				req: pino.stdSerializers.req,
 				res: pino.stdSerializers.res,
 			},
+			mixin: () => ({
+				instanceId: Instance.#id,
+			}),
 		})
 		Instance.#registerOnExitHandler()
 	}
 
+	alias(id: string) {
+		if (Instance.#id !== undefined) return Instance.crash(new EquippedError('Instance already has an alias', {}))
+		Instance.#id = id
+	}
+
+	get id() {
+		if (Instance.#id === undefined) return Instance.crash(new EquippedError('Instance doesnt have an alias yet', {}))
+		return Instance.#id
+	}
+
 	getScopedName(name: string, key = '.') {
 		return [this.settings.app.name, name].join(key)
+	}
+
+	createCache<T extends PipeInput<ReturnType<typeof cachePipe>>>(input: ConditionalObjectKeys<T>) {
+		return v.assert(cachePipe(), input) as CacheTypes[T['type']]
+	}
+
+	createJobs<T extends PipeInput<ReturnType<typeof jobsPipe>>>(input: ConditionalObjectKeys<T>) {
+		return v.assert(jobsPipe(), input) as JobTypes[T['type']]
+	}
+
+	createEventBus<T extends PipeInput<ReturnType<typeof eventBusPipe>>>(input: ConditionalObjectKeys<T>) {
+		return v.assert(eventBusPipe(), input) as EventBusTypes[T['type']]
+	}
+
+	createDb<T extends PipeInput<ReturnType<typeof dbPipe>>>(input: ConditionalObjectKeys<T>) {
+		return v.assert(dbPipe(), input) as DbTypes[T['db']['type']]
+	}
+
+	createServer<T extends PipeInput<ReturnType<typeof serverTypePipe>>>(input: ConditionalObjectKeys<T>) {
+		return v.assert(serverTypePipe(), input) as ServerTypes[T['type']]
 	}
 
 	async start() {
@@ -66,6 +100,7 @@ export class Instance {
 	}
 
 	static create(settings: SettingsInput) {
+		if (Instance.#instance) return Instance.crash(new EquippedError('Instance has been initialized already', {}))
 		const settingsValidity = v.validate(instanceSettingsPipe(), settings)
 		if (!settingsValidity.valid) {
 			Instance.crash(
@@ -115,25 +150,5 @@ export class Instance {
 		// eslint-disable-next-line no-console
 		console.error(error)
 		process.exit(1)
-	}
-
-	static createCache<T extends PipeInput<ReturnType<typeof cachePipe>>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(cachePipe(), input) as CacheTypes[T['type']]
-	}
-
-	static createJobs<T extends PipeInput<ReturnType<typeof jobsPipe>>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(jobsPipe(), input) as JobTypes[T['type']]
-	}
-
-	static createEventBus<T extends PipeInput<ReturnType<typeof eventBusPipe>>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(eventBusPipe(), input) as EventBusTypes[T['type']]
-	}
-
-	static createDb<T extends PipeInput<ReturnType<typeof dbPipe>>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(dbPipe(), input) as DbTypes[T['db']['type']]
-	}
-
-	createServer<T extends PipeInput<ReturnType<typeof serverTypePipe>>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(serverTypePipe(), input) as ServerTypes[T['type']]
 	}
 }

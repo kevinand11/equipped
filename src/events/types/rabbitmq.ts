@@ -33,7 +33,7 @@ export class RabbitMQEventBus extends EventBus {
 				const subscribe = async () => {
 					await this.#client.addSetup(async (channel: ConfirmChannel) => {
 						const queueName = options.fanout
-							? Instance.get().getScopedName(`${Instance.get().settings.app.id}-fanout-${Random.string(10)}`)
+							? Instance.get().getScopedName(`${Instance.get().id}-fanout-${Random.string(10)}`)
 							: topic
 						const { queue } = await channel.assertQueue(queueName, { durable: !options.fanout, exclusive: options.fanout })
 						await channel.bindQueue(queue, this.#columnName, topic)
