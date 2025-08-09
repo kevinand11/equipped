@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.25](https://github.com/kevinand11/equipped/compare/v5.0.24...v5.0.25) (2025-08-09)
+
+
+### Features
+
+* instance ids ([376c91d](https://github.com/kevinand11/equipped/commit/376c91d4dadd9ac4324fac6e06404ce04a735afc))
+
 ### [5.0.24](https://github.com/kevinand11/equipped/compare/v5.0.23...v5.0.24) (2025-08-09)
 
 
