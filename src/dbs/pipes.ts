@@ -27,12 +27,30 @@ const queryWhere = v.object({
 	condition: v.catch(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
 })
 
-const queryWhereBlock = v.object({
-	condition: queryKeys,
-	value: v.array(queryWhere),
-})
+const queryWhereBlock = v.recursive(
+	() =>
+		v.discriminate((d) => (Object.values(QueryKeys).includes(d.condition as any) ? 'block' : 'regular'), {
+			block: v.object({
+				condition: queryKeys,
+				value: v.array(queryWhereBlock),
+			}),
+			regular: queryWhere,
+		}),
+	'QueryWhereBlock',
+) as Pipe<
+	| {
+			condition: PipeInput<typeof queryKeys>
+			value: PipeInput<typeof queryWhere>[]
+	  }
+	| PipeInput<typeof queryWhere>,
+	| {
+			condition: PipeOutput<typeof queryKeys>
+			value: PipeOutput<typeof queryWhere>[]
+	  }
+	| PipeOutput<typeof queryWhere>
+>
 
-const queryWhereClause = v.defaults(v.array(v.or([queryWhere, queryWhereBlock])), [])
+const queryWhereClause = v.defaults(v.array(queryWhereBlock), [])
 
 export function queryParamsPipe() {
 	const pagLimit = Instance.get().settings.server?.requests.paginationDefaultLimit ?? 100
