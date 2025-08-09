@@ -56,7 +56,7 @@ export abstract class Server<Req = any, Res = any> {
 		},
 	) {
 		this.server = server
-		this.#openapi = new OpenApi()
+		this.#openapi = new OpenApi(config)
 		const socketInstance = new SocketServer(server, { cors: this.cors })
 		this.socket = new SocketEmitter(socketInstance, config)
 		this.addRouter(this.#openapi.router())
@@ -86,8 +86,8 @@ export abstract class Server<Req = any, Res = any> {
 				this.implementations.registerRoute(method, this.#openapi.cleanPath(path), async (req: Req, res: Res) => {
 					const request = await validateRequest(await this.implementations.parseRequest(req))
 					try {
-						for (const middleware of middlewares) await middleware.cb(request)
-						const rawRes = await route.handler(request)
+						for (const middleware of middlewares) await middleware.cb(request, this.config)
+						const rawRes = await route.handler(request, this.config)
 						const response =
 							rawRes instanceof Response
 								? rawRes
@@ -95,7 +95,7 @@ export abstract class Server<Req = any, Res = any> {
 						return await this.implementations.handleResponse(res, await validateResponse(response))
 					} catch (error) {
 						if (onError?.cb) {
-							const rawResponse = await onError.cb(request, error as Error)
+							const rawResponse = await onError.cb(request, this.config, error as Error)
 							const response =
 								rawResponse instanceof Response
 									? rawResponse
@@ -205,11 +205,11 @@ export abstract class Server<Req = any, Res = any> {
 	async start() {
 		const port = this.config.port
 		const instance = Instance.get()
-		const { app, server } = instance.settings
-		if (server.healthPath)
+		const { app } = instance.settings
+		if (this.config.healthPath)
 			this.addRoute({
 				method: Methods.get,
-				path: server.healthPath,
+				path: this.config.healthPath,
 				handler: async (req) =>
 					req.res({
 						body: `${instance.id}(${app.name}) service running`,

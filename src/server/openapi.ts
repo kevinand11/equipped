@@ -5,6 +5,7 @@ import { capitalize, JsonSchema } from 'valleyed'
 import { Router } from './routes'
 import { Route } from './types'
 import { Instance } from '../instance'
+import { ServerConfig } from './pipes'
 
 declare module 'openapi-types' {
 	namespace OpenAPIV3 {
@@ -27,16 +28,16 @@ export class OpenApi {
 	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
 	#baseOpenapiDoc: OpenAPIV3_1.Document
 
-	constructor() {
+	constructor(private config: ServerConfig) {
 		const instance = Instance.get()
-		const { app, server } = instance.settings
+		const { app } = instance.settings
 		this.#baseOpenapiDoc = {
 			openapi: '3.0.0',
 			info: {
 				title: `${app.name} ${instance.id}`,
-				version: server.openapi.docsVersion ?? '',
+				version: config.openapi.docsVersion ?? '',
 			},
-			servers: server.openapi.docsBaseUrl?.map((url) => ({ url })),
+			servers: config.openapi.docsBaseUrl?.map((url) => ({ url })),
 			paths: {},
 			components: {
 				schemas: {},
@@ -146,7 +147,7 @@ export class OpenApi {
 
 	router() {
 		const jsonPath = '/openapi.json'
-		const router = new Router({ path: Instance.get().settings.server?.openapi.docsPath ?? '/', hide: true })
+		const router = new Router({ path: this.config.openapi.docsPath ?? '/', hide: true })
 		router.get('/index.html')((req) => req.res({ body: this.#html(`.${jsonPath}`), contentType: 'text/html' }))
 		router.get(jsonPath)((req) => req.res({ body: this.#baseOpenapiDoc }))
 		return router

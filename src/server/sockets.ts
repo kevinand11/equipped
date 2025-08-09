@@ -36,7 +36,10 @@ export class SocketEmitter {
 	#routes = {} as Record<string, OnJoinFn>
 	#publish: (data: EmitData) => Promise<void> = async () => {}
 
-	constructor(socket: Server, config: ServerConfig) {
+	constructor(
+		socket: Server,
+		private config: ServerConfig,
+	) {
 		this.socketInstance = socket
 		this.#setupSocketConnection()
 		Instance.on(
@@ -102,7 +105,7 @@ export class SocketEmitter {
 		this.socketInstance.on('connection', async (socket) => {
 			const socketId = socket.id
 			let user = null as AuthUser | null
-			const tokensUtil = Instance.get().settings.server?.requestsAuth.tokens
+			const tokensUtil = this.config.requestsAuth.tokens
 			if (socket.handshake.auth.authorization && tokensUtil)
 				user = await tokensUtil.verifyAccessToken(socket.handshake.auth.authorization ?? '').catch(() => null)
 			socket.on('leave', async (data: LeaveRoomParams, callback: Callback) => {

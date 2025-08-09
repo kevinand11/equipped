@@ -8,7 +8,7 @@ import type { IncomingFile, Response, Request, RouteDef, RouteDefToReqRes } from
 const filePipe = (err?: string) =>
 	v.array(
 		v.file<IncomingFile>(err).pipe((input) => {
-			const err = `is larger than allowed limit of ${Instance.get().settings.server?.requests.maxFileUploadSizeInMb}mb`
+			const err = `is larger than allowed limit of ${Instance.get().settings.utils.maxFileUploadSizeInMb}mb`
 			const valid = input ? !input.isTruncated : true
 			if (valid) return input
 			throw PipeError.root(err, input)

@@ -1,5 +1,4 @@
 import { NotAuthenticatedError, NotAuthorizedError } from '../../errors'
-import { Instance } from '../../instance'
 import { makeMiddleware } from '../types'
 
 export const requireAuthUser = makeMiddleware(
@@ -47,11 +46,11 @@ export const requireApiKeyUser = makeMiddleware(
 )
 
 export const requireRefreshTokenUser = makeMiddleware(
-	async (request) => {
+	async (request, config) => {
 		if (request.users.refresh.error) throw request.users.refresh.error
 		const refreshToken = request.headers.RefreshToken
 		if (!refreshToken) throw new NotAuthorizedError('x-refresh-token header missing')
-		request.users.refresh.value = await Instance.get().settings.server?.requestsAuth.tokens?.verifyRefreshToken(refreshToken)
+		request.users.refresh.value = await config?.requestsAuth.tokens?.verifyRefreshToken(refreshToken)
 		if (!request.users.refresh.value) throw new NotAuthorizedError()
 	},
 	(route) => {

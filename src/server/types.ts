@@ -3,6 +3,7 @@ import { IsInTypeList, Pipe, PipeInput, PipeOutput, Prettify } from 'valleyed'
 import type { Request, Response } from './requests'
 import type { RequestError } from '../errors'
 import { Enum } from '../types'
+import { ServerConfig } from './pipes'
 
 export const Methods = {
 	head: 'head',
@@ -113,10 +114,14 @@ type Res<T extends RouteDefToReqRes<any>> = Awaitable<
 			: Response<T>
 		: Response<T>
 >
-export type RouteDefHandler<Def extends RouteDef> = (req: Request<RouteDefToReqRes<Def>>) => Res<RouteDefToReqRes<Def>>
-type RouteMiddlewareHandler<_Def extends RouteDef> = (req: Request<RouteDefToReqRes<RouteDef>>) => Awaitable<void>
+export type RouteDefHandler<Def extends RouteDef> = (
+	req: Request<RouteDefToReqRes<Def>>,
+	config: ServerConfig,
+) => Res<RouteDefToReqRes<Def>>
+type RouteMiddlewareHandler<_Def extends RouteDef> = (req: Request<RouteDefToReqRes<RouteDef>>, config: ServerConfig) => Awaitable<void>
 type ErrorHandler<Def extends RouteDef> = (
 	req: Request<RouteDefToReqRes<Def>>,
+	config: ServerConfig,
 	err: Error,
 ) => Res<
 	Omit<RouteDefToReqRes<Def>, 'response' | 'statusCode' | 'responseHeaders'> & {

@@ -53,7 +53,7 @@ const queryWhereBlock = v.recursive(
 const queryWhereClause = v.defaults(v.array(queryWhereBlock), [])
 
 export function queryParamsPipe() {
-	const pagLimit = Instance.get().settings.server?.requests.paginationDefaultLimit ?? 100
+	const pagLimit = Instance.get().settings.utils.paginationDefaultLimit
 	return v.meta(
 		v
 			.object({
