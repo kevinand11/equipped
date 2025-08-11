@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.26](https://github.com/kevinand11/equipped/compare/v5.0.25...v5.0.26) (2025-08-11)
+
+
+### Bug Fixes
+
+* recursive fn not defined when validating queryParams ([c0c3f31](https://github.com/kevinand11/equipped/commit/c0c3f31b421414bf8d2e44999b0dee2e5fb97fba))
+
 ### [5.0.25](https://github.com/kevinand11/equipped/compare/v5.0.24...v5.0.25) (2025-08-09)
 
 
