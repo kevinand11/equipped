@@ -19,46 +19,45 @@ export enum Conditions {
 	exists = 'exists',
 }
 
-const queryKeys = v.catch(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
-
-const queryWhere = v.object({
-	field: v.string(),
-	value: v.any(),
-	condition: v.catch(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
-})
-
-const queryWhereBlock = v.recursive(
-	() =>
-		v.discriminate((d) => (Object.values(QueryKeys).includes(d.condition as any) ? 'block' : 'regular'), {
-			block: v.object({
-				condition: queryKeys,
-				value: v.array(queryWhereBlock),
-			}),
-			regular: queryWhere,
-		}),
-	'QueryWhereBlock',
-) as Pipe<
-	| {
-			condition: PipeInput<typeof queryKeys>
-			value: PipeInput<typeof queryWhere>[]
-	  }
-	| PipeInput<typeof queryWhere>,
-	| {
-			condition: PipeOutput<typeof queryKeys>
-			value: PipeOutput<typeof queryWhere>[]
-	  }
-	| PipeOutput<typeof queryWhere>
->
-
-const queryWhereClause = v.defaults(v.array(queryWhereBlock), [])
-
 export function queryParamsPipe() {
-	const pagLimit = Instance.get().settings.utils.paginationDefaultLimit
+	const queryKeys = v.catch(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
+	const queryWhere = v.object({
+		field: v.string(),
+		value: v.any(),
+		condition: v.catch(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
+	})
+	const queryWhereBlock = v.recursive(
+		() =>
+			v.discriminate((d) => (Object.values(QueryKeys).includes(d.condition as any) ? 'block' : 'regular'), {
+				block: v.object({
+					condition: queryKeys,
+					value: v.array(queryWhereBlock),
+				}),
+				regular: queryWhere,
+			}),
+		'QueryWhereBlock',
+	) as Pipe<
+		| {
+				condition: PipeInput<typeof queryKeys>
+				value: PipeInput<typeof queryWhere>[]
+		  }
+		| PipeInput<typeof queryWhere>,
+		| {
+				condition: PipeOutput<typeof queryKeys>
+				value: PipeOutput<typeof queryWhere>[]
+		  }
+		| PipeOutput<typeof queryWhere>
+	>
+
+	const queryWhereClause = v.defaults(v.array(queryWhereBlock), [])
 	return v.meta(
 		v
 			.object({
 				all: v.defaults(v.boolean(), false),
-				limit: v.catch(v.defaults(v.number().pipe(v.lte(pagLimit)), pagLimit), pagLimit),
+				limit: v.lazy(() => {
+					const pagLimit = Instance.get().settings.utils.paginationDefaultLimit
+					return v.catch(v.defaults(v.number().pipe(v.lte(pagLimit)), pagLimit), pagLimit)
+				}),
 				page: v.catch(v.defaults(v.number().pipe(v.gte(1)), 1), 1),
 				search: v.defaults(
 					v.nullish(
