@@ -115,8 +115,8 @@ export abstract class Server<Req = any, Res = any> {
 		let status = defaultStatusCode
 		let contentType = defaultContentType
 		const jsonSchema: OpenApiSchemaDef = { response: {}, request: {} }
-		const requestPipe: Pick<RouteDef, 'body' | 'headers' | 'query' | 'params'> = {}
-		const responsePipe: Pick<RouteDef, 'response' | 'responseHeaders'> = {}
+		const requestPipeDefs: Pick<RouteDef, 'body' | 'headers' | 'query' | 'params'> = {}
+		const responsePipeDefs: Pick<RouteDef, 'response' | 'responseHeaders'> = {}
 
 		const defs: {
 			key: Exclude<keyof RouteDef, `default${string}` | 'context'>
@@ -135,12 +135,12 @@ export abstract class Server<Req = any, Res = any> {
 			if (def.skip) return
 
 			if (def.type === 'request') {
-				requestPipe[def.key] = pipe
+				requestPipeDefs[def.key] = pipe
 				jsonSchema.request[def.key as keyof typeof jsonSchema.request] = v.schema(pipe)
 			}
 			if (def.type === 'response') {
 				const pipeRecords = errorsSchemas.concat({ status: defaultStatusCode, contentType, pipe })
-				responsePipe[def.key] = v.any().pipe((input) => {
+				responsePipeDefs[def.key] = v.any().pipe((input) => {
 					const p = pipeRecords.find((r) => r.status === status)?.pipe
 					if (!p) throw PipeError.root(`schema not defined for status code: ${status}`, input)
 					return v.assert(p, input)
@@ -152,12 +152,16 @@ export abstract class Server<Req = any, Res = any> {
 				}))
 			}
 		})
+		const requestPipe = v.object(requestPipeDefs)
+		v.compile(requestPipe, { allErrors: true })
+		const responsePipe = v.object(responsePipeDefs)
+		v.compile(responsePipe, { allErrors: true })
 		const validateRequest: RequestValidator = async (request) => {
-			if (!Object.keys(requestPipe)) return request
+			if (!Object.keys(requestPipeDefs)) return request
 			const context = schema.context ? await schema.context(request) : {}
 			request.context = context
 			const validity = requestLocalStorage.run(request, () =>
-				v.validate(v.object(requestPipe), {
+				v.validate(requestPipe, {
 					params: request.params,
 					headers: request.headers,
 					query: request.query,
@@ -173,13 +177,12 @@ export abstract class Server<Req = any, Res = any> {
 			return request
 		}
 		const validateResponse: ResponseValidator = async (response) => {
-			if (!Object.keys(responsePipe)) return response
+			if (!Object.keys(responsePipeDefs)) return response
 			status = response.status
 			contentType = response.contentType
-			contentType
 
 			const validity = responseLocalStorage.run(response, () =>
-				v.validate(v.object(responsePipe), {
+				v.validate(responsePipe, {
 					responseHeaders: response.headers,
 					response: response.body,
 				}),
@@ -221,7 +224,7 @@ export abstract class Server<Req = any, Res = any> {
 			throw new NotFoundError(`Route ${request.path} not found`)
 		})
 		this.implementations.registerErrorHandler(async (error, _, res) => {
-			Instance.get().log.error(error)
+			Instance.get().log.error({ error }, 'Uncaught error in route handler')
 			const response =
 				error instanceof RequestError
 					? new Response({
