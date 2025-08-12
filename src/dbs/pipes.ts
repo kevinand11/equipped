@@ -19,37 +19,38 @@ export enum Conditions {
 	exists = 'exists',
 }
 
-export function queryParamsPipe() {
-	const queryKeys = v.catch(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
-	const queryWhere = v.object({
-		field: v.string(),
-		value: v.any(),
-		condition: v.catch(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
-	})
-	const queryWhereBlock = v.recursive(
-		() =>
-			v.discriminate((d) => (Object.values(QueryKeys).includes(d.condition as any) ? 'block' : 'regular'), {
-				block: v.object({
-					condition: queryKeys,
-					value: v.array(queryWhereBlock),
-				}),
-				regular: queryWhere,
+const queryKeys = v.catch(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
+const queryWhere = v.object({
+	field: v.string(),
+	value: v.any(),
+	condition: v.catch(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
+})
+const queryWhereBlock = v.recursive(
+	() =>
+		v.discriminate((d) => (Object.values(QueryKeys).includes(d.condition as any) ? 'block' : 'regular'), {
+			block: v.object({
+				condition: queryKeys,
+				value: v.array(queryWhereBlock),
 			}),
-		'QueryWhereBlock',
-	) as Pipe<
-		| {
-				condition: PipeInput<typeof queryKeys>
-				value: PipeInput<typeof queryWhere>[]
-		  }
-		| PipeInput<typeof queryWhere>,
-		| {
-				condition: PipeOutput<typeof queryKeys>
-				value: PipeOutput<typeof queryWhere>[]
-		  }
-		| PipeOutput<typeof queryWhere>
-	>
+			regular: queryWhere,
+		}),
+	'QueryWhereBlock',
+) as Pipe<
+	| {
+			condition: PipeInput<typeof queryKeys>
+			value: PipeInput<typeof queryWhere>[]
+	  }
+	| PipeInput<typeof queryWhere>,
+	| {
+			condition: PipeOutput<typeof queryKeys>
+			value: PipeOutput<typeof queryWhere>[]
+	  }
+	| PipeOutput<typeof queryWhere>
+>
 
-	const queryWhereClause = v.defaults(v.array(queryWhereBlock), [])
+const queryWhereClause = v.defaults(v.array(queryWhereBlock), [])
+
+export function queryParamsPipe() {
 	return v.meta(
 		v
 			.object({
