@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.27](https://github.com/kevinand11/equipped/compare/v5.0.26...v5.0.27) (2025-08-13)
+
+
+### Bug Fixes
+
+* compile request and response pipes before server starts ([79fbe2d](https://github.com/kevinand11/equipped/commit/79fbe2d8c6f0a1eb2bb07d4ce5447be02d8f90fc))
+* recursive fn not defined when validating queryParams ([d7b4650](https://github.com/kevinand11/equipped/commit/d7b4650b7604f0097bf8d481febc6646aec697fc))
+
 ### [5.0.26](https://github.com/kevinand11/equipped/compare/v5.0.25...v5.0.26) (2025-08-11)
 
 
