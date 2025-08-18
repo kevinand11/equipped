@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.28](https://github.com/kevinand11/equipped/compare/v5.0.27...v5.0.28) (2025-08-18)
+
+
+### Bug Fixes
+
+* error when processing event ([12e867f](https://github.com/kevinand11/equipped/commit/12e867fbaf0bf5240d12227ffd394777f2996663))
+
 ### [5.0.27](https://github.com/kevinand11/equipped/compare/v5.0.26...v5.0.27) (2025-08-13)
 
 
