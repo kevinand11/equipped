@@ -1,6 +1,7 @@
 import Confluent from '@confluentinc/kafka-javascript'
 import Kafka from 'kafkajs'
 
+import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import type { Events } from '../../types'
 import { Random, parseJSONValue } from '../../utilities'
@@ -51,10 +52,12 @@ export class KafkaEventBus extends EventBus {
 
 					await consumer.run({
 						eachMessage: async ({ message }) => {
-							Instance.resolveBeforeCrash(async () => {
+							await Instance.resolveBeforeCrash(async () => {
 								if (!message.value) return
 								await onMessage(parseJSONValue(message.value.toString()))
-							})
+							}).catch((error) =>
+								Instance.crash(new EquippedError('Error processing kafka event', { topic, groupId, options }, error)),
+							)
 						},
 					})
 

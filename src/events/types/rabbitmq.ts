@@ -40,7 +40,7 @@ export class RabbitMQEventBus extends EventBus {
 						channel.consume(
 							queue,
 							async (msg) => {
-								Instance.resolveBeforeCrash(async () => {
+								await Instance.resolveBeforeCrash(async () => {
 									if (!msg) return
 									try {
 										await onMessage(parseJSONValue(msg.content.toString()))
