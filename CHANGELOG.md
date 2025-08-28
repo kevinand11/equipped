@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.29](https://github.com/kevinand11/equipped/compare/v5.0.28...v5.0.29) (2025-08-28)
+
+
+### Bug Fixes
+
+* use snapshot mode of always ([cf3f132](https://github.com/kevinand11/equipped/commit/cf3f13204549661846fc440096f974f371269f84))
+
 ### [5.0.28](https://github.com/kevinand11/equipped/compare/v5.0.27...v5.0.28) (2025-08-18)
 
 
