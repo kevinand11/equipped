@@ -115,8 +115,8 @@ export abstract class Server<Req = any, Res = any> {
 		let status = defaultStatusCode
 		let contentType = defaultContentType
 		const jsonSchema: OpenApiSchemaDef = { response: {}, request: {} }
-		const requestPipeDefs: Pick<RouteDef, 'body' | 'headers' | 'query' | 'params'> = {}
-		const responsePipeDefs: Pick<RouteDef, 'response' | 'responseHeaders'> = {}
+		const requestPipeDefs: Pick<RouteDef, 'body' | 'headers' | 'query' | 'params' | 'cookies'> = {}
+		const responsePipeDefs: Pick<RouteDef, 'response' | 'responseHeaders' | 'responseCookies'> = {}
 
 		const defs: {
 			key: Exclude<keyof RouteDef, `default${string}` | 'context'>
@@ -125,10 +125,12 @@ export abstract class Server<Req = any, Res = any> {
 		}[] = [
 			{ key: 'params', type: 'request' },
 			{ key: 'headers', type: 'request' },
+			{ key: 'cookies', type: 'request' },
 			{ key: 'query', type: 'request' },
 			{ key: 'body', type: 'request', skip: !(<MethodsEnum[]>[Methods.post, Methods.put, Methods.patch]).includes(method) },
 			{ key: 'response', type: 'response' },
 			{ key: 'responseHeaders', type: 'response' },
+			{ key: 'responseCookies', type: 'response' },
 		]
 		defs.forEach((def) => {
 			const pipe = schema[def.key] ?? v.any()
@@ -166,14 +168,16 @@ export abstract class Server<Req = any, Res = any> {
 					headers: request.headers,
 					query: request.query,
 					body: request.body,
+					cookies: request.cookies,
 				}),
 			)
 
 			if (!validity.valid) throw pipeErrorToValidationError(validity.error)
-			request.params = validity.value.params
-			request.headers = validity.value.headers
-			request.query = validity.value.query
-			request.body = validity.value.body
+			request.params = validity.value.params!
+			request.headers = validity.value.headers!
+			request.query = validity.value.query!
+			request.body = validity.value.body!
+			request.cookies = validity.value.cookies!
 			return request
 		}
 		const validateResponse: ResponseValidator = async (response) => {
@@ -184,13 +188,15 @@ export abstract class Server<Req = any, Res = any> {
 			const validity = responseLocalStorage.run(response, () =>
 				v.validate(responsePipe, {
 					responseHeaders: response.headers,
+					responseCookies: response.cookies,
 					response: response.body,
 				}),
 			)
 
 			if (!validity.valid) throw pipeErrorToValidationError(validity.error)
-			response.body = validity.value.response
-			response.headers = validity.value.responseHeaders
+			response.body = validity.value.response!
+			response.headers = validity.value.responseHeaders!
+			response.cookieValues = validity.value.responseCookies!
 			return response
 		}
 		return {

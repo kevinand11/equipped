@@ -1,15 +1,20 @@
-import type { Readable } from 'stream'
+import type { Readable } from 'node:stream'
 
+import { SerializeOptions } from '@fastify/cookie'
 import { DistributiveOmit, IsInTypeList } from 'valleyed'
 
 import type { RequestError } from '../errors'
-import type { DefaultHeaders, IncomingFile, MethodsEnum, RouteDef, RouteDefToReqRes } from './types'
+import type { DefaultCookies, DefaultHeaders, IncomingFile, MethodsEnum, RouteDef, RouteDefToReqRes } from './types'
 import type { AuthUser, RefreshUser } from '../types'
 import { parseJSONObject } from '../utilities'
 
 type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
 type ReqUser<T> = { error?: RequestError; value?: T }
 type FallbackHeadersType = Record<string, string | string[] | undefined>
+
+type CookieVal<C extends DefaultCookies> = {
+	[K in keyof C]: SerializeOptions & { value: C[K] }
+}
 
 export class Request<Def extends RouteDefToReqRes<any>> {
 	readonly ip: string | undefined
@@ -20,7 +25,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 	query: Def['query']
 	headers: Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & FallbackHeadersType
 	context: Def['context']
-	readonly cookies: Record<string, any>
+	cookies: Record<string, string | undefined> & Def['requestCookies']
 	users: {
 		access: ReqUser<AuthUser>
 		refresh: ReqUser<RefreshUser>
@@ -48,7 +53,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		body: Def['body']
 		params: Def['params']
 		query: Def['query']
-		cookies: Record<string, any>
+		cookies: Record<string, string | undefined> & Def['requestCookies']
 		headers: Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & FallbackHeadersType
 		files: Record<string, IncomingFile[]>
 		method: MethodsEnum
@@ -66,7 +71,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		this.context = context
 	}
 
-	pipe(stream: Readable, opts: { headers?: Def['responseHeaders']; status?: Def['statusCode'] } = {}) {
+	pipe(stream: Readable, opts: { headers?: Def['responseHeaders']; cookies?: Def['responseCookies']; status?: Def['statusCode'] } = {}) {
 		return new Response<Omit<Def, 'response'> & { response: Readable }>(<any>{ ...opts, piped: true, body: stream })
 	}
 
@@ -75,10 +80,11 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 	}
 
 	error<
-		T extends Omit<Def, 'response' | 'statusCode' | 'responseHeaders' | 'contentType'> & {
+		T extends Omit<Def, 'response' | 'statusCode' | 'responseHeaders' | 'responseCookies' | 'contentType'> & {
 			response: RequestError['serializedErrors']
 			statusCode: RequestError['statusCode']
 			responseHeaders: DefaultHeaders
+			responseCookies: DefaultCookies
 			contentType: 'application/json'
 		},
 	>(params: DistributiveOmit<RequestParams<T>, 'piped'>) {
@@ -97,25 +103,48 @@ type RequestParams<Def extends RouteDefToReqRes<any>, T = Def['response']> = { b
 		: { contentType: Def['contentType'] }) &
 	(IsInTypeList<Def['responseHeaders'], [DefaultHeaders]> extends true
 		? { headers?: Def['responseHeaders'] }
-		: { headers: Def['responseHeaders'] })
+		: { headers: Def['responseHeaders'] }) &
+	(IsInTypeList<Def['responseCookies'], [DefaultCookies]> extends true
+		? { cookies?: CookieVal<Def['responseCookies']> }
+		: { cookies: CookieVal<Def['responseCookies']> })
 
 export class Response<Def extends RouteDefToReqRes<any>> {
 	body: Def['response'] | undefined
 	headers: Def['responseHeaders']
+	cookies: CookieVal<Def['responseCookies']>
 	readonly status: Def['statusCode']
 	readonly contentType: Def['contentType']
 	readonly piped: boolean
 
-	constructor({ body, status = <any>200, headers = <any>{}, piped = false, contentType = <any>'application/json' }: RequestParams<Def>) {
+	constructor({
+		body,
+		status = <any>200,
+		headers = <any>{},
+		cookies = <any>{},
+		piped = false,
+		contentType = <any>'application/json',
+	}: RequestParams<Def>) {
 		this.body = body
 		this.status = status
 		this.contentType = contentType
 		this.headers = headers
+		this.cookies = cookies
 		this.piped = piped
 
 		if (!this.piped) {
 			// @ts-expect-error indexing on generic
 			this.headers['Content-Type'] = contentType
 		}
+	}
+
+	get cookieValues() {
+		return Object.fromEntries(Object.entries(this.cookies).map(([key, val]) => [key, val] as const))
+	}
+
+	set cookieValues(values: DefaultCookies) {
+		Object.entries(values).forEach(([key, val]) => {
+			// @ts-expect-error indexing on generic
+			if (this.cookies[key]) this.cookies[key].value = val
+		})
 	}
 }

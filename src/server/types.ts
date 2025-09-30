@@ -31,6 +31,7 @@ export type MethodsEnum = Enum<typeof Methods>
 export type StatusCodesEnum = Enum<typeof StatusCodes>
 
 export type DefaultHeaders = Record<string, ArrayOrValue<string>>
+export type DefaultCookies = Record<string, string | undefined>
 
 type ArrayOrValue<T> = T | T[] | undefined
 
@@ -47,9 +48,11 @@ export type RouteDef = {
 	params?: Pipe<Record<string, ArrayOrValue<string>>, Record<string, ArrayOrValue<string>>>
 	query?: Pipe<Record<string, ArrayOrValue<unknown>>, Record<string, ArrayOrValue<unknown>>>
 	headers?: Pipe<DefaultHeaders, DefaultHeaders>
+	cookies?: Pipe<DefaultCookies, DefaultCookies>
 	body?: Pipe<Record<string, unknown>, Record<string, unknown>>
 	response?: Pipe<unknown, unknown>
 	responseHeaders?: Pipe<DefaultHeaders, DefaultHeaders>
+	responseCookies?: Pipe<DefaultCookies, DefaultCookies>
 	defaultStatusCode?: StatusCodesEnum
 	defaultContentType?: string
 	context?: (req: Request<RouteDefToReqRes<RouteDef>>) => Awaitable<Record<string, unknown>>
@@ -98,9 +101,11 @@ export type RouteDefToReqRes<T extends RouteDef> = Prettify<{
 	body: PipeOutput<GetApiPart<T, 'body'>>
 	params: PipeOutput<GetApiPart<T, 'params'>>
 	requestHeaders: PipeOutput<GetApiPart<T, 'headers'>>
+	requestCookies: PipeOutput<GetApiPart<T, 'cookies'>>
 	query: PipeOutput<GetApiPart<T, 'query'>>
 	response: PipeOutput<GetApiPart<T, 'response'>>
 	responseHeaders: PipeOutput<GetApiPart<T, 'responseHeaders'>>
+	responseCookies: PipeOutput<GetApiPart<T, 'responseCookies'>>
 	statusCode: GetApiPart<T, 'defaultStatusCode'>
 	contentType: GetApiPart<T, 'defaultContentType'>
 	context: Awaited<ReturnType<GetApiPart<T, 'context'>>>
@@ -110,7 +115,9 @@ type Awaitable<T> = Promise<T> | T
 type Res<T extends RouteDefToReqRes<any>> = Awaitable<
 	IsInTypeList<T['statusCode'], [StatusCodesEnum, 200]> extends true
 		? IsInTypeList<T['responseHeaders'], [DefaultHeaders]> extends true
-			? Response<T> | T['response']
+			? IsInTypeList<T['responseCookies'], [DefaultCookies]> extends true
+				? Response<T> | T['response']
+				: Response<T>
 			: Response<T>
 		: Response<T>
 >
@@ -124,10 +131,11 @@ type ErrorHandler<Def extends RouteDef> = (
 	config: ServerConfig,
 	err: Error,
 ) => Res<
-	Omit<RouteDefToReqRes<Def>, 'response' | 'statusCode' | 'responseHeaders'> & {
+	Omit<RouteDefToReqRes<Def>, 'response' | 'statusCode' | 'responseHeaders' | 'responseCookies'> & {
 		response: RequestError['serializedErrors']
 		statusCode: RequestError['statusCode']
 		responseHeaders: DefaultHeaders
+		responseCookies: DefaultCookies
 	}
 >
 

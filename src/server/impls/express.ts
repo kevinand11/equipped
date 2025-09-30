@@ -68,7 +68,8 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 			},
 			handleResponse: async (res, response) => {
 				if (!response.piped) {
-					Object.entries(<object>response.headers).forEach(([key, value]) => res.header(key, value))
+					Object.entries(response.headers).forEach(([key, value]) => res.header(key, value as string))
+					Object.entries(response.cookies).forEach(([key, { value, ...opts }]) => res.cookie(key, value, opts))
 					const type = response.body === null || response.body === undefined ? 'json' : 'send'
 					res.status(response.status)[type](response.body).end()
 				} else {

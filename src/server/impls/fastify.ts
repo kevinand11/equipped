@@ -63,6 +63,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 				})
 			},
 			handleResponse: async (res, response) => {
+				for (const [key, { value, ...opts }] of Object.entries(response.cookies)) res = res.setCookie(key, value, opts)
 				await res.status(response.status).headers(response.headers).send(response.body)
 			},
 			registerRoute: (method, path, cb) => {
