@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.31](https://github.com/kevinand11/equipped/compare/v5.0.30...v5.0.31) (2025-10-02)
+
+
+### Bug Fixes
+
+* type errors ([c945f0b](https://github.com/kevinand11/equipped/commit/c945f0b0e2324c74748214eb9ad8262eb8d9e4e5))
+
 ### [5.0.30](https://github.com/kevinand11/equipped/compare/v5.0.29...v5.0.30) (2025-10-02)
 
 
