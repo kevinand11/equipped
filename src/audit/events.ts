@@ -4,14 +4,15 @@ import { Pipe, PipeInput, PipeOutput, v } from 'valleyed'
 import { Conditions, Db, Table, wrapQueryParams } from '../dbs'
 import { EquippedError } from '../errors'
 
-export type EventDefinition<P, R> = {
+export type EventDefinition<T extends string, P, R> = {
+	type: T
 	pipe: Pipe<any, P>
 	handle: (payload: P, context: { idempotencyKey: string; idempotencyDate: Date }) => Promise<R>
 }
 
-type EventDoc<K extends string, P> = {
+export type EventDoc<T extends string, P> = {
 	key: string
-	type: K
+	type: T
 	ts: number
 	payload: P
 	mode: 'sync' | 'async'
@@ -21,7 +22,7 @@ type EventDoc<K extends string, P> = {
 	completedAt: number | null
 }
 
-export class EventAudit<E extends Record<string, EventDefinition<any, any>>> {
+export class EventAudit<E extends Record<string, EventDefinition<string, any, any>>> {
 	private table: Table<any, EventDoc<string, any>, EventDoc<string, any> & { toJSON: () => Record<string, unknown> }, any>
 
 	constructor(
@@ -64,7 +65,7 @@ export class EventAudit<E extends Record<string, EventDefinition<any, any>>> {
 	}
 
 	async #processEvent<K extends keyof E & string>(event: EventDoc<K, PipeOutput<E[K]['pipe']>>) {
-		type HandlerResult = E[K] extends EventDefinition<any, infer R> ? R : never
+		type HandlerResult = E[K] extends EventDefinition<string, any, infer R> ? R : never
 		return this.db.session(async () => {
 			const handler = this.handlers[event.type]
 			if (!handler) throw new EquippedError('audit handler not found', { event })
@@ -118,7 +119,7 @@ export class EventAudit<E extends Record<string, EventDefinition<any, any>>> {
 		return ulid()
 	}
 
-	static defineHandler<P, R>(def: EventDefinition<P, R>) {
-		return def
+	static defineHandler<T extends string, P, R>(type: T, def: Omit<EventDefinition<T, P, R>, 'type'>) {
+		return { ...def, type }
 	}
 }

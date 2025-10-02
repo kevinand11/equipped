@@ -1,1 +1,1 @@
-export { EventAudit } from './events'
+export { EventAudit, EventDefinition } from './events'
