@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.32](https://github.com/kevinand11/equipped/compare/v5.0.31...v5.0.32) (2025-10-02)
+
+
+### Bug Fixes
+
+* extend defineHandler type ([4011003](https://github.com/kevinand11/equipped/commit/40110036366fb11fa69dd430ec346cf77c5defe2))
+
 ### [5.0.31](https://github.com/kevinand11/equipped/compare/v5.0.30...v5.0.31) (2025-10-02)
 
 
