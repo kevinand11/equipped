@@ -53,6 +53,7 @@ export default defineConfig([
 		dts: {
 			entry: [
 				'src/index.ts',
+				'src/audit/index.ts',
 				'src/cache/index.ts',
 				'src/dbs/index.ts',
 				'src/errors/index.ts',

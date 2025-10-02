@@ -31,6 +31,17 @@
 				"default": "./dist/esm/index.mjs"
 			}
 		},
+		"./audit": {
+			"types": "./dist/types/audit/index.d.ts",
+			"require": {
+				"min": "./dist/cjs/audit/index.min.cjs",
+				"default": "./dist/cjs/audit/index.cjs"
+			},
+			"import": {
+				"min": "./dist/esm/audit/index.min.mjs",
+				"default": "./dist/esm/audit/index.mjs"
+			}
+		},
 		"./cache": {
 			"types": "./dist/types/cache/index.d.ts",
 			"require": {
