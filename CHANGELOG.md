@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.30](https://github.com/kevinand11/equipped/compare/v5.0.29...v5.0.30) (2025-10-02)
+
+
+### Features
+
+* events auditing ([4f7eb59](https://github.com/kevinand11/equipped/commit/4f7eb59c75cd8b2809084c798d4ce3e0bc500ead))
+* response cookies and cookies validations ([a500adb](https://github.com/kevinand11/equipped/commit/a500adbd937efa1bd4d320836ba3671414bbe0f3))
+
 ### [5.0.29](https://github.com/kevinand11/equipped/compare/v5.0.28...v5.0.29) (2025-08-28)
 
 
