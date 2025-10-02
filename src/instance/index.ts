@@ -1,4 +1,5 @@
 import pino, { Logger } from 'pino'
+import { ulid } from 'ulid'
 import { ConditionalObjectKeys, Pipe, PipeInput, v } from 'valleyed'
 
 import { HookCb, HookEvent, HookRecord, runHooks } from './hooks'
@@ -150,5 +151,9 @@ export class Instance {
 		// eslint-disable-next-line no-console
 		console.error(error)
 		process.exit(1)
+	}
+
+	static createId() {
+		return ulid()
 	}
 }
