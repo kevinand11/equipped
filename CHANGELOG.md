@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.34](https://github.com/kevinand11/equipped/compare/v5.0.33...v5.0.34) (2025-10-03)
+
+
+### Features
+
+* audit context with userId ([d5ecd16](https://github.com/kevinand11/equipped/commit/d5ecd167d7d794cef4c9f994f6c90bd950b9aba6))
+
 ### [5.0.33](https://github.com/kevinand11/equipped/compare/v5.0.32...v5.0.33) (2025-10-02)
 
 ### [5.0.32](https://github.com/kevinand11/equipped/compare/v5.0.31...v5.0.32) (2025-10-02)
