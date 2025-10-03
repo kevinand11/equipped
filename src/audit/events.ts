@@ -11,7 +11,7 @@ export type EventDefinition<P extends Pipe<any, any>, R> = {
 
 export type EventContext = {
 	key: string
-	userId: string | null
+	by: string | null
 	date: Date
 }
 
@@ -22,12 +22,12 @@ export type EventDoc = {
 	payload: unknown
 	mode: 'sync' | 'async'
 	status: 'pending' | 'processing' | 'done' | 'failed'
-	userId: string | null
+	by: string | null
 	error: string | null
 	startedAt: number | null
 	completedAt: number | null
 }
-type Context = { userId?: string }
+type Context = { by?: string }
 
 export class EventAudit {
 	private table: Table<any, EventDoc, EventDoc & { toJSON: () => Record<string, unknown> }, any>
@@ -61,7 +61,7 @@ export class EventAudit {
 				ts: now.getTime(),
 				payload: validPayload,
 				status: 'pending',
-				userId: context.userId ?? null,
+				by: context.by ?? null,
 				error: null,
 				startedAt: null,
 				completedAt: null,
@@ -81,7 +81,7 @@ export class EventAudit {
 				)
 				const result = await handler.handle(event.payload, {
 					key: event.key,
-					userId: event.userId,
+					by: event.by,
 					date: new Date(event.ts),
 				})
 				await this.table.updateOne({ key: event.key }, { $set: { status: 'done', completedAt: Date.now() } })
