@@ -6,7 +6,13 @@ import { Instance } from '../instance'
 
 export type EventDefinition<P extends Pipe<any, any>, R> = {
 	pipe: P
-	handle: (payload: PipeOutput<P>, context: { idempotencyKey: string; idempotencyDate: Date }) => R | Promise<R>
+	handle: (payload: PipeOutput<P>, context: EventContext) => R | Promise<R>
+}
+
+export type EventContext = {
+	key: string
+	userId: string | null
+	date: Date
 }
 
 export type EventDoc = {
@@ -16,10 +22,12 @@ export type EventDoc = {
 	payload: unknown
 	mode: 'sync' | 'async'
 	status: 'pending' | 'processing' | 'done' | 'failed'
+	userId: string | null
 	error: string | null
 	startedAt: number | null
 	completedAt: number | null
 }
+type Context = { userId?: string }
 
 export class EventAudit {
 	private table: Table<any, EventDoc, EventDoc & { toJSON: () => Record<string, unknown> }, any>
@@ -37,7 +45,7 @@ export class EventAudit {
 		})
 	}
 
-	async #createEvent(type: string, payload: unknown, mode: 'sync' | 'async') {
+	async #createEvent(type: string, payload: unknown, mode: 'sync' | 'async', context: Context) {
 		const handler = this.handles[type]
 		if (!handler) throw new EquippedError('audit handler not found', { type, payload, mode })
 
@@ -53,6 +61,7 @@ export class EventAudit {
 				ts: now.getTime(),
 				payload: validPayload,
 				status: 'pending',
+				userId: context.userId ?? null,
 				error: null,
 				startedAt: null,
 				completedAt: null,
@@ -71,8 +80,9 @@ export class EventAudit {
 					{ $set: { status: 'processing', startedAt: Date.now(), completedAt: null, error: null } },
 				)
 				const result = await handler.handle(event.payload, {
-					idempotencyKey: event.key.toString(),
-					idempotencyDate: new Date(event.ts),
+					key: event.key,
+					userId: event.userId,
+					date: new Date(event.ts),
 				})
 				await this.table.updateOne({ key: event.key }, { $set: { status: 'done', completedAt: Date.now() } })
 				return result as R
@@ -106,12 +116,12 @@ export class EventAudit {
 		this.handles[type] = handle
 		v.compile(handle.pipe)
 		return {
-			sync: async (payload: PipeInput<P>) => {
-				const event = await this.#createEvent(type, payload, 'sync')
+			sync: async (payload: PipeInput<P>, context: Context) => {
+				const event = await this.#createEvent(type, payload, 'sync', context)
 				return this.#processEvent<R>(event)
 			},
-			async: async (payload: PipeInput<P>) => {
-				const event = await this.#createEvent(type, payload, 'async')
+			async: async (payload: PipeInput<P>, context: Context) => {
+				const event = await this.#createEvent(type, payload, 'async', context)
 				this.#processEvent<R>(event).catch(() => {})
 			},
 		}
