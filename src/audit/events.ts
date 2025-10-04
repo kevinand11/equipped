@@ -7,31 +7,33 @@ import { Instance } from '../instance'
 export type EventDefinition<P extends Pipe<any, any>, R> = {
 	pipe: P
 	handle: (payload: PipeOutput<P>, context: EventContext) => R | Promise<R>
+	sync?: (result: R, payload: PipeOutput<P>, context: EventContext) => void
+	async?: (result: R, payload: PipeOutput<P>, context: EventContext) => void
 }
 
 export type EventContext = {
 	key: string
-	by: string | null
+	by: string | undefined
 	date: Date
 }
 
 export type EventDoc = {
 	key: string
-	type: string
+	name: string
 	ts: number
-	payload: unknown
-	mode: 'sync' | 'async'
-	status: 'pending' | 'processing' | 'done' | 'failed'
-	by: string | null
-	error: string | null
-	startedAt: number | null
-	completedAt: number | null
+	body: unknown
+	steps: { status: 'start' | 'sync' | 'async' | 'error', ts: number, error?: string }[]
+	by?: string
 }
-type Context = { by?: string }
+type Context = { by?: string; at?: Date; }
+
+function createStep (step: EventDoc['steps'][number]) {
+	return step
+}
 
 export class EventAudit {
 	private table: Table<any, EventDoc, EventDoc & { toJSON: () => Record<string, unknown> }, any>
-	private handles: Record<string, EventDefinition<any, any>> = {}
+	private definitions: Record<string, EventDefinition<any, any>> = {}
 
 	constructor(
 		private db: Db<any>,
@@ -45,50 +47,57 @@ export class EventAudit {
 		})
 	}
 
-	async #createEvent(type: string, payload: unknown, mode: 'sync' | 'async', context: Context) {
-		const handler = this.handles[type]
-		if (!handler) throw new EquippedError('audit handler not found', { type, payload, mode })
+	async #createEvent(name: string, payload: unknown, context: Context) {
+		const def = this.definitions[name]
+		if (!def) throw new EquippedError('audit definition not found', { name, payload })
 
-		const validPayload = v.assert(handler.pipe, payload)
-		const key = Instance.createId()
-		const now = new Date()
+		const validBody = v.assert(def.pipe, payload)
+		const ts = context.at ?? new Date()
+		const key = Instance.createId(ts)
 
 		return await this.table.insertOne(
 			{
 				key,
-				type,
-				mode,
-				ts: now.getTime(),
-				payload: validPayload,
-				status: 'pending',
-				by: context.by ?? null,
-				error: null,
-				startedAt: null,
-				completedAt: null,
+				name,
+				ts: ts.getTime(),
+				body: validBody,
+				by: context.by,
+				steps: []
 			},
-			{ getTime: () => now, makeId: () => key },
+			{ getTime: () => ts, makeId: () => key },
 		)
 	}
 
-	async #processEvent<R>(event: EventDoc) {
+	async #processEvent<R>(event: EventDoc, callbackWait: boolean) {
 		return this.db.session(async () => {
-			const handler = this.handles[event.type]
-			if (!handler) throw new EquippedError('audit handler not found', { event })
+			const def = this.definitions[event.name]
+			if (!def) throw new EquippedError('audit definition not found', { event })
 			try {
 				await this.table.updateOne(
 					{ key: event.key },
-					{ $set: { status: 'processing', startedAt: Date.now(), completedAt: null, error: null } },
+					{ $set: { steps: [createStep({ status: 'start', ts: Date.now() })] } },
 				)
-				const result = await handler.handle(event.payload, {
+				const context: EventContext = {
 					key: event.key,
 					by: event.by,
 					date: new Date(event.ts),
-				})
-				await this.table.updateOne({ key: event.key }, { $set: { status: 'done', completedAt: Date.now() } })
+				}
+				const result = await def.handle(event.body, context)
+				await def.sync?.(result, event.body, context)
+				await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'sync', ts: Date.now() }) } })
+
+				const asyncHandle = Promise.try(() => def.async?.(result, event.body, context))
+					.then(async () => {
+						await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'async', ts: Date.now() }) } })
+					}).catch(async (err) => {
+						const error = err instanceof Error ? err.message : String(err)
+						await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'error', error, ts: Date.now() }) } })
+					})
+				if (callbackWait) await asyncHandle
 				return result as R
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err)
-				await this.table.updateOne({ key: event.key }, { $set: { status: 'failed', error: message, completedAt: Date.now() } })
+				const error = err instanceof Error ? err.message : String(err)
+				await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'error', error, ts: Date.now() }) } })
 				throw err
 			}
 		})
@@ -102,28 +111,22 @@ export class EventAudit {
 				all: true,
 			}),
 		)
-		for (const event of events) await this.#processEvent(event)
+		for (const event of events) await this.#processEvent(event, true)
 	}
 
 	async rerun(key: string) {
 		const event = await this.table.findOne({ key })
 		if (!event) throw new EquippedError('audit event not found', { key })
-		await this.#processEvent(event)
+		await this.#processEvent(event, true)
 	}
 
-	register<P extends Pipe<any, any>, R>(type: string, handle: EventDefinition<P, R>) {
-		if (this.handles[type]) throw new EquippedError(`${type} already has a registered handler`, {})
-		this.handles[type] = handle
-		v.compile(handle.pipe)
-		return {
-			sync: async (payload: PipeInput<P>, context: Context) => {
-				const event = await this.#createEvent(type, payload, 'sync', context)
-				return this.#processEvent<R>(event)
-			},
-			async: async (payload: PipeInput<P>, context: Context) => {
-				const event = await this.#createEvent(type, payload, 'async', context)
-				this.#processEvent<R>(event).catch(() => {})
-			},
+	register<P extends Pipe<any, any>, R>(name: string, def: EventDefinition<P, R>) {
+		if (this.definitions[name]) throw new EquippedError(`${name} already has a registered handler`, {})
+		this.definitions[name] = def
+		v.compile(def.pipe)
+		return async (payload: PipeInput<P>, context: Context)=> {
+			const event = await this.#createEvent(name, payload, context)
+			return this.#processEvent<R>(event, false)
 		}
 	}
 }

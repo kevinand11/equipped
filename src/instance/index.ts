@@ -2,6 +2,7 @@ import pino, { Logger } from 'pino'
 import { ulid } from 'ulid'
 import { ConditionalObjectKeys, Pipe, PipeInput, v } from 'valleyed'
 
+import { EquippedError } from '../errors'
 import { HookCb, HookEvent, HookRecord, runHooks } from './hooks'
 import {
 	cachePipe,
@@ -18,7 +19,6 @@ import {
 	Settings,
 	SettingsInput,
 } from './settings'
-import { EquippedError } from '../errors'
 
 export class Instance {
 	static #id: string | undefined
@@ -153,7 +153,7 @@ export class Instance {
 		process.exit(1)
 	}
 
-	static createId() {
-		return ulid()
+	static createId(time?: Date) {
+		return ulid(time?.getTime())
 	}
 }
