@@ -34,6 +34,7 @@ function createStep (step: EventDoc['steps'][number]) {
 export class EventAudit {
 	private table: Table<any, EventDoc, EventDoc & { toJSON: () => Record<string, unknown> }, any>
 	private definitions: Record<string, EventDefinition<any, any>> = {}
+	private asyncQueue: (() => Promise<void>)[] = []
 
 	constructor(
 		private db: Db<any>,
@@ -86,14 +87,17 @@ export class EventAudit {
 				await def.sync?.(result, event.body, context)
 				await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'sync', ts: Date.now() }) } })
 
-				const asyncHandle = Promise.try(() => def.async?.(result, event.body, context))
-					.then(async () => {
+				const asyncHandle = async () => {
+					try {
+						await def.async?.(result, event.body, context)
 						await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'async', ts: Date.now() }) } })
-					}).catch(async (err) => {
+					} catch(err) {
 						const error = err instanceof Error ? err.message : String(err)
 						await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'error', error, ts: Date.now() }) } })
-					})
-				if (callbackWait) await asyncHandle
+					};
+				}
+				if (callbackWait) await asyncHandle()
+				else this.asyncQueue.push(asyncHandle)
 				return result as R
 			} catch (err) {
 				const error = err instanceof Error ? err.message : String(err)
@@ -128,5 +132,13 @@ export class EventAudit {
 			const event = await this.#createEvent(name, payload, context)
 			return this.#processEvent<R>(event, false)
 		}
+	}
+
+	start () {
+		setInterval(async () => {
+			const queue = [...this.asyncQueue]
+			this.asyncQueue = []
+			await Promise.all(queue.map((job) => job()))
+		}, 200)
 	}
 }

@@ -21,7 +21,6 @@ export const kafkaConfigPipe = () =>
 					password: v.string(),
 				}),
 			),
-			confluent: v.optional(v.boolean()),
 			clientId: v.optional(v.string()),
 		}),
 		{ title: 'Kafka Config', $refId: 'KafkaConfig' },

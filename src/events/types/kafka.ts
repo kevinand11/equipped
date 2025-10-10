@@ -1,5 +1,4 @@
-import Confluent from '@confluentinc/kafka-javascript'
-import Kafka from 'kafkajs'
+import { KafkaJS } from '@confluentinc/kafka-javascript'
 
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
@@ -9,18 +8,13 @@ import { EventBus, StreamOptions } from '../base'
 import { KafkaConfig } from '../pipes'
 
 export class KafkaEventBus extends EventBus {
-	#client: Kafka.Kafka | Confluent.KafkaJS.Kafka
-	#confluent: boolean
-	#admin: Kafka.Admin | Confluent.KafkaJS.Admin | undefined
+	#client: KafkaJS.Kafka
+	#admin: Promise<KafkaJS.Admin> | undefined
 	constructor(config: KafkaConfig) {
 		super()
-		const { confluent = false, ...kafkaSettings } = config
-		this.#confluent = confluent
-		this.#client = confluent
-			? new Confluent.KafkaJS.Kafka({
-					kafkaJS: { ...kafkaSettings, logLevel: Confluent.KafkaJS.logLevel.NOTHING },
-				})
-			: new Kafka.Kafka({ ...kafkaSettings, logLevel: Kafka.logLevel.NOTHING })
+		this.#client = new KafkaJS.Kafka({
+			kafkaJS: { ...config, logLevel: KafkaJS.logLevel.NOTHING }
+		})
 	}
 
 	createStream<Event extends Events[keyof Events]>(topicName: Event['topic'], options: Partial<StreamOptions> = {}) {
@@ -45,7 +39,7 @@ export class KafkaEventBus extends EventBus {
 					const groupId = options.fanout
 						? Instance.get().getScopedName(`${Instance.get().id}-fanout-${Random.string(10)}`)
 						: topic
-					const consumer = this.#client.consumer(this.#confluent ? ({ kafkaJS: { groupId } } as any) : { groupId })
+					const consumer = this.#client.consumer({ kafkaJS: { groupId } })
 
 					await consumer.connect()
 					await consumer.subscribe({ topic })
@@ -77,10 +71,11 @@ export class KafkaEventBus extends EventBus {
 	}
 
 	async #getAdmin() {
-		if (!this.#admin) {
-			this.#admin = this.#client.admin()
-			await this.#admin.connect()
-		}
+		if (!this.#admin) this.#admin = (async () => {
+			const admin = this.#client.admin()
+			await admin.connect()
+			return admin
+		})()
 		return this.#admin
 	}
 

@@ -1,4 +1,4 @@
-import { Collection, Filter, ObjectId } from 'mongodb'
+import { Collection, Filter } from 'mongodb'
 import { differ } from 'valleyed'
 
 import { EquippedError } from '../../errors'
@@ -25,7 +25,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 			data._id
 				? {
 						...data,
-						_id: makeId(data._id['$oid'] ?? data._id),
+						_id: data._id['$oid'] ?? data._id,
 					}
 				: undefined
 
@@ -34,8 +34,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 		const dbColName = `${dbName}.${colName}`
 		const topic = `${TopicPrefix}.${dbColName}`
 
-		const hexId = '5f5f65717569707065645f5f' // __equipped__
-		const TestId = makeId(hexId)
+		const TestId = '5f5f65717569707065645f5f' // __equipped__
 		const condition = { _id: TestId } as Filter<Model>
 
 		change.eventBus.createStream(topic as never, { skipScope: true }).subscribe(async (data: DbDocumentChange) => {
@@ -46,7 +45,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 
 			if (before) before = hydrate(before)
 			if (after) after = hydrate(after)
-			if (before?.__id === TestId || after?.__id === TestId) return
+			if (before?._id === TestId || after?._id === TestId) return
 
 			if (op === 'c' && this.callbacks.created && after)
 				await this.callbacks.created({
@@ -89,7 +88,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 						return { done: false }
 					},
 					6,
-					10_000,
+					30_000,
 				).catch((err) => Instance.crash(new EquippedError(`Failed to start db changes`, { dbColName }, err)))
 			},
 			10,
@@ -101,12 +100,4 @@ type DbDocumentChange = {
 	before: string | null
 	after: string | null
 	op: 'c' | 'u' | 'd'
-}
-
-const makeId = (id: string) => {
-	try {
-		return new ObjectId(id)
-	} catch {
-		return id
-	}
 }
