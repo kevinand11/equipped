@@ -46,6 +46,14 @@ export class EventAudit {
 			mapper: (model) => ({ ...model, toJSON: () => model as Record<string, unknown> }),
 			options: { skipAudit: true },
 		})
+
+		Instance.on('start', () => {
+			setInterval(async () => {
+				const queue = [...this.asyncQueue]
+				this.asyncQueue = []
+				await Promise.all(queue.map((job) => job()))
+			}, 200)
+		}, 4)
 	}
 
 	async #createEvent(name: string, payload: unknown, context: Context) {
@@ -132,13 +140,5 @@ export class EventAudit {
 			const event = await this.#createEvent(name, payload, context)
 			return this.#processEvent<R>(event, false)
 		}
-	}
-
-	start () {
-		setInterval(async () => {
-			const queue = [...this.asyncQueue]
-			this.asyncQueue = []
-			await Promise.all(queue.map((job) => job()))
-		}, 200)
 	}
 }
