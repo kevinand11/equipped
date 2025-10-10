@@ -2,10 +2,10 @@ import { convert } from '@openapi-contrib/json-schema-to-openapi-schema'
 import { OpenAPIV3_1 } from 'openapi-types'
 import { capitalize, JsonSchema } from 'valleyed'
 
-import { Router } from './routes'
-import { Route } from './types'
 import { Instance } from '../instance'
 import { ServerConfig } from './pipes'
+import { Router } from './routes'
+import { Route } from './types'
 
 declare module 'openapi-types' {
 	namespace OpenAPIV3 {
@@ -223,7 +223,7 @@ export class OpenApi {
       const configuration = { theme: 'purple' };
       document.getElementById('api-reference').dataset.configuration = JSON.stringify(configuration);
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.28.33"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.38.0"></script>
   </body>
 </html>
 `
