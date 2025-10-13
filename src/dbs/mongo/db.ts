@@ -2,14 +2,14 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { ClientSession, Collection, CollectionInfo, MongoClient, ObjectId, OptionalUnlessRequiredId, SortDirection, WithId } from 'mongodb'
 
-import { MongoDbConfig, QueryParams } from '../pipes'
-import { MongoDbChange } from './changes'
-import { parseMongodbQueryParams } from './query'
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import * as core from '../base/core'
 import { Db } from '../base/db'
 import { DbConfig } from '../base/types'
+import { MongoDbConfig, QueryParams } from '../pipes'
+import { MongoDbChange } from './changes'
+import { parseMongodbQueryParams } from './query'
 
 const idKey = '_id'
 type IdType = { _id: string }
@@ -62,6 +62,7 @@ export class MongoDb extends Db<{ _id: string }> {
 	}
 
 	async session<T>(callback: () => Promise<T>) {
+		if (sessionStore.getStore()) return callback()
 		return this.client.withSession(async (session) => sessionStore.run(session, callback))
 	}
 
