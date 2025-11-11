@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.1](https://github.com/kevinand11/equipped/compare/v5.1.0...v5.1.1) (2025-11-11)
+
+
+### Features
+
+* start audit queue in instance hooks ([1be0c79](https://github.com/kevinand11/equipped/commit/1be0c791a68a6c6482816ce434e560f19ff5373c))
+* upgrade scalar version ([9b988a0](https://github.com/kevinand11/equipped/commit/9b988a0963d683bef5194243a3ba43ea5d5f60c0))
+
+
+### Bug Fixes
+
+* mongo session resuses same session for nested calls ([68a446f](https://github.com/kevinand11/equipped/commit/68a446fc9ffb69997c28a9fd5ecc6a68eb95fd61))
+* starting db changes ([7de81c0](https://github.com/kevinand11/equipped/commit/7de81c021a15d2ed253843ae7d63f5452188500c))
+
 ## [5.1.0](https://github.com/kevinand11/equipped/compare/v5.0.35...v5.1.0) (2025-10-04)
 
 ### [5.0.35](https://github.com/kevinand11/equipped/compare/v5.0.34...v5.0.35) (2025-10-03)
