@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.4](https://github.com/kevinand11/equipped/compare/v5.1.3...v5.1.4) (2025-11-23)
+
+
+### Bug Fixes
+
+* confluent kafka version ([8d00144](https://github.com/kevinand11/equipped/commit/8d00144604877d20a1099f40299a5d474da58dd8))
+
 ### [5.1.3](https://github.com/kevinand11/equipped/compare/v5.1.2...v5.1.3) (2025-11-11)
 
 ### [5.1.2](https://github.com/kevinand11/equipped/compare/v5.1.1...v5.1.2) (2025-11-11)
