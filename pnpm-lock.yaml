@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@confluentinc/kafka-javascript':
-        specifier: ^1.6.0
-        version: 1.6.0
+        specifier: 1.4.0
+        version: 1.4.0
       '@fastify/cookie':
         specifier: 11.0.2
         version: 11.0.2
@@ -90,7 +90,7 @@ importers:
         specifier: 2.2.4
         version: 2.2.4
       mongodb:
-        specifier: ^6.20.0
+        specifier: 6.20.0
         version: 6.20.0
       music-metadata:
         specifier: 7.14.0
@@ -278,8 +278,8 @@ packages:
     resolution: {integrity: sha512-/yCrWGCoA1SVKOks25EGadP9Pnj0oAIHGpl2wH2M2Y46dPM2ueb8wyCVOD7O3WCTkaJ0IkKvzhl1JY7+uCT2Dw==}
     engines: {node: '>=v18'}
 
-  '@confluentinc/kafka-javascript@1.6.0':
-    resolution: {integrity: sha512-MEdf2+PqAcqB6WegmzZnu56DFdGWmTzGk3soCavYf2nN2D5vpDkGCjfbfMbOBjtWHr35Q/QtFDOd0GHGGNdatQ==}
+  '@confluentinc/kafka-javascript@1.4.0':
+    resolution: {integrity: sha512-qd4I442yeTjee/1DO568Mn1zzIsHgZdj3mWgLT86Om5CaJvr0UY0R6Q2oXqTNBkY2463BA6huDgJbS0Ukq4SUg==}
     engines: {node: '>=18.0.0'}
 
   '@emnapi/core@1.4.0':
@@ -4151,7 +4151,7 @@ snapshots:
       '@types/conventional-commits-parser': 5.0.0
       chalk: 5.3.0
 
-  '@confluentinc/kafka-javascript@1.6.0':
+  '@confluentinc/kafka-javascript@1.4.0':
     dependencies:
       '@mapbox/node-pre-gyp': 1.0.11
       bindings: 1.5.0

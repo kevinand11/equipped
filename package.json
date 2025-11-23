@@ -167,7 +167,7 @@
 		"typescript": "^5.9.2"
 	},
 	"dependencies": {
-		"@confluentinc/kafka-javascript": "^1.6.0",
+		"@confluentinc/kafka-javascript": "1.4.0",
 		"@fastify/cookie": "11.0.2",
 		"@fastify/cors": "11.1.0",
 		"@fastify/formbody": "8.0.2",
@@ -194,7 +194,7 @@
 		"jsonwebtoken": "9.0.2",
 		"jwks-rsa": "3.2.0",
 		"kafkajs": "2.2.4",
-		"mongodb": "^6.20.0",
+		"mongodb": "6.20.0",
 		"music-metadata": "7.14.0",
 		"openapi-types": "12.1.3",
 		"path-to-regexp": "8.2.0",
