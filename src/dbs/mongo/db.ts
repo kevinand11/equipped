@@ -1,6 +1,15 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
-import { ClientSession, Collection, type CollectionInfo, MongoClient, ObjectId, type OptionalUnlessRequiredId, type SortDirection, type WithId } from 'mongodb'
+import {
+	ClientSession,
+	Collection,
+	type CollectionInfo,
+	MongoClient,
+	ObjectId,
+	type OptionalUnlessRequiredId,
+	type SortDirection,
+	type WithId,
+} from 'mongodb'
 
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
@@ -63,7 +72,8 @@ export class MongoDb extends Db<{ _id: string }> {
 
 	async session<T>(callback: () => Promise<T>) {
 		if (sessionStore.getStore()) return callback()
-		return this.client.withSession(async (session) => sessionStore.run(session, callback))
+		const session = await this.client.startSession()
+		return session.withTransaction(async () => sessionStore.run(session, callback))
 	}
 
 	id() {

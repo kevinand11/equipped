@@ -31,9 +31,10 @@ export class RedisJob {
 			maxRetriesPerRequest: null,
 			enableReadyCheck: false,
 		})
-		this.#queue = new Queue(config.queueName, { connection: redisCache.client.options, skipVersionCheck: true })
+		const queueName = Instance.get().getScopedName(config.queueName)
+		this.#queue = new Queue(queueName, { connection: redisCache.client.options, skipVersionCheck: true })
 		const worker = new Worker(
-			config.queueName,
+			queueName,
 			async (job) => {
 				switch (job.name) {
 					case JobNames.DelayedJob:
