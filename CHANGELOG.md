@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.7](https://github.com/kevinand11/equipped/compare/v5.1.6...v5.1.7) (2025-12-07)
+
+
+### Bug Fixes
+
+* mongo session not reversing on error and scope bull jobs names ([9a1b9cb](https://github.com/kevinand11/equipped/commit/9a1b9cb9fbaa9840c75b9f4324a8d96e964b8a7a))
+
 ### [5.1.6](https://github.com/kevinand11/equipped/compare/v5.1.5...v5.1.6) (2025-12-07)
 
 
