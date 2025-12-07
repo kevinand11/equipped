@@ -1,9 +1,9 @@
-import { Cluster, Redis, RedisOptions } from 'ioredis'
+import { Cluster, Redis, type RedisOptions } from 'ioredis'
 
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import { Cache } from '../base'
-import { RedisConfig } from '../pipes'
+import { type RedisConfig } from '../pipes'
 
 export class RedisCache extends Cache {
 	client: Redis | Cluster

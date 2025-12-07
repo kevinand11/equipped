@@ -1,7 +1,7 @@
 import type { Readable } from 'node:stream'
 
-import { SerializeOptions } from '@fastify/cookie'
-import { DistributiveOmit, IsInTypeList } from 'valleyed'
+import type { SerializeOptions } from '@fastify/cookie'
+import type { DistributiveOmit, IsInTypeList } from 'valleyed'
 
 import type { RequestError } from '../errors'
 import type { DefaultCookies, DefaultHeaders, IncomingFile, MethodsEnum, RouteDef, RouteDefToReqRes } from './types'

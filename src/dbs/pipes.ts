@@ -1,4 +1,4 @@
-import { ConditionalObjectKeys, Pipe, PipeInput, PipeOutput, v } from 'valleyed'
+import { type ConditionalObjectKeys, type Pipe, type PipeInput, type PipeOutput, v } from 'valleyed'
 
 import { Instance } from '../instance'
 

@@ -1,5 +1,5 @@
 import * as core from './core'
-import { DbConfig } from './types'
+import type { DbConfig } from './types'
 import { Instance } from '../../instance'
 
 export type TableOptions = { skipAudit?: boolean }

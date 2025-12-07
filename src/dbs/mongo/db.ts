@@ -1,13 +1,13 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
-import { ClientSession, Collection, CollectionInfo, MongoClient, ObjectId, OptionalUnlessRequiredId, SortDirection, WithId } from 'mongodb'
+import { ClientSession, Collection, type CollectionInfo, MongoClient, ObjectId, type OptionalUnlessRequiredId, type SortDirection, type WithId } from 'mongodb'
 
 import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import * as core from '../base/core'
 import { Db } from '../base/db'
-import { DbConfig } from '../base/types'
-import { MongoDbConfig, QueryParams } from '../pipes'
+import type { DbConfig } from '../base/types'
+import type { MongoDbConfig, QueryParams } from '../pipes'
 import { MongoDbChange } from './changes'
 import { parseMongodbQueryParams } from './query'
 

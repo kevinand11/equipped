@@ -1,4 +1,4 @@
-import { PipeOutput, v } from 'valleyed'
+import { type PipeOutput, v } from 'valleyed'
 
 import { EventBus } from '../events'
 import { BaseApiKeysUtility, BaseTokensUtility } from './requests-auth'

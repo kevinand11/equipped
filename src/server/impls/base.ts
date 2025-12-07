@@ -2,19 +2,19 @@ import type http from 'http'
 
 import { Server as SocketServer } from 'socket.io'
 import supertest from 'supertest'
-import { Pipe, PipeError, v } from 'valleyed'
+import { type Pipe, PipeError, v } from 'valleyed'
 
 import { EquippedError, NotFoundError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
 import { pipeErrorToValidationError } from '../../validations'
 import { requestLocalStorage, responseLocalStorage } from '../../validations/valleyed'
 import { parseAuthUser } from '../middlewares/parseAuthUser'
-import { OpenApi, OpenApiSchemaDef } from '../openapi'
-import { ServerConfig } from '../pipes'
+import { OpenApi, type OpenApiSchemaDef } from '../openapi'
+import type { ServerConfig } from '../pipes'
 import { type Request, Response } from '../requests'
 import { Router } from '../routes'
 import { SocketEmitter } from '../sockets'
-import { Methods, MethodsEnum, RouteDef, StatusCodes, type Route } from '../types'
+import { Methods, type MethodsEnum, type RouteDef, StatusCodes, type Route } from '../types'
 
 type RequestValidator = (req: Request<any>) => Promise<Request<any>>
 type ResponseValidator = (res: Response<any>) => Promise<Response<any>>

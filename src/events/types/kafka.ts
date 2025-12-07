@@ -4,8 +4,8 @@ import { EquippedError } from '../../errors'
 import { Instance } from '../../instance'
 import type { Events } from '../../types'
 import { Random, parseJSONValue } from '../../utilities'
-import { EventBus, StreamOptions } from '../base'
-import { KafkaConfig } from '../pipes'
+import { EventBus, type StreamOptions } from '../base'
+import type { KafkaConfig } from '../pipes'
 
 export class KafkaEventBus extends EventBus {
 	#client: KafkaJS.Kafka

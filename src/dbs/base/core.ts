@@ -1,7 +1,7 @@
-import { Filter, UpdateFilter } from 'mongodb'
-import { ConditionalObjectKeys, DeepPartial, DistributiveOmit } from 'valleyed'
+import type { Filter, UpdateFilter } from 'mongodb'
+import type { ConditionalObjectKeys, DeepPartial, DistributiveOmit } from 'valleyed'
 
-import { QueryParams, QueryResults } from '../pipes'
+import type { QueryParams, QueryResults } from '../pipes'
 import type { DbChange } from './changes'
 
 export type IdType = { _id: string } | { id: string }

@@ -1,4 +1,4 @@
-import { v, PipeOutput } from 'valleyed'
+import { v, type PipeOutput } from 'valleyed'
 
 export const redisConfigPipe = () =>
 	v.meta(

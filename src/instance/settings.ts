@@ -1,4 +1,4 @@
-import { ConditionalObjectKeys, PipeInput, PipeOutput, v } from 'valleyed'
+import { type ConditionalObjectKeys, type PipeInput, type PipeOutput, v } from 'valleyed'
 
 import { InMemoryCache, RedisCache, redisConfigPipe } from '../cache'
 import { MongoDb, mongoDbConfigPipe } from '../dbs'

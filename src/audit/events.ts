@@ -1,6 +1,6 @@
-import { Pipe, PipeInput, PipeOutput, v } from 'valleyed'
+import { type Pipe, type PipeInput, type PipeOutput, v } from 'valleyed'
 
-import { Conditions, Db, Table, wrapQueryParams } from '../dbs'
+import { Conditions, Db, type Table, wrapQueryParams } from '../dbs'
 import { EquippedError } from '../errors'
 import { Instance } from '../instance'
 
@@ -62,7 +62,7 @@ export class EventAudit {
 
 		const validBody = v.assert(def.pipe, payload)
 		const ts = context.at ?? new Date()
-		const key = Instance.createId(ts)
+		const key = Instance.createId({ time: ts })
 
 		return await this.table.insertOne(
 			{

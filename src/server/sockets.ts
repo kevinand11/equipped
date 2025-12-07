@@ -1,11 +1,11 @@
 import { match as Match } from 'path-to-regexp'
 import type { Server } from 'socket.io'
 
-import { Entity } from '../dbs/base/core'
+import type { Entity } from '../dbs/base/core'
 import { Instance } from '../instance'
-import { StatusCodes, StatusCodesEnum } from './types'
 import type { AuthUser } from '../types'
-import { ServerConfig } from './pipes'
+import type { ServerConfig } from './pipes'
+import { StatusCodes, type StatusCodesEnum } from './types'
 
 enum EmitTypes {
 	created = 'created',

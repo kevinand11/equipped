@@ -1,23 +1,23 @@
-import pino, { Logger } from 'pino'
+import pino, { type Logger } from 'pino'
 import { ulid } from 'ulid'
-import { ConditionalObjectKeys, Pipe, PipeInput, v } from 'valleyed'
+import { type ConditionalObjectKeys, type Pipe, type PipeInput, v } from 'valleyed'
 
 import { EquippedError } from '../errors'
-import { HookCb, HookEvent, HookRecord, runHooks } from './hooks'
+import { type HookCb, type HookEvent, type HookRecord, runHooks } from './hooks'
 import {
 	cachePipe,
-	CacheTypes,
+	type CacheTypes,
 	dbPipe,
-	DbTypes,
+	type DbTypes,
 	eventBusPipe,
-	EventBusTypes,
+	type EventBusTypes,
 	instanceSettingsPipe,
 	jobsPipe,
-	JobTypes,
+	type JobTypes,
 	serverTypePipe,
-	ServerTypes,
-	Settings,
-	SettingsInput,
+	type ServerTypes,
+	type Settings,
+	type SettingsInput,
 } from './settings'
 
 export class Instance {
@@ -153,7 +153,7 @@ export class Instance {
 		process.exit(1)
 	}
 
-	static createId(opts?: { prefix: string; time?: Date }) {
+	static createId(opts?: { prefix?: string; time?: Date }) {
 		return `${opts?.prefix ?? ''}${ulid(opts?.time?.getTime())}`
 	}
 }

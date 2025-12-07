@@ -13,9 +13,9 @@ import qs from 'qs'
 import { ValidationError } from '../../errors'
 import { Instance } from '../../instance'
 import { getMediaDuration } from '../../utilities'
-import { ServerConfig } from '../pipes'
+import type { ServerConfig } from '../pipes'
 import { Request } from '../requests'
-import { IncomingFile, StatusCodes } from '../types'
+import { type IncomingFile, StatusCodes } from '../types'
 import { Server } from './base'
 
 export class FastifyServer extends Server<FastifyRequest, FastifyReply> {

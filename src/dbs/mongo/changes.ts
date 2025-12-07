@@ -1,4 +1,4 @@
-import { Collection, Filter } from 'mongodb'
+import { Collection, type Filter } from 'mongodb'
 import { differ } from 'valleyed'
 
 import { EquippedError } from '../../errors'
@@ -6,8 +6,8 @@ import { Instance } from '../../instance'
 import { retry } from '../../utilities'
 import { DbChange, TopicPrefix } from '../base/changes'
 import * as core from '../base/core'
-import { DbChangeConfig } from '../base/types'
-import { MongoDbConfig } from '../pipes'
+import type { DbChangeConfig } from '../base/types'
+import type { MongoDbConfig } from '../pipes'
 
 export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity extends core.Entity> extends DbChange<Model, Entity> {
 	#started = false

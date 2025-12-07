@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 import * as core from './core'
-import { DbChangeConfig } from './types'
+import { type DbChangeConfig } from './types'
 import { EquippedError } from '../../errors'
 
 export const TopicPrefix = 'db-changes'

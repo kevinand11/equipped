@@ -1,6 +1,6 @@
 export * from 'valleyed'
 export * as ve from './valleyed'
-import { Pipe, PipeError, PipeOutput, v } from 'valleyed'
+import { type Pipe, PipeError, type PipeOutput, v } from 'valleyed'
 
 import { ValidationError } from '../errors'
 

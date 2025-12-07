@@ -2,9 +2,9 @@ import { Queue, Worker } from 'bullmq'
 
 import { RedisCache } from '../../cache/types/redis'
 import { Instance } from '../../instance'
-import { CronTypes, DelayedJobs, RepeatableJobs } from '../../types'
+import type { CronTypes, DelayedJobs, RepeatableJobs } from '../../types'
 import { Random } from '../../utilities'
-import { RedisJobConfig } from '../pipes'
+import type { RedisJobConfig } from '../pipes'
 
 enum JobNames {
 	CronJob = 'CronJob',

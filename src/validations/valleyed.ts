@@ -1,9 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
-import { Pipe, PipeError, PipeInput, PipeOutput, v } from 'valleyed'
+import { type Pipe, PipeError, type PipeInput, type PipeOutput, v } from 'valleyed'
 
 import { Instance } from '../instance'
-import type { IncomingFile, Response, Request, RouteDef, RouteDefToReqRes } from '../server'
+import type { IncomingFile, Request, Response, RouteDef, RouteDefToReqRes } from '../server'
 
 const filePipe = (err?: string) =>
 	v.array(

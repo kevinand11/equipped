@@ -1,6 +1,15 @@
 import { v } from 'valleyed'
 
-import { Methods, RouteDefHandler, RouterConfig, Route, MethodsEnum, RouteConfig, RouteDef, MergeRouteDefs } from './types'
+import {
+	Methods,
+	type MergeRouteDefs,
+	type MethodsEnum,
+	type Route,
+	type RouteConfig,
+	type RouteDef,
+	type RouteDefHandler,
+	type RouterConfig,
+} from './types'
 
 function mergeSchemas(...schemas: RouteDef[]) {
 	type Keys = Record<keyof RouteDef, string>

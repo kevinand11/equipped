@@ -11,9 +11,9 @@ import { pinoHttp } from 'pino-http'
 
 import { Instance } from '../../instance'
 import { getMediaDuration } from '../../utilities'
-import { ServerConfig } from '../pipes'
+import type { ServerConfig } from '../pipes'
 import { Request } from '../requests'
-import { IncomingFile, StatusCodes } from '../types'
+import { type IncomingFile, StatusCodes } from '../types'
 import { Server } from './base'
 
 export class ExpressServer extends Server<express.Request, express.Response> {

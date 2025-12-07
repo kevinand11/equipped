@@ -1,11 +1,11 @@
 import { convert } from '@openapi-contrib/json-schema-to-openapi-schema'
-import { OpenAPIV3_1 } from 'openapi-types'
-import { capitalize, JsonSchema } from 'valleyed'
+import type { OpenAPIV3_1 } from 'openapi-types'
+import { capitalize, type JsonSchema } from 'valleyed'
 
 import { Instance } from '../instance'
-import { ServerConfig } from './pipes'
+import type { ServerConfig } from './pipes'
 import { Router } from './routes'
-import { Route } from './types'
+import type { Route } from './types'
 
 declare module 'openapi-types' {
 	namespace OpenAPIV3 {

@@ -13,6 +13,7 @@
 	},
 	"scripts": {
 		"dev": "tsup --watch",
+		"prebuild": "tsc --noEmit",
 		"build": "tsup || echo 'Done'",
 		"lint": "eslint --fix src",
 		"test": "echo",
