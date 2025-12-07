@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.6](https://github.com/kevinand11/equipped/compare/v5.1.5...v5.1.6) (2025-12-07)
+
+
+### Bug Fixes
+
+* custom id for bull jobs ([f56fb23](https://github.com/kevinand11/equipped/commit/f56fb23a12fc2bafe5d58ea062768a2f64bb83dc))
+
 ### [5.1.5](https://github.com/kevinand11/equipped/compare/v5.1.4...v5.1.5) (2025-12-07)
 
 
