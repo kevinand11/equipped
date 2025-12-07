@@ -1,4 +1,4 @@
-import Bull from 'bull'
+import { Queue, Worker } from 'bullmq'
 
 import { RedisCache } from '../../cache/types/redis'
 import { Instance } from '../../instance'
@@ -22,7 +22,7 @@ type RepeatableJobCallback = (data: RepeatableJobEvent) => Promise<void> | void
 type JobCallbacks = { onDelayed?: DelayedJobCallback; onCron?: CronJobCallback; onRepeatable?: RepeatableJobCallback }
 
 export class RedisJob {
-	#queue: Bull.Queue
+	#queue: Queue
 	#callbacks: JobCallbacks = {}
 	#crons: { name: Cron; cron: string }[] = []
 
@@ -31,18 +31,28 @@ export class RedisJob {
 			maxRetriesPerRequest: null,
 			enableReadyCheck: false,
 		})
-		this.#queue = new Bull(config.queueName, { createClient: () => redisCache.client })
+		this.#queue = new Queue(config.queueName, { connection: redisCache.client.options, skipVersionCheck: true })
+		const worker = new Worker(
+			config.queueName,
+			async (job) => {
+				switch (job.name) {
+					case JobNames.DelayedJob:
+						return (this.#callbacks.onDelayed as any)?.(job.data)
+					case JobNames.CronJob:
+						return (this.#callbacks.onCron as any)?.(job.data.type)
+					case JobNames.RepeatableJob:
+						return (this.#callbacks.onRepeatable as any)?.(job.data)
+				}
+			},
+			{ connection: redisCache.client.options, autorun: false, skipVersionCheck: true },
+		)
 
 		Instance.on(
 			'start',
 			async () => {
 				await this.#cleanup()
 				await Promise.all(this.#crons.map(({ cron, name }) => this.#addCron(name, cron)))
-				Promise.all([
-					this.#queue.process(JobNames.DelayedJob, async (job) => await (this.#callbacks.onDelayed as any)?.(job.data)),
-					this.#queue.process(JobNames.CronJob, async (job) => await (this.#callbacks.onCron as any)?.(job.data.type)),
-					this.#queue.process(JobNames.RepeatableJob, async (job) => await (this.#callbacks.onRepeatable as any)?.(job.data)),
-				])
+				worker.run()
 			},
 			10,
 		)
@@ -68,13 +78,13 @@ export class RedisJob {
 			backoff: 1000,
 			attempts: 3,
 		})
-		return job.id.toString()
+		return job.id!.toString()
 	}
 
 	async addRepeatable(data: RepeatableJobEvent, cron: string, tz?: string): Promise<string> {
 		const job = await this.#queue.add(JobNames.RepeatableJob, data, {
 			jobId: RedisJob.#getNewId(),
-			repeat: { cron, ...(tz ? { tz } : {}) },
+			repeat: { pattern: cron, ...(tz ? { tz } : {}) },
 			removeOnComplete: true,
 			backoff: 1000,
 			attempts: 3,
@@ -84,11 +94,7 @@ export class RedisJob {
 
 	async removeDelayed(jobId: string) {
 		const job = await this.#queue.getJob(jobId)
-		if (job) await job.discard()
-	}
-
-	async removeRepeatable(jobKey: string) {
-		await this.#queue.removeRepeatableByKey(jobKey)
+		if (job) await job.remove()
 	}
 
 	async retryAllFailedJobs() {
@@ -102,20 +108,18 @@ export class RedisJob {
 			{ type },
 			{
 				jobId: RedisJob.#getNewId(),
-				repeat: { cron },
+				repeat: { pattern: cron },
 				removeOnComplete: true,
 				backoff: 1000,
 				attempts: 3,
 			},
 		)
-		return job.id.toString()
+		return job.id!.toString()
 	}
 
 	async #cleanup() {
 		await this.retryAllFailedJobs()
-		const repeatableJobs = await this.#queue.getRepeatableJobs()
-		await Promise.all(
-			repeatableJobs.filter((job) => job.name === JobNames.CronJob).map((job) => this.#queue.removeRepeatableByKey(job.key)),
-		)
+		const repeatableJobs = await this.#queue.getJobSchedulers()
+		await Promise.all(repeatableJobs.map((job) => this.#queue.removeJobScheduler(job.key)))
 	}
 }

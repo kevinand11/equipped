@@ -153,7 +153,7 @@ export class Instance {
 		process.exit(1)
 	}
 
-	static createId(time?: Date) {
-		return ulid(time?.getTime())
+	static createId(opts?: { prefix: string; time?: Date }) {
+		return `${opts?.prefix ?? ''}${ulid(opts?.time?.getTime())}`
 	}
 }
