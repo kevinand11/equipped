@@ -67,7 +67,7 @@ export class RedisJob {
 	}
 
 	static #getNewId() {
-		return [Date.now(), Random.string()].join(':')
+		return [Date.now(), Random.string()].join('_')
 	}
 
 	async addDelayed(data: DelayedJobEvent, delayInMs: number): Promise<string> {
