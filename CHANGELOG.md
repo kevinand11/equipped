@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.5](https://github.com/kevinand11/equipped/compare/v5.1.4...v5.1.5) (2025-12-07)
+
+
+### Bug Fixes
+
+* switch from bull to bullmq for jobs ([ba5fdfb](https://github.com/kevinand11/equipped/commit/ba5fdfb48ed8b95386f7a6950b4480e854134436))
+
 ### [5.1.4](https://github.com/kevinand11/equipped/compare/v5.1.3...v5.1.4) (2025-11-23)
 
 
