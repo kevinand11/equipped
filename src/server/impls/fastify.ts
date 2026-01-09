@@ -22,11 +22,13 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 	constructor(config: ServerConfig) {
 		const instance = Instance.get()
 		const app = Fastify({
-			ignoreTrailingSlash: true,
-			caseSensitive: false,
 			disableRequestLogging: !config.requests.log,
 			loggerInstance: config.requests.log ? instance.log : undefined,
 			ajv: { customOptions: { coerceTypes: false } },
+			routerOptions: {
+				ignoreTrailingSlash: true,
+				caseSensitive: false,
+			},
 			schemaErrorFormatter: (errors, data) =>
 				new ValidationError(
 					errors.map((error) => ({
