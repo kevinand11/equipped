@@ -14,7 +14,8 @@ export type EventDefinition<P extends Pipe<any, any>, R> = {
 export type EventContext = {
 	key: string
 	by: string | undefined
-	date: Date
+	at: Date
+	firstRun: boolean
 }
 
 export type EventDoc = {
@@ -22,12 +23,12 @@ export type EventDoc = {
 	name: string
 	ts: number
 	body: unknown
-	steps: { status: 'start' | 'sync' | 'async' | 'error', ts: number, error?: string }[]
+	steps: { status: 'start' | 'sync' | 'async' | 'error'; ts: number; error?: string }[]
 	by?: string
 }
-type Context = { by?: string; at?: Date; }
+type Context = Partial<Pick<EventContext, 'by' | 'at'>>
 
-function createStep (step: EventDoc['steps'][number]) {
+function createStep(step: EventDoc['steps'][number]) {
 	return step
 }
 
@@ -47,13 +48,17 @@ export class EventAudit {
 			options: { skipAudit: true },
 		})
 
-		Instance.on('start', () => {
-			setInterval(async () => {
-				const queue = [...this.asyncQueue]
-				this.asyncQueue = []
-				await Promise.all(queue.map((job) => job()))
-			}, 200)
-		}, 4)
+		Instance.on(
+			'start',
+			() => {
+				setInterval(async () => {
+					const queue = [...this.asyncQueue]
+					this.asyncQueue = []
+					await Promise.all(queue.map((job) => job()))
+				}, 200)
+			},
+			4,
+		)
 	}
 
 	async #createEvent(name: string, payload: unknown, context: Context) {
@@ -71,25 +76,23 @@ export class EventAudit {
 				ts: ts.getTime(),
 				body: validBody,
 				by: context.by,
-				steps: []
+				steps: [],
 			},
 			{ getTime: () => ts, makeId: () => key },
 		)
 	}
 
-	async #processEvent<R>(event: EventDoc, callbackWait: boolean) {
+	async #processEvent<R>(event: EventDoc, firstRun: boolean) {
 		return this.db.session(async () => {
 			const def = this.definitions[event.name]
 			if (!def) throw new EquippedError('audit definition not found', { event })
 			try {
-				await this.table.updateOne(
-					{ key: event.key },
-					{ $set: { steps: [createStep({ status: 'start', ts: Date.now() })] } },
-				)
+				await this.table.updateOne({ key: event.key }, { $set: { steps: [createStep({ status: 'start', ts: Date.now() })] } })
 				const context: EventContext = {
 					key: event.key,
 					by: event.by,
-					date: new Date(event.ts),
+					at: new Date(event.ts),
+					firstRun,
 				}
 				const result = await def.handle(event.body, context)
 				await def.sync?.(result, event.body, context)
@@ -98,13 +101,19 @@ export class EventAudit {
 				const asyncHandle = async () => {
 					try {
 						await def.async?.(result, event.body, context)
-						await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'async', ts: Date.now() }) } })
-					} catch(err) {
+						await this.table.updateOne(
+							{ key: event.key },
+							{ $push: { steps: createStep({ status: 'async', ts: Date.now() }) } },
+						)
+					} catch (err) {
 						const error = err instanceof Error ? err.message : String(err)
-						await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'error', error, ts: Date.now() }) } })
-					};
+						await this.table.updateOne(
+							{ key: event.key },
+							{ $push: { steps: createStep({ status: 'error', error, ts: Date.now() }) } },
+						)
+					}
 				}
-				if (callbackWait) await asyncHandle()
+				if (!context.firstRun) await asyncHandle()
 				else this.asyncQueue.push(asyncHandle)
 				return result as R
 			} catch (err) {
@@ -123,22 +132,22 @@ export class EventAudit {
 				all: true,
 			}),
 		)
-		for (const event of events) await this.#processEvent(event, true)
+		for (const event of events) await this.#processEvent(event, false)
 	}
 
 	async rerun(key: string) {
 		const event = await this.table.findOne({ key })
 		if (!event) throw new EquippedError('audit event not found', { key })
-		await this.#processEvent(event, true)
+		await this.#processEvent(event, false)
 	}
 
 	register<P extends Pipe<any, any>, R>(name: string, def: EventDefinition<P, R>) {
 		if (this.definitions[name]) throw new EquippedError(`${name} already has a registered handler`, {})
 		this.definitions[name] = def
 		v.compile(def.pipe)
-		return async (payload: PipeInput<P>, context: Context)=> {
+		return async (payload: PipeInput<P>, context: Context) => {
 			const event = await this.#createEvent(name, payload, context)
-			return this.#processEvent<R>(event, false)
+			return this.#processEvent<R>(event, true)
 		}
 	}
 }
