@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.8](https://github.com/kevinand11/equipped/compare/v5.1.7...v5.1.8) (2026-01-09)
+
+
+### Features
+
+* add firstRun to event context ([0f47b76](https://github.com/kevinand11/equipped/commit/0f47b762525aff5e51acfe1676e9b4e5b31a84eb))
+
+
+### Bug Fixes
+
+* update fastify options ([27524e2](https://github.com/kevinand11/equipped/commit/27524e231b4a5c306015986de25fa48f9a87a6a5))
+
 ### [5.1.7](https://github.com/kevinand11/equipped/compare/v5.1.6...v5.1.7) (2025-12-07)
 
 
