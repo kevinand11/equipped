@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.9](https://github.com/kevinand11/equipped/compare/v5.1.8...v5.1.9) (2026-01-18)
+
+
+### Bug Fixes
+
+* dont throw error inside process audit event session ([a35ebb0](https://github.com/kevinand11/equipped/commit/a35ebb04ddeeef0717c33e4031e2ac534db6697d))
+
 ### [5.1.8](https://github.com/kevinand11/equipped/compare/v5.1.7...v5.1.8) (2026-01-09)
 
 
