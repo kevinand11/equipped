@@ -83,7 +83,7 @@ export class EventAudit {
 	}
 
 	async #processEvent<R>(event: EventDoc, firstRun: boolean) {
-		return this.db.session(async () => {
+		const result = await this.db.session(async () => {
 			const def = this.definitions[event.name]
 			if (!def) throw new EquippedError('audit definition not found', { event })
 			try {
@@ -115,13 +115,15 @@ export class EventAudit {
 				}
 				if (!context.firstRun) await asyncHandle()
 				else this.asyncQueue.push(asyncHandle)
-				return result as R
+				return { success: true as const, value: result as R }
 			} catch (err) {
 				const error = err instanceof Error ? err.message : String(err)
 				await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'error', error, ts: Date.now() }) } })
-				throw err
+				return { success: false as const, error: err instanceof Error ? err : new Error(String(err)) }
 			}
 		})
+		if (result.success) return result.value
+		else throw result.error
 	}
 
 	async replay(from?: Date) {
