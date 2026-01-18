@@ -265,6 +265,7 @@ export class MongoDb extends Db<{ _id: string }> {
 							throw new EquippedError(`Unknown bulkWrite operation`, { operation })
 					}
 				})
+				if (!bulk.length) return
 				await bulk.execute({ session: sessionStore.getStore() })
 			},
 
