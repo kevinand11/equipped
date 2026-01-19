@@ -23,7 +23,7 @@ export type EventDoc = {
 	name: string
 	ts: number
 	body: unknown
-	steps: { status: 'start' | 'sync' | 'async' | 'error'; ts: number; error?: string }[]
+	steps: { status: 'start' | 'sync' | 'async'; ts: number }[]
 	by?: string
 }
 type Context = Partial<Pick<EventContext, 'by' | 'at'>>
@@ -83,47 +83,28 @@ export class EventAudit {
 	}
 
 	async #processEvent<R>(event: EventDoc, firstRun: boolean) {
-		const result = await this.db.session(async () => {
+		return this.db.session(async () => {
 			const def = this.definitions[event.name]
 			if (!def) throw new EquippedError('audit definition not found', { event })
-			try {
-				await this.table.updateOne({ key: event.key }, { $set: { steps: [createStep({ status: 'start', ts: Date.now() })] } })
-				const context: EventContext = {
-					key: event.key,
-					by: event.by,
-					at: new Date(event.ts),
-					firstRun,
-				}
-				const result = await def.handle(event.body, context)
-				await def.sync?.(result, event.body, context)
-				await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'sync', ts: Date.now() }) } })
-
-				const asyncHandle = async () => {
-					try {
-						await def.async?.(result, event.body, context)
-						await this.table.updateOne(
-							{ key: event.key },
-							{ $push: { steps: createStep({ status: 'async', ts: Date.now() }) } },
-						)
-					} catch (err) {
-						const error = err instanceof Error ? err.message : String(err)
-						await this.table.updateOne(
-							{ key: event.key },
-							{ $push: { steps: createStep({ status: 'error', error, ts: Date.now() }) } },
-						)
-					}
-				}
-				if (!context.firstRun) await asyncHandle()
-				else this.asyncQueue.push(asyncHandle)
-				return { success: true as const, value: result as R }
-			} catch (err) {
-				const error = err instanceof Error ? err.message : String(err)
-				await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'error', error, ts: Date.now() }) } })
-				return { success: false as const, error: err instanceof Error ? err : new Error(String(err)) }
+			await this.table.updateOne({ key: event.key }, { $set: { steps: [createStep({ status: 'start', ts: Date.now() })] } })
+			const context: EventContext = {
+				key: event.key,
+				by: event.by,
+				at: new Date(event.ts),
+				firstRun,
 			}
+			const result = await def.handle(event.body, context)
+			await def.sync?.(result, event.body, context)
+			await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'sync', ts: Date.now() }) } })
+
+			const asyncHandle = async () => {
+				await def.async?.(result, event.body, context)
+				await this.table.updateOne({ key: event.key }, { $push: { steps: createStep({ status: 'async', ts: Date.now() }) } })
+			}
+			if (!context.firstRun) await asyncHandle()
+			else this.asyncQueue.push(asyncHandle)
+			return result as R
 		})
-		if (result.success) return result.value
-		else throw result.error
 	}
 
 	async replay(from?: Date) {
@@ -147,9 +128,10 @@ export class EventAudit {
 		if (this.definitions[name]) throw new EquippedError(`${name} already has a registered handler`, {})
 		this.definitions[name] = def
 		v.compile(def.pipe)
-		return async (payload: PipeInput<P>, context: Context) => {
-			const event = await this.#createEvent(name, payload, context)
-			return this.#processEvent<R>(event, true)
-		}
+		return async (payload: PipeInput<P>, context: Context) =>
+			this.db.session(async () => {
+				const event = await this.#createEvent(name, payload, context)
+				return this.#processEvent<R>(event, true)
+			})
 	}
 }
