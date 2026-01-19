@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.10](https://github.com/kevinand11/equipped/compare/v5.1.9...v5.1.10) (2026-01-19)
+
+
+### Bug Fixes
+
+* check for length before running bulkWrite ([32b18fc](https://github.com/kevinand11/equipped/commit/32b18fc8e8a29aa24f81ec151692ee199dbd3a33))
+
 ### [5.1.9](https://github.com/kevinand11/equipped/compare/v5.1.8...v5.1.9) (2026-01-18)
 
 
