@@ -13,7 +13,7 @@ export class KafkaEventBus extends EventBus {
 	constructor(config: KafkaConfig) {
 		super()
 		this.#client = new KafkaJS.Kafka({
-			kafkaJS: { ...config, logLevel: KafkaJS.logLevel.NOTHING }
+			kafkaJS: { ...config, logLevel: KafkaJS.logLevel.NOTHING },
 		})
 	}
 
@@ -21,17 +21,13 @@ export class KafkaEventBus extends EventBus {
 		const topic = options.skipScope ? topicName : Instance.get().getScopedName(topicName)
 		return {
 			publish: async (data: Event['data']) => {
-				try {
-					const producer = this.#client.producer()
-					await producer.connect()
-					await producer.send({
-						topic,
-						messages: [{ value: JSON.stringify(data) }],
-					})
-					return true
-				} catch {
-					return false
-				}
+				const producer = this.#client.producer()
+				await producer.connect()
+				await producer.send({
+					topic,
+					messages: [{ value: JSON.stringify(data) }],
+				})
+				return true
 			},
 			subscribe: (onMessage: (data: Event['data']) => Promise<void>) => {
 				const subscribe = async () => {
@@ -71,11 +67,12 @@ export class KafkaEventBus extends EventBus {
 	}
 
 	async #getAdmin() {
-		if (!this.#admin) this.#admin = (async () => {
-			const admin = this.#client.admin()
-			await admin.connect()
-			return admin
-		})()
+		if (!this.#admin)
+			this.#admin = (async () => {
+				const admin = this.#client.admin()
+				await admin.connect()
+				return admin
+			})()
 		return this.#admin
 	}
 

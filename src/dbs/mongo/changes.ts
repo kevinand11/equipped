@@ -78,7 +78,11 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 							'capture.mode': 'change_streams_update_full_with_pre_image',
 							'mongodb.connection.string': config.uri,
 							'collection.include.list': dbColName,
-							'snapshot.mode': 'always',
+							'snapshot.mode': 'when_needed',
+							'capture.scope': 'collection',
+							'capture.target': dbColName,
+							'heartbeat.interval.ms': '60000',
+							'errors.max.retries': '3',
 						})
 
 						if (started) return { done: true, value: true }
