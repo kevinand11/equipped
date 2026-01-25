@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.11](https://github.com/kevinand11/equipped/compare/v5.1.10...v5.1.11) (2026-01-25)
+
+
+### Bug Fixes
+
+* enable heartbeats for cdc ([f29c586](https://github.com/kevinand11/equipped/commit/f29c586c330f34a7e9e646531bc183fb3b610ec5))
+
 ### [5.1.10](https://github.com/kevinand11/equipped/compare/v5.1.9...v5.1.10) (2026-01-19)
 
 
