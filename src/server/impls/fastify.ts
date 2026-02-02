@@ -39,16 +39,6 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 		})
 		super(app.server, config, {
 			parseRequest: async (req) => {
-				const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
-				const headers = {
-					...allHeaders,
-					Authorization: req.headers['authorization']?.toString(),
-					RefreshToken: req.headers['x-refresh-token']?.toString(),
-					ApiKey: req.headers['x-api-key']?.toString(),
-					ContentType: req.headers['content-type']?.toString(),
-					Referer: req.headers['referer']?.toString(),
-					UserAgent: req.headers['user-agent']?.toString(),
-				}
 				const { body, files } = excludeBufferKeys(req.body ?? {})
 
 				return new Request({
@@ -59,7 +49,7 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 					query: req.query ?? {},
 					method: <any>req.method,
 					path: req.url,
-					headers,
+					headers: req.headers,
 					files,
 				})
 			},

@@ -1,25 +1,26 @@
+import type { IncomingHttpHeaders } from 'node:http2'
+
 import jwt from 'jsonwebtoken'
 
-import type { Cache } from '../../cache'
+import { BaseRequestAuthMethod } from './base'
 import { EquippedError, NotAuthenticatedError, TokenExpired } from '../../errors'
 
-interface BaseTokensUtilityOptions {
+interface BaseTokenRequestAuthMethodOptions {
+	headerName: string
 	tokenKey: string
 	tokenTTL: number
 	tokenPrefix: string
-	checkCacheOnVerify?: boolean
 	stripBearer?: boolean
 }
 
-type UserPayload = { id: string }
-
-export abstract class BaseTokensUtility<T extends UserPayload> {
-	#options: BaseTokensUtilityOptions
+export abstract class BaseTokenRequestAuthMethod<T extends { id: string }> extends BaseRequestAuthMethod<T> {
+	readonly #options: BaseTokenRequestAuthMethodOptions
 	abstract saveToken(key: string, token: string, ttl: number): Promise<void>
 	abstract retrieveToken(key: string): Promise<string | null>
 	abstract deleteToken(key: string): Promise<void>
 
-	constructor(options: BaseTokensUtilityOptions) {
+	constructor(options: BaseTokenRequestAuthMethodOptions) {
+		super()
 		this.#options = options
 	}
 
@@ -27,7 +28,8 @@ export abstract class BaseTokensUtility<T extends UserPayload> {
 		return `${this.#options.tokenPrefix}${userId}`
 	}
 
-	#parseTokenValue(headerValue: string) {
+	#parseTokenValue (headerValue: string) {
+		if (!headerValue) throw new NotAuthenticatedError()
 		if (!this.#options.stripBearer) return headerValue
 		if (!headerValue.startsWith('Bearer ')) throw new EquippedError(`header must begin with 'Bearer '`, { headerValue })
 		return headerValue.slice(7)
@@ -39,8 +41,10 @@ export abstract class BaseTokensUtility<T extends UserPayload> {
 		return token
 	}
 
-	async verifyToken(headerValue: string) {
+	async parse(headers: IncomingHttpHeaders) {
 		try {
+			const headerValue = headers[this.#options.headerName]
+			if (!headerValue || typeof headerValue !== 'string') throw new NotAuthenticatedError()
 			const token = this.#parseTokenValue(headerValue)
 			const user = jwt.verify(token, this.#options.tokenKey) as T
 			if (!user) throw new NotAuthenticatedError()
@@ -54,28 +58,5 @@ export abstract class BaseTokensUtility<T extends UserPayload> {
 			if (err instanceof jwt.TokenExpiredError) throw new TokenExpired(undefined, err)
 			else throw new NotAuthenticatedError(undefined, err)
 		}
-	}
-}
-
-export class CacheTokensUtility<T extends UserPayload> extends BaseTokensUtility<T> {
-	stripBearer: boolean
-	constructor(
-		options: BaseTokensUtilityOptions,
-		private cache: () => Cache,
-	) {
-		super(options)
-		this.stripBearer = options.stripBearer ?? true
-	}
-
-	async saveToken(key: string, token: string, ttl: number): Promise<void> {
-		await this.cache().set(key, token, ttl)
-	}
-
-	async retrieveToken(key: string) {
-		return this.cache().get(key)
-	}
-
-	async deleteToken(key: string) {
-		await this.cache().delete(key)
 	}
 }

@@ -1,3 +1,4 @@
+import type { IncomingHttpHeaders } from 'node:http2'
 import type { Readable } from 'node:stream'
 
 import type { SerializeOptions } from '@fastify/cookie'
@@ -5,12 +6,8 @@ import type { DistributiveOmit, IsInTypeList } from 'valleyed'
 
 import type { RequestError } from '../errors'
 import type { DefaultCookies, DefaultHeaders, IncomingFile, MethodsEnum, RouteDef, RouteDefToReqRes } from './types'
-import type { AuthUser, RefreshUser } from '../types'
+import type { AuthUser } from '../types'
 import { parseJSONObject } from '../utilities'
-
-type HeaderKeys = 'Authorization' | 'RefreshToken' | 'ApiKey' | 'Referer' | 'ContentType' | 'UserAgent'
-type ReqUser<T> = { error?: RequestError; value?: T }
-type FallbackHeadersType = Record<string, string | string[] | undefined>
 
 type CookieVal<C extends DefaultCookies> = {
 	[K in keyof C]: SerializeOptions & { value: C[K] }
@@ -23,17 +20,9 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 	body: Def['body']
 	params: Def['params']
 	query: Def['query']
-	headers: Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & FallbackHeadersType
+	headers: IncomingHttpHeaders & Def['requestHeaders']
 	cookies: Record<string, string | undefined> & Def['requestCookies']
-	users: {
-		access: ReqUser<AuthUser>
-		refresh: ReqUser<RefreshUser>
-		apiKey: ReqUser<AuthUser>
-	} = {
-		access: {},
-		refresh: {},
-		apiKey: {},
-	}
+	authUserError?: RequestError
 	authUser?: AuthUser
 
 	constructor({
@@ -52,11 +41,11 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		params: Def['params']
 		query: Def['query']
 		cookies: Record<string, string | undefined> & Def['requestCookies']
-		headers: Record<HeaderKeys, string | undefined> & Def['requestHeaders'] & FallbackHeadersType
+		headers: IncomingHttpHeaders
 		files: Record<string, IncomingFile[]>
 		method: MethodsEnum
 		path: string
-	}) {
+		}) {
 		this.ip = ip
 		this.method = method
 		this.path = path

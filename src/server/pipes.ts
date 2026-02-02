@@ -1,7 +1,8 @@
 import { type PipeOutput, v } from 'valleyed'
 
 import { EventBus } from '../events'
-import { BaseApiKeysUtility, BaseTokensUtility } from './requests-auth'
+import type { AuthUser } from '../types'
+import { BaseRequestAuthMethod } from './requests-auth-methods'
 
 export const serverConfigPipe = () =>
 	v.object({
@@ -41,13 +42,7 @@ export const serverConfigPipe = () =>
 			}),
 			{},
 		),
-		requestsAuth: v.defaults(
-			v.object({
-				tokens: v.optional(v.instanceOf(BaseTokensUtility)),
-				apiKey: v.optional(v.instanceOf(BaseApiKeysUtility)),
-			}),
-			{},
-		),
+		requestsAuthMethods: v.defaults(v.array(v.instanceOf(BaseRequestAuthMethod<AuthUser>)), []),
 	})
 
 export type ServerConfig = PipeOutput<ReturnType<typeof serverConfigPipe>>

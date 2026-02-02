@@ -24,16 +24,6 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 		const instance = Instance.get()
 		super(http.createServer(app), config, {
 			parseRequest: async (req) => {
-				const allHeaders = Object.fromEntries(Object.entries(req.headers).map(([key, val]) => [key, val ?? null]))
-				const headers = {
-					...allHeaders,
-					Authorization: req.get('authorization'),
-					RefreshToken: req.get('x-refresh-token'),
-					ApiKey: req.get('x-api-key'),
-					ContentType: req.get('content-type'),
-					Referer: req.get('referer'),
-					UserAgent: req.get('user-agent'),
-				}
 				const files = Object.fromEntries(
 					await Promise.all(
 						Object.entries(req.files ?? {}).map(async ([key, file]) => {
@@ -61,7 +51,7 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 					query: req.query ?? {},
 					method: <any>req.method,
 					path: req.path,
-					headers,
+					headers: req.headers,
 					files,
 				})
 			},

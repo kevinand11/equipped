@@ -5,6 +5,7 @@ import type { Entity } from '../dbs/base/core'
 import { Instance } from '../instance'
 import type { AuthUser } from '../types'
 import type { ServerConfig } from './pipes'
+import { BaseRequestAuthMethod } from './requests-auth-methods'
 import { StatusCodes, type StatusCodesEnum } from './types'
 
 enum EmitTypes {
@@ -104,10 +105,9 @@ export class SocketEmitter {
 		this.socketInstance.removeAllListeners('connection')
 		this.socketInstance.on('connection', async (socket) => {
 			const socketId = socket.id
-			let user = null as AuthUser | null
-			const tokensUtil = this.config.requestsAuth.tokens
-			if (socket.handshake.auth.authorization && tokensUtil)
-				user = await tokensUtil.verifyToken(socket.handshake.auth.authorization ?? '').catch(() => null)
+			const user =
+				(await BaseRequestAuthMethod.process(this.config.requestsAuthMethods, socket.handshake.headers).catch(() => undefined)) ??
+				null
 			socket.on('leave', async (data: LeaveRoomParams, callback: Callback) => {
 				if (!data.channel)
 					return (
