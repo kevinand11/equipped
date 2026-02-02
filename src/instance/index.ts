@@ -59,24 +59,24 @@ export class Instance {
 		return [this.settings.app.name, name].join(key)
 	}
 
-	createCache<T extends PipeInput<ReturnType<typeof cachePipe>>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(cachePipe(), input) as CacheTypes[T['type']]
+	createCache<T extends keyof CacheTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof cachePipe>>, { type: T }>>) {
+		return v.assert(cachePipe(), input) as CacheTypes[T]
 	}
 
-	createJobs<T extends PipeInput<ReturnType<typeof jobsPipe>>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(jobsPipe(), input) as JobTypes[T['type']]
+	createJobs<T extends keyof JobTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof jobsPipe>>, { type: T }>>) {
+		return v.assert(jobsPipe(), input) as JobTypes[T]
 	}
 
-	createEventBus<T extends PipeInput<ReturnType<typeof eventBusPipe>>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(eventBusPipe(), input) as EventBusTypes[T['type']]
+	createEventBus<T extends keyof EventBusTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof eventBusPipe>>, { type: T }>>) {
+		return v.assert(eventBusPipe(), input) as EventBusTypes[T]
 	}
 
-	createDb<T extends PipeInput<ReturnType<typeof dbPipe>>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(dbPipe(), input) as DbTypes[T['db']['type']]
+	createDb<T extends keyof DbTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof dbPipe>>, { db: { type: T } }>>) {
+		return v.assert(dbPipe(), input) as DbTypes[T]
 	}
 
-	createServer<T extends PipeInput<ReturnType<typeof serverTypePipe>>>(input: ConditionalObjectKeys<T>) {
-		return v.assert(serverTypePipe(), input) as ServerTypes[T['type']]
+	createServer<T extends keyof ServerTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof serverTypePipe>>, { type: T }>>) {
+		return v.assert(serverTypePipe(), input) as ServerTypes[T]
 	}
 
 	async start() {

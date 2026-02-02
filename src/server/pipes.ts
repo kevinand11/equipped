@@ -4,9 +4,8 @@ import { EventBus } from '../events'
 import type { AuthUser } from '../types'
 import { BaseRequestAuthMethod } from './requests-auth-methods'
 
-export const serverConfigPipe = () =>
+const serverBasePipe = () =>
 	v.object({
-		type: v.in(['fastify', 'express'] as const),
 		port: v.number(),
 		eventBus: v.optional(v.instanceOf(EventBus)),
 		publicPath: v.optional(v.string()),
@@ -43,6 +42,22 @@ export const serverConfigPipe = () =>
 			{},
 		),
 		socketsAuthMethods: v.defaults(v.array(v.instanceOf(BaseRequestAuthMethod<AuthUser>)), []),
+	})
+
+export const serverConfigPipe = () =>
+	v.discriminate((d: any) => d.type, {
+		fastify: v.merge(
+			serverBasePipe(),
+			v.object({
+				type: v.is('fastify' as const),
+			}),
+		),
+		express: v.merge(
+			serverBasePipe(),
+			v.object({
+				type: v.is('express' as const),
+			}),
+		),
 	})
 
 export type ServerConfig = PipeOutput<ReturnType<typeof serverConfigPipe>>
