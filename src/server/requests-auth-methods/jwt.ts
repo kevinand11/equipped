@@ -1,6 +1,6 @@
 import type { IncomingHttpHeaders } from 'node:http2'
 
-import cookie from 'cookie-parser'
+import cookie from '@fastify/cookie'
 import jwt from 'jsonwebtoken'
 
 import { BaseRequestAuthMethod } from './base'
@@ -91,7 +91,7 @@ export abstract class BaseJwtCookieRequestAuthMethod<T extends { id: string }> e
 	}
 
 	async parseHeader(headers: IncomingHttpHeaders) {
-		const cookies = cookie.JSONCookie(headers.cookie || '') ?? {}
+		const cookies = cookie.parse(headers.cookie || '') ?? {}
 		const value = cookies[this.#options.cookieName]
 		if (!value || typeof value !== 'string') throw new NotAuthenticatedError()
 		return value

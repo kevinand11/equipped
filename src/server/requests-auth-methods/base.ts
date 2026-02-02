@@ -3,7 +3,7 @@ import { type IncomingHttpHeaders } from 'node:http2'
 import { BadRequestError, RequestError } from '../../errors'
 
 export abstract class BaseRequestAuthMethod<T extends { id: string }> {
-	abstract parse (headers: IncomingHttpHeaders): Promise<T>
+	abstract parse(headers: IncomingHttpHeaders): Promise<T>
 	abstract routeSecuritySchemeName(): string | null
 
 	static async process<T extends { id: string }>(methods: BaseRequestAuthMethod<T>[], headers: IncomingHttpHeaders) {
