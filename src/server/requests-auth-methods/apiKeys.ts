@@ -17,4 +17,8 @@ export abstract class BaseApiKeyRequestAuthMethod<T extends { id: string }> exte
 		if (!headerValue || typeof headerValue !== 'string') throw new NotAuthenticatedError()
 		return this.verify(headerValue)
 	}
+
+	routeSecuritySchemeName () {
+		return this.#headerName
+	}
 }

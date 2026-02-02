@@ -9,7 +9,11 @@ export const requireAuthUser = (methods: BaseRequestAuthMethod<AuthUser>[]) =>
 		},
 		(route) => {
 			route.security ??= []
-			route.security.push({ Authorization: [] }, { ApiKey: [] })
+			for (const method of methods) {
+				const schemeName = method.routeSecuritySchemeName()
+				if (schemeName) route.security.push({ [schemeName]: [] })
+			}
+
 			route.descriptions ??= []
 			route.descriptions.push('Requires a valid means of authentication.')
 		},

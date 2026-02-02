@@ -7,7 +7,7 @@ import { BaseRequestAuthMethod } from './base'
 import { EquippedError, NotAuthenticatedError, TokenExpired } from '../../errors'
 
 export interface BaseJwtRequestAuthMethodOptions {
-	storageKey: string
+	signingKey: string
 	storageTTL: number
 	storagePrefix?: string
 }
@@ -29,7 +29,7 @@ export abstract class BaseJwtRequestAuthMethod<T extends { id: string }> extends
 	}
 
 	async createToken(payload: T) {
-		const token = jwt.sign(payload, this.#options.storageKey, { expiresIn: this.#options.storageTTL })
+		const token = jwt.sign(payload, this.#options.signingKey, { expiresIn: this.#options.storageTTL })
 		await this.store(this.#getKey(payload.id), token, this.#options.storageTTL)
 		return token
 	}
@@ -37,7 +37,7 @@ export abstract class BaseJwtRequestAuthMethod<T extends { id: string }> extends
 	async parse(headers: IncomingHttpHeaders) {
 		try {
 			const token = await this.parseHeader(headers)
-			const user = jwt.verify(token, this.#options.storageKey) as T
+			const user = jwt.verify(token, this.#options.signingKey) as T
 			if (!user) throw new NotAuthenticatedError()
 
 			const cachedToken = await this.retrieve(this.#getKey(user.id))
@@ -72,6 +72,10 @@ export abstract class BaseJwtHeaderRequestAuthMethod<T extends { id: string }> e
 		if (!value.startsWith('Bearer ')) throw new EquippedError(`header must begin with 'Bearer '`, { headerValue: value })
 		return value.slice(7)
 	}
+
+	routeSecuritySchemeName() {
+		return this.#options.headerName
+	}
 }
 
 interface BaseJwtCookieRequestAuthMethodOptions extends BaseJwtRequestAuthMethodOptions {
@@ -91,5 +95,9 @@ export abstract class BaseJwtCookieRequestAuthMethod<T extends { id: string }> e
 		const value = cookies[this.#options.cookieName]
 		if (!value || typeof value !== 'string') throw new NotAuthenticatedError()
 		return value
+	}
+
+	routeSecuritySchemeName() {
+		return `cookie:${this.#options.cookieName}`
 	}
 }
