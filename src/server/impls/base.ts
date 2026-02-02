@@ -14,7 +14,7 @@ import type { ServerConfig } from '../pipes'
 import { type Request, Response } from '../requests'
 import { Router } from '../routes'
 import { SocketEmitter } from '../sockets'
-import { Methods, type MethodsEnum, type RouteDef, StatusCodes, type Route } from '../types'
+import { Methods, type MethodsEnum, type Route, type RouteDef, StatusCodes } from '../types'
 
 type RequestValidator = (req: Request<any>) => Promise<Request<any>>
 type ResponseValidator = (res: Response<any>) => Promise<Response<any>>
@@ -188,7 +188,7 @@ export abstract class Server<Req = any, Res = any> {
 			const validity = responseLocalStorage.run(response, () =>
 				v.validate(responsePipe, {
 					responseHeaders: response.headers,
-					responseCookies: response.cookies,
+					responseCookies: Object.fromEntries(Object.entries(response.cookies).map(([key, val]) => [key, val.value] as const)),
 					response: response.body,
 				}),
 			)
