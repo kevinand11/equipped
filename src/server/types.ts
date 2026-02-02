@@ -55,7 +55,6 @@ export type RouteDef = {
 	responseCookies?: Pipe<DefaultCookies, DefaultCookies>
 	defaultStatusCode?: StatusCodesEnum
 	defaultContentType?: string
-	context?: (req: Request<RouteDefToReqRes<RouteDef>>) => Awaitable<Record<string, unknown>>
 }
 
 type RouteGroup = { name: string; description?: string }
@@ -108,7 +107,6 @@ export type RouteDefToReqRes<T extends RouteDef> = Prettify<{
 	responseCookies: PipeOutput<GetApiPart<T, 'responseCookies'>>
 	statusCode: GetApiPart<T, 'defaultStatusCode'>
 	contentType: GetApiPart<T, 'defaultContentType'>
-	context: Awaited<ReturnType<GetApiPart<T, 'context'>>>
 }>
 
 type Awaitable<T> = Promise<T> | T

@@ -61,7 +61,6 @@ export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
 					path: req.url,
 					headers,
 					files,
-					context: {},
 				})
 			},
 			handleResponse: async (res, response) => {

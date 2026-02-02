@@ -24,7 +24,6 @@ function mergeSchemas(...schemas: RouteDef[]) {
 		responseCookies: '',
 		defaultStatusCode: '',
 		defaultContentType: '',
-		context: '',
 	}
 	function merge<T extends RouteDef[keyof Keys]>(acc: T | null, cur: T) {
 		if (!acc) return cur

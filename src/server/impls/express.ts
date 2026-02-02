@@ -63,7 +63,6 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 					path: req.path,
 					headers,
 					files,
-					context: {},
 				})
 			},
 			handleResponse: async (res, response) => {

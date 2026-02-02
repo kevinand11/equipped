@@ -160,8 +160,6 @@ export abstract class Server<Req = any, Res = any> {
 		v.compile(responsePipe, { allErrors: true })
 		const validateRequest: RequestValidator = async (request) => {
 			if (!Object.keys(requestPipeDefs)) return request
-			const context = schema.context ? await schema.context(request) : {}
-			request.context = context
 			const validity = requestLocalStorage.run(request, () =>
 				v.validate(requestPipe, {
 					params: request.params,
