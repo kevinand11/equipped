@@ -4,44 +4,47 @@ import cookie from '@fastify/cookie'
 import jwt from 'jsonwebtoken'
 
 import { BaseRequestAuthMethod } from './base'
-import { EquippedError, NotAuthenticatedError, TokenExpired } from '../../errors'
+import { NotAuthenticatedError, TokenExpired } from '../../errors'
 
 export interface BaseJwtRequestAuthMethodOptions {
 	signingKey: string
 	storageTTL: number
 	storagePrefix?: string
+	enforceSingleSession?: boolean
 }
 
 export abstract class BaseJwtRequestAuthMethod<T extends { id: string }> extends BaseRequestAuthMethod<T> {
-	readonly #options: BaseJwtRequestAuthMethodOptions
-	abstract parseHeader(headers: IncomingHttpHeaders): Promise<string>
-	abstract store(key: string, token: string, ttl: number): Promise<void>
-	abstract retrieve(key: string): Promise<string | null>
-	abstract delete(key: string): Promise<void>
+	protected readonly options: BaseJwtRequestAuthMethodOptions
+	protected abstract parseHeader(headers: IncomingHttpHeaders): Promise<string>
+	protected abstract store(key: string, token: string, ttl: number): Promise<void>
+	protected abstract retrieve(key: string): Promise<string | null>
+	protected abstract delete(key: string): Promise<void>
 
 	constructor(options: BaseJwtRequestAuthMethodOptions) {
 		super()
-		this.#options = options
+		this.options = options
 	}
 
 	#getKey(userId: string) {
-		return `${this.#options.storagePrefix ?? ''}${userId}`
+		return `${this.options.storagePrefix ?? ''}${userId}`
 	}
 
 	async createToken(payload: T) {
-		const token = jwt.sign(payload, this.#options.signingKey, { expiresIn: this.#options.storageTTL })
-		await this.store(this.#getKey(payload.id), token, this.#options.storageTTL)
+		const token = jwt.sign(payload, this.options.signingKey, { expiresIn: this.options.storageTTL })
+		await this.store(this.#getKey(payload.id), token, this.options.storageTTL)
 		return token
 	}
 
 	async parse(headers: IncomingHttpHeaders) {
 		try {
 			const token = await this.parseHeader(headers)
-			const user = jwt.verify(token, this.#options.signingKey) as T
+			const user = jwt.verify(token, this.options.signingKey) as T
 			if (!user) throw new NotAuthenticatedError()
 
-			const cachedToken = await this.retrieve(this.#getKey(user.id))
-			if (token && token !== cachedToken) throw new TokenExpired()
+			if (this.options.enforceSingleSession) {
+				const cachedToken = await this.retrieve(this.#getKey(user.id))
+				if (token && token !== cachedToken) throw new TokenExpired()
+			}
 
 			return user
 		} catch (err) {
@@ -50,54 +53,59 @@ export abstract class BaseJwtRequestAuthMethod<T extends { id: string }> extends
 			else throw new NotAuthenticatedError(undefined, err)
 		}
 	}
+
+	async retrieveFor(userId: string) {
+		return this.retrieve(this.#getKey(userId))
+	}
+
+	async deleteFor(userId: string) {
+		await this.delete(this.#getKey(userId))
+	}
 }
 
-interface BaseJwtHeaderRequestAuthMethodOptions extends BaseJwtRequestAuthMethodOptions {
-	headerName: string
-	stripBearer?: boolean
+interface BaseJwtHeaderRequestAuthMethodOptions<T extends string> extends BaseJwtRequestAuthMethodOptions {
+	headerName: T
 }
 
-export abstract class BaseJwtHeaderRequestAuthMethod<T extends { id: string }> extends BaseJwtRequestAuthMethod<T> {
-	readonly #options: BaseJwtHeaderRequestAuthMethodOptions
+export abstract class BaseJwtHeaderRequestAuthMethod<T extends { id: string }, Name extends string = string> extends BaseJwtRequestAuthMethod<T> {
+	protected readonly options: BaseJwtHeaderRequestAuthMethodOptions<Name>
 
-	constructor(options: BaseJwtHeaderRequestAuthMethodOptions) {
+	constructor(options: BaseJwtHeaderRequestAuthMethodOptions<Name>) {
 		super(options)
-		this.#options = options
+		this.options = options
 	}
 
 	async parseHeader(headers: IncomingHttpHeaders) {
-		const value = headers[this.#options.headerName]
+		const value = headers[this.options.headerName]
 		if (!value || typeof value !== 'string') throw new NotAuthenticatedError()
-		if (!this.#options.stripBearer) return value
-		if (!value.startsWith('Bearer ')) throw new EquippedError(`header must begin with 'Bearer '`, { headerValue: value })
-		return value.slice(7)
+		return value.startsWith('Bearer ') ? value.slice(7) : value
 	}
 
 	routeSecuritySchemeName() {
-		return this.#options.headerName
+		return this.options.headerName
 	}
 }
 
-interface BaseJwtCookieRequestAuthMethodOptions extends BaseJwtRequestAuthMethodOptions {
-	cookieName: string
+interface BaseJwtCookieRequestAuthMethodOptions<T extends string> extends BaseJwtRequestAuthMethodOptions {
+	cookieName: T
 }
 
-export abstract class BaseJwtCookieRequestAuthMethod<T extends { id: string }> extends BaseJwtRequestAuthMethod<T> {
-	readonly #options: BaseJwtCookieRequestAuthMethodOptions
+export abstract class BaseJwtCookieRequestAuthMethod<T extends { id: string }, Name extends string = string> extends BaseJwtRequestAuthMethod<T> {
+	protected readonly options: BaseJwtCookieRequestAuthMethodOptions<Name>
 
-	constructor(options: BaseJwtCookieRequestAuthMethodOptions) {
+	constructor(options: BaseJwtCookieRequestAuthMethodOptions<Name>) {
 		super(options)
-		this.#options = options
+		this.options = options
 	}
 
 	async parseHeader(headers: IncomingHttpHeaders) {
 		const cookies = cookie.parse(headers.cookie || '') ?? {}
-		const value = cookies[this.#options.cookieName]
+		const value = cookies[this.options.cookieName]
 		if (!value || typeof value !== 'string') throw new NotAuthenticatedError()
 		return value
 	}
 
 	routeSecuritySchemeName() {
-		return `cookie:${this.#options.cookieName}`
+		return `cookie:${this.options.cookieName}`
 	}
 }

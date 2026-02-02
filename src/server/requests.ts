@@ -9,7 +9,7 @@ import type { DefaultCookies, DefaultHeaders, IncomingFile, MethodsEnum, RouteDe
 import type { AuthUser } from '../types'
 import { parseJSONObject } from '../utilities'
 
-type CookieVal<C extends DefaultCookies> = {
+export type CookieVal<C extends DefaultCookies> = {
 	[K in keyof C]: SerializeOptions & { value: C[K] }
 }
 
