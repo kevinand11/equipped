@@ -1,4 +1,4 @@
-import { NotAuthenticatedError, NotAuthorizedError } from '../../errors'
+import { NotAuthenticatedError } from '../../errors'
 import { makeMiddleware } from '../types'
 
 export const requireAuthUser = makeMiddleware(
@@ -42,21 +42,5 @@ export const requireApiKeyUser = makeMiddleware(
 		route.security.push({ ApiKey: [] })
 		route.descriptions ??= []
 		route.descriptions.push('Requires a valid x-api-key header.')
-	},
-)
-
-export const requireRefreshTokenUser = makeMiddleware(
-	async (request, config) => {
-		if (request.users.refresh.error) throw request.users.refresh.error
-		const refreshToken = request.headers.RefreshToken
-		if (!refreshToken) throw new NotAuthorizedError('x-refresh-token header missing')
-		request.users.refresh.value = await config?.requestsAuth.tokens?.verifyRefreshToken(refreshToken)
-		if (!request.users.refresh.value) throw new NotAuthorizedError()
-	},
-	(route) => {
-		route.security ??= []
-		route.security.push({ RefreshToken: [] })
-		route.descriptions ??= []
-		route.descriptions.push('Requires a valid x-refresh-token header.')
 	},
 )

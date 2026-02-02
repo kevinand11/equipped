@@ -12,7 +12,7 @@ export const parseAuthUser = makeMiddleware(async (request, config) => {
 		}
 	}
 	if (config.requestsAuth.tokens && Authorization)
-		request.users.access.value = await config.requestsAuth.tokens.verifyAccessToken(Authorization).catch(makeErrorHandler('access'))
+		request.users.access.value = await config.requestsAuth.tokens.verifyToken(Authorization).catch(makeErrorHandler('access'))
 	else if (config.requestsAuth.apiKey && ApiKey)
 		request.users.apiKey.value = await config.requestsAuth.apiKey.verifyApiKey(ApiKey).catch(makeErrorHandler('apiKey'))
 })

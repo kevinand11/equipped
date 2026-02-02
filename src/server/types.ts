@@ -24,7 +24,7 @@ export const StatusCodes = {
 	NotFound: 404,
 	ValidationError: 422,
 	TooManyRequests: 429,
-	AuthorizationExpired: 461,
+	TokenExpired: 461,
 } as const
 
 export type MethodsEnum = Enum<typeof Methods>
