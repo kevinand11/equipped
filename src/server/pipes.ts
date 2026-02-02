@@ -42,7 +42,7 @@ export const serverConfigPipe = () =>
 			}),
 			{},
 		),
-		requestsAuthMethods: v.defaults(v.array(v.instanceOf(BaseRequestAuthMethod<AuthUser>)), []),
+		socketsAuthMethods: v.defaults(v.array(v.instanceOf(BaseRequestAuthMethod<AuthUser>)), []),
 	})
 
 export type ServerConfig = PipeOutput<ReturnType<typeof serverConfigPipe>>

@@ -105,9 +105,7 @@ export class SocketEmitter {
 		this.socketInstance.removeAllListeners('connection')
 		this.socketInstance.on('connection', async (socket) => {
 			const socketId = socket.id
-			const user =
-				(await BaseRequestAuthMethod.process(this.config.requestsAuthMethods, socket.handshake.headers).catch(() => undefined)) ??
-				null
+			const user = await BaseRequestAuthMethod.process(this.config.socketsAuthMethods, socket.handshake.headers).catch(() => null)
 			socket.on('leave', async (data: LeaveRoomParams, callback: Callback) => {
 				if (!data.channel)
 					return (

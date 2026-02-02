@@ -8,7 +8,6 @@ import { EquippedError, NotFoundError, RequestError } from '../../errors'
 import { Instance } from '../../instance'
 import { pipeErrorToValidationError } from '../../validations'
 import { requestLocalStorage, responseLocalStorage } from '../../validations/valleyed'
-import { parseAuthUser } from '../middlewares/parseAuthUser'
 import { OpenApi, type OpenApiSchemaDef } from '../openapi'
 import type { ServerConfig } from '../pipes'
 import { type Request, Response } from '../requests'
@@ -75,7 +74,6 @@ export abstract class Server<Req = any, Res = any> {
 				if (this.#routesByKey.get(key))
 					throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
 
-				middlewares.unshift(parseAuthUser as any)
 				middlewares.forEach((m) => m.onSetup?.(route as any))
 				onError?.onSetup?.(route as any)
 

@@ -152,6 +152,7 @@
 		"@types/amqplib": "^0.10.8",
 		"@types/bcryptjs": "^3.0.0",
 		"@types/bull": "^4.10.4",
+		"@types/cookie-parser": "^1.4.10",
 		"@types/cors": "^2.8.19",
 		"@types/express": "^5.0.6",
 		"@types/express-fileupload": "^1.5.1",

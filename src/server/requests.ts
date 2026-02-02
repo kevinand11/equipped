@@ -22,8 +22,7 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 	query: Def['query']
 	headers: IncomingHttpHeaders & Def['requestHeaders']
 	cookies: Record<string, string | undefined> & Def['requestCookies']
-	authUserError?: RequestError
-	authUser?: AuthUser
+	authUser: AuthUser | null = null
 
 	constructor({
 		ip,

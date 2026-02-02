@@ -6,7 +6,7 @@ export abstract class BaseRequestAuthMethod<T extends { id: string }> {
 	abstract parse(headers: IncomingHttpHeaders): Promise<T>
 
 	static async process<T extends { id: string }>(methods: BaseRequestAuthMethod<T>[], headers: IncomingHttpHeaders) {
-		if (methods.length === 0) return undefined
+		if (methods.length === 0) return null
 		let error: Error | undefined
 		for (const method of methods) {
 			try {
