@@ -1,5 +1,6 @@
-import type http from 'http'
+import type http from 'node:http'
 
+import { type CorsOptions } from 'cors'
 import { Server as SocketServer } from 'socket.io'
 import supertest from 'supertest'
 import { type Pipe, PipeError, v } from 'valleyed'
@@ -35,11 +36,12 @@ export abstract class Server<Req = any, Res = any> {
 	#openapi: OpenApi
 	socket: SocketEmitter
 	protected server: http.Server
-	protected cors = {
-		origin: '*',
-		methods: Object.values(Methods)
-			.filter((m) => m !== Methods.options)
-			.map((m) => m.toUpperCase()),
+	protected get cors() {
+		return {
+			origin: this.config.cors?.origin,
+			methods: (this.config.cors?.methods ?? Object.values(Methods)).filter((m) => m !== Methods.options).map((m) => m.toUpperCase()),
+			credentials: this.config.cors?.credentials,
+		} satisfies CorsOptions
 	}
 
 	constructor(

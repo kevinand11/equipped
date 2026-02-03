@@ -3,10 +3,18 @@ import { type PipeOutput, v } from 'valleyed'
 import { EventBus } from '../events'
 import type { AuthUser } from '../types'
 import { BaseRequestAuthMethod } from './requests-auth-methods'
+import { Methods } from './types'
 
 const serverBasePipe = () =>
 	v.object({
 		port: v.number(),
+		cors: v.optional(
+			v.object({
+				origin: v.optional(v.array(v.string())),
+				methods: v.optional(v.array(v.in(Object.values(Methods)))),
+				credentials: v.optional(v.boolean()),
+			}),
+		),
 		eventBus: v.optional(v.instanceOf(EventBus)),
 		publicPath: v.optional(v.string()),
 		healthPath: v.optional(v.string()),
