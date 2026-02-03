@@ -25,7 +25,7 @@ export const signinWithApple = async (idToken: string) => {
 	try {
 		const APPLE_BASE = 'https://appleid.apple.com'
 		const json = jwt.decode(idToken, { complete: true })
-		if (!json?.header) throw new Error('')
+		if (!json?.header) throw new EquippedError('Missing JWT header', { idToken, json })
 		const { kid, alg } = json.header
 		const publicKey = await jwksClient({ jwksUri: `${APPLE_BASE}/auth/keys`, cache: true })
 			.getSigningKey(kid)
@@ -63,7 +63,7 @@ export const signinWithFacebook = async (accessToken: string, fields = [] as str
 			throw new EquippedError('Failed to sign in with facebook', { accessToken, fields }, err)
 		})
 	const isValidData = fields.every((key) => key in data)
-	if (!isValidData) throw new Error('Incomplete scope for access token')
+	if (!isValidData) throw new EquippedError('Incomplete scope for access token', { accessToken, fields, data })
 	data.email_verified = 'true'
 	return data as {
 		id: string

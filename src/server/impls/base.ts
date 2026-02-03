@@ -228,7 +228,7 @@ export abstract class Server<Req = any, Res = any> {
 			throw new NotFoundError(`Route ${request.path} not found`)
 		})
 		this.implementations.registerErrorHandler(async (error, _, res) => {
-			Instance.get().log.error({ error }, 'Uncaught error in route handler')
+			if (!(error instanceof EquippedError)) Instance.get().log.error({ error }, 'Uncaught error in route handler')
 			const response =
 				error instanceof RequestError
 					? new Response({
