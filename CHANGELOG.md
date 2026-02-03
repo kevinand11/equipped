@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.2.0](https://github.com/kevinand11/equipped/compare/v5.1.11...v5.2.0) (2026-02-03)
+
+
+### Features
+
+* auth methods support registering route security ([49ae6de](https://github.com/kevinand11/equipped/commit/49ae6de0a73c5e9ae112d1c26e938e68041195c6))
+* impl cookie request auth ([996e6ce](https://github.com/kevinand11/equipped/commit/996e6ce34943749a3ebc900a38c70119c5f0670e))
+
+
+### Bug Fixes
+
+* cors behavior ([c48a35a](https://github.com/kevinand11/equipped/commit/c48a35ac61d59c3274a484cc7758cc561e303a95))
+* remove unused context from request object and schema ([cf771a0](https://github.com/kevinand11/equipped/commit/cf771a0521ba98b54bbd2aec3b6a203ffd362c56))
+* types of instance.createX ([b8589e7](https://github.com/kevinand11/equipped/commit/b8589e76dcdb31f7536777f3c1042c42a9265ea2))
+* validate response cookie value not whole cookie object ([289496a](https://github.com/kevinand11/equipped/commit/289496a8192aa3f4f05fc500561131fd269e5698))
+
 ### [5.1.11](https://github.com/kevinand11/equipped/compare/v5.1.10...v5.1.11) (2026-01-25)
 
 
