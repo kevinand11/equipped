@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.2.2](https://github.com/kevinand11/equipped/compare/v5.2.1...v5.2.2) (2026-02-08)
+
+
+### Features
+
+* support allow all domains for cors ([bf12ed4](https://github.com/kevinand11/equipped/commit/bf12ed451970c5946f819c9ea2ae43471b640c85))
+
 ### [5.2.1](https://github.com/kevinand11/equipped/compare/v5.2.0...v5.2.1) (2026-02-03)
 
 
