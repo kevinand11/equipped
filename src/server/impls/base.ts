@@ -1,5 +1,6 @@
 import type http from 'node:http'
 
+import { type FastifyCorsOptions } from '@fastify/cors'
 import { type CorsOptions } from 'cors'
 import { Server as SocketServer } from 'socket.io'
 import supertest from 'supertest'
@@ -36,12 +37,12 @@ export abstract class Server<Req = any, Res = any> {
 	#openapi: OpenApi
 	socket: SocketEmitter
 	protected server: http.Server
-	protected get cors() {
+	protected get cors(): CorsOptions & FastifyCorsOptions {
 		return {
-			origin: this.config.cors?.origin,
+			origin: this.config.cors?.origin ? (_, cb) => cb(null, true) : this.config.cors?.origin,
 			methods: (this.config.cors?.methods ?? Object.values(Methods)).filter((m) => m !== Methods.options).map((m) => m.toUpperCase()),
 			credentials: this.config.cors?.credentials,
-		} satisfies CorsOptions
+		}
 	}
 
 	constructor(

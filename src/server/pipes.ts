@@ -10,7 +10,7 @@ const serverBasePipe = () =>
 		port: v.number(),
 		cors: v.optional(
 			v.object({
-				origin: v.optional(v.array(v.string())),
+				origin: v.optional(v.or([v.array(v.string()), v.is(true)])),
 				methods: v.optional(v.array(v.in(Object.values(Methods)))),
 				credentials: v.optional(v.boolean()),
 			}),
