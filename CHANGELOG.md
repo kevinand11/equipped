@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.2.4](https://github.com/kevinand11/equipped/compare/v5.2.3...v5.2.4) (2026-02-23)
+
+
+### Bug Fixes
+
+* on error, if equipped error, make badRequest with error message ([52501b3](https://github.com/kevinand11/equipped/commit/52501b3bc93881557cdea54f7b1a888531e0a7b6))
+
 ### [5.2.3](https://github.com/kevinand11/equipped/compare/v5.2.2...v5.2.3) (2026-02-08)
 
 
