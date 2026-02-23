@@ -236,10 +236,15 @@ export abstract class Server<Req = any, Res = any> {
 							body: error.serializedErrors,
 							status: error.statusCode,
 						})
-					: new Response({
-							body: [{ message: 'Something went wrong', data: error.message }],
-							status: StatusCodes.BadRequest,
-						})
+					: error instanceof EquippedError
+						? new Response({
+								body: [{ message: error.message }],
+								status: StatusCodes.BadRequest,
+							})
+						: new Response({
+								body: [{ message: 'Something went wrong', data: error.message }],
+								status: StatusCodes.BadRequest,
+							})
 			return await this.implementations.handleResponse(res, response)
 		})
 
