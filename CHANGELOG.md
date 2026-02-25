@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.2.5](https://github.com/kevinand11/equipped/compare/v5.2.4...v5.2.5) (2026-02-25)
+
+
+### Features
+
+* add support for response middlewares ([0c75845](https://github.com/kevinand11/equipped/commit/0c75845f65c6fcce941adaa8610cd46783b25707))
+
 ### [5.2.4](https://github.com/kevinand11/equipped/compare/v5.2.3...v5.2.4) (2026-02-23)
 
 
