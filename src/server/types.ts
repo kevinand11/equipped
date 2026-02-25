@@ -2,7 +2,6 @@ import type { IsInTypeList, Pipe, PipeInput, PipeOutput, Prettify } from 'valley
 
 import type { RequestError } from '../errors'
 import type { Enum } from '../types'
-import type { ServerConfig } from './pipes'
 import type { Request, Response } from './requests'
 
 export const Methods = {
@@ -62,6 +61,7 @@ type HandlerSetup<T extends RouteDef> = (route: Route<T>) => void
 
 export type RouteConfig<T extends RouteDef> = {
 	middlewares?: ReturnType<typeof makeMiddleware<RouteDef>>[]
+	responseMiddlewares?: ReturnType<typeof makeResponseMiddleware<RouteDef>>[]
 	onError?: ReturnType<typeof makeErrorMiddleware<RouteDef>>
 	groups?: (RouteGroup | RouteGroup['name'])[]
 	title?: string
@@ -119,14 +119,14 @@ type Res<T extends RouteDefToReqRes<any>> = Awaitable<
 			: Response<T>
 		: Response<T>
 >
-export type RouteDefHandler<Def extends RouteDef> = (
-	req: Request<RouteDefToReqRes<Def>>,
-	config: ServerConfig,
-) => Res<RouteDefToReqRes<Def>>
-type RouteMiddlewareHandler<_Def extends RouteDef> = (req: Request<RouteDefToReqRes<RouteDef>>, config: ServerConfig) => Awaitable<void>
+export type RouteDefHandler<Def extends RouteDef> = (req: Request<RouteDefToReqRes<Def>>) => Res<RouteDefToReqRes<Def>>
+type RouteMiddlewareHandler<_Def extends RouteDef> = (req: Request<RouteDefToReqRes<RouteDef>>) => Awaitable<void>
+type RouteResponseMiddlewareHandler<_Def extends RouteDef> = (
+	req: Request<RouteDefToReqRes<RouteDef>>,
+	res: Response<RouteDefToReqRes<RouteDef>>,
+) => Awaitable<void>
 type ErrorHandler<Def extends RouteDef> = (
 	req: Request<RouteDefToReqRes<Def>>,
-	config: ServerConfig,
 	err: Error,
 ) => Res<
 	Omit<RouteDefToReqRes<Def>, 'response' | 'statusCode' | 'responseHeaders' | 'responseCookies'> & {
@@ -143,5 +143,8 @@ function makeMiddlewareHandler<Cb extends Function, T extends RouteDef>(cb: Cb, 
 
 export const makeMiddleware = <Def extends RouteDef>(...args: Parameters<typeof makeMiddlewareHandler<RouteMiddlewareHandler<Def>, Def>>) =>
 	makeMiddlewareHandler(...args)
+export const makeResponseMiddleware = <Def extends RouteDef>(
+	...args: Parameters<typeof makeMiddlewareHandler<RouteResponseMiddlewareHandler<Def>, Def>>
+) => makeMiddlewareHandler(...args)
 export const makeErrorMiddleware = <Def extends RouteDef>(...args: Parameters<typeof makeMiddlewareHandler<ErrorHandler<Def>, Def>>) =>
 	makeMiddlewareHandler(...args)

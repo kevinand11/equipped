@@ -48,6 +48,7 @@ const groupRoutes = <T extends RouteDef, R extends RouteDef>(config: RouterConfi
 		path: `${config.path}/${route.path}`,
 		groups: [...(config.groups ?? []), ...(route.groups ?? [])],
 		middlewares: [...(config.middlewares ?? []), ...(route.middlewares ?? [])],
+		responseMiddlewares: [...(config.responseMiddlewares ?? []), ...(route.responseMiddlewares ?? [])],
 		schema: mergeSchemas(config.schema ?? {}, route.schema ?? {}),
 		security: [...(config.security ?? []), ...(route.security ?? [])],
 	})) as Route<MergeRouteDefs<T, R>>[]

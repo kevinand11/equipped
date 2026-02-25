@@ -71,7 +71,7 @@ export abstract class Server<Req = any, Res = any> {
 	addRoute<T extends RouteDef>(...routes: Route<T>[]) {
 		routes.forEach((route) => {
 			this.#queue.push(async () => {
-				const { method, path, schema = {}, onError, middlewares = [] } = route
+				const { method, path, schema = {}, onError, middlewares = [], responseMiddlewares = [] } = route
 
 				const key = `(${method.toUpperCase()}) ${this.#openapi.cleanPath(path)}`
 				if (this.#routesByKey.get(key))
@@ -79,6 +79,7 @@ export abstract class Server<Req = any, Res = any> {
 
 				middlewares.forEach((m) => m.onSetup?.(route as any))
 				onError?.onSetup?.(route as any)
+				responseMiddlewares.forEach((m) => m.onSetup?.(route as any))
 
 				const { validateRequest, validateResponse, jsonSchema } = this.#resolveSchema(method, schema)
 
@@ -87,16 +88,17 @@ export abstract class Server<Req = any, Res = any> {
 				this.implementations.registerRoute(method, this.#openapi.cleanPath(path), async (req: Req, res: Res) => {
 					const request = await validateRequest(await this.implementations.parseRequest(req))
 					try {
-						for (const middleware of middlewares) await middleware.cb(request, this.config)
-						const rawRes = await route.handler(request, this.config)
+						for (const middleware of middlewares) await middleware.cb(request)
+						const rawRes = await route.handler(request)
 						const response =
 							rawRes instanceof Response
 								? rawRes
 								: new Response({ body: rawRes, status: StatusCodes.Ok, headers: {}, piped: false })
+						for (const middleware of responseMiddlewares) await middleware.cb(request, response)
 						return await this.implementations.handleResponse(res, await validateResponse(response))
 					} catch (error) {
 						if (onError?.cb) {
-							const rawResponse = await onError.cb(request, this.config, error as Error)
+							const rawResponse = await onError.cb(request, error as Error)
 							const response =
 								rawResponse instanceof Response
 									? rawResponse
