@@ -226,6 +226,8 @@ export abstract class Server<Req = any, Res = any> {
 					}),
 			})
 
+		await Promise.all(this.#queue.map((cb) => cb()))
+
 		this.implementations.registerNotFoundHandler(async (req) => {
 			const request = await this.implementations.parseRequest(req)
 			throw new NotFoundError(`Route ${request.path} not found`)
@@ -250,7 +252,6 @@ export abstract class Server<Req = any, Res = any> {
 			return await this.implementations.handleResponse(res, response)
 		})
 
-		await Promise.all(this.#queue.map((cb) => cb()))
 		const started = await this.implementations.start(port)
 		if (started) Instance.get().log.info(`${instance.id}(${app.name}) service listening on port ${port}`)
 		return started

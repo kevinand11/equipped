@@ -17,8 +17,6 @@ import { type IncomingFile, StatusCodes } from '../types'
 import { Server } from './base'
 
 export class ExpressServer extends Server<express.Request, express.Response> {
-	#expressApp: express.Express
-
 	constructor(config: ServerConfig) {
 		const app = express()
 		const instance = Instance.get()
@@ -66,13 +64,13 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 				}
 			},
 			registerRoute: (method, path, cb) => {
-				this.#expressApp[method]?.(path, cb)
+				app[method]?.(path, async (req, res) => cb(req, res))
 			},
 			registerErrorHandler: (cb) => {
-				this.#expressApp.use(async (err, req, res, _next) => cb(err, req, res))
+				app.use(async (err, req, res, _next) => cb(err, req, res))
 			},
 			registerNotFoundHandler: (cb) => {
-				this.#expressApp.use(cb)
+				app.use(async (req, res, _next) => cb(req, res))
 			},
 			start: async (port) =>
 				new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
@@ -84,7 +82,6 @@ export class ExpressServer extends Server<express.Request, express.Response> {
 					}
 				}),
 		})
-		this.#expressApp = app
 
 		app.disable('x-powered-by')
 		if (config.requests.log) app.use(pinoHttp({ logger: instance.log }))
