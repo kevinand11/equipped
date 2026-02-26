@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.2.6](https://github.com/kevinand11/equipped/compare/v5.2.5...v5.2.6) (2026-02-26)
+
+
+### Bug Fixes
+
+* not found handler running before path handlers in express ([9088562](https://github.com/kevinand11/equipped/commit/9088562f6ad53c5accfa79a3c9f658cc606cf9ae))
+
 ### [5.2.5](https://github.com/kevinand11/equipped/compare/v5.2.4...v5.2.5) (2026-02-25)
 
 
