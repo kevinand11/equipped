@@ -123,8 +123,8 @@ importers:
         specifier: 3.0.2
         version: 3.0.2
       valleyed:
-        specifier: 4.5.18
-        version: 4.5.18
+        specifier: 4.5.19
+        version: 4.5.19
     devDependencies:
       '@commitlint/cli':
         specifier: ^20.4.1
@@ -3814,8 +3814,8 @@ packages:
   validate-npm-package-license@3.0.4:
     resolution: {integrity: sha512-DpKm2Ui/xN7/HQKCtpZxoRWBhZ9Z0kqtygG8XCgNQ8ZlDnxuQmWhj566j8fN4Cu3/JmbhsDo7fcAJq4s9h27Ew==}
 
-  valleyed@4.5.18:
-    resolution: {integrity: sha512-TDxjKwYnENS962KYvfjiLkPWxYBY+xgmP8vvyIDi+cCt74HPWUd10BQIN+FYCvY2htwvQ979XnikreCwT3/6FQ==}
+  valleyed@4.5.19:
+    resolution: {integrity: sha512-lrqZtE+RyY2WRVfuhUa19FQFr8nzj9yd9yEJTEJ/+FU+/BjgIwK32F99N7pjyPcKaaXBrMXQzYYyxEz4rl6mDQ==}
 
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
@@ -7858,7 +7858,7 @@ snapshots:
       spdx-correct: 3.2.0
       spdx-expression-parse: 3.0.1
 
-  valleyed@4.5.18:
+  valleyed@4.5.19:
     dependencies:
       '@standard-schema/spec': 1.1.0
       url-regex-safe: 4.0.0

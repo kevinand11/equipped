@@ -207,7 +207,7 @@
 		"socket.io": "4.8.3",
 		"supertest": "7.2.2",
 		"ulid": "3.0.2",
-		"valleyed": "4.5.18"
+		"valleyed": "4.5.19"
 	},
 	"repository": {
 		"url": "git://github.com/kevinand11/equipped.git"
