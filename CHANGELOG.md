@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.2.8](https://github.com/kevinand11/equipped/compare/v5.2.7...v5.2.8) (2026-03-02)
+
+
+### Bug Fixes
+
+* dont covert undefined to null in mongo ([81b3870](https://github.com/kevinand11/equipped/commit/81b3870e4f84220a0f5022816d8c3954f19751fd))
+
 ### [5.2.7](https://github.com/kevinand11/equipped/compare/v5.2.6...v5.2.7) (2026-03-02)
 
 ### [5.2.6](https://github.com/kevinand11/equipped/compare/v5.2.5...v5.2.6) (2026-02-26)
