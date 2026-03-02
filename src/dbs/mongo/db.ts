@@ -34,7 +34,7 @@ export class MongoDb extends Db<{ _id: string }> {
 		dbConfig: DbConfig,
 	) {
 		super(dbConfig)
-		this.client = new MongoClient(mongoConfig.uri)
+		this.client = new MongoClient(mongoConfig.uri, { ignoreUndefined: true })
 		Instance.on(
 			'start',
 			async () => {
