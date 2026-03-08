@@ -16,7 +16,6 @@ export enum Conditions {
 	ne = 'ne',
 	in = 'in',
 	nin = 'nin',
-	exists = 'exists',
 }
 
 const queryKeys = v.catch(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
