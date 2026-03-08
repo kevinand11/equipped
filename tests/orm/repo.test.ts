@@ -360,6 +360,33 @@ describe('orm/repo', () => {
 		})
 	})
 
+	describe('with()', () => {
+		it('returns a new repo using the given adapter', async () => {
+			const storageA = new Map([['test.users', [{ id: '1', name: 'A', email: 'a@t.com', age: 20 }]]])
+			const storageB = new Map([['test.users', [{ id: '2', name: 'B', email: 'b@t.com', age: 30 }]]])
+			const adapterA = createMockAdapter(storageA)
+			const adapterB = createMockAdapter(storageB)
+
+			const repo = createRepo({ adapter: adapterA, schema: UserSchema, config: { db: 'test', col: 'users' } })
+
+			const resultA = await repo.findMany()
+			expect(resultA).toHaveLength(1)
+			expect(resultA[0].name).toBe('A')
+
+			const resultB = await repo.with(adapterB).findMany()
+			expect(resultB).toHaveLength(1)
+			expect(resultB[0].name).toBe('B')
+		})
+
+		it('preserves schema and config', () => {
+			const otherAdapter = createMockAdapter()
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
+			const swapped = repo.with(otherAdapter)
+			expect(swapped.schema).toBe(UserSchema)
+			expect(swapped.config).toEqual({ db: 'test', col: 'users' })
+		})
+	})
+
 	describe('preload()', () => {
 		it('preloads a belongsTo association', async () => {
 			const userStorage = [{ id: 'u1', name: 'John', email: 'j@t.com', age: 30 }]

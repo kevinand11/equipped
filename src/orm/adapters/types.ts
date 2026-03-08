@@ -31,32 +31,32 @@ export type PaginatedResult<T> = {
 	results: T[]
 }
 
-export interface Adapter<T extends RepoConfig = RepoConfig> {
+export interface Adapter<R extends RepoConfig = RepoConfig> {
 	connect(): Promise<void>
 
 	disconnect(): Promise<void>
 
-	findMany(schema: AnySchema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown>[]>
+	findMany(schema: AnySchema<any, any, any, any>, config: R, queryAst: QueryAST): Promise<Record<string, unknown>[]>
 
-	findOne(schema: AnySchema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown> | null>
+	findOne(schema: AnySchema<any, any, any, any>, config: R, queryAst: QueryAST): Promise<Record<string, unknown> | null>
 
 	insertOne(
 		schema: AnySchema<any, any, any, any>,
-		table: T,
+		config: R,
 		data: Record<string, unknown>,
 		options?: InsertOptions,
 	): Promise<Record<string, unknown>>
 
 	insertMany(
 		schema: AnySchema<any, any, any, any>,
-		table: T,
+		config: R,
 		data: Record<string, unknown>[],
 		options?: InsertOptions,
 	): Promise<Record<string, unknown>[]>
 
 	updateMany(
 		schema: AnySchema<any, any, any, any>,
-		table: T,
+		config: R,
 		queryAst: QueryAST,
 		data: Record<string, unknown>,
 		options?: UpdateOptions,
@@ -64,7 +64,7 @@ export interface Adapter<T extends RepoConfig = RepoConfig> {
 
 	updateOne(
 		schema: AnySchema<any, any, any, any>,
-		table: T,
+		config: R,
 		queryAst: QueryAST,
 		data: Record<string, unknown>,
 		options?: UpdateOptions,
@@ -72,23 +72,23 @@ export interface Adapter<T extends RepoConfig = RepoConfig> {
 
 	upsertOne(
 		schema: AnySchema<any, any, any, any>,
-		table: T,
+		config: R,
 		queryAst: QueryAST,
 		data: { insert: Record<string, unknown> } | { insert: Record<string, unknown>; update: Record<string, unknown> },
 		options?: UpsertOptions,
 	): Promise<Record<string, unknown>>
 
-	deleteOne(schema: AnySchema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown> | null>
+	deleteOne(schema: AnySchema<any, any, any, any>, config: R, queryAst: QueryAST): Promise<Record<string, unknown> | null>
 
-	deleteMany(schema: AnySchema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown>[]>
+	deleteMany(schema: AnySchema<any, any, any, any>, config: R, queryAst: QueryAST): Promise<Record<string, unknown>[]>
 
-	count(schema: AnySchema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<number>
+	count(schema: AnySchema<any, any, any, any>, config: R, queryAst: QueryAST): Promise<number>
 
 	session<R>(callback: () => Promise<R>): Promise<R>
 
 	query(
 		schema: AnySchema<any, any, any, any>,
-		table: T,
+		table: R,
 		queryAst: QueryAST,
 		pagination: { page: number; limit: number; all: boolean },
 	): Promise<PaginatedResult<Record<string, unknown>>>

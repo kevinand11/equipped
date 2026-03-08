@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { Pool, type PoolClient } from 'pg'
-
 import { v, type PipeOutput } from 'valleyed'
+
 import type { QueryAST } from '../../query/types'
 import type { AnySchema } from '../../schema/types'
 import type { Adapter, InsertOptions, PaginatedResult, UpdateOptions, UpsertOptions } from '../types'
@@ -10,7 +10,15 @@ import { buildCountQuery, buildDeleteQuery, buildInsertQuery, buildSelectQuery, 
 
 const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
 
-export const pgAdapterConfigPipe = () => v.object({ uri: v.string() })
+export const pgAdapterConfigPipe = () =>
+	v.object({
+		host: v.string(),
+		port: v.number().pipe(v.int(), v.gt(0)),
+		username: v.string(),
+		password: v.string(),
+		database: v.string(),
+		ssl: v.defaults(v.boolean(), false),
+	})
 
 export type PgAdapterConfig = PipeOutput<ReturnType<typeof pgAdapterConfigPipe>>
 
@@ -23,7 +31,14 @@ export class PgAdapter implements Adapter<PgRepoConfig> {
 	readonly pool: Pool
 
 	constructor(config: PgAdapterConfig) {
-		this.pool = new Pool({ connectionString: config.uri })
+		this.pool = new Pool({
+			host: config.host,
+			port: config.port,
+			user: config.username,
+			password: config.password,
+			database: config.database,
+			ssl: config.ssl ? { rejectUnauthorized: false } : false,
+		})
 	}
 
 	async connect(): Promise<void> {}

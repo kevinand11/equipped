@@ -49,6 +49,8 @@ export type Repo<R extends object, F extends FieldDefs, C extends ComputedDefs, 
 
 	session<T>(callback: () => Promise<T>): Promise<T>
 
+	with(adapter: Adapter<R>): Repo<R, F, C, A, PK>
+
 	readonly schema: Schema<F, C, A, PK>
 
 	readonly config: R
@@ -61,11 +63,6 @@ export function repo<
 	A extends Associations,
 	PK extends string & keyof F,
 >({ adapter, schema, config }: { adapter: Adapter<R>; schema: Schema<F, C, A, PK>; config: R }): Repo<R, F, C, A, PK> {
-	const table = {
-		...config,
-		primaryKey: schema.primaryKey,
-	} as unknown as R
-
 	const cast = (raw: Record<string, unknown>): InferEntity<F, C> => computeSchema(schema, raw)
 	const castMany = (raws: Record<string, unknown>[]): InferEntity<F, C>[] => raws.map(cast)
 
@@ -75,57 +72,57 @@ export function repo<
 
 		async findById(id: PipeOutput<F[PK]>) {
 			const ast = query(where(schema.primaryKey, eq(id)))
-			const result = await adapter.findOne(schema, table, ast)
+			const result = await adapter.findOne(schema, config, ast)
 			return result ? cast(result) : null
 		},
 
 		async findOne(...ops: QueryOp[]) {
 			const ast = query(...ops)
-			const result = await adapter.findOne(schema, table, ast)
+			const result = await adapter.findOne(schema, config, ast)
 			return result ? cast(result) : null
 		},
 
 		async findMany(...ops: QueryOp[]) {
 			const ast = query(...ops)
-			const results = await adapter.findMany(schema, table, ast)
+			const results = await adapter.findMany(schema, config, ast)
 			return castMany(results)
 		},
 
 		async insert(data: Record<string, unknown>, options?: InsertOptions) {
 			const validated = validateSchema(schema, data)
-			const result = await adapter.insertOne(schema, table, validated as Record<string, unknown>, options)
+			const result = await adapter.insertOne(schema, config, validated as Record<string, unknown>, options)
 			return cast(result)
 		},
 
 		async insertMany(data: Record<string, unknown>[], options?: InsertOptions) {
 			const validated = data.map((d) => validateSchema(schema, d) as Record<string, unknown>)
-			const results = await adapter.insertMany(schema, table, validated, options)
+			const results = await adapter.insertMany(schema, config, validated, options)
 			return castMany(results)
 		},
 
 		async update(ops: QueryOp[], data: Record<string, unknown>, options?: UpdateOptions) {
 			const validated = validatePartialSchema(schema, data)
 			const ast = query(...ops)
-			const results = await adapter.updateMany(schema, table, ast, validated as Record<string, unknown>, options)
+			const results = await adapter.updateMany(schema, config, ast, validated as Record<string, unknown>, options)
 			return castMany(results)
 		},
 
 		async updateById(id: PipeOutput<F[PK]>, data: Record<string, unknown>, options?: UpdateOptions) {
 			const validated = validatePartialSchema(schema, data)
 			const ast = query(where(schema.primaryKey, eq(id)))
-			const result = await adapter.updateOne(schema, table, ast, validated as Record<string, unknown>, options)
+			const result = await adapter.updateOne(schema, config, ast, validated as Record<string, unknown>, options)
 			return result ? cast(result) : null
 		},
 
 		async delete(...ops: QueryOp[]) {
 			const ast = query(...ops)
-			const results = await adapter.deleteMany(schema, table, ast)
+			const results = await adapter.deleteMany(schema, config, ast)
 			return castMany(results)
 		},
 
 		async deleteById(id: PipeOutput<F[PK]>) {
 			const ast = query(where(schema.primaryKey, eq(id)))
-			const result = await adapter.deleteOne(schema, table, ast)
+			const result = await adapter.deleteOne(schema, config, ast)
 			return result ? cast(result) : null
 		},
 
@@ -139,18 +136,18 @@ export function repo<
 						}
 					: { insert: validatedInsert }
 			const ast = query(...ops)
-			const result = await adapter.upsertOne(schema, table, ast, upsertData, options)
+			const result = await adapter.upsertOne(schema, config, ast, upsertData, options)
 			return cast(result)
 		},
 
 		async count(...ops: QueryOp[]) {
 			const ast = query(...ops)
-			return adapter.count(schema, table, ast)
+			return adapter.count(schema, config, ast)
 		},
 
 		async paginatedQuery(ops: QueryOp[], pagination) {
 			const ast = query(...ops)
-			const result = await adapter.query(schema, table, ast, {
+			const result = await adapter.query(schema, config, ast, {
 				page: pagination.page,
 				limit: pagination.limit,
 				all: pagination.all ?? false,
@@ -180,6 +177,10 @@ export function repo<
 
 		async session<T>(callback: () => Promise<T>): Promise<T> {
 			return adapter.session(callback)
+		},
+
+		with(adapter: Adapter<R>) {
+			return repo({ adapter, schema, config })
 		},
 	}
 }

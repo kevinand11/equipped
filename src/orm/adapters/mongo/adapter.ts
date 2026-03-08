@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { MongoClient, type ClientSession, type Collection, type OptionalUnlessRequiredId } from 'mongodb'
-
 import { v, type PipeOutput } from 'valleyed'
+
 import type { QueryAST } from '../../query/types'
 import type { AnySchema } from '../../schema/types'
 import type { Adapter, InsertOptions, PaginatedResult, UpdateOptions, UpsertOptions } from '../types'
@@ -10,7 +10,15 @@ import { compileMongoQuery, compileMongoUpdate } from './query-compiler'
 
 const sessionStore = new AsyncLocalStorage<ClientSession | undefined>()
 
-export const mongoAdapterConfigPipe = () => v.object({ uri: v.string() })
+export const mongoAdapterConfigPipe = () =>
+	v.object({
+		host: v.string(),
+		port: v.number().pipe(v.int(), v.gt(0)),
+		username: v.optional(v.string()),
+		password: v.optional(v.string()),
+		ssl: v.defaults(v.boolean(), false),
+		authSource: v.optional(v.string()),
+	})
 
 export type MongoAdapterConfig = PipeOutput<ReturnType<typeof mongoAdapterConfigPipe>>
 
@@ -23,7 +31,14 @@ export class MongoAdapter implements Adapter<MongoRepoConfig> {
 	readonly client: MongoClient
 
 	constructor(config: MongoAdapterConfig) {
-		this.client = new MongoClient(config.uri, { ignoreUndefined: true })
+		const protocol = config.ssl ? 'mongodb+srv' : 'mongodb'
+		const host = config.ssl ? config.host : `${config.host}:${config.port}`
+		this.client = new MongoClient(`${protocol}://${host}`, {
+			auth: config.username || config.password ? { username: config.username, password: config.password } : undefined,
+			authSource: config.authSource,
+			tls: config.ssl,
+			ignoreUndefined: true,
+		})
 	}
 
 	async connect(): Promise<void> {
