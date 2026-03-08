@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
 	and,
-	emptyQuery,
 	eq,
 	exists,
 	gt,
@@ -125,7 +124,7 @@ describe('orm/query', () => {
 
 	describe('query()', () => {
 		it('produces an empty QueryAST with no args', () => {
-			const ast = emptyQuery()
+			const ast = query()
 			expect(ast.wheres).toEqual([])
 			expect(ast.ands).toEqual([])
 			expect(ast.ors).toEqual([])

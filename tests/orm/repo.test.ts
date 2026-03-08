@@ -1,16 +1,15 @@
 import { v } from 'valleyed'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { Adapter, BaseTableConfig, PaginatedResult } from '../../src/orm/adapters/types'
+import type { Adapter, PaginatedResult, TableConfig } from '../../src/orm/adapters/types'
 import type { QueryAST } from '../../src/orm/query/types'
-import { createRepo } from '../../src/orm/repo/index'
-import { schema } from '../../src/orm/schema/index'
-import type { Schema } from '../../src/orm/schema/types'
+import { repo as createRepo } from '../../src/orm/repo/index'
+import { schema, Schema } from '../../src/orm/schema/index'
 
 // ============================================================
 // Mock Adapter
 // ============================================================
 
-type TestTableConfig = BaseTableConfig & { db: string; col: string }
+type TestTableConfig = TableConfig & { db: string; col: string }
 
 function createMockAdapter(
 	storage: Map<string, Record<string, unknown>[]> = new Map(),
@@ -144,39 +143,32 @@ describe('orm/repo', () => {
 		adapter = createMockAdapter()
 	})
 
-	describe('createRepo()', () => {
-		it('creates a repo factory', () => {
-			const repo = createRepo(adapter)
-			expect(repo.for).toBeInstanceOf(Function)
-		})
-
-		it('creates a per-schema repo', () => {
-			const repo = createRepo(adapter)
-			const userRepo = repo.for(UserSchema, { db: 'test', col: 'users' })
+	describe('repo()', () => {
+		it('creates a schema repo', () => {
+			const userRepo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			expect(userRepo.schema).toBe(UserSchema)
 			expect(userRepo.table).toEqual({ db: 'test', col: 'users', primaryKey: 'id' })
 		})
 
 		it('uses primaryKey from schema', () => {
 			const CustomSchema = schema({ _id: v.string(), name: v.string() }).pk('_id', () => 'test-id')
-			const repo = createRepo(adapter)
-			const customRepo = repo.for(CustomSchema, { db: 'test', col: 'items' })
+			const customRepo = createRepo({ adapter: adapter, schema: CustomSchema, config: { db: 'test', col: 'items' } })
 			expect(customRepo.table.primaryKey).toBe('_id')
 		})
 	})
 
 	describe('findById()', () => {
 		it('calls adapter.findOne with primary key query', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			adapter = createMockAdapter(new Map([['test.users', [{ id: 'abc', name: 'John', email: 'john@test.com', age: 30 }]]]))
-			const repo2 = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo2 = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo2.findById('abc')
 			expect(result).not.toBeNull()
 			expect(result!.name).toBe('John')
 		})
 
 		it('returns null when not found', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.findById('nonexistent')
 			expect(result).toBeNull()
 		})
@@ -186,7 +178,7 @@ describe('orm/repo', () => {
 		it('delegates to adapter.findOne', async () => {
 			const storage = new Map([['test.users', [{ id: '1', name: 'Jane', email: 'jane@test.com', age: 25 }]]])
 			const a = createMockAdapter(storage)
-			const repo = createRepo(a).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: a, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.findOne()
 			expect(result).not.toBeNull()
 			expect(result!.name).toBe('Jane')
@@ -205,7 +197,7 @@ describe('orm/repo', () => {
 				],
 			])
 			const a = createMockAdapter(storage)
-			const repo = createRepo(a).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: a, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const results = await repo.findMany()
 			expect(results).toHaveLength(2)
 		})
@@ -213,26 +205,26 @@ describe('orm/repo', () => {
 
 	describe('insert()', () => {
 		it('validates and inserts data', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.insert({ name: 'John', email: 'john@test.com', age: 25 })
 			expect(result.name).toBe('John')
 			expect(adapter.calls.some((c) => c.method === 'insertOne')).toBe(true)
 		})
 
 		it('throws on invalid data (validation)', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			await expect(repo.insert({ name: 123, email: 'x', age: 'not-a-number' })).rejects.toThrow()
 		})
 
 		it('throws when required field is missing', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			await expect(repo.insert({ name: 'John' } as any)).rejects.toThrow()
 		})
 	})
 
 	describe('insertMany()', () => {
 		it('validates and inserts multiple records', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const results = await repo.insertMany([
 				{ name: 'A', email: 'a@t.com', age: 20 },
 				{ name: 'B', email: 'b@t.com', age: 30 },
@@ -241,7 +233,7 @@ describe('orm/repo', () => {
 		})
 
 		it('throws if any record is invalid', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			await expect(
 				repo.insertMany([
 					{ name: 'A', email: 'a@t.com', age: 20 },
@@ -255,14 +247,14 @@ describe('orm/repo', () => {
 		it('validates partial data and updates', async () => {
 			const storage = new Map([['test.users', [{ id: '1', name: 'Old', email: 'old@t.com', age: 20 }]]])
 			const a = createMockAdapter(storage)
-			const repo = createRepo(a).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: a, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const results = await repo.update([], { name: 'New' })
 			expect(results).toHaveLength(1)
 			expect(a.calls.some((c) => c.method === 'updateMany')).toBe(true)
 		})
 
 		it('throws on invalid partial data', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			await expect(repo.update([], { age: 'not-a-number' })).rejects.toThrow()
 		})
 	})
@@ -271,14 +263,14 @@ describe('orm/repo', () => {
 		it('updates a single record by id', async () => {
 			const storage = new Map([['test.users', [{ id: 'abc', name: 'Old', email: 'e@t.com', age: 20 }]]])
 			const a = createMockAdapter(storage)
-			const repo = createRepo(a).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: a, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.updateById('abc', { name: 'New' })
 			expect(result).not.toBeNull()
 			expect(a.calls.some((c) => c.method === 'updateOne')).toBe(true)
 		})
 
 		it('returns null when record not found', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.updateById('nonexistent', { name: 'X' })
 			expect(result).toBeNull()
 		})
@@ -288,7 +280,7 @@ describe('orm/repo', () => {
 		it('deletes matching records', async () => {
 			const storage = new Map([['test.users', [{ id: '1', name: 'A', email: 'a@t.com', age: 20 }]]])
 			const a = createMockAdapter(storage)
-			const repo = createRepo(a).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: a, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const results = await repo.delete()
 			expect(results).toHaveLength(1)
 		})
@@ -298,13 +290,13 @@ describe('orm/repo', () => {
 		it('deletes a single record by id', async () => {
 			const storage = new Map([['test.users', [{ id: 'abc', name: 'A', email: 'a@t.com', age: 20 }]]])
 			const a = createMockAdapter(storage)
-			const repo = createRepo(a).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: a, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.deleteById('abc')
 			expect(result).not.toBeNull()
 		})
 
 		it('returns null when not found', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.deleteById('nope')
 			expect(result).toBeNull()
 		})
@@ -312,14 +304,14 @@ describe('orm/repo', () => {
 
 	describe('upsert()', () => {
 		it('validates and upserts data', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.upsert([], { insert: { name: 'John', email: 'j@t.com', age: 30 } })
 			expect(result.name).toBe('John')
 			expect(adapter.calls.some((c) => c.method === 'upsertOne')).toBe(true)
 		})
 
 		it('validates both insert and update data', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			await expect(
 				repo.upsert([], {
 					insert: { name: 'X', email: 'x@t.com', age: 20 },
@@ -333,7 +325,7 @@ describe('orm/repo', () => {
 		it('returns count from adapter', async () => {
 			const storage = new Map([['test.users', [{ id: '1' }, { id: '2' }]]])
 			const a = createMockAdapter(storage)
-			const repo = createRepo(a).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: a, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.count()
 			expect(result).toBe(2)
 		})
@@ -351,7 +343,7 @@ describe('orm/repo', () => {
 				],
 			])
 			const a = createMockAdapter(storage)
-			const repo = createRepo(a).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: a, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.paginatedQuery([], { page: 1, limit: 10 })
 			expect(result.results).toHaveLength(2)
 			expect(result.pages.current).toBe(1)
@@ -361,7 +353,7 @@ describe('orm/repo', () => {
 
 	describe('session()', () => {
 		it('delegates to adapter.session', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const result = await repo.session(async () => 42)
 			expect(result).toBe(42)
 			expect(adapter.calls.some((c) => c.method === 'session')).toBe(true)
@@ -372,7 +364,10 @@ describe('orm/repo', () => {
 		it('preloads a belongsTo association', async () => {
 			const userStorage = [{ id: 'u1', name: 'John', email: 'j@t.com', age: 30 }]
 
-			const UserSchemaWithPosts = schema({ id: v.string(), name: v.string(), email: v.string(), age: v.number() }).pk('id', () => 'test-id')
+			const UserSchemaWithPosts = schema({ id: v.string(), name: v.string(), email: v.string(), age: v.number() }).pk(
+				'id',
+				() => 'test-id',
+			)
 			const PostSchemaWithUser = schema({
 				id: v.string(),
 				title: v.string(),
@@ -430,7 +425,7 @@ describe('orm/repo', () => {
 				},
 			}
 
-			const repo = createRepo(mockAdapter).for(PostSchemaWithUser, { db: 'test', col: 'posts' })
+			const repo = createRepo({ adapter: mockAdapter, schema: PostSchemaWithUser, config: { db: 'test', col: 'posts' } })
 			const post = { id: 'p1', title: 'Hello', body: 'World', userId: 'u1' } as any
 			const result = await repo.preload(post, 'user')
 			expect(result.user).toBeDefined()
@@ -497,7 +492,7 @@ describe('orm/repo', () => {
 				},
 			}
 
-			const repo = createRepo(mockAdapter).for(UserWithPosts, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: mockAdapter, schema: UserWithPosts, config: { db: 'test', col: 'users' } })
 			const user = { id: 'u1', name: 'John', email: 'j@t.com', age: 30 } as any
 			const result = await repo.preload(user, 'posts')
 			expect(Array.isArray(result.posts)).toBe(true)
@@ -505,7 +500,7 @@ describe('orm/repo', () => {
 		})
 
 		it('throws on unknown association key', async () => {
-			const repo = createRepo(adapter).for(UserSchema, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			const user = { id: '1', name: 'A', email: 'a@t.com', age: 20 } as any
 			await expect((repo as any).preload(user, 'nonexistent')).rejects.toThrow('Unknown association')
 		})
@@ -573,7 +568,7 @@ describe('orm/repo', () => {
 				},
 			}
 
-			const repo = createRepo(mockAdapter).for(UserWithPosts, { db: 'test', col: 'users' })
+			const repo = createRepo({ adapter: mockAdapter, schema: UserWithPosts, config: { db: 'test', col: 'users' } })
 			const users = [
 				{ id: 'u1', name: 'A', email: 'a@t.com', age: 20 },
 				{ id: 'u2', name: 'B', email: 'b@t.com', age: 30 },

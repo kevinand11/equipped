@@ -1,5 +1,6 @@
-export { computeSchema, schema, SchemaBuilder, validatePartialSchema, validateSchema } from './schema/index'
+export { computeSchema, schema, Schema, validatePartialSchema, validateSchema } from './schema/index'
 export type {
+	AnySchema,
 	Association,
 	AssociationEntity,
 	Associations,
@@ -19,7 +20,6 @@ export type {
 	InferEntity,
 	InferInput,
 	ManyToManyAssociation,
-	Schema,
 	SchemaAssociationKeys,
 	SchemaEntity,
 	SchemaFields,
@@ -32,7 +32,6 @@ export type {
 
 export {
 	and,
-	emptyQuery,
 	eq,
 	exists,
 	gt,
@@ -60,7 +59,13 @@ export { MongoAdapter } from './adapters/mongo/index'
 export type { MongoAdapterConfig, MongoTableConfig } from './adapters/mongo/index'
 export { PgAdapter } from './adapters/pg/index'
 export type { PgAdapterConfig, PgClient, PgPool, PgTableConfig } from './adapters/pg/index'
-export type { Adapter, BaseTableConfig, InsertOptions, PaginatedResult, UpdateOptions, UpsertOptions } from './adapters/types'
+export type {
+	Adapter,
+	TableConfig as BaseTableConfig,
+	InsertOptions,
+	PaginatedResult,
+	UpdateOptions,
+	UpsertOptions,
+} from './adapters/types'
 
-export { createRepo } from './repo/index'
-export type { Repo, RepoTableConfig, SchemaRepo } from './repo/index'
+export { repo, type Repo } from './repo/index'

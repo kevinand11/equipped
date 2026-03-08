@@ -1,7 +1,7 @@
 import type { QueryAST } from '../query/types'
-import type { Schema } from '../schema/types'
+import type { AnySchema } from '../schema/types'
 
-export type BaseTableConfig = {
+export type TableConfig = {
 	primaryKey: string
 }
 
@@ -33,31 +33,31 @@ export type PaginatedResult<T> = {
 	results: T[]
 }
 
-export interface Adapter<T extends BaseTableConfig = BaseTableConfig> {
+export interface Adapter<T extends object = object> {
 	connect(): Promise<void>
 
 	disconnect(): Promise<void>
 
-	findMany(schema: Schema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown>[]>
+	findMany(schema: AnySchema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown>[]>
 
-	findOne(schema: Schema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown> | null>
+	findOne(schema: AnySchema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown> | null>
 
 	insertOne(
-		schema: Schema<any, any, any, any>,
+		schema: AnySchema<any, any, any, any>,
 		table: T,
 		data: Record<string, unknown>,
 		options?: InsertOptions,
 	): Promise<Record<string, unknown>>
 
 	insertMany(
-		schema: Schema<any, any, any, any>,
+		schema: AnySchema<any, any, any, any>,
 		table: T,
 		data: Record<string, unknown>[],
 		options?: InsertOptions,
 	): Promise<Record<string, unknown>[]>
 
 	updateMany(
-		schema: Schema<any, any, any, any>,
+		schema: AnySchema<any, any, any, any>,
 		table: T,
 		queryAst: QueryAST,
 		data: Record<string, unknown>,
@@ -65,7 +65,7 @@ export interface Adapter<T extends BaseTableConfig = BaseTableConfig> {
 	): Promise<Record<string, unknown>[]>
 
 	updateOne(
-		schema: Schema<any, any, any, any>,
+		schema: AnySchema<any, any, any, any>,
 		table: T,
 		queryAst: QueryAST,
 		data: Record<string, unknown>,
@@ -73,23 +73,23 @@ export interface Adapter<T extends BaseTableConfig = BaseTableConfig> {
 	): Promise<Record<string, unknown> | null>
 
 	upsertOne(
-		schema: Schema<any, any, any, any>,
+		schema: AnySchema<any, any, any, any>,
 		table: T,
 		queryAst: QueryAST,
 		data: { insert: Record<string, unknown> } | { insert: Record<string, unknown>; update: Record<string, unknown> },
 		options?: UpsertOptions,
 	): Promise<Record<string, unknown>>
 
-	deleteOne(schema: Schema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown> | null>
+	deleteOne(schema: AnySchema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown> | null>
 
-	deleteMany(schema: Schema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown>[]>
+	deleteMany(schema: AnySchema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<Record<string, unknown>[]>
 
-	count(schema: Schema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<number>
+	count(schema: AnySchema<any, any, any, any>, table: T, queryAst: QueryAST): Promise<number>
 
 	session<R>(callback: () => Promise<R>): Promise<R>
 
 	query(
-		schema: Schema<any, any, any, any>,
+		schema: AnySchema<any, any, any, any>,
 		table: T,
 		queryAst: QueryAST,
 		pagination: { page: number; limit: number; all: boolean },

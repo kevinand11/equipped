@@ -163,7 +163,6 @@ const ast = query(
 | `select(...fields)` | Project specific fields |
 | `raw(value)` | Pass adapter-specific data (escape hatch) |
 | `query(...ops)` | Compile operators into a QueryAST |
-| `emptyQuery()` | Empty QueryAST |
 
 `and` and `or` support arbitrary nesting.
 
@@ -253,15 +252,13 @@ const adapter = new PgAdapter({ pool: pgPool })
 The Repo provides a per-schema, high-level API that ties together validation, the query builder, and an adapter.
 
 ```ts
-import { createRepo } from './orm'
-
-const repo = createRepo(adapter)
+import { repo } from './orm'
 
 // For MongoDB adapter
-const UserRepo = repo.for(UserSchema, { db: 'mydb', col: 'users' })
+const UserRepo = repo({ adapter, schema: UserSchema, config: { db: 'mydb', col: 'users' } })
 
 // For PostgreSQL adapter
-const UserRepo = repo.for(UserSchema, { schema: 'public', table: 'users' })
+const UserRepo = repo({ adapter, schema: UserSchema, config: { schema: 'public', table: 'users' } })
 // primaryKey is read from the schema's .pk() call
 ```
 

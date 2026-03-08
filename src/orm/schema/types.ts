@@ -23,29 +23,29 @@ export type AssociationType = 'belongsTo' | 'hasOne' | 'hasMany' | 'manyToMany'
 
 export type BelongsToAssociation<S = any> = {
 	type: 'belongsTo'
-	schema: () => Schema
+	schema: () => AnySchema
 	foreignKey: string
 	_entity?: S
 }
 
 export type HasOneAssociation<S = any> = {
 	type: 'hasOne'
-	schema: () => Schema
+	schema: () => AnySchema
 	foreignKey: string
 	_entity?: S
 }
 
 export type HasManyAssociation<S = any> = {
 	type: 'hasMany'
-	schema: () => Schema
+	schema: () => AnySchema
 	foreignKey: string
 	_entity?: S
 }
 
 export type ManyToManyAssociation<S = any> = {
 	type: 'manyToMany'
-	schema: () => Schema
-	joinSchema: () => Schema
+	schema: () => AnySchema
+	joinSchema: () => AnySchema
 	thisForeignKey: string
 	thatForeignKey: string
 	_entity?: S
@@ -54,7 +54,7 @@ export type ManyToManyAssociation<S = any> = {
 export type Association = BelongsToAssociation | HasOneAssociation | HasManyAssociation | ManyToManyAssociation
 export type Associations = Record<string, Association>
 
-export type Schema<
+export type AnySchema<
 	F extends FieldDefs = FieldDefs,
 	C extends ComputedDefs = ComputedDefs,
 	A extends Associations = Associations,
@@ -78,12 +78,12 @@ export type InferInput<F extends FieldDefs, PK extends keyof F = never> = {
 	[K in Exclude<keyof F, PK>]: PipeInput<F[K]>
 }
 
-export type SchemaEntity<S> = S extends Schema<infer F, infer C, any, any> ? InferEntity<F, C> : never
-export type SchemaInput<S> = S extends Schema<infer F, any, any, infer PK> ? InferInput<F, PK> : never
-export type SchemaFields<S> = S extends Schema<infer F, any, any, any> ? keyof F : never
-export type SchemaAssociationKeys<S> = S extends Schema<any, any, infer A, any> ? keyof A : never
+export type SchemaEntity<S> = S extends AnySchema<infer F, infer C, any, any> ? InferEntity<F, C> : never
+export type SchemaInput<S> = S extends AnySchema<infer F, any, any, infer PK> ? InferInput<F, PK> : never
+export type SchemaFields<S> = S extends AnySchema<infer F, any, any, any> ? keyof F : never
+export type SchemaAssociationKeys<S> = S extends AnySchema<any, any, infer A, any> ? keyof A : never
 export type SchemaPrimaryKeyType<S> =
-	S extends Schema<infer F, any, any, infer PK> ? (PK extends keyof F ? PipeOutput<F[PK]> : never) : never
+	S extends AnySchema<infer F, any, any, infer PK> ? (PK extends keyof F ? PipeOutput<F[PK]> : never) : never
 
 export type AssociationEntity<A extends Association> = A extends BelongsToAssociation
 	? SchemaEntity<ReturnType<A['schema']>>
@@ -95,7 +95,7 @@ export type AssociationEntity<A extends Association> = A extends BelongsToAssoci
 				? SchemaEntity<ReturnType<A['schema']>>[]
 				: never
 
-export type WithPreloaded<E, S extends Schema, K extends keyof S['associations']> = E & {
+export type WithPreloaded<E, S extends AnySchema, K extends keyof S['associations']> = E & {
 	[P in K]: AssociationEntity<S['associations'][P]>
 }
 

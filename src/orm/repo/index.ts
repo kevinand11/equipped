@@ -1,15 +1,13 @@
 import type { PipeOutput } from 'valleyed'
 
-import type { Adapter, BaseTableConfig, InsertOptions, PaginatedResult, UpdateOptions, UpsertOptions } from '../adapters/types'
+import type { Adapter, InsertOptions, PaginatedResult, TableConfig, UpdateOptions, UpsertOptions } from '../adapters/types'
 import { eq, isIn, query, where } from '../query/index'
 import type { QueryOp } from '../query/types'
-import { computeSchema, validatePartialSchema, validateSchema } from '../schema/index'
-import type { Association, Associations, ComputedDefs, FieldDefs, InferEntity, Schema } from '../schema/types'
+import { type Schema, computeSchema, validatePartialSchema, validateSchema } from '../schema/index'
+import type { Association, Associations, ComputedDefs, FieldDefs, InferEntity } from '../schema/types'
 
-export type RepoTableConfig<T extends BaseTableConfig> = Omit<T, 'primaryKey'>
-
-export type SchemaRepo<
-	T extends BaseTableConfig,
+export type Repo<
+	T extends TableConfig,
 	F extends FieldDefs,
 	C extends ComputedDefs,
 	A extends Associations,
@@ -62,145 +60,132 @@ export type SchemaRepo<
 	readonly table: T
 }
 
-export type Repo<T extends BaseTableConfig> = {
-	for<F extends FieldDefs, C extends ComputedDefs, A extends Associations, PK extends string & keyof F>(
-		schema: Schema<F, C, A, PK>,
-		table: RepoTableConfig<T>,
-	): SchemaRepo<T, F, C, A, PK>
-}
+export function repo<
+	T extends TableConfig,
+	F extends FieldDefs,
+	C extends ComputedDefs,
+	A extends Associations,
+	PK extends string & keyof F,
+>({ adapter, schema, config }: { adapter: Adapter<T>; schema: Schema<F, C, A, PK>; config: T }): Repo<T, F, C, A, PK> {
+	const table = {
+		...config,
+		primaryKey: schema.primaryKey,
+	} as unknown as T
 
-export function createRepo<T extends BaseTableConfig>(adapter: Adapter<T>): Repo<T> {
+	const cast = (raw: Record<string, unknown>): InferEntity<F, C> => computeSchema(schema, raw)
+	const castMany = (raws: Record<string, unknown>[]): InferEntity<F, C>[] => raws.map(cast)
+
 	return {
-		for<F extends FieldDefs, C extends ComputedDefs, A extends Associations, PK extends string & keyof F>(
-			schema: Schema<F, C, A, PK>,
-			tableConfig: RepoTableConfig<T>,
-		): SchemaRepo<T, F, C, A, PK> {
-			const fullTable = {
-				...tableConfig,
-				primaryKey: schema.primaryKey,
-			} as unknown as T
+		schema,
+		table,
 
-			const cast = (raw: Record<string, unknown>): InferEntity<F, C> => computeSchema(schema, raw)
-			const castMany = (raws: Record<string, unknown>[]): InferEntity<F, C>[] => raws.map(cast)
+		async findById(id: PipeOutput<F[PK]>) {
+			const ast = query(where(table.primaryKey, eq(id)))
+			const result = await adapter.findOne(schema, table, ast)
+			return result ? cast(result) : null
+		},
 
+		async findOne(...ops: QueryOp[]) {
+			const ast = query(...ops)
+			const result = await adapter.findOne(schema, table, ast)
+			return result ? cast(result) : null
+		},
+
+		async findMany(...ops: QueryOp[]) {
+			const ast = query(...ops)
+			const results = await adapter.findMany(schema, table, ast)
+			return castMany(results)
+		},
+
+		async insert(data: Record<string, unknown>, options?: InsertOptions) {
+			const validated = validateSchema(schema, data)
+			const result = await adapter.insertOne(schema, table, validated as Record<string, unknown>, options)
+			return cast(result)
+		},
+
+		async insertMany(data: Record<string, unknown>[], options?: InsertOptions) {
+			const validated = data.map((d) => validateSchema(schema, d) as Record<string, unknown>)
+			const results = await adapter.insertMany(schema, table, validated, options)
+			return castMany(results)
+		},
+
+		async update(ops: QueryOp[], data: Record<string, unknown>, options?: UpdateOptions) {
+			const validated = validatePartialSchema(schema, data)
+			const ast = query(...ops)
+			const results = await adapter.updateMany(schema, table, ast, validated as Record<string, unknown>, options)
+			return castMany(results)
+		},
+
+		async updateById(id: PipeOutput<F[PK]>, data: Record<string, unknown>, options?: UpdateOptions) {
+			const validated = validatePartialSchema(schema, data)
+			const ast = query(where(table.primaryKey, eq(id)))
+			const result = await adapter.updateOne(schema, table, ast, validated as Record<string, unknown>, options)
+			return result ? cast(result) : null
+		},
+
+		async delete(...ops: QueryOp[]) {
+			const ast = query(...ops)
+			const results = await adapter.deleteMany(schema, table, ast)
+			return castMany(results)
+		},
+
+		async deleteById(id: PipeOutput<F[PK]>) {
+			const ast = query(where(table.primaryKey, eq(id)))
+			const result = await adapter.deleteOne(schema, table, ast)
+			return result ? cast(result) : null
+		},
+
+		async upsert(ops: QueryOp[], data, options?: UpsertOptions) {
+			const validatedInsert = validateSchema(schema, data.insert) as Record<string, unknown>
+			const upsertData =
+				'update' in data
+					? {
+							insert: validatedInsert,
+							update: validatePartialSchema(schema, data.update) as Record<string, unknown>,
+						}
+					: { insert: validatedInsert }
+			const ast = query(...ops)
+			const result = await adapter.upsertOne(schema, table, ast, upsertData, options)
+			return cast(result)
+		},
+
+		async count(...ops: QueryOp[]) {
+			const ast = query(...ops)
+			return adapter.count(schema, table, ast)
+		},
+
+		async paginatedQuery(ops: QueryOp[], pagination) {
+			const ast = query(...ops)
+			const result = await adapter.query(schema, table, ast, {
+				page: pagination.page,
+				limit: pagination.limit,
+				all: pagination.all ?? false,
+			})
 			return {
-				schema: schema,
-				table: fullTable,
-
-				async findById(id: PipeOutput<F[PK]>) {
-					const ast = query(where(fullTable.primaryKey, eq(id)))
-					const result = await adapter.findOne(schema, fullTable, ast)
-					return result ? cast(result) : null
-				},
-
-				async findOne(...ops: QueryOp[]) {
-					const ast = query(...ops)
-					const result = await adapter.findOne(schema, fullTable, ast)
-					return result ? cast(result) : null
-				},
-
-				async findMany(...ops: QueryOp[]) {
-					const ast = query(...ops)
-					const results = await adapter.findMany(schema, fullTable, ast)
-					return castMany(results)
-				},
-
-				async insert(data: Record<string, unknown>, options?: InsertOptions) {
-					const validated = validateSchema(schema, data)
-					const result = await adapter.insertOne(schema, fullTable, validated as Record<string, unknown>, options)
-					return cast(result)
-				},
-
-				async insertMany(data: Record<string, unknown>[], options?: InsertOptions) {
-					const validated = data.map((d) => validateSchema(schema, d) as Record<string, unknown>)
-					const results = await adapter.insertMany(schema, fullTable, validated, options)
-					return castMany(results)
-				},
-
-				async update(ops: QueryOp[], data: Record<string, unknown>, options?: UpdateOptions) {
-					const validated = validatePartialSchema(schema, data)
-					const ast = query(...ops)
-					const results = await adapter.updateMany(schema, fullTable, ast, validated as Record<string, unknown>, options)
-					return castMany(results)
-				},
-
-				async updateById(id: PipeOutput<F[PK]>, data: Record<string, unknown>, options?: UpdateOptions) {
-					const validated = validatePartialSchema(schema, data)
-					const ast = query(where(fullTable.primaryKey, eq(id)))
-					const result = await adapter.updateOne(schema, fullTable, ast, validated as Record<string, unknown>, options)
-					return result ? cast(result) : null
-				},
-
-				async delete(...ops: QueryOp[]) {
-					const ast = query(...ops)
-					const results = await adapter.deleteMany(schema, fullTable, ast)
-					return castMany(results)
-				},
-
-				async deleteById(id: PipeOutput<F[PK]>) {
-					const ast = query(where(fullTable.primaryKey, eq(id)))
-					const result = await adapter.deleteOne(schema, fullTable, ast)
-					return result ? cast(result) : null
-				},
-
-				async upsert(ops: QueryOp[], data, options?: UpsertOptions) {
-					const validatedInsert = validateSchema(schema, data.insert) as Record<string, unknown>
-					const upsertData =
-						'update' in data
-							? {
-									insert: validatedInsert,
-									update: validatePartialSchema(schema, data.update) as Record<string, unknown>,
-								}
-							: { insert: validatedInsert }
-					const ast = query(...ops)
-					const result = await adapter.upsertOne(schema, fullTable, ast, upsertData, options)
-					return cast(result)
-				},
-
-				async count(...ops: QueryOp[]) {
-					const ast = query(...ops)
-					return adapter.count(schema, fullTable, ast)
-				},
-
-				async paginatedQuery(ops: QueryOp[], pagination) {
-					const ast = query(...ops)
-					const result = await adapter.query(schema, fullTable, ast, {
-						page: pagination.page,
-						limit: pagination.limit,
-						all: pagination.all ?? false,
-					})
-					return {
-						...result,
-						results: castMany(result.results),
-					}
-				},
-
-				async preload<K extends string & keyof A>(entity: InferEntity<F, C>, key: K, ...ops: QueryOp[]) {
-					const association = schema.associations[key] as Association
-					if (!association) throw new Error(`Unknown association: ${String(key)}`)
-
-					const loaded = await resolveAssociation(adapter, association, entity, fullTable.primaryKey, ops)
-					return { ...entity, [key]: loaded } as InferEntity<F, C> & Record<K, unknown>
-				},
-
-				async preloadMany<K extends string & keyof A>(entities: InferEntity<F, C>[], key: K, ...ops: QueryOp[]) {
-					const association = schema.associations[key] as Association
-					if (!association) throw new Error(`Unknown association: ${String(key)}`)
-
-					return batchPreload(
-						adapter,
-						association,
-						entities as Record<string, unknown>[],
-						fullTable.primaryKey,
-						key,
-						ops,
-					) as Promise<(InferEntity<F, C> & Record<K, unknown>)[]>
-				},
-
-				async session<T>(callback: () => Promise<T>): Promise<T> {
-					return adapter.session(callback)
-				},
+				...result,
+				results: castMany(result.results),
 			}
+		},
+
+		async preload<K extends string & keyof A>(entity: InferEntity<F, C>, key: K, ...ops: QueryOp[]) {
+			const association = schema.associations[key] as Association
+			if (!association) throw new Error(`Unknown association: ${String(key)}`)
+
+			const loaded = await resolveAssociation(adapter, association, entity, table.primaryKey, ops)
+			return { ...entity, [key]: loaded } as InferEntity<F, C> & Record<K, unknown>
+		},
+
+		async preloadMany<K extends string & keyof A>(entities: InferEntity<F, C>[], key: K, ...ops: QueryOp[]) {
+			const association = schema.associations[key] as Association
+			if (!association) throw new Error(`Unknown association: ${String(key)}`)
+
+			return batchPreload(adapter, association, entities as Record<string, unknown>[], table.primaryKey, key, ops) as Promise<
+				(InferEntity<F, C> & Record<K, unknown>)[]
+			>
+		},
+
+		async session<T>(callback: () => Promise<T>): Promise<T> {
+			return adapter.session(callback)
 		},
 	}
 }

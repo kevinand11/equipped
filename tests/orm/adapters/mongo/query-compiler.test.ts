@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { compileMongoQuery, compileMongoUpdate } from '../../../../src/orm/adapters/mongo/query-compiler'
 import {
 	and,
-	emptyQuery,
 	eq,
 	exists,
 	gt,
@@ -26,7 +25,7 @@ import {
 describe('orm/adapters/mongo/query-compiler', () => {
 	describe('compileMongoQuery()', () => {
 		it('compiles an empty AST', () => {
-			const result = compileMongoQuery(emptyQuery(), '_id')
+			const result = compileMongoQuery(query(), '_id')
 			expect(result.filter).toEqual({})
 			expect(result.sort).toBeUndefined()
 			expect(result.limit).toBeUndefined()

@@ -2,6 +2,7 @@ import type { Pipe, PipeInput } from 'valleyed'
 import { v } from 'valleyed'
 
 import type {
+	AnySchema,
 	Associations,
 	BelongsToAssociation,
 	ComputedDefs,
@@ -14,12 +15,11 @@ import type {
 	Indexes,
 	InferEntity,
 	ManyToManyAssociation,
-	Schema,
 	SchemaEntity,
 	SchemaRawShape,
 } from './types'
 
-export class SchemaBuilder<
+export class Schema<
 	F extends FieldDefs = FieldDefs,
 	C extends ComputedDefs = ComputedDefs,
 	A extends Associations = Associations,
@@ -30,7 +30,7 @@ export class SchemaBuilder<
 	readonly associations: A
 	readonly primaryKey: PK
 	readonly indexes: Indexes
-	readonly generateId: (index: number) => unknown
+	readonly generateId: (index: number) => PK extends keyof F ? import('valleyed').PipeOutput<F[PK]> : unknown
 
 	constructor(
 		fields: F,
@@ -38,7 +38,7 @@ export class SchemaBuilder<
 		associations: A,
 		primaryKey: PK,
 		indexes: Indexes = [],
-		generateId: (index: number) => unknown = () => '',
+		generateId: (index: number) => PK extends keyof F ? import('valleyed').PipeOutput<F[PK]> : unknown = (() => '') as any,
 	) {
 		this.fields = fields
 		this.computeds = computeds
@@ -48,22 +48,22 @@ export class SchemaBuilder<
 		this.generateId = generateId
 	}
 
-	pk<K extends string & keyof F>(key: K, generate: (index: number) => import('valleyed').PipeOutput<F[K]>): SchemaBuilder<F, C, A, K> {
-		return new SchemaBuilder(this.fields, this.computeds, this.associations, key, this.indexes, generate)
+	pk<K extends string & keyof F>(key: K, generate: (index: number) => import('valleyed').PipeOutput<F[K]>): Schema<F, C, A, K> {
+		return new Schema(this.fields, this.computeds, this.associations, key, this.indexes, generate as any)
 	}
 
-	index(name: string, fields: (keyof F & string)[], options?: { unique?: boolean }): SchemaBuilder<F, C, A, PK> {
+	index(name: string, fields: (keyof F & string)[], options?: { unique?: boolean }): Schema<F, C, A, PK> {
 		const def: IndexDef = { name, fields, unique: options?.unique }
-		return new SchemaBuilder(this.fields, this.computeds, this.associations, this.primaryKey, [...this.indexes, def], this.generateId)
+		return new Schema(this.fields, this.computeds, this.associations, this.primaryKey, [...this.indexes, def], this.generateId)
 	}
 
 	computed<K extends string, P extends Pipe<any, any>>(
 		key: K,
 		pipe: P,
 		compute: (data: SchemaRawShape<F>) => PipeInput<P>,
-	): SchemaBuilder<F, C & Record<K, ComputedFieldDef<P, SchemaRawShape<F>>>, A, PK> {
+	): Schema<F, C & Record<K, ComputedFieldDef<P, SchemaRawShape<F>>>, A, PK> {
 		const def: ComputedFieldDef<P, SchemaRawShape<F>> = { __kind: 'computed', pipe, compute }
-		return new SchemaBuilder(
+		return new Schema(
 			this.fields,
 			{ ...this.computeds, [key]: def } as C & Record<K, ComputedFieldDef<P, SchemaRawShape<F>>>,
 			this.associations,
@@ -73,13 +73,13 @@ export class SchemaBuilder<
 		)
 	}
 
-	belongsTo<K extends string, S extends Schema>(
+	belongsTo<K extends string, S extends AnySchema>(
 		key: K,
 		schemaFn: () => S,
 		foreignKey: string,
-	): SchemaBuilder<F, C, A & Record<K, BelongsToAssociation<SchemaEntity<S>>>, PK> {
+	): Schema<F, C, A & Record<K, BelongsToAssociation<SchemaEntity<S>>>, PK> {
 		const def: BelongsToAssociation<SchemaEntity<S>> = { type: 'belongsTo', schema: schemaFn, foreignKey }
-		return new SchemaBuilder(
+		return new Schema(
 			this.fields,
 			this.computeds,
 			{ ...this.associations, [key]: def } as A & Record<K, BelongsToAssociation<SchemaEntity<S>>>,
@@ -89,13 +89,13 @@ export class SchemaBuilder<
 		)
 	}
 
-	hasOne<K extends string, S extends Schema>(
+	hasOne<K extends string, S extends AnySchema>(
 		key: K,
 		schemaFn: () => S,
 		foreignKey: string,
-	): SchemaBuilder<F, C, A & Record<K, HasOneAssociation<SchemaEntity<S>>>, PK> {
+	): Schema<F, C, A & Record<K, HasOneAssociation<SchemaEntity<S>>>, PK> {
 		const def: HasOneAssociation<SchemaEntity<S>> = { type: 'hasOne', schema: schemaFn, foreignKey }
-		return new SchemaBuilder(
+		return new Schema(
 			this.fields,
 			this.computeds,
 			{ ...this.associations, [key]: def } as A & Record<K, HasOneAssociation<SchemaEntity<S>>>,
@@ -105,13 +105,13 @@ export class SchemaBuilder<
 		)
 	}
 
-	hasMany<K extends string, S extends Schema>(
+	hasMany<K extends string, S extends AnySchema>(
 		key: K,
 		schemaFn: () => S,
 		foreignKey: string,
-	): SchemaBuilder<F, C, A & Record<K, HasManyAssociation<SchemaEntity<S>>>, PK> {
+	): Schema<F, C, A & Record<K, HasManyAssociation<SchemaEntity<S>>>, PK> {
 		const def: HasManyAssociation<SchemaEntity<S>> = { type: 'hasMany', schema: schemaFn, foreignKey }
-		return new SchemaBuilder(
+		return new Schema(
 			this.fields,
 			this.computeds,
 			{ ...this.associations, [key]: def } as A & Record<K, HasManyAssociation<SchemaEntity<S>>>,
@@ -121,13 +121,13 @@ export class SchemaBuilder<
 		)
 	}
 
-	manyToMany<K extends string, S extends Schema, J extends Schema>(
+	manyToMany<K extends string, S extends AnySchema, J extends AnySchema>(
 		key: K,
 		schemaFn: () => S,
 		joinSchemaFn: () => J,
 		thisForeignKey: string,
 		thatForeignKey: string,
-	): SchemaBuilder<F, C, A & Record<K, ManyToManyAssociation<SchemaEntity<S>>>, PK> {
+	): Schema<F, C, A & Record<K, ManyToManyAssociation<SchemaEntity<S>>>, PK> {
 		const def: ManyToManyAssociation<SchemaEntity<S>> = {
 			type: 'manyToMany',
 			schema: schemaFn,
@@ -135,7 +135,7 @@ export class SchemaBuilder<
 			thisForeignKey,
 			thatForeignKey,
 		}
-		return new SchemaBuilder(
+		return new Schema(
 			this.fields,
 			this.computeds,
 			{ ...this.associations, [key]: def } as A & Record<K, ManyToManyAssociation<SchemaEntity<S>>>,
@@ -146,12 +146,12 @@ export class SchemaBuilder<
 	}
 }
 
-export function schema<const D extends Record<string, FieldDef>>(defs: D): SchemaBuilder<D, {}, {}, string> {
-	return new SchemaBuilder<D, {}, {}, string>(defs as D, {} as {}, {} as {}, '' as string)
+export function schema<const D extends Record<string, FieldDef>>(defs: D): Schema<D, {}, {}, string> {
+	return new Schema<D, {}, {}, string>(defs as D, {} as {}, {} as {}, '' as string)
 }
 
 export function validateSchema<F extends FieldDefs>(
-	schema: Schema<F, any, any, any>,
+	schema: AnySchema<F, any, any, any>,
 	data: Record<string, unknown>,
 ): { [K in keyof F]: import('valleyed').PipeOutput<F[K]> } {
 	const fieldsWithoutPk = Object.fromEntries(Object.entries(schema.fields).filter(([key]) => key !== schema.primaryKey))
@@ -167,7 +167,7 @@ export function validateSchema<F extends FieldDefs>(
 }
 
 export function computeSchema<F extends FieldDefs, C extends ComputedDefs>(
-	schema: Schema<F, C, any, any>,
+	schema: AnySchema<F, C, any, any>,
 	data: Record<string, unknown>,
 ): InferEntity<F, C> {
 	const computedEntries = Object.entries(schema.computeds)
@@ -181,7 +181,7 @@ export function computeSchema<F extends FieldDefs, C extends ComputedDefs>(
 }
 
 export function validatePartialSchema<F extends FieldDefs, C extends ComputedDefs>(
-	schema: Schema<F, C, any, any>,
+	schema: AnySchema<F, C, any, any>,
 	data: Record<string, unknown>,
 ): Partial<InferEntity<F, C>> {
 	const knownKeys = Object.keys(schema.fields)

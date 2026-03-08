@@ -9,7 +9,6 @@ import {
 } from '../../../../src/orm/adapters/pg/query-compiler'
 import {
 	and,
-	emptyQuery,
 	eq,
 	exists,
 	gt,
@@ -33,7 +32,7 @@ import {
 describe('orm/adapters/pg/query-compiler', () => {
 	describe('compilePgQuery()', () => {
 		it('compiles an empty AST', () => {
-			const result = compilePgQuery(emptyQuery(), 'users', 'id')
+			const result = compilePgQuery(query(), 'users', 'id')
 			expect(result.whereClause).toBe('')
 			expect(result.orderClause).toBe('')
 			expect(result.limitClause).toBe('')
@@ -204,7 +203,7 @@ describe('orm/adapters/pg/query-compiler', () => {
 		})
 
 		it('builds SELECT with no WHERE', () => {
-			const ast = emptyQuery()
+			const ast = query()
 			const result = buildSelectQuery(ast, 'items', 'id')
 			expect(result.sql).toBe('SELECT * FROM "items"')
 			expect(result.params).toEqual([])
@@ -220,7 +219,7 @@ describe('orm/adapters/pg/query-compiler', () => {
 		})
 
 		it('builds COUNT without WHERE', () => {
-			const result = buildCountQuery(emptyQuery(), 'users', 'id')
+			const result = buildCountQuery(query(), 'users', 'id')
 			expect(result.sql).toBe('SELECT COUNT(*) as count FROM "users"')
 		})
 	})
@@ -265,7 +264,7 @@ describe('orm/adapters/pg/query-compiler', () => {
 		})
 
 		it('builds DELETE without WHERE', () => {
-			const result = buildDeleteQuery(emptyQuery(), 'users', 'id')
+			const result = buildDeleteQuery(query(), 'users', 'id')
 			expect(result.sql).toBe('DELETE FROM "users" RETURNING *')
 		})
 	})

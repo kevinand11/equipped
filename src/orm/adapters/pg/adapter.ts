@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import type { QueryAST } from '../../query/types'
-import type { Schema } from '../../schema/types'
+import type { AnySchema } from '../../schema/types'
 import type { Adapter, InsertOptions, PaginatedResult, UpdateOptions, UpsertOptions } from '../types'
 import { buildCountQuery, buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery } from './query-compiler'
 
@@ -45,21 +45,21 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 		return table.table
 	}
 
-	async findMany(_schema: Schema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
+	async findMany(_schema: AnySchema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
 		const tableName = this.getTableName(table)
 		const { sql, params } = buildSelectQuery(queryAst, tableName, table.primaryKey)
 		const result = await this.getClient().query(sql, params)
 		return result.rows
 	}
 
-	async findOne(schema: Schema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
+	async findOne(schema: AnySchema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
 		const limitedAst = { ...queryAst, limit: 1 }
 		const results = await this.findMany(schema, table, limitedAst)
 		return results[0] ?? null
 	}
 
 	async insertOne(
-		schema: Schema,
+		schema: AnySchema,
 		table: PgTableConfig,
 		data: Record<string, unknown>,
 		options?: InsertOptions,
@@ -69,7 +69,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 	}
 
 	async insertMany(
-		schema: Schema,
+		schema: AnySchema,
 		table: PgTableConfig,
 		data: Record<string, unknown>[],
 		options?: InsertOptions,
@@ -98,7 +98,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 	}
 
 	async updateMany(
-		_schema: Schema,
+		_schema: AnySchema,
 		table: PgTableConfig,
 		queryAst: QueryAST,
 		data: Record<string, unknown>,
@@ -114,7 +114,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 	}
 
 	async updateOne(
-		schema: Schema,
+		schema: AnySchema,
 		table: PgTableConfig,
 		queryAst: QueryAST,
 		data: Record<string, unknown>,
@@ -126,7 +126,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 	}
 
 	async upsertOne(
-		schema: Schema,
+		schema: AnySchema,
 		table: PgTableConfig,
 		_queryAst: QueryAST,
 		data: { insert: Record<string, unknown> } | { insert: Record<string, unknown>; update: Record<string, unknown> },
@@ -165,20 +165,20 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 		return result.rows[0]
 	}
 
-	async deleteOne(schema: Schema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
+	async deleteOne(schema: AnySchema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
 		const limitedAst = { ...queryAst, limit: 1 }
 		const results = await this.deleteMany(schema, table, limitedAst)
 		return results[0] ?? null
 	}
 
-	async deleteMany(_schema: Schema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
+	async deleteMany(_schema: AnySchema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
 		const tableName = this.getTableName(table)
 		const { sql, params } = buildDeleteQuery(queryAst, tableName, table.primaryKey)
 		const result = await this.getClient().query(sql, params)
 		return result.rows
 	}
 
-	async count(_schema: Schema, table: PgTableConfig, queryAst: QueryAST): Promise<number> {
+	async count(_schema: AnySchema, table: PgTableConfig, queryAst: QueryAST): Promise<number> {
 		const tableName = this.getTableName(table)
 		const { sql, params } = buildCountQuery(queryAst, tableName, table.primaryKey)
 		const result = await this.getClient().query(sql, params)
@@ -206,7 +206,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 	}
 
 	async query(
-		schema: Schema,
+		schema: AnySchema,
 		table: PgTableConfig,
 		queryAst: QueryAST,
 		pagination: { page: number; limit: number; all: boolean },

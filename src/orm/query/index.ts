@@ -99,7 +99,3 @@ export function query(...ops: QueryOp[]): QueryAST {
 
 	return ast
 }
-
-export function emptyQuery(): QueryAST {
-	return query()
-}

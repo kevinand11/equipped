@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { type ClientSession, type Collection, MongoClient, type OptionalUnlessRequiredId } from 'mongodb'
 
 import type { QueryAST } from '../../query/types'
-import type { Schema } from '../../schema/types'
+import type { AnySchema } from '../../schema/types'
 import type { Adapter, InsertOptions, PaginatedResult, UpdateOptions, UpsertOptions } from '../types'
 import { compileMongoQuery, compileMongoUpdate } from './query-compiler'
 
@@ -16,7 +16,6 @@ export type MongoAdapterConfig = {
 export type MongoTableConfig = {
 	db: string
 	col: string
-	primaryKey: string
 }
 
 export class MongoAdapter implements Adapter<MongoTableConfig> {
@@ -38,9 +37,9 @@ export class MongoAdapter implements Adapter<MongoTableConfig> {
 		return this.client.db(table.db).collection(table.col)
 	}
 
-	async findMany(_schema: Schema, table: MongoTableConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
+	async findMany(schema: AnySchema, table: MongoTableConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
 		const collection = this.getCollection(table)
-		const { filter, sort, limit, skip, projection } = compileMongoQuery(queryAst, table.primaryKey)
+		const { filter, sort, limit, skip, projection } = compileMongoQuery(queryAst, schema.primaryKey)
 
 		let cursor = collection.find(filter, {
 			session: sessionStore.getStore(),
@@ -54,14 +53,14 @@ export class MongoAdapter implements Adapter<MongoTableConfig> {
 		return docs.map((d) => d as Record<string, unknown>)
 	}
 
-	async findOne(schema: Schema, table: MongoTableConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
+	async findOne(schema: AnySchema, table: MongoTableConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
 		const limitedAst = { ...queryAst, limit: 1 }
 		const results = await this.findMany(schema, table, limitedAst)
 		return results[0] ?? null
 	}
 
 	async insertOne(
-		schema: Schema,
+		schema: AnySchema,
 		table: MongoTableConfig,
 		data: Record<string, unknown>,
 		options?: InsertOptions,
@@ -71,7 +70,7 @@ export class MongoAdapter implements Adapter<MongoTableConfig> {
 	}
 
 	async insertMany(
-		schema: Schema,
+		schema: AnySchema,
 		table: MongoTableConfig,
 		data: Record<string, unknown>[],
 		options?: InsertOptions,
@@ -83,7 +82,7 @@ export class MongoAdapter implements Adapter<MongoTableConfig> {
 			const id = schema.generateId(i)
 			const doc = {
 				...d,
-				[table.primaryKey]: id,
+				[schema.primaryKey]: id,
 				createdAt: now.getTime(),
 				updatedAt: now.getTime(),
 			}
@@ -96,18 +95,18 @@ export class MongoAdapter implements Adapter<MongoTableConfig> {
 	}
 
 	async updateMany(
-		_schema: Schema,
+		schema: AnySchema,
 		table: MongoTableConfig,
 		queryAst: QueryAST,
 		data: Record<string, unknown>,
 		options?: UpdateOptions,
 	): Promise<Record<string, unknown>[]> {
 		const collection = this.getCollection(table)
-		const { filter } = compileMongoQuery(queryAst, table.primaryKey)
+		const pk = schema.primaryKey
+		const { filter } = compileMongoQuery(queryAst, pk)
 		const now = options?.getTime?.() ?? new Date()
 		const session = sessionStore.getStore()
 
-		const pk = table.primaryKey
 		const matchingDocs = await collection.find(filter, { session, projection: { [pk]: 1 } }).toArray()
 		const ids = matchingDocs.map((d) => d[pk])
 		const idFilter = { [pk]: { $in: ids } }
@@ -121,14 +120,14 @@ export class MongoAdapter implements Adapter<MongoTableConfig> {
 	}
 
 	async updateOne(
-		_schema: Schema,
+		schema: AnySchema,
 		table: MongoTableConfig,
 		queryAst: QueryAST,
 		data: Record<string, unknown>,
 		options?: UpdateOptions,
 	): Promise<Record<string, unknown> | null> {
 		const collection = this.getCollection(table)
-		const { filter } = compileMongoQuery(queryAst, table.primaryKey)
+		const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
 		const now = options?.getTime?.() ?? new Date()
 
 		const update = compileMongoUpdate(data, queryAst.raws, now)
@@ -141,14 +140,14 @@ export class MongoAdapter implements Adapter<MongoTableConfig> {
 	}
 
 	async upsertOne(
-		schema: Schema,
+		schema: AnySchema,
 		table: MongoTableConfig,
 		queryAst: QueryAST,
 		data: { insert: Record<string, unknown> } | { insert: Record<string, unknown>; update: Record<string, unknown> },
 		options?: UpsertOptions,
 	): Promise<Record<string, unknown>> {
 		const collection = this.getCollection(table)
-		const { filter } = compileMongoQuery(queryAst, table.primaryKey)
+		const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
 		const now = options?.getTime?.() ?? new Date()
 		const id = schema.generateId(0)
 
@@ -157,7 +156,7 @@ export class MongoAdapter implements Adapter<MongoTableConfig> {
 
 		const insertData = {
 			...data.insert,
-			[table.primaryKey]: id,
+			[schema.primaryKey]: id,
 			createdAt: now.getTime(),
 		}
 
@@ -177,23 +176,23 @@ export class MongoAdapter implements Adapter<MongoTableConfig> {
 		return doc as Record<string, unknown>
 	}
 
-	async deleteOne(_schema: Schema, table: MongoTableConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
+	async deleteOne(schema: AnySchema, table: MongoTableConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
 		const collection = this.getCollection(table)
-		const { filter } = compileMongoQuery(queryAst, table.primaryKey)
+		const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
 
 		const doc = await collection.findOneAndDelete(filter, { session: sessionStore.getStore() })
 		return doc ? (doc as Record<string, unknown>) : null
 	}
 
-	async deleteMany(schema: Schema, table: MongoTableConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
+	async deleteMany(schema: AnySchema, table: MongoTableConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
 		const docs = await this.findMany(schema, table, queryAst)
-		const { filter } = compileMongoQuery(queryAst, table.primaryKey)
+		const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
 		await this.getCollection(table).deleteMany(filter, { session: sessionStore.getStore() })
 		return docs
 	}
 
-	async count(_schema: Schema, table: MongoTableConfig, queryAst: QueryAST): Promise<number> {
-		const { filter } = compileMongoQuery(queryAst, table.primaryKey)
+	async count(schema: AnySchema, table: MongoTableConfig, queryAst: QueryAST): Promise<number> {
+		const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
 		return this.getCollection(table).countDocuments(filter)
 	}
 
@@ -204,13 +203,13 @@ export class MongoAdapter implements Adapter<MongoTableConfig> {
 	}
 
 	async query(
-		_schema: Schema,
+		schema: AnySchema,
 		table: MongoTableConfig,
 		queryAst: QueryAST,
 		pagination: { page: number; limit: number; all: boolean },
 	): Promise<PaginatedResult<Record<string, unknown>>> {
 		const collection = this.getCollection(table)
-		const { filter, sort, projection } = compileMongoQuery(queryAst, table.primaryKey)
+		const { filter, sort, projection } = compileMongoQuery(queryAst, schema.primaryKey)
 
 		const total = await collection.countDocuments(filter)
 
