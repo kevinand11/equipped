@@ -1,58 +1,54 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
+import { Pool, type PoolClient } from 'pg'
+
+import { v, type PipeOutput } from 'valleyed'
 import type { QueryAST } from '../../query/types'
 import type { AnySchema } from '../../schema/types'
 import type { Adapter, InsertOptions, PaginatedResult, UpdateOptions, UpsertOptions } from '../types'
 import { buildCountQuery, buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery } from './query-compiler'
 
-const sessionStore = new AsyncLocalStorage<PgClient | undefined>()
+const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
 
-export type PgAdapterConfig = {
-	pool: PgPool
-}
+export const pgAdapterConfigPipe = () => v.object({ uri: v.string() })
 
-export type PgTableConfig = {
+export type PgAdapterConfig = PipeOutput<ReturnType<typeof pgAdapterConfigPipe>>
+
+export type PgRepoConfig = {
 	schema?: string
 	table: string
-	primaryKey: string
 }
 
-export interface PgPool {
-	query(sql: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>
-}
-
-export interface PgClient extends PgPool {
-	query(sql: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>
-}
-
-export class PgAdapter implements Adapter<PgTableConfig> {
-	private pool: PgPool
+export class PgAdapter implements Adapter<PgRepoConfig> {
+	readonly pool: Pool
 
 	constructor(config: PgAdapterConfig) {
-		this.pool = config.pool
+		this.pool = new Pool({ connectionString: config.uri })
 	}
 
 	async connect(): Promise<void> {}
 
-	async disconnect(): Promise<void> {}
+	async disconnect(): Promise<void> {
+		await this.pool.end()
+	}
 
-	private getClient(): PgPool {
+	private getClient(): Pool | PoolClient {
 		return sessionStore.getStore() ?? this.pool
 	}
 
-	private getTableName(table: PgTableConfig): string {
+	private getTableName(table: PgRepoConfig): string {
 		if (table.schema && table.schema !== 'public') return `${table.schema}.${table.table}`
 		return table.table
 	}
 
-	async findMany(_schema: AnySchema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
+	async findMany(schema: AnySchema, table: PgRepoConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
 		const tableName = this.getTableName(table)
-		const { sql, params } = buildSelectQuery(queryAst, tableName, table.primaryKey)
+		const { sql, params } = buildSelectQuery(queryAst, tableName, schema.primaryKey)
 		const result = await this.getClient().query(sql, params)
 		return result.rows
 	}
 
-	async findOne(schema: AnySchema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
+	async findOne(schema: AnySchema, table: PgRepoConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
 		const limitedAst = { ...queryAst, limit: 1 }
 		const results = await this.findMany(schema, table, limitedAst)
 		return results[0] ?? null
@@ -60,7 +56,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 
 	async insertOne(
 		schema: AnySchema,
-		table: PgTableConfig,
+		table: PgRepoConfig,
 		data: Record<string, unknown>,
 		options?: InsertOptions,
 	): Promise<Record<string, unknown>> {
@@ -70,7 +66,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 
 	async insertMany(
 		schema: AnySchema,
-		table: PgTableConfig,
+		table: PgRepoConfig,
 		data: Record<string, unknown>[],
 		options?: InsertOptions,
 	): Promise<Record<string, unknown>[]> {
@@ -84,7 +80,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 			const id = schema.generateId(i)
 			const doc = {
 				...data[i],
-				[table.primaryKey]: id,
+				[schema.primaryKey]: id,
 				createdAt: now.getTime(),
 				updatedAt: now.getTime(),
 			}
@@ -98,8 +94,8 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 	}
 
 	async updateMany(
-		_schema: AnySchema,
-		table: PgTableConfig,
+		schema: AnySchema,
+		table: PgRepoConfig,
 		queryAst: QueryAST,
 		data: Record<string, unknown>,
 		options?: UpdateOptions,
@@ -108,14 +104,14 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 		const now = options?.getTime?.() ?? new Date()
 		const fullData = { ...data, updatedAt: now.getTime() }
 
-		const { sql, params } = buildUpdateQuery(queryAst, tableName, table.primaryKey, fullData)
+		const { sql, params } = buildUpdateQuery(queryAst, tableName, schema.primaryKey, fullData)
 		const result = await this.getClient().query(sql, params)
 		return result.rows
 	}
 
 	async updateOne(
 		schema: AnySchema,
-		table: PgTableConfig,
+		table: PgRepoConfig,
 		queryAst: QueryAST,
 		data: Record<string, unknown>,
 		options?: UpdateOptions,
@@ -127,7 +123,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 
 	async upsertOne(
 		schema: AnySchema,
-		table: PgTableConfig,
+		table: PgRepoConfig,
 		_queryAst: QueryAST,
 		data: { insert: Record<string, unknown> } | { insert: Record<string, unknown>; update: Record<string, unknown> },
 		options?: UpsertOptions,
@@ -139,7 +135,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 
 		const insertData = {
 			...data.insert,
-			[table.primaryKey]: id,
+			[schema.primaryKey]: id,
 			createdAt: now.getTime(),
 			updatedAt: now.getTime(),
 		}
@@ -158,29 +154,29 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 
 		const sql = `INSERT INTO "${tableName}" (${columns.map((c) => `"${c}"`).join(', ')})
 			VALUES (${placeholders.join(', ')})
-			ON CONFLICT ("${table.primaryKey}") DO UPDATE SET ${updateParts.join(', ')}
+			ON CONFLICT ("${schema.primaryKey}") DO UPDATE SET ${updateParts.join(', ')}
 			RETURNING *`.replace(/\s+/g, ' ')
 
 		const result = await client.query(sql, values)
 		return result.rows[0]
 	}
 
-	async deleteOne(schema: AnySchema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
+	async deleteOne(schema: AnySchema, table: PgRepoConfig, queryAst: QueryAST): Promise<Record<string, unknown> | null> {
 		const limitedAst = { ...queryAst, limit: 1 }
 		const results = await this.deleteMany(schema, table, limitedAst)
 		return results[0] ?? null
 	}
 
-	async deleteMany(_schema: AnySchema, table: PgTableConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
+	async deleteMany(schema: AnySchema, table: PgRepoConfig, queryAst: QueryAST): Promise<Record<string, unknown>[]> {
 		const tableName = this.getTableName(table)
-		const { sql, params } = buildDeleteQuery(queryAst, tableName, table.primaryKey)
+		const { sql, params } = buildDeleteQuery(queryAst, tableName, schema.primaryKey)
 		const result = await this.getClient().query(sql, params)
 		return result.rows
 	}
 
-	async count(_schema: AnySchema, table: PgTableConfig, queryAst: QueryAST): Promise<number> {
+	async count(schema: AnySchema, table: PgRepoConfig, queryAst: QueryAST): Promise<number> {
 		const tableName = this.getTableName(table)
-		const { sql, params } = buildCountQuery(queryAst, tableName, table.primaryKey)
+		const { sql, params } = buildCountQuery(queryAst, tableName, schema.primaryKey)
 		const result = await this.getClient().query(sql, params)
 		return Number(result.rows[0]?.count ?? 0)
 	}
@@ -188,9 +184,7 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 	async session<T>(callback: () => Promise<T>): Promise<T> {
 		if (sessionStore.getStore()) return callback()
 
-		const pool = this.pool as any
-		if (!pool.connect) throw new Error('Pool must support connect() for transactions')
-		const client: PgClient = await pool.connect()
+		const client = await this.pool.connect()
 
 		try {
 			await client.query('BEGIN')
@@ -201,19 +195,19 @@ export class PgAdapter implements Adapter<PgTableConfig> {
 			await client.query('ROLLBACK')
 			throw error
 		} finally {
-			;(client as any).release?.()
+			client.release()
 		}
 	}
 
 	async query(
 		schema: AnySchema,
-		table: PgTableConfig,
+		table: PgRepoConfig,
 		queryAst: QueryAST,
 		pagination: { page: number; limit: number; all: boolean },
 	): Promise<PaginatedResult<Record<string, unknown>>> {
 		const tableName = this.getTableName(table)
 		const { whereClause, params: countParams } = (() => {
-			const { sql, params } = buildCountQuery(queryAst, tableName, table.primaryKey)
+			const { sql, params } = buildCountQuery(queryAst, tableName, schema.primaryKey)
 			return { whereClause: sql, params }
 		})()
 

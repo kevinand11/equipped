@@ -1,9 +1,7 @@
 import type { QueryAST } from '../query/types'
 import type { AnySchema } from '../schema/types'
 
-export type TableConfig = {
-	primaryKey: string
-}
+export type RepoConfig = object
 
 export type InsertOptions = {
 	getTime?: () => Date
@@ -33,7 +31,7 @@ export type PaginatedResult<T> = {
 	results: T[]
 }
 
-export interface Adapter<T extends object = object> {
+export interface Adapter<T extends RepoConfig = RepoConfig> {
 	connect(): Promise<void>
 
 	disconnect(): Promise<void>

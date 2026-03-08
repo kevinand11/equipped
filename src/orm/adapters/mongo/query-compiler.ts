@@ -80,6 +80,10 @@ function compileWhere(w: WhereOp, primaryKey: string): MongoFilter {
 			return { [field]: { $regex: new RegExp(String(w.value), 'i') } }
 		case Condition.exists:
 			return { [field]: { $exists: w.value } }
+		case Condition.contains:
+			return { [field]: { $all: Array.isArray(w.value) ? w.value : [w.value] } }
+		case Condition.notContains:
+			return { [field]: { $not: { $all: Array.isArray(w.value) ? w.value : [w.value] } } }
 		default:
 			return { [field]: { $eq: w.value } }
 	}

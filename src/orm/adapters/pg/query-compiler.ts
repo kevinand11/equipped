@@ -81,6 +81,10 @@ function compileWhere(w: WhereOp, primaryKey: string, nextParam: (v: unknown) =>
 			return `${field} ILIKE ${nextParam(`%${w.value}%`)}`
 		case Condition.exists:
 			return w.value ? `${field} IS NOT NULL` : `${field} IS NULL`
+		case Condition.contains:
+			return `${field} @> ${nextParam(JSON.stringify(w.value))}::jsonb`
+		case Condition.notContains:
+			return `NOT (${field} @> ${nextParam(JSON.stringify(w.value))}::jsonb)`
 		default:
 			return `${field} = ${nextParam(w.value)}`
 	}

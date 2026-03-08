@@ -4,6 +4,8 @@ import { InMemoryCache, RedisCache, redisConfigPipe } from '../cache'
 import { MongoDb, mongoDbConfigPipe } from '../dbs'
 import { KafkaEventBus, RabbitMQEventBus, kafkaConfigPipe, rabbitmqConfigPipe } from '../events'
 import { RedisJob, redisJobsConfigPipe } from '../jobs'
+import { MongoAdapter, mongoAdapterConfigPipe } from '../orm/adapters/mongo'
+import { PgAdapter, pgAdapterConfigPipe } from '../orm/adapters/pg'
 import { ExpressServer, FastifyServer, serverConfigPipe } from '../server'
 
 export const instanceSettingsPipe = () =>
@@ -87,6 +89,19 @@ export const dbPipe = () =>
 			),
 		})
 		.pipe((config) => new MongoDb(config.db, { changes: config.changes }))
+
+export type OrmAdapterTypes = {
+	mongo: MongoAdapter
+	pg: PgAdapter
+}
+
+export const ormAdapterPipe = () =>
+	v.discriminate((e) => e?.type, {
+		mongo: v
+			.merge(mongoAdapterConfigPipe(), v.object({ type: v.is('mongo' as const) }))
+			.pipe(({ type: _, ...config }) => new MongoAdapter(config)),
+		pg: v.merge(pgAdapterConfigPipe(), v.object({ type: v.is('pg' as const) })).pipe(({ type: _, ...config }) => new PgAdapter(config)),
+	})
 
 export type ServerTypes = {
 	express: ExpressServer

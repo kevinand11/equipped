@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { compileMongoQuery, compileMongoUpdate } from '../../../../src/orm/adapters/mongo/query-compiler'
 import {
 	and,
+	contains,
 	eq,
 	exists,
 	gt,
@@ -12,6 +13,7 @@ import {
 	lt,
 	lte,
 	ne,
+	notContains,
 	notExists,
 	notIn,
 	offset,
@@ -100,6 +102,18 @@ describe('orm/adapters/mongo/query-compiler', () => {
 			const ast = query(where('email', notExists()))
 			const result = compileMongoQuery(ast, '_id')
 			expect(result.filter).toEqual({ email: { $exists: false } })
+		})
+
+		it('compiles where contains', () => {
+			const ast = query(where('tags', contains(['featured'])))
+			const result = compileMongoQuery(ast, '_id')
+			expect(result.filter).toEqual({ tags: { $all: ['featured'] } })
+		})
+
+		it('compiles where notContains', () => {
+			const ast = query(where('tags', notContains(['featured'])))
+			const result = compileMongoQuery(ast, '_id')
+			expect(result.filter).toEqual({ tags: { $not: { $all: ['featured'] } } })
 		})
 
 		it('maps id field to _id when primaryKey is _id', () => {

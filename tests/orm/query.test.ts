@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
 	and,
+	contains,
 	eq,
 	exists,
 	gt,
@@ -11,6 +12,7 @@ import {
 	lt,
 	lte,
 	ne,
+	notContains,
 	notExists,
 	notIn,
 	offset,
@@ -67,6 +69,14 @@ describe('orm/query', () => {
 
 		it('notExists creates not-exists condition', () => {
 			expect(notExists()).toEqual({ condition: Condition.exists, value: false })
+		})
+
+		it('contains creates contains condition', () => {
+			expect(contains(['a', 'b'])).toEqual({ condition: Condition.contains, value: ['a', 'b'] })
+		})
+
+		it('notContains creates notContains condition', () => {
+			expect(notContains(['a'])).toEqual({ condition: Condition.notContains, value: ['a'] })
 		})
 	})
 

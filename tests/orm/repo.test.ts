@@ -1,6 +1,6 @@
 import { v } from 'valleyed'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { Adapter, PaginatedResult, TableConfig } from '../../src/orm/adapters/types'
+import type { Adapter, PaginatedResult } from '../../src/orm/adapters/types'
 import type { QueryAST } from '../../src/orm/query/types'
 import { repo as createRepo } from '../../src/orm/repo/index'
 import { schema, Schema } from '../../src/orm/schema/index'
@@ -9,14 +9,14 @@ import { schema, Schema } from '../../src/orm/schema/index'
 // Mock Adapter
 // ============================================================
 
-type TestTableConfig = TableConfig & { db: string; col: string }
+type TestRepoConfig = { db: string; col: string }
 
 function createMockAdapter(
 	storage: Map<string, Record<string, unknown>[]> = new Map(),
-): Adapter<TestTableConfig> & { calls: { method: string; args: unknown[] }[] } {
+): Adapter<TestRepoConfig> & { calls: { method: string; args: unknown[] }[] } {
 	const calls: { method: string; args: unknown[] }[] = []
 
-	function getStore(table: TestTableConfig): Record<string, unknown>[] {
+	function getStore(table: TestRepoConfig): Record<string, unknown>[] {
 		const key = `${table.db}.${table.col}`
 		if (!storage.has(key)) storage.set(key, [])
 		return storage.get(key)!
@@ -32,59 +32,59 @@ function createMockAdapter(
 			calls.push({ method: 'disconnect', args: [] })
 		},
 
-		async findMany(_s: Schema, table: TestTableConfig, _ast: QueryAST) {
+		async findMany(_s: Schema, table: TestRepoConfig, _ast: QueryAST) {
 			calls.push({ method: 'findMany', args: [table, _ast] })
 			return getStore(table)
 		},
 
-		async findOne(_s: Schema, table: TestTableConfig, _ast: QueryAST) {
+		async findOne(_s: Schema, table: TestRepoConfig, _ast: QueryAST) {
 			calls.push({ method: 'findOne', args: [table, _ast] })
 			const store = getStore(table)
 			return store[0] ?? null
 		},
 
-		async insertOne(_s: Schema, table: TestTableConfig, data: Record<string, unknown>) {
+		async insertOne(_s: Schema, table: TestRepoConfig, data: Record<string, unknown>) {
 			calls.push({ method: 'insertOne', args: [table, data] })
 			const doc = { ...data, id: 'gen-id-1', createdAt: Date.now(), updatedAt: Date.now() }
 			getStore(table).push(doc)
 			return doc
 		},
 
-		async insertMany(_s: Schema, table: TestTableConfig, data: Record<string, unknown>[]) {
+		async insertMany(_s: Schema, table: TestRepoConfig, data: Record<string, unknown>[]) {
 			calls.push({ method: 'insertMany', args: [table, data] })
 			const docs = data.map((d, i) => ({ ...d, id: `gen-id-${i + 1}`, createdAt: Date.now(), updatedAt: Date.now() }))
 			getStore(table).push(...docs)
 			return docs
 		},
 
-		async updateMany(_s: Schema, table: TestTableConfig, _ast: QueryAST, data: Record<string, unknown>) {
+		async updateMany(_s: Schema, table: TestRepoConfig, _ast: QueryAST, data: Record<string, unknown>) {
 			calls.push({ method: 'updateMany', args: [table, _ast, data] })
 			const store = getStore(table)
 			const updated = store.map((r) => ({ ...r, ...data, updatedAt: Date.now() }))
 			return updated
 		},
 
-		async updateOne(_s: Schema, table: TestTableConfig, _ast: QueryAST, data: Record<string, unknown>) {
+		async updateOne(_s: Schema, table: TestRepoConfig, _ast: QueryAST, data: Record<string, unknown>) {
 			calls.push({ method: 'updateOne', args: [table, _ast, data] })
 			const store = getStore(table)
 			if (store.length === 0) return null
 			return { ...store[0], ...data, updatedAt: Date.now() }
 		},
 
-		async upsertOne(_s: Schema, table: TestTableConfig, _ast: QueryAST, data: any) {
+		async upsertOne(_s: Schema, table: TestRepoConfig, _ast: QueryAST, data: any) {
 			calls.push({ method: 'upsertOne', args: [table, _ast, data] })
 			const doc = { ...data.insert, id: 'upsert-id', createdAt: Date.now(), updatedAt: Date.now() }
 			getStore(table).push(doc)
 			return doc
 		},
 
-		async deleteOne(_s: Schema, table: TestTableConfig, _ast: QueryAST) {
+		async deleteOne(_s: Schema, table: TestRepoConfig, _ast: QueryAST) {
 			calls.push({ method: 'deleteOne', args: [table, _ast] })
 			const store = getStore(table)
 			return store.shift() ?? null
 		},
 
-		async deleteMany(_s: Schema, table: TestTableConfig, _ast: QueryAST) {
+		async deleteMany(_s: Schema, table: TestRepoConfig, _ast: QueryAST) {
 			calls.push({ method: 'deleteMany', args: [table, _ast] })
 			const store = getStore(table)
 			const removed = [...store]
@@ -92,7 +92,7 @@ function createMockAdapter(
 			return removed
 		},
 
-		async count(_s: Schema, table: TestTableConfig, _ast: QueryAST) {
+		async count(_s: Schema, table: TestRepoConfig, _ast: QueryAST) {
 			calls.push({ method: 'count', args: [table, _ast] })
 			return getStore(table).length
 		},
@@ -102,7 +102,7 @@ function createMockAdapter(
 			return cb()
 		},
 
-		async query(_s: Schema, table: TestTableConfig, _ast: QueryAST, pagination: { page: number; limit: number; all: boolean }) {
+		async query(_s: Schema, table: TestRepoConfig, _ast: QueryAST, pagination: { page: number; limit: number; all: boolean }) {
 			calls.push({ method: 'paginatedQuery', args: [table, _ast, pagination] })
 			const store = getStore(table)
 			return {
@@ -147,13 +147,13 @@ describe('orm/repo', () => {
 		it('creates a schema repo', () => {
 			const userRepo = createRepo({ adapter: adapter, schema: UserSchema, config: { db: 'test', col: 'users' } })
 			expect(userRepo.schema).toBe(UserSchema)
-			expect(userRepo.table).toEqual({ db: 'test', col: 'users', primaryKey: 'id' })
+			expect(userRepo.config).toEqual({ db: 'test', col: 'users' })
 		})
 
 		it('uses primaryKey from schema', () => {
 			const CustomSchema = schema({ _id: v.string(), name: v.string() }).pk('_id', () => 'test-id')
 			const customRepo = createRepo({ adapter: adapter, schema: CustomSchema, config: { db: 'test', col: 'items' } })
-			expect(customRepo.table.primaryKey).toBe('_id')
+			expect(customRepo.schema.primaryKey).toBe('_id')
 		})
 	})
 
@@ -380,7 +380,7 @@ describe('orm/repo', () => {
 			// For preloads, the findMany/findOne calls go through the adapter
 			// The mock adapter stores by table key, but associations need the related schema's table
 			// For this test, we use a custom adapter that returns based on the query
-			const mockAdapter: Adapter<TestTableConfig> = {
+			const mockAdapter: Adapter<TestRepoConfig> = {
 				async connect() {},
 				async disconnect() {},
 				async findMany() {
@@ -447,7 +447,7 @@ describe('orm/repo', () => {
 				.pk('id', () => 'test-id')
 				.hasMany('posts', () => PostSchema, 'userId')
 
-			const mockAdapter: Adapter<TestTableConfig> = {
+			const mockAdapter: Adapter<TestRepoConfig> = {
 				async connect() {},
 				async disconnect() {},
 				async findMany() {
@@ -523,7 +523,7 @@ describe('orm/repo', () => {
 				.pk('id', () => 'test-id')
 				.hasMany('posts', () => PostSchema, 'userId')
 
-			const mockAdapter: Adapter<TestTableConfig> = {
+			const mockAdapter: Adapter<TestRepoConfig> = {
 				async connect() {},
 				async disconnect() {},
 				async findMany() {

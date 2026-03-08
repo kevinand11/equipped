@@ -14,6 +14,8 @@ import {
 	instanceSettingsPipe,
 	jobsPipe,
 	type JobTypes,
+	ormAdapterPipe,
+	type OrmAdapterTypes,
 	serverTypePipe,
 	type ServerTypes,
 	type Settings,
@@ -73,6 +75,10 @@ export class Instance {
 
 	createDb<T extends keyof DbTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof dbPipe>>, { db: { type: T } }>>) {
 		return v.assert(dbPipe(), input) as DbTypes[T]
+	}
+
+	createOrmAdapter<T extends keyof OrmAdapterTypes> (input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof ormAdapterPipe>>, { type: T }>>) {
+		return v.assert(ormAdapterPipe(), input) as OrmAdapterTypes[T]
 	}
 
 	createServer<T extends keyof ServerTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof serverTypePipe>>, { type: T }>>) {

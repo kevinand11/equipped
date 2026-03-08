@@ -98,6 +98,39 @@
 				"default": "./dist/esm/jobs/index.mjs"
 			}
 		},
+		"./orm": {
+			"types": "./dist/types/orm/index.d.ts",
+			"require": {
+				"min": "./dist/cjs/orm/index.min.cjs",
+				"default": "./dist/cjs/orm/index.cjs"
+			},
+			"import": {
+				"min": "./dist/esm/orm/index.min.mjs",
+				"default": "./dist/esm/orm/index.mjs"
+			}
+		},
+		"./orm/adapters/mongo": {
+			"types": "./dist/types/orm/adapters/mongo/index.d.ts",
+			"require": {
+				"min": "./dist/cjs/orm/adapters/mongo/index.min.cjs",
+				"default": "./dist/cjs/orm/adapters/mongo/index.cjs"
+			},
+			"import": {
+				"min": "./dist/esm/orm/adapters/mongo/index.min.mjs",
+				"default": "./dist/esm/orm/adapters/mongo/index.mjs"
+			}
+		},
+		"./orm/adapters/pg": {
+			"types": "./dist/types/orm/adapters/pg/index.d.ts",
+			"require": {
+				"min": "./dist/cjs/orm/adapters/pg/index.min.cjs",
+				"default": "./dist/cjs/orm/adapters/pg/index.cjs"
+			},
+			"import": {
+				"min": "./dist/esm/orm/adapters/pg/index.min.mjs",
+				"default": "./dist/esm/orm/adapters/pg/index.mjs"
+			}
+		},
 		"./server": {
 			"types": "./dist/types/server/index.d.ts",
 			"require": {
@@ -159,6 +192,7 @@
 		"@types/jsonwebtoken": "^9.0.10",
 		"@types/lodash": "^4.17.23",
 		"@types/node": "^25.2.0",
+		"@types/pg": "^8.18.0",
 		"@types/pug": "^2.0.10",
 		"@types/supertest": "^6.0.3",
 		"esbuild-fix-imports-plugin": "^1.0.23",
@@ -201,6 +235,7 @@
 		"music-metadata": "7.14.0",
 		"openapi-types": "12.1.3",
 		"path-to-regexp": "8.3.0",
+		"pg": "8.20.0",
 		"pino": "10.3.0",
 		"pino-http": "11.0.0",
 		"qs": "6.14.1",

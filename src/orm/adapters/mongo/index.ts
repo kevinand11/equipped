@@ -1,2 +1,1 @@
-export { MongoAdapter, type MongoAdapterConfig, type MongoTableConfig } from './adapter'
-export { compileMongoQuery, compileMongoUpdate } from './query-compiler'
+export { MongoAdapter, mongoAdapterConfigPipe, type MongoAdapterConfig, type MongoRepoConfig as MongoTableConfig } from './adapter'

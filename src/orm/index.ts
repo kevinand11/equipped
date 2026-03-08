@@ -32,6 +32,7 @@ export type {
 
 export {
 	and,
+	contains,
 	eq,
 	exists,
 	gt,
@@ -42,6 +43,7 @@ export {
 	lt,
 	lte,
 	ne,
+	notContains,
 	notExists,
 	notIn,
 	offset,
@@ -55,17 +57,6 @@ export {
 export { Condition } from './query/types'
 export type { AndOp, LimitOp, OffsetOp, OrderByOp, OrOp, QueryAST, QueryOp, RawOp, SelectOp, WhereOp } from './query/types'
 
-export { MongoAdapter } from './adapters/mongo/index'
-export type { MongoAdapterConfig, MongoTableConfig } from './adapters/mongo/index'
-export { PgAdapter } from './adapters/pg/index'
-export type { PgAdapterConfig, PgClient, PgPool, PgTableConfig } from './adapters/pg/index'
-export type {
-	Adapter,
-	TableConfig as BaseTableConfig,
-	InsertOptions,
-	PaginatedResult,
-	UpdateOptions,
-	UpsertOptions,
-} from './adapters/types'
+export type { Adapter, RepoConfig as BaseTableConfig, InsertOptions, PaginatedResult, UpdateOptions, UpsertOptions } from './adapters/types'
 
 export { repo, type Repo } from './repo/index'

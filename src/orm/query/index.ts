@@ -23,6 +23,11 @@ export const notIn = <T>(value: T[]): { condition: Condition.nin; value: T[] } =
 export const like = (value: string): { condition: Condition.like; value: string } => ({ condition: Condition.like, value })
 export const exists = (): { condition: Condition.exists; value: true } => ({ condition: Condition.exists, value: true })
 export const notExists = (): { condition: Condition.exists; value: false } => ({ condition: Condition.exists, value: false })
+export const contains = <T>(value: T[]): { condition: Condition.contains; value: T[] } => ({ condition: Condition.contains, value })
+export const notContains = <T>(value: T[]): { condition: Condition.notContains; value: T[] } => ({
+	condition: Condition.notContains,
+	value,
+})
 
 export function where(field: string, op: { condition: Condition; value: unknown }): WhereOp {
 	return { kind: 'where', field, condition: op.condition, value: op.value }

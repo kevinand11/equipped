@@ -9,6 +9,7 @@ import {
 } from '../../../../src/orm/adapters/pg/query-compiler'
 import {
 	and,
+	contains,
 	eq,
 	exists,
 	gt,
@@ -19,6 +20,7 @@ import {
 	lt,
 	lte,
 	ne,
+	notContains,
 	notExists,
 	notIn,
 	offset,
@@ -127,6 +129,20 @@ describe('orm/adapters/pg/query-compiler', () => {
 			const ast = query(where('email', notExists()))
 			const result = compilePgQuery(ast, 'users', 'id')
 			expect(result.whereClause).toBe('WHERE "email" IS NULL')
+		})
+
+		it('compiles where contains to @>', () => {
+			const ast = query(where('tags', contains(['featured'])))
+			const result = compilePgQuery(ast, 'users', 'id')
+			expect(result.whereClause).toBe('WHERE "tags" @> $1::jsonb')
+			expect(result.params).toEqual(['["featured"]'])
+		})
+
+		it('compiles where notContains to NOT @>', () => {
+			const ast = query(where('tags', notContains(['featured'])))
+			const result = compilePgQuery(ast, 'users', 'id')
+			expect(result.whereClause).toBe('WHERE NOT ("tags" @> $1::jsonb)')
+			expect(result.params).toEqual(['["featured"]'])
 		})
 
 		it('compiles multiple wheres with AND', () => {

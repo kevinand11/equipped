@@ -1,18 +1,12 @@
 import type { PipeOutput } from 'valleyed'
 
-import type { Adapter, InsertOptions, PaginatedResult, TableConfig, UpdateOptions, UpsertOptions } from '../adapters/types'
+import type { Adapter, InsertOptions, PaginatedResult, RepoConfig, UpdateOptions, UpsertOptions } from '../adapters/types'
 import { eq, isIn, query, where } from '../query/index'
 import type { QueryOp } from '../query/types'
 import { type Schema, computeSchema, validatePartialSchema, validateSchema } from '../schema/index'
 import type { Association, Associations, ComputedDefs, FieldDefs, InferEntity } from '../schema/types'
 
-export type Repo<
-	T extends TableConfig,
-	F extends FieldDefs,
-	C extends ComputedDefs,
-	A extends Associations,
-	PK extends string & keyof F,
-> = {
+export type Repo<R extends object, F extends FieldDefs, C extends ComputedDefs, A extends Associations, PK extends string & keyof F> = {
 	findById(id: PipeOutput<F[PK]>): Promise<InferEntity<F, C> | null>
 
 	findOne(...ops: QueryOp[]): Promise<InferEntity<F, C> | null>
@@ -57,30 +51,30 @@ export type Repo<
 
 	readonly schema: Schema<F, C, A, PK>
 
-	readonly table: T
+	readonly config: R
 }
 
 export function repo<
-	T extends TableConfig,
+	R extends RepoConfig,
 	F extends FieldDefs,
 	C extends ComputedDefs,
 	A extends Associations,
 	PK extends string & keyof F,
->({ adapter, schema, config }: { adapter: Adapter<T>; schema: Schema<F, C, A, PK>; config: T }): Repo<T, F, C, A, PK> {
+>({ adapter, schema, config }: { adapter: Adapter<R>; schema: Schema<F, C, A, PK>; config: R }): Repo<R, F, C, A, PK> {
 	const table = {
 		...config,
 		primaryKey: schema.primaryKey,
-	} as unknown as T
+	} as unknown as R
 
 	const cast = (raw: Record<string, unknown>): InferEntity<F, C> => computeSchema(schema, raw)
 	const castMany = (raws: Record<string, unknown>[]): InferEntity<F, C>[] => raws.map(cast)
 
 	return {
 		schema,
-		table,
+		config,
 
 		async findById(id: PipeOutput<F[PK]>) {
-			const ast = query(where(table.primaryKey, eq(id)))
+			const ast = query(where(schema.primaryKey, eq(id)))
 			const result = await adapter.findOne(schema, table, ast)
 			return result ? cast(result) : null
 		},
@@ -118,7 +112,7 @@ export function repo<
 
 		async updateById(id: PipeOutput<F[PK]>, data: Record<string, unknown>, options?: UpdateOptions) {
 			const validated = validatePartialSchema(schema, data)
-			const ast = query(where(table.primaryKey, eq(id)))
+			const ast = query(where(schema.primaryKey, eq(id)))
 			const result = await adapter.updateOne(schema, table, ast, validated as Record<string, unknown>, options)
 			return result ? cast(result) : null
 		},
@@ -130,7 +124,7 @@ export function repo<
 		},
 
 		async deleteById(id: PipeOutput<F[PK]>) {
-			const ast = query(where(table.primaryKey, eq(id)))
+			const ast = query(where(schema.primaryKey, eq(id)))
 			const result = await adapter.deleteOne(schema, table, ast)
 			return result ? cast(result) : null
 		},
@@ -171,7 +165,7 @@ export function repo<
 			const association = schema.associations[key] as Association
 			if (!association) throw new Error(`Unknown association: ${String(key)}`)
 
-			const loaded = await resolveAssociation(adapter, association, entity, table.primaryKey, ops)
+			const loaded = await resolveAssociation(adapter, association, entity, schema.primaryKey, ops)
 			return { ...entity, [key]: loaded } as InferEntity<F, C> & Record<K, unknown>
 		},
 
@@ -179,7 +173,7 @@ export function repo<
 			const association = schema.associations[key] as Association
 			if (!association) throw new Error(`Unknown association: ${String(key)}`)
 
-			return batchPreload(adapter, association, entities as Record<string, unknown>[], table.primaryKey, key, ops) as Promise<
+			return batchPreload(adapter, association, entities as Record<string, unknown>[], schema.primaryKey, key, ops) as Promise<
 				(InferEntity<F, C> & Record<K, unknown>)[]
 			>
 		},

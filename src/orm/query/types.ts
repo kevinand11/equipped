@@ -9,6 +9,8 @@ export enum Condition {
 	nin = 'nin',
 	like = 'like',
 	exists = 'exists',
+	contains = 'contains',
+	notContains = 'notContains',
 }
 
 export type WhereOp = {
