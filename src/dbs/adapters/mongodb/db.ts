@@ -3,23 +3,24 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import {
 	ClientSession,
 	Collection,
-	type CollectionInfo,
 	MongoClient,
 	ObjectId,
+	type CollectionInfo,
 	type OptionalUnlessRequiredId,
 	type SortDirection,
 	type WithId,
 } from 'mongodb'
 
-import { MongoDbChange } from './changes'
-import type { MongoDbConfig } from './pipes'
-import { parseMongodbQueryParams } from './query'
+import { v } from 'valleyed'
 import { EquippedError } from '../../../errors'
 import { Instance } from '../../../instance'
 import type { QueryParamsBase } from '../../pipes'
 import * as core from '../base/core'
 import { Db } from '../base/db'
 import type { DbConfig } from '../base/types'
+import { MongoDbChange } from './changes'
+import { mongoDbConfigPipe, type MongoDbConfig } from './pipes'
+import { parseMongodbQueryParams } from './query'
 
 const idKey = '_id'
 type IdType = { _id: string }
@@ -35,6 +36,7 @@ export class MongoDb extends Db<{ _id: string }> {
 		dbConfig: DbConfig,
 	) {
 		super(dbConfig)
+		this.mongoConfig = v.assert(mongoDbConfigPipe(), mongoConfig)
 		this.client = new MongoClient(mongoConfig.uri, { ignoreUndefined: true })
 		Instance.on(
 			'start',

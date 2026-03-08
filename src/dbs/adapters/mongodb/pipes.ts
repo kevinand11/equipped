@@ -1,4 +1,4 @@
-import { type PipeOutput, v } from 'valleyed'
+import { type PipeInput, v } from 'valleyed'
 
 export const mongoDbConfigPipe = () =>
 	v.meta(
@@ -8,4 +8,4 @@ export const mongoDbConfigPipe = () =>
 		{ title: 'Mongodb Config', $refId: 'MongodbConfig' },
 	)
 
-export type MongoDbConfig = PipeOutput<ReturnType<typeof mongoDbConfigPipe>>
+export type MongoDbConfig = PipeInput<ReturnType<typeof mongoDbConfigPipe>>

@@ -1,4 +1,4 @@
-import { type PipeOutput, v } from 'valleyed'
+import { type PipeInput, v } from 'valleyed'
 
 export const rabbitmqConfigPipe = () =>
 	v.meta(
@@ -9,4 +9,4 @@ export const rabbitmqConfigPipe = () =>
 		{ title: 'Rabbitmq Config', $refId: 'RabbitmqConfig' },
 	)
 
-export type RabbitMQConfig = PipeOutput<ReturnType<typeof rabbitmqConfigPipe>>
+export type RabbitMQConfig = PipeInput<ReturnType<typeof rabbitmqConfigPipe>>

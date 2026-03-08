@@ -1,4 +1,4 @@
-import { type PipeOutput, v } from 'valleyed'
+import { type PipeInput, v } from 'valleyed'
 
 export const kafkaConfigPipe = () =>
 	v.meta(
@@ -17,4 +17,4 @@ export const kafkaConfigPipe = () =>
 		{ title: 'Kafka Config', $refId: 'KafkaConfig' },
 	)
 
-export type KafkaConfig = PipeOutput<ReturnType<typeof kafkaConfigPipe>>
+export type KafkaConfig = PipeInput<ReturnType<typeof kafkaConfigPipe>>

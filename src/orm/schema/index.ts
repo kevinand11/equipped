@@ -1,4 +1,4 @@
-import type { Pipe, PipeInput } from 'valleyed'
+import type { Pipe, PipeInput, PipeOutput } from 'valleyed'
 import { v } from 'valleyed'
 
 import type {
@@ -13,26 +13,21 @@ import type {
 	HasOneAssociation,
 	IndexDef,
 	Indexes,
-	InferEntity,
 	ManyToManyAssociation,
 	SchemaEntity,
+	SchemaFields,
 	SchemaRawShape,
 } from './types'
 
 export * from './types'
 
-export class Schema<
-	F extends FieldDefs = FieldDefs,
-	C extends ComputedDefs = ComputedDefs,
-	A extends Associations = Associations,
-	PK extends string = string,
-> {
+export class Schema<F extends FieldDefs, C extends ComputedDefs, A extends Associations, PK extends keyof F & string> {
 	readonly fields: F
 	readonly computeds: C
 	readonly associations: A
 	readonly primaryKey: PK
 	readonly indexes: Indexes
-	readonly generateId: (index: number) => PK extends keyof F ? import('valleyed').PipeOutput<F[PK]> : unknown
+	readonly generateId: (index: number) => PK extends keyof F ? PipeOutput<F[PK]> : unknown
 
 	constructor(
 		fields: F,
@@ -40,7 +35,7 @@ export class Schema<
 		associations: A,
 		primaryKey: PK,
 		indexes: Indexes = [],
-		generateId: (index: number) => PK extends keyof F ? import('valleyed').PipeOutput<F[PK]> : unknown = (() => '') as any,
+		generateId: (index: number) => PK extends keyof F ? PipeOutput<F[PK]> : unknown = (() => '') as any,
 	) {
 		this.fields = fields
 		this.computeds = computeds
@@ -50,7 +45,7 @@ export class Schema<
 		this.generateId = generateId
 	}
 
-	pk<K extends string & keyof F>(key: K, generate: (index: number) => import('valleyed').PipeOutput<F[K]>): Schema<F, C, A, K> {
+	pk<K extends string & keyof F>(key: K, generate: (index: number) => PipeOutput<F[K]>): Schema<F, C, A, K> {
 		return new Schema(this.fields, this.computeds, this.associations, key, this.indexes, generate as any)
 	}
 
@@ -152,10 +147,7 @@ export function schema<const D extends Record<string, FieldDef>>(defs: D): Schem
 	return new Schema<D, {}, {}, string>(defs as D, {} as {}, {} as {}, '' as string)
 }
 
-export function validateSchema<F extends FieldDefs>(
-	schema: AnySchema<F, any, any, any>,
-	data: Record<string, unknown>,
-): { [K in keyof F]: import('valleyed').PipeOutput<F[K]> } {
+export function validateSchema<S extends AnySchema>(schema: S, data: Record<string, unknown>): SchemaFields<S> {
 	const fieldsWithoutPk = Object.fromEntries(Object.entries(schema.fields).filter(([key]) => key !== schema.primaryKey))
 	const pipe = v.object(fieldsWithoutPk)
 	const validated = v.assert(pipe, data) as Record<string, unknown>
@@ -165,13 +157,10 @@ export function validateSchema<F extends FieldDefs>(
 		validated[schema.primaryKey] = v.assert(pkField, data[schema.primaryKey])
 	}
 
-	return validated as { [K in keyof F]: import('valleyed').PipeOutput<F[K]> }
+	return validated as SchemaFields<S>
 }
 
-export function computeSchema<F extends FieldDefs, C extends ComputedDefs>(
-	schema: AnySchema<F, C, any, any>,
-	data: Record<string, unknown>,
-): InferEntity<F, C> {
+export function computeSchema<S extends AnySchema>(schema: S, data: Record<string, unknown>): SchemaEntity<S> {
 	const computedEntries = Object.entries(schema.computeds)
 	if (computedEntries.length > 0) {
 		const computedData = Object.fromEntries(computedEntries.map(([key, def]) => [key, def.compute(data)]))
@@ -179,17 +168,14 @@ export function computeSchema<F extends FieldDefs, C extends ComputedDefs>(
 		const computedPipe = v.object(computedPipes)
 		Object.assign(data, v.assert(computedPipe, computedData))
 	}
-	return data as InferEntity<F, C>
+	return data as SchemaEntity<S>
 }
 
-export function validatePartialSchema<F extends FieldDefs, C extends ComputedDefs>(
-	schema: AnySchema<F, C, any, any>,
-	data: Record<string, unknown>,
-): Partial<InferEntity<F, C>> {
+export function validatePartialSchema<S extends AnySchema>(schema: S, data: Record<string, unknown>): Partial<SchemaEntity<S>> {
 	const knownKeys = Object.keys(schema.fields)
 	const presentKeys = Object.keys(data).filter((key) => knownKeys.includes(key) && !(key in schema.computeds))
 	const branches = Object.fromEntries(presentKeys.map((key) => [key, schema.fields[key]])) as Record<string, FieldDef>
-	if (Object.keys(branches).length === 0) return {} as Partial<InferEntity<F, C>>
+	if (Object.keys(branches).length === 0) return {} as Partial<SchemaEntity<S>>
 	const pipe = v.object(branches)
-	return v.assert(pipe, data) as Partial<InferEntity<F, C>>
+	return v.assert(pipe, data) as Partial<SchemaEntity<S>>
 }

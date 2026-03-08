@@ -31,7 +31,7 @@ export type PaginatedResult<T> = {
 	results: T[]
 }
 
-export interface Adapter<R extends RepoConfig = RepoConfig> {
+export interface Orm<R extends RepoConfig = RepoConfig> {
 	connect(): Promise<void>
 
 	disconnect(): Promise<void>
@@ -81,8 +81,6 @@ export interface Adapter<R extends RepoConfig = RepoConfig> {
 	deleteOne(schema: AnySchema<any, any, any, any>, config: R, queryAst: QueryAST): Promise<Record<string, unknown> | null>
 
 	deleteMany(schema: AnySchema<any, any, any, any>, config: R, queryAst: QueryAST): Promise<Record<string, unknown>[]>
-
-	count(schema: AnySchema<any, any, any, any>, config: R, queryAst: QueryAST): Promise<number>
 
 	session<R>(callback: () => Promise<R>): Promise<R>
 

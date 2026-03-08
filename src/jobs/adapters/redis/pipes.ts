@@ -1,4 +1,4 @@
-import { type PipeOutput, v } from 'valleyed'
+import { type PipeInput, v } from 'valleyed'
 
 import { redisConfigPipe } from '../../../cache/adapters/redis'
 
@@ -11,4 +11,4 @@ export const redisJobsConfigPipe = () =>
 		{ title: 'Redis Jobs Config', $refId: 'RedisJobsConfig' },
 	)
 
-export type RedisJobConfig = PipeOutput<ReturnType<typeof redisJobsConfigPipe>>
+export type RedisJobConfig = PipeInput<ReturnType<typeof redisJobsConfigPipe>>

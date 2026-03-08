@@ -58,7 +58,7 @@ export type AnySchema<
 	F extends FieldDefs = FieldDefs,
 	C extends ComputedDefs = ComputedDefs,
 	A extends Associations = Associations,
-	PK extends string = string,
+	PK extends string & keyof F = string,
 > = {
 	readonly fields: F
 	readonly computeds: C
@@ -70,9 +70,12 @@ export type AnySchema<
 
 type Prettify<T> = { [K in keyof T]: T[K] } & {}
 
-export type InferEntity<F extends FieldDefs, C extends ComputedDefs = {}> = Prettify<
-	{ [K in keyof F]: PipeOutput<F[K]> } & { [K in keyof C]: C[K] extends ComputedFieldDef<infer P> ? PipeOutput<P> : never }
->
+export type InferFields<F extends FieldDefs> = { [K in keyof F]: PipeOutput<F[K]> }
+export type InferComputed<C extends ComputedDefs> = {
+	[K in keyof C]: C[K] extends ComputedFieldDef<infer P> ? PipeOutput<P> : never
+}
+
+export type InferEntity<F extends FieldDefs, C extends ComputedDefs> = Prettify<InferFields<F> & InferComputed<C>>
 
 export type InferInput<F extends FieldDefs, PK extends keyof F = never> = {
 	[K in Exclude<keyof F, PK>]: PipeInput<F[K]>
@@ -80,7 +83,7 @@ export type InferInput<F extends FieldDefs, PK extends keyof F = never> = {
 
 export type SchemaEntity<S> = S extends AnySchema<infer F, infer C, any, any> ? InferEntity<F, C> : never
 export type SchemaInput<S> = S extends AnySchema<infer F, any, any, infer PK> ? InferInput<F, PK> : never
-export type SchemaFields<S> = S extends AnySchema<infer F, any, any, any> ? keyof F : never
+export type SchemaFields<S> = S extends AnySchema<infer F, any, any, any> ? InferFields<F> : never
 export type SchemaAssociationKeys<S> = S extends AnySchema<any, any, infer A, any> ? keyof A : never
 export type SchemaPrimaryKeyType<S> =
 	S extends AnySchema<infer F, any, any, infer PK> ? (PK extends keyof F ? PipeOutput<F[PK]> : never) : never

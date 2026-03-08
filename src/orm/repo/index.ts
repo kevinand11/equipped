@@ -1,76 +1,74 @@
-import type { PipeOutput } from 'valleyed'
-
-import type { Adapter, InsertOptions, PaginatedResult, RepoConfig, UpdateOptions, UpsertOptions } from '../adapters/base'
+import type { InsertOptions, Orm, PaginatedResult, RepoConfig, UpdateOptions, UpsertOptions } from '../adapters/base'
 import { eq, isIn, query, where } from '../query/index'
 import type { QueryOp } from '../query/types'
 import { type Schema, computeSchema, validatePartialSchema, validateSchema } from '../schema/index'
-import type { Association, Associations, ComputedDefs, FieldDefs, InferEntity } from '../schema/types'
+import type { Association, SchemaAssociationKeys, SchemaEntity, SchemaInput, SchemaPrimaryKeyType } from '../schema/types'
 
-export type Repo<R extends object, F extends FieldDefs, C extends ComputedDefs, A extends Associations, PK extends string & keyof F> = {
-	findById(id: PipeOutput<F[PK]>): Promise<InferEntity<F, C> | null>
+export type Repo<R extends object, S extends Schema<any, any, any, any>> = {
+	findById(id: SchemaPrimaryKeyType<S>): Promise<SchemaEntity<S> | null>
 
-	findOne(...ops: QueryOp[]): Promise<InferEntity<F, C> | null>
+	findOne(...ops: QueryOp[]): Promise<SchemaEntity<S> | null>
 
-	findMany(...ops: QueryOp[]): Promise<InferEntity<F, C>[]>
+	findMany(...ops: QueryOp[]): Promise<SchemaEntity<S>[]>
 
-	insert(data: Record<string, unknown>, options?: InsertOptions): Promise<InferEntity<F, C>>
+	insert(data: SchemaInput<S>, options?: InsertOptions): Promise<SchemaEntity<S>>
 
-	insertMany(data: Record<string, unknown>[], options?: InsertOptions): Promise<InferEntity<F, C>[]>
+	insertMany(data: SchemaInput<S>[], options?: InsertOptions): Promise<SchemaEntity<S>[]>
 
-	update(ops: QueryOp[], data: Record<string, unknown>, options?: UpdateOptions): Promise<InferEntity<F, C>[]>
+	update(ops: QueryOp[], data: Record<string, unknown>, options?: UpdateOptions): Promise<SchemaEntity<S>[]>
 
-	updateById(id: PipeOutput<F[PK]>, data: Record<string, unknown>, options?: UpdateOptions): Promise<InferEntity<F, C> | null>
+	updateById(id: SchemaPrimaryKeyType<S>, data: Record<string, unknown>, options?: UpdateOptions): Promise<SchemaEntity<S> | null>
 
-	delete(...ops: QueryOp[]): Promise<InferEntity<F, C>[]>
+	delete(...ops: QueryOp[]): Promise<SchemaEntity<S>[]>
 
-	deleteById(id: PipeOutput<F[PK]>): Promise<InferEntity<F, C> | null>
+	deleteById(id: SchemaPrimaryKeyType<S>): Promise<SchemaEntity<S> | null>
 
 	upsert(
 		ops: QueryOp[],
 		data: { insert: Record<string, unknown> } | { insert: Record<string, unknown>; update: Record<string, unknown> },
 		options?: UpsertOptions,
-	): Promise<InferEntity<F, C>>
+	): Promise<SchemaEntity<S>>
 
-	count(...ops: QueryOp[]): Promise<number>
+	paginatedQuery(ops: QueryOp[], pagination: { page: number; limit: number; all?: boolean }): Promise<PaginatedResult<SchemaEntity<S>>>
 
-	paginatedQuery(ops: QueryOp[], pagination: { page: number; limit: number; all?: boolean }): Promise<PaginatedResult<InferEntity<F, C>>>
-
-	preload<K extends string & keyof A>(
-		entity: InferEntity<F, C>,
+	preload<K extends SchemaAssociationKeys<S>>(
+		entity: SchemaEntity<S>,
 		key: K,
 		...ops: QueryOp[]
-	): Promise<InferEntity<F, C> & Record<K, unknown>>
+	): Promise<SchemaEntity<S> & Record<K, unknown>>
 
-	preloadMany<K extends string & keyof A>(
-		entities: InferEntity<F, C>[],
+	preloadMany<K extends SchemaAssociationKeys<S>>(
+		entities: SchemaEntity<S>[],
 		key: K,
 		...ops: QueryOp[]
-	): Promise<(InferEntity<F, C> & Record<K, unknown>)[]>
+	): Promise<(SchemaEntity<S> & Record<K, unknown>)[]>
 
 	session<T>(callback: () => Promise<T>): Promise<T>
 
-	with(adapter: Adapter<R>): Repo<R, F, C, A, PK>
+	with(adapter: Orm<R>): Repo<R, S>
 
-	readonly schema: Schema<F, C, A, PK>
+	readonly schema: S
 
 	readonly config: R
 }
 
-export function repo<
-	R extends RepoConfig,
-	F extends FieldDefs,
-	C extends ComputedDefs,
-	A extends Associations,
-	PK extends string & keyof F,
->({ adapter, schema, config }: { adapter: Adapter<R>; schema: Schema<F, C, A, PK>; config: R }): Repo<R, F, C, A, PK> {
-	const cast = (raw: Record<string, unknown>): InferEntity<F, C> => computeSchema(schema, raw)
-	const castMany = (raws: Record<string, unknown>[]): InferEntity<F, C>[] => raws.map(cast)
+export function repo<R extends RepoConfig, S extends Schema<any, any, any, any>>({
+	adapter,
+	schema,
+	config,
+}: {
+	adapter: Orm<R>
+	schema: S
+	config: R
+}): Repo<R, S> {
+	const cast = (raw: Record<string, unknown>): SchemaEntity<S> => computeSchema(schema, raw)
+	const castMany = (raws: Record<string, unknown>[]): SchemaEntity<S>[] => raws.map(cast)
 
 	return {
 		schema,
 		config,
 
-		async findById(id: PipeOutput<F[PK]>) {
+		async findById(id: SchemaPrimaryKeyType<S>) {
 			const ast = query(where(schema.primaryKey, eq(id)))
 			const result = await adapter.findOne(schema, config, ast)
 			return result ? cast(result) : null
@@ -107,7 +105,7 @@ export function repo<
 			return castMany(results)
 		},
 
-		async updateById(id: PipeOutput<F[PK]>, data: Record<string, unknown>, options?: UpdateOptions) {
+		async updateById(id: SchemaPrimaryKeyType<S>, data: Record<string, unknown>, options?: UpdateOptions) {
 			const validated = validatePartialSchema(schema, data)
 			const ast = query(where(schema.primaryKey, eq(id)))
 			const result = await adapter.updateOne(schema, config, ast, validated as Record<string, unknown>, options)
@@ -120,7 +118,7 @@ export function repo<
 			return castMany(results)
 		},
 
-		async deleteById(id: PipeOutput<F[PK]>) {
+		async deleteById(id: SchemaPrimaryKeyType<S>) {
 			const ast = query(where(schema.primaryKey, eq(id)))
 			const result = await adapter.deleteOne(schema, config, ast)
 			return result ? cast(result) : null
@@ -140,11 +138,6 @@ export function repo<
 			return cast(result)
 		},
 
-		async count(...ops: QueryOp[]) {
-			const ast = query(...ops)
-			return adapter.count(schema, config, ast)
-		},
-
 		async paginatedQuery(ops: QueryOp[], pagination) {
 			const ast = query(...ops)
 			const result = await adapter.query(schema, config, ast, {
@@ -158,20 +151,20 @@ export function repo<
 			}
 		},
 
-		async preload<K extends string & keyof A>(entity: InferEntity<F, C>, key: K, ...ops: QueryOp[]) {
+		async preload<K extends SchemaAssociationKeys<S>>(entity: SchemaEntity<S>, key: K, ...ops: QueryOp[]) {
 			const association = schema.associations[key] as Association
 			if (!association) throw new Error(`Unknown association: ${String(key)}`)
 
 			const loaded = await resolveAssociation(adapter, association, entity, schema.primaryKey, ops)
-			return { ...entity, [key]: loaded } as InferEntity<F, C> & Record<K, unknown>
+			return { ...entity, [key]: loaded } as SchemaEntity<S> & Record<K, unknown>
 		},
 
-		async preloadMany<K extends string & keyof A>(entities: InferEntity<F, C>[], key: K, ...ops: QueryOp[]) {
+		async preloadMany<K extends SchemaAssociationKeys<S>>(entities: SchemaEntity<S>[], key: K, ...ops: QueryOp[]) {
 			const association = schema.associations[key] as Association
 			if (!association) throw new Error(`Unknown association: ${String(key)}`)
 
 			return batchPreload(adapter, association, entities as Record<string, unknown>[], schema.primaryKey, key, ops) as Promise<
-				(InferEntity<F, C> & Record<K, unknown>)[]
+				(SchemaEntity<S> & Record<K, unknown>)[]
 			>
 		},
 
@@ -179,14 +172,14 @@ export function repo<
 			return adapter.session(callback)
 		},
 
-		with(adapter: Adapter<R>) {
+		with(adapter: Orm<R>) {
 			return repo({ adapter, schema, config })
 		},
 	}
 }
 
 async function resolveAssociation(
-	adapter: Adapter<any>,
+	adapter: Orm<any>,
 	association: Association,
 	entity: Record<string, unknown>,
 	primaryKey: string,
@@ -243,7 +236,7 @@ async function resolveAssociation(
 }
 
 async function batchPreload<K extends string>(
-	adapter: Adapter<any>,
+	adapter: Orm<any>,
 	association: Association,
 	entities: Record<string, unknown>[],
 	primaryKey: string,

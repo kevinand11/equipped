@@ -1,16 +1,16 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { Pool, type PoolClient } from 'pg'
-import { v, type PipeOutput } from 'valleyed'
+import { v, type PipeInput } from 'valleyed'
 
-import { buildCountQuery, buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery } from './query'
 import type { QueryAST } from '../../query/types'
 import type { AnySchema } from '../../schema/types'
-import type { Adapter, InsertOptions, PaginatedResult, UpdateOptions, UpsertOptions } from '../base'
+import type { InsertOptions, Orm, PaginatedResult, UpdateOptions, UpsertOptions } from '../base'
+import { buildCountQuery, buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery } from './query'
 
 const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
 
-export const postgresqlAdapterConfigPipe = () =>
+export const postgresqlConfigPipe = () =>
 	v.object({
 		host: v.string(),
 		port: v.number().pipe(v.int(), v.gt(0)),
@@ -20,17 +20,18 @@ export const postgresqlAdapterConfigPipe = () =>
 		ssl: v.defaults(v.boolean(), false),
 	})
 
-export type PostgresqlAdapterConfig = PipeOutput<ReturnType<typeof postgresqlAdapterConfigPipe>>
+export type PostgresqlConfig = PipeInput<ReturnType<typeof postgresqlConfigPipe>>
 
 export type PostgresqlRepoConfig = {
 	schema?: string
 	table: string
 }
 
-export class PostgresqlAdapter implements Adapter<PostgresqlRepoConfig> {
+export class PostgresqlOrm implements Orm<PostgresqlRepoConfig> {
 	readonly pool: Pool
 
-	constructor(config: PostgresqlAdapterConfig) {
+	constructor(config: PostgresqlConfig) {
+		config = v.assert(postgresqlConfigPipe(), config)
 		this.pool = new Pool({
 			host: config.host,
 			port: config.port,
@@ -187,13 +188,6 @@ export class PostgresqlAdapter implements Adapter<PostgresqlRepoConfig> {
 		const { sql, params } = buildDeleteQuery(queryAst, tableName, schema.primaryKey)
 		const result = await this.getClient().query(sql, params)
 		return result.rows
-	}
-
-	async count(schema: AnySchema, table: PostgresqlRepoConfig, queryAst: QueryAST): Promise<number> {
-		const tableName = this.getTableName(table)
-		const { sql, params } = buildCountQuery(queryAst, tableName, schema.primaryKey)
-		const result = await this.getClient().query(sql, params)
-		return Number(result.rows[0]?.count ?? 0)
 	}
 
 	async session<T>(callback: () => Promise<T>): Promise<T> {

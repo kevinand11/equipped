@@ -1,11 +1,12 @@
 import { KafkaJS } from '@confluentinc/kafka-javascript'
 
+import { v } from 'valleyed'
 import { EquippedError } from '../../../errors'
 import { Instance } from '../../../instance'
 import type { Events } from '../../../types'
 import { Random, parseJSONValue } from '../../../utilities'
 import { EventBus, type StreamOptions } from '../base'
-import type { KafkaConfig } from './pipes'
+import { kafkaConfigPipe, type KafkaConfig } from './pipes'
 
 export * from './pipes'
 
@@ -14,6 +15,7 @@ export class KafkaEventBus extends EventBus {
 	#admin: Promise<KafkaJS.Admin> | undefined
 	constructor(config: KafkaConfig) {
 		super()
+		config = v.assert(kafkaConfigPipe(), config)
 		this.#client = new KafkaJS.Kafka({
 			kafkaJS: { ...config, logLevel: KafkaJS.logLevel.NOTHING },
 		})

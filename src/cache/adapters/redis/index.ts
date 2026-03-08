@@ -1,9 +1,10 @@
 import { Cluster, Redis, type RedisOptions } from 'ioredis'
 
-import { type RedisConfig } from './pipes'
+import { v } from 'valleyed'
 import { EquippedError } from '../../../errors'
 import { Instance } from '../../../instance'
 import { Cache } from '../base'
+import { redisConfigPipe, type RedisConfig } from './pipes'
 
 export * from './pipes'
 
@@ -11,6 +12,7 @@ export class RedisCache extends Cache {
 	client: Redis | Cluster
 
 	constructor(settings: RedisConfig, extraConfig?: Partial<RedisOptions>) {
+		settings = v.assert(redisConfigPipe(), settings)
 		super()
 		const node = {
 			...(settings.host ? { host: settings.host } : {}),

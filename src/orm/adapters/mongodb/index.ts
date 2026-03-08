@@ -1,16 +1,16 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { MongoClient, type ClientSession, type Collection, type OptionalUnlessRequiredId } from 'mongodb'
-import { v, type PipeOutput } from 'valleyed'
+import { v, type PipeInput } from 'valleyed'
 
-import { compileMongoQuery, compileMongoUpdate } from './query'
 import type { QueryAST } from '../../query/types'
 import type { AnySchema } from '../../schema/types'
-import type { Adapter, InsertOptions, PaginatedResult, UpdateOptions, UpsertOptions } from '../base'
+import type { InsertOptions, Orm, PaginatedResult, UpdateOptions, UpsertOptions } from '../base'
+import { compileMongoQuery, compileMongoUpdate } from './query'
 
 const sessionStore = new AsyncLocalStorage<ClientSession | undefined>()
 
-export const mongoDbAdapterConfigPipe = () =>
+export const mongoDbOrmConfigPipe = () =>
 	v.object({
 		host: v.string(),
 		port: v.number().pipe(v.int(), v.gt(0)),
@@ -20,17 +20,18 @@ export const mongoDbAdapterConfigPipe = () =>
 		authSource: v.optional(v.string()),
 	})
 
-export type MongoDbAdapterConfig = PipeOutput<ReturnType<typeof mongoDbAdapterConfigPipe>>
+export type MongoDbConfig = PipeInput<ReturnType<typeof mongoDbOrmConfigPipe>>
 
 export type MongoDbRepoConfig = {
 	db: string
 	col: string
 }
 
-export class MongoDbAdapter implements Adapter<MongoDbRepoConfig> {
+export class MongoDbOrm implements Orm<MongoDbRepoConfig> {
 	readonly client: MongoClient
 
-	constructor(config: MongoDbAdapterConfig) {
+	constructor(config: MongoDbConfig) {
+		config = v.assert(mongoDbOrmConfigPipe(), config)
 		const protocol = config.ssl ? 'mongodb+srv' : 'mongodb'
 		const host = config.ssl ? config.host : `${config.host}:${config.port}`
 		this.client = new MongoClient(`${protocol}://${host}`, {
@@ -205,11 +206,6 @@ export class MongoDbAdapter implements Adapter<MongoDbRepoConfig> {
 		const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
 		await this.getCollection(table).deleteMany(filter, { session: sessionStore.getStore() })
 		return docs
-	}
-
-	async count(schema: AnySchema, table: MongoDbRepoConfig, queryAst: QueryAST): Promise<number> {
-		const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
-		return this.getCollection(table).countDocuments(filter)
 	}
 
 	async session<T>(callback: () => Promise<T>): Promise<T> {

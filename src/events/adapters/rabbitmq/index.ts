@@ -2,11 +2,12 @@ import type { ChannelWrapper } from 'amqp-connection-manager'
 import { connect } from 'amqp-connection-manager'
 import type { ConfirmChannel } from 'amqplib'
 
+import { v } from 'valleyed'
 import { Instance } from '../../../instance'
 import type { Events } from '../../../types'
 import { Random, parseJSONValue } from '../../../utilities'
 import { EventBus, type StreamOptions } from '../base'
-import type { RabbitMQConfig } from './pipes'
+import { rabbitmqConfigPipe, type RabbitMQConfig } from './pipes'
 
 export * from './pipes'
 
@@ -16,6 +17,7 @@ export class RabbitMQEventBus extends EventBus {
 
 	constructor(config: RabbitMQConfig) {
 		super()
+		config = v.assert(rabbitmqConfigPipe(), config)
 		this.#columnName = config.eventColumnName
 		this.#client = connect([config.uri]).createChannel({
 			json: false,

@@ -1,10 +1,11 @@
 import { Queue, Worker } from 'bullmq'
 
-import type { RedisJobConfig } from './pipes'
+import { v } from 'valleyed'
 import { RedisCache } from '../../../cache/adapters/redis'
 import { Instance } from '../../../instance'
 import type { CronTypes, DelayedJobs, RepeatableJobs } from '../../../types'
 import { Random } from '../../../utilities'
+import { redisJobsConfigPipe, type RedisJobConfig } from './pipes'
 
 export * from './pipes'
 
@@ -29,6 +30,7 @@ export class RedisJob {
 	#crons: { name: Cron; cron: string }[] = []
 
 	constructor(config: RedisJobConfig) {
+		config = v.assert(redisJobsConfigPipe(), config)
 		const redisCache = new RedisCache(config.redisConfig, {
 			maxRetriesPerRequest: null,
 			enableReadyCheck: false,
