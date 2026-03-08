@@ -19,6 +19,8 @@ import type {
 	SchemaRawShape,
 } from './types'
 
+export * from './types'
+
 export class Schema<
 	F extends FieldDefs = FieldDefs,
 	C extends ComputedDefs = ComputedDefs,

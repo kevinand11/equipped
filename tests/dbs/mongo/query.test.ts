@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { parseMongodbQueryParams } from '../../../src/dbs/mongo/query'
+import { parseMongodbQueryParams } from '../../../src/dbs/adapters/mongodb/query'
 import { Conditions, QueryKeys, type QueryParamsBase } from '../../../src/dbs/pipes'
 
 // Mock MongoDB Collection

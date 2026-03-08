@@ -1,6 +1,4 @@
-export * from './impls/base'
-export * from './impls/express'
-export * from './impls/fastify'
+export * from './adapters/base'
 export * from './middlewares'
 export * from './pipes'
 export * from './requests'

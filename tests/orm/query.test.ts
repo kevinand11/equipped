@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+	Condition,
 	and,
 	contains,
 	eq,
@@ -22,8 +23,7 @@ import {
 	raw,
 	select,
 	where,
-} from '../../src/orm/query/index'
-import { Condition } from '../../src/orm/query/types'
+} from '../../src/orm/query'
 
 describe('orm/query', () => {
 	describe('condition helpers', () => {

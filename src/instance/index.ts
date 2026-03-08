@@ -1,26 +1,10 @@
 import pino, { type Logger } from 'pino'
 import { ulid } from 'ulid'
-import { type ConditionalObjectKeys, type Pipe, type PipeInput, v } from 'valleyed'
+import { type Pipe, v } from 'valleyed'
 
 import { EquippedError } from '../errors'
 import { type HookCb, type HookEvent, type HookRecord, runHooks } from './hooks'
-import {
-	cachePipe,
-	type CacheTypes,
-	dbPipe,
-	type DbTypes,
-	eventBusPipe,
-	type EventBusTypes,
-	instanceSettingsPipe,
-	jobsPipe,
-	type JobTypes,
-	ormAdapterPipe,
-	type OrmAdapterTypes,
-	serverTypePipe,
-	type ServerTypes,
-	type Settings,
-	type SettingsInput,
-} from './settings'
+import { instanceSettingsPipe, type Settings, type SettingsInput } from './settings'
 
 export class Instance {
 	static #id: string | undefined
@@ -59,30 +43,6 @@ export class Instance {
 
 	getScopedName(name: string, key = '.') {
 		return [this.settings.app.name, name].join(key)
-	}
-
-	createCache<T extends keyof CacheTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof cachePipe>>, { type: T }>>) {
-		return v.assert(cachePipe(), input) as CacheTypes[T]
-	}
-
-	createJobs<T extends keyof JobTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof jobsPipe>>, { type: T }>>) {
-		return v.assert(jobsPipe(), input) as JobTypes[T]
-	}
-
-	createEventBus<T extends keyof EventBusTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof eventBusPipe>>, { type: T }>>) {
-		return v.assert(eventBusPipe(), input) as EventBusTypes[T]
-	}
-
-	createDb<T extends keyof DbTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof dbPipe>>, { db: { type: T } }>>) {
-		return v.assert(dbPipe(), input) as DbTypes[T]
-	}
-
-	createOrmAdapter<T extends keyof OrmAdapterTypes> (input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof ormAdapterPipe>>, { type: T }>>) {
-		return v.assert(ormAdapterPipe(), input) as OrmAdapterTypes[T]
-	}
-
-	createServer<T extends keyof ServerTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof serverTypePipe>>, { type: T }>>) {
-		return v.assert(serverTypePipe(), input) as ServerTypes[T]
 	}
 
 	async start() {

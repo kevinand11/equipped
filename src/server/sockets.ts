@@ -1,7 +1,7 @@
 import { match as Match } from 'path-to-regexp'
 import type { Server } from 'socket.io'
 
-import type { Entity } from '../dbs/base/core'
+import type { Entity } from '../dbs/adapters/base/core'
 import { Instance } from '../instance'
 import type { AuthUser } from '../types'
 import type { ServerConfig } from './pipes'

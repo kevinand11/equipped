@@ -5,7 +5,7 @@ import type { AuthUser } from '../types'
 import { BaseRequestAuthMethod } from './requests-auth-methods'
 import { Methods } from './types'
 
-const serverBasePipe = () =>
+export const serverConfigPipe = () =>
 	v.object({
 		port: v.number(),
 		cors: v.optional(
@@ -50,22 +50,6 @@ const serverBasePipe = () =>
 			{},
 		),
 		socketsAuthMethods: v.defaults(v.array(v.instanceOf(BaseRequestAuthMethod<AuthUser>)), []),
-	})
-
-export const serverConfigPipe = () =>
-	v.discriminate((d: any) => d.type, {
-		fastify: v.merge(
-			serverBasePipe(),
-			v.object({
-				type: v.is('fastify' as const),
-			}),
-		),
-		express: v.merge(
-			serverBasePipe(),
-			v.object({
-				type: v.is('express' as const),
-			}),
-		),
 	})
 
 export type ServerConfig = PipeOutput<ReturnType<typeof serverConfigPipe>>

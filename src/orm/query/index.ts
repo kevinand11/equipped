@@ -12,6 +12,8 @@ import {
 	type WhereOp,
 } from './types'
 
+export * from './types'
+
 export const eq = <T>(value: T): { condition: Condition.eq; value: T } => ({ condition: Condition.eq, value })
 export const ne = <T>(value: T): { condition: Condition.ne; value: T } => ({ condition: Condition.ne, value })
 export const gt = <T>(value: T): { condition: Condition.gt; value: T } => ({ condition: Condition.gt, value })

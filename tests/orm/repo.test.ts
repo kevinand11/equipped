@@ -1,9 +1,9 @@
 import { v } from 'valleyed'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { Adapter, PaginatedResult } from '../../src/orm/adapters/types'
-import type { QueryAST } from '../../src/orm/query/types'
-import { repo as createRepo } from '../../src/orm/repo/index'
-import { schema, Schema } from '../../src/orm/schema/index'
+import type { Adapter, PaginatedResult } from '../../src/orm/adapters/base'
+import type { QueryAST } from '../../src/orm/query'
+import { repo as createRepo } from '../../src/orm/repo'
+import { schema, Schema } from '../../src/orm/schema'
 
 // ============================================================
 // Mock Adapter

@@ -1,6 +1,6 @@
 import type { PipeOutput } from 'valleyed'
 
-import type { Adapter, InsertOptions, PaginatedResult, RepoConfig, UpdateOptions, UpsertOptions } from '../adapters/types'
+import type { Adapter, InsertOptions, PaginatedResult, RepoConfig, UpdateOptions, UpsertOptions } from '../adapters/base'
 import { eq, isIn, query, where } from '../query/index'
 import type { QueryOp } from '../query/types'
 import { type Schema, computeSchema, validatePartialSchema, validateSchema } from '../schema/index'

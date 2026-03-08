@@ -1,6 +1,6 @@
 import { v } from 'valleyed'
 import { describe, expect, it } from 'vitest'
-import { computeSchema, schema, validatePartialSchema, validateSchema } from '../../src/orm/schema/index'
+import { computeSchema, schema, validatePartialSchema, validateSchema } from '../../src/orm/schema'
 
 describe('orm/schema', () => {
 	describe('schema()', () => {

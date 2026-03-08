@@ -1,7 +1,7 @@
 import { type ConditionalObjectKeys, type Pipe, type PipeInput, type PipeOutput, v } from 'valleyed'
 
 import { Instance } from '../instance'
-import type { Select } from './base/core'
+import type { Select } from './adapters/base/core'
 
 export enum QueryKeys {
 	and = 'and',
@@ -118,13 +118,3 @@ export type QueryWhereClause = QueryParamsBase['where'][number]
 export type QueryWhere = Extract<QueryWhereClause, { field: string }>
 export type QueryWhereBlock = Exclude<QueryWhereClause, { field: string }>
 export type QueryResults<T> = PipeOutput<ReturnType<typeof queryResultsPipe<T>>>
-
-export const mongoDbConfigPipe = () =>
-	v.meta(
-		v.object({
-			uri: v.string(),
-		}),
-		{ title: 'Mongodb Config', $refId: 'MongodbConfig' },
-	)
-
-export type MongoDbConfig = PipeOutput<ReturnType<typeof mongoDbConfigPipe>>

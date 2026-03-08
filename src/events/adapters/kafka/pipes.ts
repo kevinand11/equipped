@@ -1,0 +1,20 @@
+import { type PipeOutput, v } from 'valleyed'
+
+export const kafkaConfigPipe = () =>
+	v.meta(
+		v.object({
+			brokers: v.array(v.string()),
+			ssl: v.optional(v.boolean()),
+			sasl: v.optional(
+				v.object({
+					mechanism: v.is('plain' as const),
+					username: v.string(),
+					password: v.string(),
+				}),
+			),
+			clientId: v.optional(v.string()),
+		}),
+		{ title: 'Kafka Config', $refId: 'KafkaConfig' },
+	)
+
+export type KafkaConfig = PipeOutput<ReturnType<typeof kafkaConfigPipe>>
