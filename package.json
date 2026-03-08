@@ -16,7 +16,7 @@
 		"prebuild": "tsc --noEmit",
 		"build": "tsup || echo 'Done'",
 		"lint": "eslint --fix src",
-		"test": "echo",
+		"test": "vitest run",
 		"release": "standard-version",
 		"prepare": "husky"
 	},
