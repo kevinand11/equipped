@@ -16,7 +16,7 @@ import { Instance } from '../../instance'
 import * as core from '../base/core'
 import { Db } from '../base/db'
 import type { DbConfig } from '../base/types'
-import type { MongoDbConfig, QueryParams } from '../pipes'
+import type { MongoDbConfig, QueryParamsBase } from '../pipes'
 import { MongoDbChange } from './changes'
 import { parseMongodbQueryParams } from './query'
 
@@ -91,13 +91,13 @@ export class MongoDb extends Db<{ _id: string }> {
 		collection: Collection<Model>,
 	) {
 		type WI = Model | WithId<Model>
-		async function transform(doc: WI): Promise<Entity>
+		function transform(doc: WI, select?: core.Select<Entity>): Entity
 		// eslint-disable-next-line no-redeclare
-		async function transform(doc: WI[]): Promise<Entity[]>
+		function transform(doc: WI[], select?: core.Select<Entity>): Entity[]
 		// eslint-disable-next-line no-redeclare
-		async function transform(doc: WI | WI[]) {
+		function transform(doc: WI | WI[], select?: core.Select<Entity>) {
 			const docs = Array.isArray(doc) ? doc : [doc]
-			const mapped = docs.map((d) => config.mapper(d as Model))
+			const mapped = docs.map((d) => config.mapper(d as Model, select))
 			return Array.isArray(doc) ? mapped : mapped[0]
 		}
 
@@ -133,35 +133,38 @@ export class MongoDb extends Db<{ _id: string }> {
 			config,
 			extras: { collection },
 
-			query: async (params: QueryParams) => {
-				const results = await parseMongodbQueryParams(collection, params)
+			query: async (params) => {
+				const results = await parseMongodbQueryParams(collection, params as QueryParamsBase)
 				return {
 					...results,
-					results: (await transform(results.results as any)) as any,
-				}
+					results: transform(results.results as any, params.select as core.Select<Entity>),
+				} as any
 			},
 
 			findMany: async (filter, options = {}) => {
-				const sortArray = Array.isArray(options.sort) ? options.sort : options.sort ? [options.sort] : []
+				const { select, ...rest } = options
+				const projection = select?.length ? Object.fromEntries(select.map((k) => [k, 1])) : undefined
+				const sortArray = Array.isArray(rest.sort) ? rest.sort : rest.sort ? [rest.sort] : []
 				const sort = sortArray.map((p) => [p.field, p.desc ? 'desc' : 'asc'] as [string, SortDirection])
 				const docs = await collection
 					.find(filter, {
 						session: sessionStore.getStore(),
-						limit: options.limit,
+						limit: rest.limit,
 						sort,
+						projection,
 					})
 					.toArray()
-				return transform(docs)
+				return transform(docs, select as core.Select<Entity>) as any
 			},
 
-			findOne: async (filter) => {
-				const result = await table.findMany(filter, { limit: 1 })
-				return result.at(0) ?? null
+			findOne: async (filter: core.Filter<Model>, options = {}) => {
+				const result = await table.findMany(filter, { ...options, limit: 1 } as any)
+				return (result.at(0) ?? null) as any
 			},
 
-			findById: async (id) => {
-				const result = await table.findOne({ [idKey]: id } as core.Filter<Model>)
-				return result
+			findById: async (id, options = {}) => {
+				const result = await table.findOne({ [idKey]: id } as core.Filter<Model>, options as any)
+				return result as any
 			},
 
 			insertMany: async (values, options = {}) => {
@@ -194,7 +197,7 @@ export class MongoDb extends Db<{ _id: string }> {
 					returnDocument: 'after',
 					session: sessionStore.getStore(),
 				})
-				return doc ? transform(doc) : null
+				return doc ? transform(doc, undefined) : null
 			},
 
 			updateById: async (id, values, options = {}) => {
@@ -215,7 +218,7 @@ export class MongoDb extends Db<{ _id: string }> {
 					{ returnDocument: 'after', session: sessionStore.getStore(), upsert: true },
 				)
 
-				return transform(doc)
+				return transform(doc, undefined)
 			},
 
 			deleteMany: async (filter, options = {}) => {
@@ -226,7 +229,7 @@ export class MongoDb extends Db<{ _id: string }> {
 
 			deleteOne: async (filter) => {
 				const doc = await collection.findOneAndDelete(filter, { session: sessionStore.getStore() })
-				return doc ? transform(doc) : null
+				return doc ? transform(doc, undefined) : null
 			},
 
 			deleteById: async (id) => {
@@ -272,7 +275,9 @@ export class MongoDb extends Db<{ _id: string }> {
 			watch(callbacks) {
 				if (!dbThis.config.changes)
 					Instance.crash(new EquippedError('Db changes are not enabled in the configuration.', { config }))
-				return new MongoDbChange<Model, Entity>(dbThis.mongoConfig, dbThis.config.changes, collection, callbacks, config.mapper)
+				return new MongoDbChange<Model, Entity>(dbThis.mongoConfig, dbThis.config.changes, collection, callbacks, (m) =>
+					config.mapper(m),
+				)
 			},
 		}
 

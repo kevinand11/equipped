@@ -1,6 +1,7 @@
 import { type ConditionalObjectKeys, type Pipe, type PipeInput, type PipeOutput, v } from 'valleyed'
 
 import { Instance } from '../instance'
+import type { Select } from './base/core'
 
 export enum QueryKeys {
 	and = 'and',
@@ -79,6 +80,7 @@ export function queryParamsPipe() {
 				),
 				whereType: queryKeys,
 				where: queryWhereClause,
+				select: v.optional(v.array(v.string())),
 			})
 			.pipe((p) => ({ ...p, auth: <(typeof p)['where']>[], authType: QueryKeys.and })),
 		{ title: 'Query Params', $refId: 'QueryParams' },
@@ -103,13 +105,16 @@ export function queryResultsPipe<T>(model: Pipe<any, T>) {
 	})
 }
 
-export function wrapQueryParams(params: QueryParamsInput): QueryParams {
+export function wrapQueryParams(params: QueryParamsInput): QueryParamsBase {
 	return v.assert(queryParamsPipe(), params)
 }
 
-export type QueryParams = PipeOutput<ReturnType<typeof queryParamsPipe>>
+export type QueryParamsBase = PipeOutput<ReturnType<typeof queryParamsPipe>>
+export type QueryParams<T, S extends Select<T> | undefined = undefined> = Omit<QueryParamsBase, 'select'> & {
+	select?: S extends undefined ? QueryParamsBase['select'] : S
+}
 export type QueryParamsInput = ConditionalObjectKeys<PipeInput<ReturnType<typeof queryParamsPipe>>>
-export type QueryWhereClause = QueryParams['where'][number]
+export type QueryWhereClause = QueryParamsBase['where'][number]
 export type QueryWhere = Extract<QueryWhereClause, { field: string }>
 export type QueryWhereBlock = Exclude<QueryWhereClause, { field: string }>
 export type QueryResults<T> = PipeOutput<ReturnType<typeof queryResultsPipe<T>>>

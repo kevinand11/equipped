@@ -1,11 +1,11 @@
 import { Collection } from 'mongodb'
 
 import * as core from '../base/core'
-import { QueryKeys, type QueryParams, type QueryResults, type QueryWhereBlock, type QueryWhereClause } from '../pipes'
+import { QueryKeys, type QueryParamsBase, type QueryResults, type QueryWhereBlock, type QueryWhereClause } from '../pipes'
 
 export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: string }>>(
 	collection: Collection<Model>,
-	params: QueryParams,
+	params: QueryParamsBase,
 ): Promise<QueryResults<Model>> => {
 	// Handle where/search clauses
 	const query = <ReturnType<typeof buildWhereQuery>[]>[]
@@ -34,7 +34,8 @@ export const parseMongodbQueryParams = async <Model extends core.Model<{ _id: st
 
 	const total = await collection.countDocuments(totalClause)
 
-	let builtQuery = collection.find(totalClause)
+	const projection = params.select?.length ? Object.fromEntries(params.select.map((k) => [k, 1])) : undefined
+	let builtQuery = collection.find(totalClause, { projection })
 	if (sort.length) builtQuery = builtQuery.sort(Object.fromEntries(sort))
 	if (!all && limit) {
 		builtQuery = builtQuery.limit(limit)

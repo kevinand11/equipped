@@ -1,7 +1,7 @@
 import type { Filter, UpdateFilter } from 'mongodb'
 import type { ConditionalObjectKeys, DeepPartial, DistributiveOmit } from 'valleyed'
 
-import type { QueryParams, QueryResults } from '../pipes'
+import type { QueryParams, QueryParamsBase, QueryResults } from '../pipes'
 import type { DbChange } from './changes'
 
 export type IdType = { _id: string } | { id: string }
@@ -12,19 +12,35 @@ export type Model<IdKey extends IdType> = IdKey & {
 	updatedAt?: number
 }
 
-type Sort = NonNullable<QueryParams['sort']>[number]
+export type Select<T> = (keyof T)[]
+type SelectEntity<E, S> = S extends readonly (keyof E)[] ? (S[number] extends never ? E : Pick<E, S[number]>) : E
+
+type Sort = NonNullable<QueryParamsBase['sort']>[number]
+
+type FindManyOptions<T, S extends Select<T> | undefined = undefined> = {
+	limit?: number
+	sort?: Sort | Sort[]
+	select?: S
+}
+
+type FindOneOptions<T, S extends Select<T> | undefined = undefined> = {
+	select?: S
+}
 
 export type Table<Id extends IdType, T extends Model<Id>, E extends Entity, Extras extends Record<string, unknown> = {}> = {
-	query: (query: QueryParams) => Promise<QueryResults<E>>
-	findMany: (
+	query: <const S extends Select<T> | undefined = undefined>(query: QueryParams<T, S>) => Promise<QueryResults<SelectEntity<E, S>>>
+	findMany: <const S extends Select<T> | undefined = undefined>(
 		filter: Filter<T>,
-		options?: {
-			limit?: number
-			sort?: Sort | Sort[]
-		},
-	) => Promise<E[]>
-	findOne: (filter: Filter<T>) => Promise<E | null>
-	findById: (id: ModelId<T>) => Promise<E | null>
+		options?: FindManyOptions<T, S>,
+	) => Promise<SelectEntity<E, S>[]>
+	findOne: <const S extends Select<T> | undefined = undefined>(
+		filter: Filter<T>,
+		options?: FindOneOptions<T, S>,
+	) => Promise<SelectEntity<E, S> | null>
+	findById: <const S extends Select<T> | undefined = undefined>(
+		id: ModelId<T>,
+		options?: FindOneOptions<T, S>,
+	) => Promise<SelectEntity<E, S> | null>
 	insertOne: (values: CreateInput<T>, options?: { makeId?: () => string; getTime?: () => Date }) => Promise<E>
 	insertMany: (values: CreateInput<T>[], options?: { makeId?: (i: number) => string; getTime?: () => Date }) => Promise<E[]>
 	updateMany: (filter: Filter<T>, values: UpdateInput<T>, options?: { getTime?: () => Date }) => Promise<E[]>
@@ -71,6 +87,6 @@ export type DbChangeCallbacks<M extends Model<IdType>, E extends Entity> = {
 export type Config<M extends Model<IdType>, E extends Entity> = {
 	db: string
 	col: string
-	mapper: (model: M) => E
+	mapper: (model: M, select?: Select<E>) => E
 	options?: { skipAudit?: boolean }
 }
