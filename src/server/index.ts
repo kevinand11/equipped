@@ -1,6 +1,5 @@
 export * from './adapters/base'
 export * from './middlewares'
-export * from './pipes'
 export * from './requests'
 export * from './requests-auth-methods'
 export * from './routes'

@@ -5,119 +5,119 @@ import fastifyHelmet from '@fastify/helmet'
 import fastifyMultipart from '@fastify/multipart'
 import fastifyRateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
-import type { FastifyReply, FastifyRequest } from 'fastify'
 import Fastify from 'fastify'
 // import fastifySlowDown from 'fastify-slow-down'
 import qs from 'qs'
 
 import { ValidationError } from '../../../errors'
 import { Instance } from '../../../instance'
-import { getMediaDuration } from '../../../utilities'
-import type { ServerConfig } from '../../pipes'
+import { configurable, getMediaDuration } from '../../../utilities'
 import { Request } from '../../requests'
 import { type IncomingFile, StatusCodes } from '../../types'
-import { Server } from '../base'
+import { serverConfigPipe, type Server } from '../base'
+import { base } from '../utils'
 
-export class FastifyServer extends Server<FastifyRequest, FastifyReply> {
-	constructor(config: ServerConfig) {
-		const instance = Instance.get()
-		const app = Fastify({
-			disableRequestLogging: !config.requests.log,
-			loggerInstance: config.requests.log ? instance.log : undefined,
-			ajv: { customOptions: { coerceTypes: false } },
-			routerOptions: {
-				ignoreTrailingSlash: true,
-				caseSensitive: false,
-			},
-			schemaErrorFormatter: (errors, data) =>
-				new ValidationError(
-					errors.map((error) => ({
-						messages: [error.message ?? ''],
-						field: `${data}${error.instancePath}`.replaceAll('/', '.'),
-					})),
-				),
-		})
-		super(app.server, config, {
-			parseRequest: async (req) => {
-				const { body, files } = excludeBufferKeys(req.body ?? {})
+export const FastifyServer = configurable(serverConfigPipe, (config): Server => {
+	const instance = Instance.get()
+	const app = Fastify({
+		disableRequestLogging: !config.requests.log,
+		loggerInstance: config.requests.log ? instance.log : undefined,
+		ajv: { customOptions: { coerceTypes: false } },
+		routerOptions: {
+			ignoreTrailingSlash: true,
+			caseSensitive: false,
+		},
+		schemaErrorFormatter: (errors, data) =>
+			new ValidationError(
+				errors.map((error) => ({
+					messages: [error.message ?? ''],
+					field: `${data}${error.instancePath}`.replaceAll('/', '.'),
+				})),
+			),
+	})
 
-				return new Request({
-					ip: req.ip,
-					body,
-					cookies: req.cookies ?? {},
-					params: req.params ?? <any>{},
-					query: req.query ?? {},
-					method: <any>req.method,
-					path: req.url,
-					headers: req.headers,
-					files,
-				})
-			},
-			handleResponse: async (res, response) => {
-				for (const [key, { value, ...opts }] of Object.entries(response.cookies)) res = res.setCookie(key, value, opts)
-				await res.status(response.status).headers(response.headers).send(response.body)
-			},
-			registerRoute: (method, path, cb) => {
-				app.register(async (inst) => {
-					inst.route({ url: path, method, handler: cb })
-				})
-			},
-			registerErrorHandler: (cb) => {
-				app.setErrorHandler(cb)
-			},
-			registerNotFoundHandler: (cb) => {
-				app.setNotFoundHandler(cb)
-			},
-			start: async (port) => {
-				await app.ready()
-				await app.listen({ port, host: '0.0.0.0' })
-				Instance.on('close', app.close, 1)
-				return true
-			},
-		})
+	const server: Server = base(app.server, config, {
+		parseRequest: async (req) => {
+			const { body, files } = excludeBufferKeys(req.body ?? {})
 
-		app.decorateRequest('savedReq', null)
-		app.setValidatorCompiler(() => () => true)
-		app.setSerializerCompiler(() => (data) => JSON.stringify(data))
-		if (config.publicPath) app.register(fastifyStatic, { root: config.publicPath })
-		app.register(fastifyCookie, {})
-		app.register(fastifyCors, this.cors)
-		app.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
-		app.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' }, contentSecurityPolicy: false })
-		app.register(fastifyMultipart, {
-			attachFieldsToBody: 'keyValues',
-			throwFileSizeLimit: false,
-			limits: { fileSize: instance.settings.utils.maxFileUploadSizeInMb * 1024 * 1024 },
-			onFile: async (f) => {
-				const buffer = await f.toBuffer()
-				const parsed: IncomingFile = {
-					name: f.filename,
-					type: f.mimetype,
-					size: buffer.byteLength,
-					isTruncated: f.file.truncated,
-					data: buffer,
-					duration: await getMediaDuration(buffer),
-				}
-				// @ts-ignore
-				f.value = parsed
-			},
-		})
-		/* if (this.settings.slowdown.enabled) app.register(fastifySlowDown, {
+			return new Request({
+				ip: req.ip,
+				body,
+				cookies: req.cookies ?? {},
+				params: req.params ?? <any>{},
+				query: req.query ?? {},
+				method: <any>req.method,
+				path: req.url,
+				headers: req.headers,
+				files,
+			})
+		},
+		handleResponse: async (res, response) => {
+			for (const [key, { value, ...opts }] of Object.entries(response.cookies)) res = res.setCookie(key, value, opts)
+			await res.status(response.status).headers(response.headers).send(response.body)
+		},
+		registerRoute: (method, path, cb) => {
+			app.register(async (inst) => {
+				inst.route({ url: path, method, handler: cb })
+			})
+		},
+		registerErrorHandler: (cb) => {
+			app.setErrorHandler(cb)
+		},
+		registerNotFoundHandler: (cb) => {
+			app.setNotFoundHandler(cb)
+		},
+		start: async (port) => {
+			await app.ready()
+			await app.listen({ port, host: '0.0.0.0' })
+			Instance.on('close', app.close, 1)
+			return true
+		},
+	})
+
+	app.decorateRequest('savedReq', null)
+	app.setValidatorCompiler(() => () => true)
+	app.setSerializerCompiler(() => (data) => JSON.stringify(data))
+	if (config.publicPath) app.register(fastifyStatic, { root: config.publicPath })
+	app.register(fastifyCookie, {})
+	app.register(fastifyCors, server.cors)
+	app.register(fastifyFormBody, { parser: (str) => qs.parse(str) })
+	app.register(fastifyHelmet, { crossOriginResourcePolicy: { policy: 'cross-origin' }, contentSecurityPolicy: false })
+	app.register(fastifyMultipart, {
+		attachFieldsToBody: 'keyValues',
+		throwFileSizeLimit: false,
+		limits: { fileSize: instance.settings.utils.maxFileUploadSizeInMb * 1024 * 1024 },
+		onFile: async (f) => {
+			const buffer = await f.toBuffer()
+			const parsed: IncomingFile = {
+				name: f.filename,
+				type: f.mimetype,
+				size: buffer.byteLength,
+				isTruncated: f.file.truncated,
+				data: buffer,
+				duration: await getMediaDuration(buffer),
+			}
+			// @ts-ignore
+			f.value = parsed
+		},
+	})
+	/* if (this.settings.slowdown.enabled) app.register(fastifySlowDown, {
 			timeWindow: this.settings.slowdown.periodInMs,
 			delayAfter: this.settings.slowdown.delayAfter,
 			delay: this.settings.slowdown.delayInMs
 		}) */
-		if (config.requests.rateLimit.enabled)
-			app.register(fastifyRateLimit, {
-				max: config.requests.rateLimit.limit,
-				timeWindow: config.requests.rateLimit.periodInMs,
-				errorResponseBuilder: (_, context) => ({
-					statusCode: StatusCodes.TooManyRequests,
-					message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }]),
-				}),
-			})
-	}
-}
+	if (config.requests.rateLimit.enabled)
+		app.register(fastifyRateLimit, {
+			max: config.requests.rateLimit.limit,
+			timeWindow: config.requests.rateLimit.periodInMs,
+			errorResponseBuilder: (_, context) => ({
+				statusCode: StatusCodes.TooManyRequests,
+				message: JSON.stringify([{ message: `Too Many Requests. Retry in ${context.after}` }]),
+			}),
+		})
+
+	return server
+})
 
 function excludeBufferKeys<T>(body: T) {
 	if (typeof body !== 'object') return { body, files: {} }

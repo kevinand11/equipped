@@ -4,7 +4,7 @@ import type { Server } from 'socket.io'
 import type { Entity } from '../dbs/adapters/base/core'
 import { Instance } from '../instance'
 import type { AuthUser } from '../types'
-import type { ServerConfig } from './pipes'
+import type { ServerConfig } from './adapters/base'
 import { BaseRequestAuthMethod } from './requests-auth-methods'
 import { StatusCodes, type StatusCodesEnum } from './types'
 
@@ -46,7 +46,7 @@ export class SocketEmitter {
 		Instance.on(
 			'setup',
 			() => {
-				const stream = config.eventBus?.createStream(EmitterEvent as never, { fanout: true })
+				const stream = config.eventBus?.stream(EmitterEvent as never, { fanout: true })
 				this.#publish = stream
 					? (stream.publish as unknown as (data: EmitData) => Promise<void>)
 					: async (data: EmitData) => {

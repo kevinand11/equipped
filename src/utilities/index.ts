@@ -1,6 +1,7 @@
 export * as AuthProviders from './authProviders'
+export * from './configurable'
 export * as Hash from './hash'
 export * from './json'
 export * from './media'
-export * from './retry'
 export * as Random from './random'
+export * from './retry'

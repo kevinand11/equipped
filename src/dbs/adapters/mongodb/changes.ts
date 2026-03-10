@@ -37,7 +37,7 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 		const TestId = '5f5f65717569707065645f5f' // __equipped__
 		const condition = { _id: TestId } as Filter<Model>
 
-		change.eventBus.createStream(topic as never, { skipScope: true }).subscribe(async (data: DbDocumentChange) => {
+		change.eventBus.stream(topic as never, { skipScope: true }).subscribe(async (data: DbDocumentChange) => {
 			const op = data.op
 
 			let before = JSON.parse(data.before ?? 'null')

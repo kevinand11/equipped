@@ -1,118 +1,60 @@
 import { Queue, Worker } from 'bullmq'
-
 import { v } from 'valleyed'
-import { RedisCache } from '../../../cache/adapters/redis'
+
+import { RedisCache, redisConfigPipe } from '../../../cache/adapters/redis'
 import { Instance } from '../../../instance'
-import type { CronTypes, DelayedJobs, RepeatableJobs } from '../../../types'
-import { Random } from '../../../utilities'
-import { redisJobsConfigPipe, type RedisJobConfig } from './pipes'
+import { Random, configurable } from '../../../utilities'
+import { JobNames, type Cron, type DelayedJobEvent, type Job, type JobCallbacks, type RepeatableJobEvent } from '../base'
 
-export * from './pipes'
+export const redisJobsConfigPipe = () =>
+	v.meta(
+		v.object({
+			redisConfig: redisConfigPipe(),
+			queueName: v.string(),
+		}),
+		{ title: 'Redis Jobs Config', $refId: 'RedisJobsConfig' },
+	)
 
-enum JobNames {
-	CronJob = 'CronJob',
-	RepeatableJob = 'RepeatableJob',
-	DelayedJob = 'DelayedJob',
-}
+export const RedisJob = configurable(redisJobsConfigPipe, (config): Job => {
+	const redisCache = RedisCache.create(config.redisConfig, {
+		maxRetriesPerRequest: null,
+		enableReadyCheck: false,
+	})
+	const queueName = Instance.get().getScopedName(config.queueName)
+	const queue = new Queue(queueName, { connection: redisCache.options.connectionOptions, skipVersionCheck: true })
+	const worker = new Worker(
+		queueName,
+		async (job) => {
+			switch (job.name) {
+				case JobNames.DelayedJob:
+					return (callbacks.onDelayed as any)?.(job.data)
+				case JobNames.CronJob:
+					return (callbacks.onCron as any)?.(job.data.type)
+				case JobNames.RepeatableJob:
+					return (callbacks.onRepeatable as any)?.(job.data)
+			}
+		},
+		{ connection: redisCache.options.connectionOptions, autorun: false, skipVersionCheck: true },
+	)
 
-type Cron = CronTypes[keyof CronTypes]
-type DelayedJobEvent = DelayedJobs[keyof DelayedJobs]
-type RepeatableJobEvent = RepeatableJobs[keyof RepeatableJobs]
-type DelayedJobCallback = (data: DelayedJobEvent) => Promise<void> | void
-type CronJobCallback = (name: CronTypes[keyof CronTypes]) => Promise<void> | void
-type RepeatableJobCallback = (data: RepeatableJobEvent) => Promise<void> | void
+	Instance.on(
+		'start',
+		async () => {
+			await cleanup()
+			await Promise.all(crons.map(({ cron, name }) => addCron(name, cron)))
+			worker.run()
+		},
+		10,
+	)
 
-type JobCallbacks = { onDelayed?: DelayedJobCallback; onCron?: CronJobCallback; onRepeatable?: RepeatableJobCallback }
+	const getNewId = () => [Date.now(), Random.string()].join('_')
 
-export class RedisJob {
-	#queue: Queue
-	#callbacks: JobCallbacks = {}
-	#crons: { name: Cron; cron: string }[] = []
-
-	constructor(config: RedisJobConfig) {
-		config = v.assert(redisJobsConfigPipe(), config)
-		const redisCache = new RedisCache(config.redisConfig, {
-			maxRetriesPerRequest: null,
-			enableReadyCheck: false,
-		})
-		const queueName = Instance.get().getScopedName(config.queueName)
-		this.#queue = new Queue(queueName, { connection: redisCache.client.options, skipVersionCheck: true })
-		const worker = new Worker(
-			queueName,
-			async (job) => {
-				switch (job.name) {
-					case JobNames.DelayedJob:
-						return (this.#callbacks.onDelayed as any)?.(job.data)
-					case JobNames.CronJob:
-						return (this.#callbacks.onCron as any)?.(job.data.type)
-					case JobNames.RepeatableJob:
-						return (this.#callbacks.onRepeatable as any)?.(job.data)
-				}
-			},
-			{ connection: redisCache.client.options, autorun: false, skipVersionCheck: true },
-		)
-
-		Instance.on(
-			'start',
-			async () => {
-				await this.#cleanup()
-				await Promise.all(this.#crons.map(({ cron, name }) => this.#addCron(name, cron)))
-				worker.run()
-			},
-			10,
-		)
-	}
-
-	set callbacks(callbacks: JobCallbacks) {
-		this.#callbacks = callbacks
-	}
-
-	set crons(crons: { name: Cron; cron: string }[]) {
-		this.#crons = crons
-	}
-
-	static #getNewId() {
-		return [Date.now(), Random.string()].join('_')
-	}
-
-	async addDelayed(data: DelayedJobEvent, delayInMs: number): Promise<string> {
-		const job = await this.#queue.add(JobNames.DelayedJob, data, {
-			jobId: RedisJob.#getNewId(),
-			delay: delayInMs,
-			removeOnComplete: true,
-			backoff: 1000,
-			attempts: 3,
-		})
-		return job.id!.toString()
-	}
-
-	async addRepeatable(data: RepeatableJobEvent, cron: string, tz?: string): Promise<string> {
-		const job = await this.#queue.add(JobNames.RepeatableJob, data, {
-			jobId: RedisJob.#getNewId(),
-			repeat: { pattern: cron, ...(tz ? { tz } : {}) },
-			removeOnComplete: true,
-			backoff: 1000,
-			attempts: 3,
-		})
-		return job.opts?.repeat?.key ?? ''
-	}
-
-	async removeDelayed(jobId: string) {
-		const job = await this.#queue.getJob(jobId)
-		if (job) await job.remove()
-	}
-
-	async retryAllFailedJobs() {
-		const failedJobs = await this.#queue.getFailed()
-		await Promise.all(failedJobs.map((job) => job.retry()))
-	}
-
-	async #addCron(type: Cron | string, cron: string): Promise<string> {
-		const job = await this.#queue.add(
+	const addCron = async (type: Cron | string, cron: string) => {
+		const job = await queue.add(
 			JobNames.CronJob,
 			{ type },
 			{
-				jobId: RedisJob.#getNewId(),
+				jobId: getNewId(),
 				repeat: { pattern: cron },
 				removeOnComplete: true,
 				backoff: 1000,
@@ -122,9 +64,57 @@ export class RedisJob {
 		return job.id!.toString()
 	}
 
-	async #cleanup() {
-		await this.retryAllFailedJobs()
-		const repeatableJobs = await this.#queue.getJobSchedulers()
-		await Promise.all(repeatableJobs.map((job) => this.#queue.removeJobScheduler(job.key)))
+	const cleanup = async () => {
+		await job.retryAllFailedJobs()
+		const repeatableJobs = await queue.getJobSchedulers()
+		await Promise.all(repeatableJobs.map((job) => queue.removeJobScheduler(job.key)))
 	}
-}
+
+	let callbacks: JobCallbacks = {}
+	let crons: { name: Cron; cron: string }[] = []
+
+	const job: Job = {
+		get callbacks() {
+			return callbacks
+		},
+		set callbacks(newCallbacks: JobCallbacks) {
+			callbacks = newCallbacks
+		},
+		get crons() {
+			return crons
+		},
+		set crons(newCrons: { name: Cron; cron: string }[]) {
+			crons = newCrons
+		},
+		async addDelayed(data: DelayedJobEvent, delayInMs: number): Promise<string> {
+			const job = await queue.add(JobNames.DelayedJob, data, {
+				jobId: getNewId(),
+				delay: delayInMs,
+				removeOnComplete: true,
+				backoff: 1000,
+				attempts: 3,
+			})
+			return job.id!.toString()
+		},
+		async addRepeatable(data: RepeatableJobEvent, cron: string, tz?: string): Promise<string> {
+			const job = await queue.add(JobNames.RepeatableJob, data, {
+				jobId: getNewId(),
+				repeat: { pattern: cron, ...(tz ? { tz } : {}) },
+				removeOnComplete: true,
+				backoff: 1000,
+				attempts: 3,
+			})
+			return job.opts?.repeat?.key ?? ''
+		},
+		async removeDelayed(jobId: string) {
+			const job = await queue.getJob(jobId)
+			if (job) await job.remove()
+		},
+		async retryAllFailedJobs() {
+			const failedJobs = await queue.getFailed()
+			await Promise.all(failedJobs.map((job) => job.retry()))
+		},
+	}
+
+	return job
+})

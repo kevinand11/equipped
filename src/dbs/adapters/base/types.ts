@@ -1,7 +1,7 @@
-import type { KafkaEventBus } from '../../../events/adapters/kafka'
+import type { EventBus } from '../../../events'
 
 export type DbChangeConfig = {
-	eventBus: KafkaEventBus
+	eventBus: EventBus
 	debeziumUrl: string
 }
 

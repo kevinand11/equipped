@@ -1,1 +1,1 @@
-export * from './adapters/redis'
+export * from './adapters/base'

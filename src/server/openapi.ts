@@ -3,7 +3,7 @@ import type { OpenAPIV3_1 } from 'openapi-types'
 import { capitalize, type JsonSchema } from 'valleyed'
 
 import { Instance } from '../instance'
-import type { ServerConfig } from './pipes'
+import type { ServerConfig } from './adapters/base'
 import { Router } from './routes'
 import type { Route } from './types'
 
@@ -23,77 +23,99 @@ export type OpenApiSchemaDef = {
 	response: Partial<Record<'response' | 'responseHeaders', { status: number; schema: JsonSchema; contentType: string }[]>>
 }
 
-export class OpenApi {
-	#registeredTags: Record<string, boolean> = {}
-	#registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
-	#baseOpenapiDoc: OpenAPIV3_1.Document
-
-	constructor(private config: ServerConfig) {
-		const instance = Instance.get()
-		const { app } = instance.settings
-		this.#baseOpenapiDoc = {
-			openapi: '3.0.0',
-			info: {
-				title: `${app.name} ${instance.id}`,
-				version: config.openapi.docsVersion ?? '',
-			},
-			servers: config.openapi.docsBaseUrl?.map((url) => ({ url })),
-			paths: {},
-			components: {
-				schemas: {},
-				securitySchemes: {
-					Authorization: {
-						type: 'apiKey',
-						name: 'authorization',
-						in: 'header',
-					},
-					RefreshToken: {
-						type: 'apiKey',
-						name: 'x-refresh-token',
-						in: 'header',
-					},
-					ApiKey: {
-						type: 'apiKey',
-						name: 'x-api-key',
-						in: 'header',
-					},
+export const openapi = (config: ServerConfig) => {
+	const instance = Instance.get()
+	const { app } = instance.settings
+	const baseOpenapiDoc: OpenAPIV3_1.Document = {
+		openapi: '3.0.0',
+		info: {
+			title: `${app.name} ${instance.id}`,
+			version: config.openapi.docsVersion ?? '',
+		},
+		servers: config.openapi.docsBaseUrl?.map((url) => ({ url })),
+		paths: {},
+		components: {
+			schemas: {},
+			securitySchemes: {
+				Authorization: {
+					type: 'apiKey',
+					name: 'authorization',
+					in: 'header',
+				},
+				RefreshToken: {
+					type: 'apiKey',
+					name: 'x-refresh-token',
+					in: 'header',
+				},
+				ApiKey: {
+					type: 'apiKey',
+					name: 'x-api-key',
+					in: 'header',
 				},
 			},
-			tags: [],
-			'x-tagGroups': [],
+		},
+		tags: [],
+		'x-tagGroups': [],
+	}
+
+	const registeredTags: Record<string, boolean> = {}
+	const registeredTagGroups: Record<string, { name: string; tags: string[] }> = {}
+
+	const flattenForParameters = (node: JsonSchema): JsonSchema[] => {
+		const { allOf, oneOf, anyOf, ...schema } = node
+		if (allOf) return allOf.flatMap((n) => flattenForParameters(n))
+		return [schema]
+	}
+
+	const visit = (node: JsonSchema) => {
+		if (!node || typeof node !== 'object') return node
+		if (typeof node.$refId === 'string') {
+			const { $refId: id, ...rest } = node
+			const res = visit(rest)
+			if (baseOpenapiDoc.components?.schemas) {
+				baseOpenapiDoc.components.schemas[id] = res
+				return { $ref: `#/components/schemas/${id}` }
+			} else return res
 		}
+
+		if (Array.isArray(node)) return node.map((n) => visit(n)) as any
+		return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, visit(value as any)]))
 	}
 
-	cleanPath(path: string) {
-		let cleaned = path.replace(/(\/\s*)+/g, '/')
-		if (!cleaned.startsWith('/')) cleaned = `/${cleaned}`
-		if (cleaned !== '/' && cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1)
-		return cleaned
+	const buildTag = (groups: NonNullable<Route<any>['groups']>) => {
+		if (!groups.length) return undefined
+		const parsed = groups.map((g) => (typeof g === 'string' ? { name: g } : g))
+		const name = parsed.map((g) => g.name).join(' > ')
+		const displayName = parsed.at(-1)?.name ?? ''
+		const description = parsed
+			.map((g) => g.description?.trim() ?? '')
+			.filter(Boolean)
+			.join('\n\n\n\n')
+
+		if (!registeredTags[name]) {
+			registeredTags[name] = true
+			baseOpenapiDoc.tags!.push({ name, 'x-displayName': displayName, description })
+
+			const tagGroups = parsed.slice(0, -1)
+			const groupName = tagGroups.map((g) => g.name).join(' > ') || 'default'
+			if (!registeredTagGroups[groupName]) {
+				const group = { name: groupName, tags: [] }
+				baseOpenapiDoc['x-tagGroups'].push(group)
+				registeredTagGroups[groupName] = group
+			}
+			registeredTagGroups[groupName].tags = [...new Set([...registeredTagGroups[groupName].tags, name])]
+		}
+
+		return name
 	}
 
-	async register(route: Route<any>, def: OpenApiSchemaDef) {
-		if (route.hide) return
-
-		const tag = this.#buildTag(route.groups ?? [])
-
-		const cleanPath = this.cleanPath(route.path)
-		const operationId = `(${route.method.toUpperCase()}) ${cleanPath}`
-		await this.#addRouteToOpenApiDoc(cleanPath, route.method.toLowerCase(), def, {
-			operationId,
-			summary: route.title ?? cleanPath,
-			description: route.descriptions?.join('\n\n'),
-			tags: tag ? [tag] : undefined,
-			security: route.security,
-		})
-	}
-
-	async #addRouteToOpenApiDoc(path: string, method: string, def: OpenApiSchemaDef, methodObj: OpenAPIV3_1.OperationObject) {
+	const addRouteToOpenApiDoc = async (path: string, method: string, def: OpenApiSchemaDef, methodObj: OpenAPIV3_1.OperationObject) => {
 		if (def.response.response?.length) {
 			methodObj.responses ??= {}
 			for (const resp of def.response.response) {
 				methodObj.responses[resp.status] ??= { description: '', content: {} }
 				const res = methodObj.responses[resp.status] as OpenAPIV3_1.ResponseObject
-				res.content![resp.contentType] = { schema: await convert(this.#visit(resp.schema)) }
+				res.content![resp.contentType] = { schema: await convert(visit(resp.schema)) }
 			}
 		}
 
@@ -103,7 +125,7 @@ export class OpenApi {
 				methodObj.responses[resp.status] ??= { description: '', content: {} }
 				methodObj.responses[resp.status] as OpenAPIV3_1.ResponseObject
 				const res = methodObj.responses[resp.status] as OpenAPIV3_1.ResponseObject
-				res.headers = { schema: (await convert(this.#visit(resp.schema))) as any }
+				res.headers = { schema: (await convert(visit(resp.schema))) as any }
 			}
 		}
 
@@ -111,7 +133,7 @@ export class OpenApi {
 			methodObj.requestBody = {
 				required: true,
 				content: {
-					'application/json': { schema: await convert(this.#visit(def.request.body)) },
+					'application/json': { schema: await convert(visit(def.request.body)) },
 				},
 			}
 
@@ -119,14 +141,14 @@ export class OpenApi {
 
 		const addParams = async (location: 'query' | 'path' | 'header', schema: JsonSchema | undefined) => {
 			if (!schema) return
-			const flat = this.#flattenForParameters(schema)
+			const flat = flattenForParameters(schema)
 			for (const schema of flat) {
 				if (!schema.properties) continue
 				for (const [name, value] of Object.entries(schema.properties))
 					parameters.push({
 						name,
 						in: location,
-						schema: await convert(this.#visit(value)),
+						schema: await convert(visit(value)),
 						required: (schema.required || []).includes(name),
 					})
 			}
@@ -139,71 +161,13 @@ export class OpenApi {
 		])
 		if (parameters.length) methodObj.parameters = parameters
 
-		const base = this.#baseOpenapiDoc
-		if (!base.paths) base.paths = {}
-		if (!base.paths[path]) base.paths[path] = {}
-		base.paths[path]![method] = methodObj
+		if (!baseOpenapiDoc.paths) baseOpenapiDoc.paths = {}
+		if (!baseOpenapiDoc.paths[path]) baseOpenapiDoc.paths[path] = {}
+		baseOpenapiDoc.paths[path]![method] = methodObj
 	}
 
-	router() {
-		const jsonPath = '/openapi.json'
-		const router = new Router({ path: this.config.openapi.docsPath ?? '/', hide: true })
-		router.get('/index.html')((req) => req.res({ body: this.#html(`.${jsonPath}`), contentType: 'text/html' }))
-		router.get(jsonPath)((req) => req.res({ body: this.#baseOpenapiDoc }))
-		return router
-	}
-
-	#flattenForParameters(node: JsonSchema): JsonSchema[] {
-		const { allOf, oneOf, anyOf, ...schema } = node
-		if (allOf) return allOf.flatMap((n) => this.#flattenForParameters(n))
-		return [schema]
-	}
-
-	#visit(node: JsonSchema) {
-		if (!node || typeof node !== 'object') return node
-		if (typeof node.$refId === 'string') {
-			const { $refId: id, ...rest } = node
-			const res = this.#visit(rest)
-			if (this.#baseOpenapiDoc.components?.schemas) {
-				this.#baseOpenapiDoc.components.schemas[id] = res
-				return { $ref: `#/components/schemas/${id}` }
-			} else return res
-		}
-
-		if (Array.isArray(node)) return node.map((n) => this.#visit(n)) as any
-		return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, this.#visit(value as any)]))
-	}
-
-	#buildTag(groups: NonNullable<Route<any>['groups']>) {
-		if (!groups.length) return undefined
-		const parsed = groups.map((g) => (typeof g === 'string' ? { name: g } : g))
-		const name = parsed.map((g) => g.name).join(' > ')
-		const displayName = parsed.at(-1)?.name ?? ''
-		const description = parsed
-			.map((g) => g.description?.trim() ?? '')
-			.filter(Boolean)
-			.join('\n\n\n\n')
-
-		if (!this.#registeredTags[name]) {
-			this.#registeredTags[name] = true
-			this.#baseOpenapiDoc.tags!.push({ name, 'x-displayName': displayName, description })
-
-			const tagGroups = parsed.slice(0, -1)
-			const groupName = tagGroups.map((g) => g.name).join(' > ') || 'default'
-			if (!this.#registeredTagGroups[groupName]) {
-				const group = { name: groupName, tags: [] }
-				this.#baseOpenapiDoc['x-tagGroups'].push(group)
-				this.#registeredTagGroups[groupName] = group
-			}
-			this.#registeredTagGroups[groupName].tags = [...new Set([...this.#registeredTagGroups[groupName].tags, name])]
-		}
-
-		return name
-	}
-
-	#html(jsonPath: string) {
-		const instance = Instance.get()
-		const title = capitalize(`${instance.settings.app.name} ${instance.id}`)
+	const html = (jsonPath: string) => {
+		const title = capitalize(`${app.name} ${instance.id}`)
 		return `
 <!doctype html>
 <html>
@@ -227,5 +191,39 @@ export class OpenApi {
   </body>
 </html>
 `
+	}
+
+	const cleanPath = (path: string) => {
+		let cleaned = path.replace(/(\/\s*)+/g, '/')
+		if (!cleaned.startsWith('/')) cleaned = `/${cleaned}`
+		if (cleaned !== '/' && cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1)
+		return cleaned
+	}
+
+	const register = async (route: Route<any>, def: OpenApiSchemaDef) => {
+		if (route.hide) return
+
+		const tag = buildTag(route.groups ?? [])
+
+		const cleanedPath = cleanPath(route.path)
+		const operationId = `(${route.method.toUpperCase()}) ${cleanedPath}`
+		await addRouteToOpenApiDoc(cleanedPath, route.method.toLowerCase(), def, {
+			operationId,
+			summary: route.title ?? cleanedPath,
+			description: route.descriptions?.join('\n\n'),
+			tags: tag ? [tag] : undefined,
+			security: route.security,
+		})
+	}
+
+	const jsonPath = '/openapi.json'
+	const router = new Router({ path: config.openapi.docsPath ?? '/', hide: true })
+	router.get('/index.html')((req) => req.res({ body: html(`.${jsonPath}`), contentType: 'text/html' }))
+	router.get(jsonPath)((req) => req.res({ body: baseOpenapiDoc }))
+
+	return {
+		router,
+		register,
+		cleanPath,
 	}
 }

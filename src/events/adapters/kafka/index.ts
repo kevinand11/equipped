@@ -1,92 +1,104 @@
 import { KafkaJS } from '@confluentinc/kafka-javascript'
-
 import { v } from 'valleyed'
+
 import { EquippedError } from '../../../errors'
 import { Instance } from '../../../instance'
-import type { Events } from '../../../types'
-import { Random, parseJSONValue } from '../../../utilities'
-import { EventBus, type StreamOptions } from '../base'
-import { kafkaConfigPipe, type KafkaConfig } from './pipes'
+import { Random, configurable, parseJSONValue } from '../../../utilities'
+import { type EventBus } from '../base'
 
-export * from './pipes'
+export const kafkaConfigPipe = () =>
+	v.meta(
+		v.object({
+			brokers: v.array(v.string()),
+			ssl: v.optional(v.boolean()),
+			sasl: v.optional(
+				v.object({
+					mechanism: v.is('plain' as const),
+					username: v.string(),
+					password: v.string(),
+				}),
+			),
+			clientId: v.optional(v.string()),
+		}),
+		{ title: 'Kafka Config', $refId: 'KafkaConfig' },
+	)
 
-export class KafkaEventBus extends EventBus {
-	#client: KafkaJS.Kafka
-	#admin: Promise<KafkaJS.Admin> | undefined
-	constructor(config: KafkaConfig) {
-		super()
-		config = v.assert(kafkaConfigPipe(), config)
-		this.#client = new KafkaJS.Kafka({
-			kafkaJS: { ...config, logLevel: KafkaJS.logLevel.NOTHING },
-		})
-	}
+export const KafkaEventBus = configurable(kafkaConfigPipe, (config): EventBus => {
+	const client = new KafkaJS.Kafka({
+		kafkaJS: { ...config, logLevel: KafkaJS.logLevel.NOTHING },
+	})
 
-	createStream<Event extends Events[keyof Events]>(topicName: Event['topic'], options: Partial<StreamOptions> = {}) {
-		const topic = options.skipScope ? topicName : Instance.get().getScopedName(topicName)
-		return {
-			publish: async (data: Event['data']) => {
-				const producer = this.#client.producer()
-				await producer.connect()
-				await producer.send({
-					topic,
-					messages: [{ value: JSON.stringify(data) }],
-				})
-				return true
-			},
-			subscribe: (onMessage: (data: Event['data']) => Promise<void>) => {
-				const subscribe = async () => {
-					await this.#createTopic(topic)
-					const groupId = options.fanout
-						? Instance.get().getScopedName(`${Instance.get().id}-fanout-${Random.string(10)}`)
-						: topic
-					const consumer = this.#client.consumer({ kafkaJS: { groupId } })
-
-					await consumer.connect()
-					await consumer.subscribe({ topic })
-
-					await consumer.run({
-						eachMessage: async ({ message }) => {
-							await Instance.resolveBeforeCrash(async () => {
-								if (!message.value) return
-								await onMessage(parseJSONValue(message.value.toString()))
-							}).catch((error) =>
-								Instance.crash(new EquippedError('Error processing kafka event', { topic, groupId, options }, error)),
-							)
-						},
-					})
-
-					if (options.fanout)
-						Instance.on(
-							'close',
-							async () => {
-								await consumer.disconnect()
-								await this.#deleteGroup(groupId)
-							},
-							10,
-						)
-				}
-				Instance.on('start', subscribe, 2)
-			},
-		}
-	}
-
-	async #getAdmin() {
-		if (!this.#admin)
-			this.#admin = (async () => {
-				const admin = this.#client.admin()
+	let admin: Promise<KafkaJS.Admin> | null = null
+	const getAdmin = () => {
+		if (!admin)
+			admin = (async () => {
+				const admin = client.admin()
 				await admin.connect()
 				return admin
 			})()
-		return this.#admin
+		return admin
 	}
 
-	async #createTopic(topic: string) {
-		const admin = await this.#getAdmin()
+	const createTopic = async (topic: string) => {
+		const admin = await getAdmin()
 		await admin.createTopics({ topics: [{ topic }], timeout: 5000 })
 	}
 
-	async #deleteGroup(groupId: string) {
-		const admin = await this.#getAdmin()
+	const deleteGroup = async (groupId: string) => {
+		const admin = await getAdmin()
 		await admin.deleteGroups([groupId]).catch(() => {})
 	}
-}
+
+	const eventBus: EventBus = {
+		stream: (topicName, options = {}) => {
+			const topic = options.skipScope ? topicName : Instance.get().getScopedName(topicName)
+			return {
+				publish: async (data) => {
+					const producer = client.producer()
+					await producer.connect()
+					await producer.send({
+						topic,
+						messages: [{ value: JSON.stringify(data) }],
+					})
+					return true
+				},
+				subscribe: (onMessage) => {
+					const subscribe = async () => {
+						await createTopic(topic)
+						const groupId = options.fanout
+							? Instance.get().getScopedName(`${Instance.get().id}-fanout-${Random.string(10)}`)
+							: topic
+						const consumer = client.consumer({ kafkaJS: { groupId } })
+
+						await consumer.connect()
+						await consumer.subscribe({ topic })
+
+						await consumer.run({
+							eachMessage: async ({ message }) => {
+								await Instance.resolveBeforeCrash(async () => {
+									if (!message.value) return
+									await onMessage(parseJSONValue(message.value.toString()))
+								}).catch((error) =>
+									Instance.crash(new EquippedError('Error processing kafka event', { topic, groupId, options }, error)),
+								)
+							},
+						})
+
+						if (options.fanout)
+							Instance.on(
+								'close',
+								async () => {
+									await consumer.disconnect()
+									await deleteGroup(groupId)
+								},
+								10,
+							)
+					}
+					Instance.on('start', subscribe, 2)
+				},
+			}
+		},
+	}
+
+	return eventBus
+})
