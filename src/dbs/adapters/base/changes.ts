@@ -1,7 +1,8 @@
 import axios from 'axios'
+import { v } from 'valleyed'
 
 import * as core from './core'
-import { type DbChangeConfig } from './types'
+import { dbChangeConfigPipe, type DbChangeConfig } from './types'
 import { EquippedError } from '../../../errors'
 
 export const TopicPrefix = 'db-changes'
@@ -11,7 +12,9 @@ export abstract class DbChange<Model extends core.Model<core.IdType>, Entity ext
 		protected config: DbChangeConfig,
 		protected callbacks: core.DbChangeCallbacks<Model, Entity>,
 		protected mapper: (model: Model) => Entity,
-	) {}
+	) {
+		this.config = v.assert(dbChangeConfigPipe(), config)
+	}
 
 	protected async configureConnector(key: string, data: Record<string, string>) {
 		const instance = axios.create({ baseURL: this.config.debeziumUrl })

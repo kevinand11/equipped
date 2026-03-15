@@ -10,13 +10,13 @@ import helmet from 'helmet'
 import { pinoHttp } from 'pino-http'
 
 import { Instance } from '../../../instance'
-import { configurable, getMediaDuration } from '../../../utilities'
+import { configurableFn, getMediaDuration } from '../../../utilities'
 import { Request } from '../../requests'
 import { StatusCodes, type IncomingFile } from '../../types'
 import { serverConfigPipe, type Server } from '../base'
 import { base } from '../utils'
 
-export const ExpressServer = configurable(serverConfigPipe, (config): Server => {
+export const ExpressServer = configurableFn(serverConfigPipe, (config): Server => {
 	const app = express()
 	const instance = Instance.get()
 	const httpServer = http.createServer(app)

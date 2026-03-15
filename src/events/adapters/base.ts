@@ -7,6 +7,6 @@ export type Stream<EventData> = {
 	subscribe: (onMessage: (data: EventData) => Promise<void>) => void
 }
 
-export type EventBus = {
-	stream<Event extends Events[keyof Events]>(topic: Event['topic'], options?: Partial<StreamOptions>): Stream<Event['data']>
+export abstract class EventBus {
+	abstract stream<Event extends Events[keyof Events]>(topic: Event['topic'], options?: Partial<StreamOptions>): Stream<Event['data']>
 }

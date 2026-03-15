@@ -1,10 +1,11 @@
 import { KafkaJS } from '@confluentinc/kafka-javascript'
-import { v } from 'valleyed'
+import { v, type PipeOutput } from 'valleyed'
 
 import { EquippedError } from '../../../errors'
 import { Instance } from '../../../instance'
+import type { Events } from '../../../types'
 import { Random, configurable, parseJSONValue } from '../../../utilities'
-import { type EventBus } from '../base'
+import { EventBus, type Stream, type StreamOptions } from '../base'
 
 export const kafkaConfigPipe = () =>
 	v.meta(
@@ -23,38 +24,44 @@ export const kafkaConfigPipe = () =>
 		{ title: 'Kafka Config', $refId: 'KafkaConfig' },
 	)
 
-export const KafkaEventBus = configurable(kafkaConfigPipe, (config): EventBus => {
-	const client = new KafkaJS.Kafka({
-		kafkaJS: { ...config, logLevel: KafkaJS.logLevel.NOTHING },
-	})
+export class KafkaEventBus extends configurable(
+	kafkaConfigPipe,
+	class extends EventBus {
+		#client: KafkaJS.Kafka
+		#admin: Promise<KafkaJS.Admin> | null = null
 
-	let admin: Promise<KafkaJS.Admin> | null = null
-	const getAdmin = () => {
-		if (!admin)
-			admin = (async () => {
-				const admin = client.admin()
-				await admin.connect()
-				return admin
-			})()
-		return admin
-	}
+		constructor(config: PipeOutput<ReturnType<typeof kafkaConfigPipe>>) {
+			super()
+			this.#client = new KafkaJS.Kafka({
+				kafkaJS: { ...config, logLevel: KafkaJS.logLevel.NOTHING },
+			})
+		}
 
-	const createTopic = async (topic: string) => {
-		const admin = await getAdmin()
-		await admin.createTopics({ topics: [{ topic }], timeout: 5000 })
-	}
+		async #getAdmin() {
+			if (!this.#admin)
+				this.#admin = (async () => {
+					const admin = this.#client.admin()
+					await admin.connect()
+					return admin
+				})()
+			return this.#admin
+		}
 
-	const deleteGroup = async (groupId: string) => {
-		const admin = await getAdmin()
-		await admin.deleteGroups([groupId]).catch(() => {})
-	}
+		async #createTopic(topic: string) {
+			const admin = await this.#getAdmin()
+			await admin.createTopics({ topics: [{ topic }], timeout: 5000 })
+		}
 
-	const eventBus: EventBus = {
-		stream: (topicName, options = {}) => {
+		async #deleteGroup(groupId: string) {
+			const admin = await this.#getAdmin()
+			await admin.deleteGroups([groupId]).catch(() => {})
+		}
+
+		stream<Event extends Events[keyof Events]>(topicName: Event['topic'], options: Partial<StreamOptions> = {}): Stream<Event['data']> {
 			const topic = options.skipScope ? topicName : Instance.get().getScopedName(topicName)
 			return {
 				publish: async (data) => {
-					const producer = client.producer()
+					const producer = this.#client.producer()
 					await producer.connect()
 					await producer.send({
 						topic,
@@ -64,11 +71,11 @@ export const KafkaEventBus = configurable(kafkaConfigPipe, (config): EventBus =>
 				},
 				subscribe: (onMessage) => {
 					const subscribe = async () => {
-						await createTopic(topic)
+						await this.#createTopic(topic)
 						const groupId = options.fanout
 							? Instance.get().getScopedName(`${Instance.get().id}-fanout-${Random.string(10)}`)
 							: topic
-						const consumer = client.consumer({ kafkaJS: { groupId } })
+						const consumer = this.#client.consumer({ kafkaJS: { groupId } })
 
 						await consumer.connect()
 						await consumer.subscribe({ topic })
@@ -89,7 +96,7 @@ export const KafkaEventBus = configurable(kafkaConfigPipe, (config): EventBus =>
 								'close',
 								async () => {
 									await consumer.disconnect()
-									await deleteGroup(groupId)
+									await this.#deleteGroup(groupId)
 								},
 								10,
 							)
@@ -97,8 +104,6 @@ export const KafkaEventBus = configurable(kafkaConfigPipe, (config): EventBus =>
 					Instance.on('start', subscribe, 2)
 				},
 			}
-		},
-	}
-
-	return eventBus
-})
+		}
+	},
+) {}

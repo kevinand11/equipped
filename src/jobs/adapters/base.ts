@@ -14,11 +14,25 @@ export type CronJobCallback = (name: CronTypes[keyof CronTypes]) => Promise<void
 export type RepeatableJobCallback = (data: RepeatableJobEvent) => Promise<void> | void
 export type JobCallbacks = { onDelayed?: DelayedJobCallback; onCron?: CronJobCallback; onRepeatable?: RepeatableJobCallback }
 
-export type Job = {
-	crons: { name: Cron; cron: string }[]
-	callbacks: JobCallbacks
-	addDelayed: (data: DelayedJobEvent, delayInMs: number) => Promise<string>
-	addRepeatable: (data: RepeatableJobEvent, cron: string, tz?: string) => Promise<string>
-	removeDelayed: (jobId: string) => Promise<void>
-	retryAllFailedJobs: () => Promise<void>
+export abstract class Job {
+	#crons: { name: Cron; cron: string }[] = []
+	#callbacks: JobCallbacks = {}
+
+	abstract addDelayed(data: DelayedJobEvent, delayInMs: number): Promise<string>
+	abstract addRepeatable(data: RepeatableJobEvent, cron: string, tz?: string): Promise<string>
+	abstract removeDelayed(jobId: string): Promise<void>
+	abstract retryAllFailedJobs(): Promise<void>
+
+	get callbacks() {
+		return this.#callbacks
+	}
+	set callbacks(newCallbacks: JobCallbacks) {
+		this.#callbacks = newCallbacks
+	}
+	get crons() {
+		return this.#crons
+	}
+	set crons(newCrons: { name: Cron; cron: string }[]) {
+		this.#crons = newCrons
+	}
 }

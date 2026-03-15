@@ -1,10 +1,10 @@
-import { Cluster, Redis, type ClusterOptions, type RedisOptions } from 'ioredis'
-import { v } from 'valleyed'
+import { Cluster, Redis, type RedisOptions } from 'ioredis'
+import { v, type PipeOutput } from 'valleyed'
 
 import { EquippedError } from '../../../errors'
 import { Instance } from '../../../instance'
 import { configurable } from '../../../utilities'
-import { type Cache } from '../base'
+import { Cache } from '../base'
 
 export const redisConfigPipe = () =>
 	v.meta(
@@ -19,57 +19,51 @@ export const redisConfigPipe = () =>
 		{ title: 'Redis Config', $refId: 'RedisConfig' },
 	)
 
-type RedisCacheOptions = {
-	connectionOptions: ClusterOptions | RedisOptions
-}
+export class RedisCache extends configurable(
+	redisConfigPipe,
+	class extends Cache {
+		#client: Cluster | Redis
 
-export const RedisCache = configurable(redisConfigPipe, (config, extraConfig?: Partial<RedisOptions>): Cache<RedisCacheOptions> => {
-	const node = {
-		...(config.host ? { host: config.host } : {}),
-		...(config.port ? { port: config.port } : {}),
-	}
-	const common = {
-		...extraConfig,
-		...(config.password ? { password: config.password } : {}),
-		...(config.username ? { username: config.username } : {}),
-		...(config.tls ? { tls: {} } : {}),
-		lazyConnect: true,
-	}
-	const client = config.cluster
-		? new Cluster([node], {
+		constructor(config: PipeOutput<ReturnType<typeof redisConfigPipe>>, extraConfig?: Partial<RedisOptions>) {
+			super()
+			const node = {
+				...(config.host ? { host: config.host } : {}),
+				...(config.port ? { port: config.port } : {}),
+			}
+			const common = {
 				...extraConfig,
-				redisOptions: common,
+				...(config.password ? { password: config.password } : {}),
+				...(config.username ? { username: config.username } : {}),
+				...(config.tls ? { tls: {} } : {}),
 				lazyConnect: true,
+			}
+			this.#client = config.cluster
+				? new Cluster([node], {
+						...extraConfig,
+						redisOptions: common,
+						lazyConnect: true,
+					})
+				: new Redis({ ...common, ...node })
+			this.#client.on('error', async (error) => {
+				Instance.crash(new EquippedError(`Redis failed with error`, {}, error))
 			})
-		: new Redis({ ...common, ...node })
-	client.on('error', async (error) => {
-		Instance.crash(new EquippedError(`Redis failed with error`, {}, error))
-	})
-	if (!extraConfig) Instance.on('start', async () => client.connect(), 1)
-	Instance.on('close', async () => client.quit(), 1)
+			if (!extraConfig) Instance.on('start', async () => this.#client.connect(), 1)
+			Instance.on('close', async () => this.#client.quit(), 1)
+		}
 
-	const getScopedKey = (key: string): string => Instance.get().getScopedName(key, ':')
+		get connectionOptions () {
+			return this.#client.options
+		}
 
-	const cache: Cache<RedisCacheOptions> = {
-		options: { connectionOptions: client.options },
 		async delete(key: string) {
-			await client.del(getScopedKey(key))
-		},
+			await this.#client.del(this.getScopedKey(key))
+		}
 		async get(key: string) {
-			return await client.get(getScopedKey(key))
-		},
+			return await this.#client.get(this.getScopedKey(key))
+		}
 		async set(key: string, data: string, ttlInSecs?: number) {
-			if (ttlInSecs) await client.setex(getScopedKey(key), ttlInSecs, data)
-			else client.set(getScopedKey(key), data)
-		},
-		async getOrSet<T>(key: string, fn: () => Promise<T>, ttlInSecs?: number) {
-			const cached = await this.get(getScopedKey(key))
-			if (cached) return JSON.parse(cached)
-
-			const result = await fn()
-			await this.set(getScopedKey(key), JSON.stringify(result), ttlInSecs)
-		},
-	}
-
-	return cache
-})
+			if (ttlInSecs) await this.#client.setex(this.getScopedKey(key), ttlInSecs, data)
+			else this.#client.set(this.getScopedKey(key), data)
+		}
+	},
+) {}

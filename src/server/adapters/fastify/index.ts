@@ -11,13 +11,13 @@ import qs from 'qs'
 
 import { ValidationError } from '../../../errors'
 import { Instance } from '../../../instance'
-import { configurable, getMediaDuration } from '../../../utilities'
+import { configurableFn, getMediaDuration } from '../../../utilities'
 import { Request } from '../../requests'
-import { type IncomingFile, StatusCodes } from '../../types'
+import { StatusCodes, type IncomingFile } from '../../types'
 import { serverConfigPipe, type Server } from '../base'
 import { base } from '../utils'
 
-export const FastifyServer = configurable(serverConfigPipe, (config): Server => {
+export const FastifyServer = configurableFn(serverConfigPipe, (config): Server => {
 	const instance = Instance.get()
 	const app = Fastify({
 		disableRequestLogging: !config.requests.log,

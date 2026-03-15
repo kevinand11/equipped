@@ -64,63 +64,65 @@ export function repo<R extends RepoConfig, S extends Schema<any, any, any, any>>
 	const cast = (raw: Record<string, unknown>): SchemaEntity<S> => computeSchema(schema, raw)
 	const castMany = (raws: Record<string, unknown>[]): SchemaEntity<S>[] => raws.map(cast)
 
+	const use = adapter.use(schema, config)
+
 	return {
 		schema,
 		config,
 
 		async findById(id: SchemaPrimaryKeyType<S>) {
 			const ast = query(where(schema.primaryKey, eq(id)))
-			const result = await adapter.findOne(schema, config, ast)
+			const result = await use.findOne(ast)
 			return result ? cast(result) : null
 		},
 
 		async findOne(...ops: QueryOp[]) {
 			const ast = query(...ops)
-			const result = await adapter.findOne(schema, config, ast)
+			const result = await use.findOne(ast)
 			return result ? cast(result) : null
 		},
 
 		async findMany(...ops: QueryOp[]) {
 			const ast = query(...ops)
-			const results = await adapter.findMany(schema, config, ast)
+			const results = await use.findMany(ast)
 			return castMany(results)
 		},
 
 		async insert(data: Record<string, unknown>, options?: InsertOptions) {
 			const validated = validateSchema(schema, data)
-			const result = await adapter.insertOne(schema, config, validated as Record<string, unknown>, options)
+			const result = await use.insertOne(validated, options)
 			return cast(result)
 		},
 
 		async insertMany(data: Record<string, unknown>[], options?: InsertOptions) {
-			const validated = data.map((d) => validateSchema(schema, d) as Record<string, unknown>)
-			const results = await adapter.insertMany(schema, config, validated, options)
+			const validated = data.map((d) => validateSchema(schema, d))
+			const results = await use.insertMany(validated, options)
 			return castMany(results)
 		},
 
 		async update(ops: QueryOp[], data: Record<string, unknown>, options?: UpdateOptions) {
 			const validated = validatePartialSchema(schema, data)
 			const ast = query(...ops)
-			const results = await adapter.updateMany(schema, config, ast, validated as Record<string, unknown>, options)
+			const results = await use.updateMany(ast, validated, options)
 			return castMany(results)
 		},
 
 		async updateById(id: SchemaPrimaryKeyType<S>, data: Record<string, unknown>, options?: UpdateOptions) {
 			const validated = validatePartialSchema(schema, data)
 			const ast = query(where(schema.primaryKey, eq(id)))
-			const result = await adapter.updateOne(schema, config, ast, validated as Record<string, unknown>, options)
+			const result = await use.updateOne(ast, validated, options)
 			return result ? cast(result) : null
 		},
 
 		async delete(...ops: QueryOp[]) {
 			const ast = query(...ops)
-			const results = await adapter.deleteMany(schema, config, ast)
+			const results = await use.deleteMany(ast)
 			return castMany(results)
 		},
 
 		async deleteById(id: SchemaPrimaryKeyType<S>) {
 			const ast = query(where(schema.primaryKey, eq(id)))
-			const result = await adapter.deleteOne(schema, config, ast)
+			const result = await use.deleteOne(ast)
 			return result ? cast(result) : null
 		},
 
@@ -134,13 +136,13 @@ export function repo<R extends RepoConfig, S extends Schema<any, any, any, any>>
 						}
 					: { insert: validatedInsert }
 			const ast = query(...ops)
-			const result = await adapter.upsertOne(schema, config, ast, upsertData, options)
+			const result = await use.upsertOne(ast, upsertData, options)
 			return cast(result)
 		},
 
 		async paginatedQuery(ops: QueryOp[], pagination) {
 			const ast = query(...ops)
-			const result = await adapter.query(schema, config, ast, {
+			const result = await use.query(ast, {
 				page: pagination.page,
 				limit: pagination.limit,
 				all: pagination.all ?? false,
@@ -186,47 +188,47 @@ async function resolveAssociation(
 	extraOps: QueryOp[],
 ): Promise<unknown> {
 	const relatedSchema = association.schema()
+	const relatedTable = { primaryKey } as any
+
+	const use = adapter.use(relatedSchema, relatedTable)
 
 	switch (association.type) {
 		case 'belongsTo': {
 			const fkValue = entity[association.foreignKey]
 			if (fkValue == null) return null
-			const relatedTable = { primaryKey } as any
 			const ast = query(where(primaryKey, eq(fkValue)), ...extraOps)
-			const result = await adapter.findOne(relatedSchema, relatedTable, ast)
+			const result = await use.findOne(ast)
 			return result
 		}
 
 		case 'hasOne': {
 			const pkValue = entity[primaryKey]
-			const relatedTable = { primaryKey } as any
 			const ast = query(where(association.foreignKey, eq(pkValue)), ...extraOps)
-			const result = await adapter.findOne(relatedSchema, relatedTable, ast)
+			const result = await use.findOne(ast)
 			return result
 		}
 
 		case 'hasMany': {
 			const pkValue = entity[primaryKey]
-			const relatedTable = { primaryKey } as any
 			const ast = query(where(association.foreignKey, eq(pkValue)), ...extraOps)
-			const results = await adapter.findMany(relatedSchema, relatedTable, ast)
+			const results = await use.findMany(ast)
 			return results
 		}
 
 		case 'manyToMany': {
 			const pkValue = entity[primaryKey]
-			const joinSchema = association.joinSchema()
-			const joinTable = { primaryKey } as any
+			//const joinSchema = association.joinSchema()
+			//const joinTable = { primaryKey } as any
 
 			const joinAst = query(where(association.thisForeignKey, eq(pkValue)))
-			const joinRecords = await adapter.findMany(joinSchema, joinTable, joinAst)
+			const joinRecords = await use.findMany(joinAst)
 
 			if (joinRecords.length === 0) return []
 
 			const relatedIds = joinRecords.map((r) => r[association.thatForeignKey])
 			const relatedTable = { primaryKey } as any
 			const relatedAst = query(where(primaryKey, isIn(relatedIds as string[])), ...extraOps)
-			const results = await adapter.findMany(relatedSchema, relatedTable, relatedAst)
+			const results = await use.findMany(relatedSchema, relatedTable, relatedAst)
 			return results
 		}
 

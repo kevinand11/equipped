@@ -3,7 +3,7 @@ import { type CorsOptions } from 'cors'
 import type TestAgent from 'supertest/lib/agent'
 import { v, type PipeOutput } from 'valleyed'
 
-import type { EventBus } from '../../events'
+import { EventBus } from '../../events'
 import type { AuthUser } from '../../types'
 import { BaseRequestAuthMethod } from '../requests-auth-methods'
 import { Router } from '../routes'
@@ -20,7 +20,7 @@ export const serverConfigPipe = () =>
 				credentials: v.optional(v.boolean()),
 			}),
 		),
-		eventBus: v.optional(v.any<EventBus>()),
+		eventBus: v.optional(v.instanceOf(EventBus)),
 		publicPath: v.optional(v.string()),
 		healthPath: v.optional(v.string()),
 		openapi: v.defaults(
