@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.2.9](https://github.com/kevinand11/equipped/compare/v5.2.8...v5.2.9) (2026-03-21)
+
+
+### Bug Fixes
+
+* skip bulk write if empty ([702c28f](https://github.com/kevinand11/equipped/commit/702c28f8c47f30b7c2f1b7334126632fe55197fc))
+
 ### [5.2.8](https://github.com/kevinand11/equipped/compare/v5.2.7...v5.2.8) (2026-03-02)
 
 
