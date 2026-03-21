@@ -235,6 +235,7 @@ export class MongoDb extends Db<{ _id: string }> {
 			},
 
 			bulkWrite: async (operations, options = {}) => {
+				if (!operations.length) return
 				const bulk = collection.initializeUnorderedBulkOp({ session: sessionStore.getStore() })
 				const now = options.getTime?.() ?? new Date()
 				operations.forEach((operation, i) => {
@@ -265,7 +266,6 @@ export class MongoDb extends Db<{ _id: string }> {
 							throw new EquippedError(`Unknown bulkWrite operation`, { operation })
 					}
 				})
-				if (!bulk.length) return
 				await bulk.execute({ session: sessionStore.getStore() })
 			},
 
