@@ -5,7 +5,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { configurable } from '../../../utilities'
 import type { AnySchema } from '../../schema'
-import { Orm, type OrmUse } from '../base'
+import { OrmAdapter, type OrmUse } from '../base'
 import { buildCountQuery, buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery } from './query'
 
 const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
@@ -27,7 +27,7 @@ export type PostgresqlRepoConfig = {
 
 export class PostgresqlOrm extends configurable(
 	postgresqlConfigPipe,
-	class extends Orm<PostgresqlRepoConfig> {
+	class extends OrmAdapter<PostgresqlRepoConfig> {
 		#pool: Pool
 		constructor(config: PipeOutput<ReturnType<typeof postgresqlConfigPipe>>) {
 			super()
@@ -49,104 +49,82 @@ export class PostgresqlOrm extends configurable(
 		async disconnect() {
 			await this.#pool.end()
 		}
-		use(schema: AnySchema, config: PostgresqlRepoConfig) {
+
+		use(schema: AnySchema, config: PostgresqlRepoConfig): OrmUse {
 			const tableName = config.schema && config.schema !== 'public' ? `${config.schema}.${config.table}` : config.table
 			const use: OrmUse = {
-				findMany: async (queryAst) => {
-					const { sql, params } = buildSelectQuery(queryAst, tableName, schema.primaryKey)
+				findMany: async (filter, options) => {
+					const { sql, params } = buildSelectQuery(filter, options, tableName, schema.pkName)
 					const result = await this.#getClient().query(sql, params)
 					return result.rows
 				},
-				findOne: async (queryAst) => {
-					const results = await use.findMany({ ...queryAst, limit: 1 })
+				findOne: async (filter) => {
+					const results = await use.findMany(filter, { limit: 1 })
 					return results[0] ?? null
 				},
-				insertMany: async (data, options) => {
-					const now = options?.getTime?.() ?? new Date()
+				insertMany: async (data) => {
 					const client = this.#getClient()
 					const results: any[] = []
-					for (let i = 0; i < data.length; i++) {
-						const id = schema.generateId(i)
-						const doc = {
-							...data[i],
-							[schema.primaryKey]: id,
-							createdAt: now.getTime(),
-							updatedAt: now.getTime(),
-						}
+					for (const doc of data) {
 						const { sql, params } = buildInsertQuery(tableName, doc)
 						const result = await client.query(sql, params)
 						results.push(result.rows[0])
 					}
 					return results
 				},
-				insertOne: async (data, options) => {
-					const results = await use.insertMany([data], options)
+				insertOne: async (data) => {
+					const results = await use.insertMany([data])
 					return results[0]
 				},
-				updateMany: async (queryAst, data, options) => {
-					const now = options?.getTime?.() ?? new Date()
-					const fullData = { ...data, updatedAt: now.getTime() }
-					const { sql, params } = buildUpdateQuery(queryAst, tableName, schema.primaryKey, fullData)
+				updateMany: async (filter, data) => {
+					const { sql, params } = buildUpdateQuery(filter, tableName, schema.pkName, data)
 					const result = await this.#getClient().query(sql, params)
 					return result.rows
 				},
-				updateOne: async (queryAst, data, options) => {
-					const results = await use.updateMany({ ...queryAst, limit: 1 }, data, options)
+				updateOne: async (filter, data) => {
+					const results = await use.updateMany(filter, data)
 					return results[0] ?? null
 				},
-				upsertOne: async (_queryAst, data, options) => {
-					const now = options?.getTime?.() ?? new Date()
-					const id = schema.generateId(0)
+				upsertOne: async (_filter, data) => {
 					const client = this.#getClient()
-					const insertData = {
-						...data.insert,
-						[schema.primaryKey]: id,
-						createdAt: now.getTime(),
-						updatedAt: now.getTime(),
-					}
+					const insertData = data.insert
 					const updateData = 'update' in data ? data.update : data.insert
-					const updateDataWithTime = { ...updateData, updatedAt: now.getTime() }
 					const columns = Object.keys(insertData)
 					const values = Object.values(insertData)
 					const placeholders = columns.map((_, i) => `$${i + 1}`)
-					const updateParts = Object.keys(updateDataWithTime).map((key) => {
-						values.push(updateDataWithTime[key])
+					const updateParts = Object.keys(updateData).map((key) => {
+						values.push(updateData[key])
 						return `"${key}" = $${values.length}`
 					})
 					const sql =
-						`INSERT INTO "${tableName}" (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${placeholders.join(', ')}) ON CONFLICT ("${schema.primaryKey}") DO UPDATE SET ${updateParts.join(', ')} RETURNING *`.replace(
+						`INSERT INTO "${tableName}" (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${placeholders.join(', ')}) ON CONFLICT ("${schema.pkName}") DO UPDATE SET ${updateParts.join(', ')} RETURNING *`.replace(
 							/\s+/g,
 							' ',
 						)
 					const result = await client.query(sql, values)
 					return result.rows[0]
 				},
-				deleteMany: async (queryAst) => {
-					const { sql, params } = buildDeleteQuery(queryAst, tableName, schema.primaryKey)
+				deleteMany: async (filter) => {
+					const { sql, params } = buildDeleteQuery(filter, tableName, schema.pkName)
 					const result = await this.#getClient().query(sql, params)
 					return result.rows
 				},
-				deleteOne: async (queryAst) => {
-					const results = await use.deleteMany({ ...queryAst, limit: 1 })
+				deleteOne: async (filter) => {
+					const results = await use.deleteMany(filter)
 					return results[0] ?? null
 				},
-				query: async (queryAst, pagination) => {
-					const { whereClause, params: countParams } = (() => {
-						const { sql, params } = buildCountQuery(queryAst, tableName, schema.primaryKey)
-						return { whereClause: sql, params }
-					})()
-					const countResult = await this.#getClient().query(whereClause, countParams)
+				paginatedQuery: async (filter, pagination) => {
+					const { sql: countSql, params: countParams } = buildCountQuery(filter, tableName, schema.pkName)
+					const countResult = await this.#getClient().query(countSql, countParams)
 					const total = Number(countResult.rows[0]?.count ?? 0)
-					const paginatedAst = pagination.all
-						? queryAst
-						: { ...queryAst, limit: pagination.limit, offset: (pagination.page - 1) * pagination.limit }
-					const results = await use.findMany(paginatedAst)
+					const options = pagination.all
+						? undefined
+						: { limit: pagination.limit, offset: (pagination.page - 1) * pagination.limit }
+					const results = await use.findMany(filter, options)
 					const { page, limit: pLimit } = pagination
 					const last = Math.ceil(total / pLimit) || 1
-					const next = page >= last ? null : page + 1
-					const previous = page <= 1 ? null : page - 1
 					return {
-						pages: { start: 1, last, next, previous, current: page },
+						pages: { start: 1, last, next: page >= last ? null : page + 1, previous: page <= 1 ? null : page - 1, current: page },
 						docs: { limit: pLimit, total, count: results.length },
 						results,
 					}
@@ -154,7 +132,8 @@ export class PostgresqlOrm extends configurable(
 			}
 			return use
 		}
-		async session(callback: () => Promise<any>) {
+
+		async session<T>(callback: () => Promise<T>) {
 			if (sessionStore.getStore()) return callback()
 			const client = await this.#pool.connect()
 			try {

@@ -4,8 +4,8 @@ import { MongoClient, type ClientSession, type OptionalUnlessRequiredId } from '
 import { v, type PipeOutput } from 'valleyed'
 
 import { configurable } from '../../../utilities'
-import type { AnySchema } from '../../schema/types'
-import { Orm, type OrmUse } from '../base'
+import type { AnySchema } from '../../schema'
+import { OrmAdapter, type OrmUse } from '../base'
 import { compileMongoQuery, compileMongoUpdate } from './query'
 
 const sessionStore = new AsyncLocalStorage<ClientSession | undefined>()
@@ -27,7 +27,7 @@ export type MongoDbRepoConfig = {
 
 export class MongoDbOrm extends configurable(
 	mongoDbOrmConfigPipe,
-	class extends Orm<MongoDbRepoConfig> {
+	class extends OrmAdapter<MongoDbRepoConfig> {
 		#client: MongoClient
 		constructor(config: PipeOutput<ReturnType<typeof mongoDbOrmConfigPipe>>) {
 			super()
@@ -47,12 +47,13 @@ export class MongoDbOrm extends configurable(
 			await this.#client.close()
 		}
 		use(schema: AnySchema, config: MongoDbRepoConfig) {
+			const pk = schema.pkName
 			const collection = this.#client.db(config.db).collection(config.col)
 			const use: OrmUse = {
-				findMany: async (queryAst) => {
-					const { filter, sort, limit, skip, projection } = compileMongoQuery(queryAst, schema.primaryKey)
+				findMany: async (filter, options) => {
+					const { filter: mongoFilter, sort, limit, skip, projection } = compileMongoQuery(filter, options, pk)
 
-					let cursor = collection.find(filter, {
+					let cursor = collection.find(mongoFilter, {
 						session: sessionStore.getStore(),
 						projection,
 					})
@@ -62,74 +63,56 @@ export class MongoDbOrm extends configurable(
 
 					return cursor.toArray()
 				},
-				findOne: async (queryAst) => {
-					const results = await use.findMany({ ...queryAst, limit: 1 })
+				findOne: async (filter) => {
+					const results = await use.findMany(filter, { limit: 1 })
 					return results[0] ?? null
 				},
-				insertMany: async (data, options) => {
-					const now = options?.getTime?.() ?? new Date()
-					const docs = data.map((d, i) => {
-						const id = schema.generateId(i)
-						const doc = {
-							...d,
-							[schema.primaryKey]: id,
-							createdAt: now.getTime(),
-							updatedAt: now.getTime(),
-						}
-						return doc as OptionalUnlessRequiredId<any>
-					})
+				insertMany: async (data) => {
+					const docs = data.map((d) => d as OptionalUnlessRequiredId<any>)
 					await collection.insertMany(docs, { session: sessionStore.getStore() })
-					return docs
+					return data
 				},
-				insertOne: async (data, options) => {
-					const results = await use.insertMany([data], options)
+				insertOne: async (data) => {
+					const results = await use.insertMany([data])
 					return results[0]
 				},
-				updateMany: async (queryAst, data, options) => {
-					const pk = schema.primaryKey
-					const { filter } = compileMongoQuery(queryAst, pk)
-					const now = options?.getTime?.() ?? new Date()
+				updateMany: async (filter, data) => {
+					const { filter: mongoFilter } = compileMongoQuery(filter, undefined, pk)
+					const now = new Date()
 					const session = sessionStore.getStore()
 
-					const matchingDocs = await collection.find(filter, { session, projection: { [pk]: 1 } }).toArray()
+					const matchingDocs = await collection.find(mongoFilter, { session, projection: { [pk]: 1 } }).toArray()
 					const ids = matchingDocs.map((d) => d[pk])
 					const idFilter = { [pk]: { $in: ids } }
 
-					const update = compileMongoUpdate(data, queryAst.raws, now)
+					const update = compileMongoUpdate(data, filter.raws, now)
 					await collection.updateMany(idFilter, update, { session })
 
 					const cursor = collection.find({ [pk]: { $in: ids } }, { session })
 					return cursor.toArray()
 				},
-				updateOne: async (queryAst, data, options) => {
-					const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
-					const now = options?.getTime?.() ?? new Date()
+				updateOne: async (filter, data) => {
+					const { filter: mongoFilter } = compileMongoQuery(filter, undefined, pk)
+					const now = new Date()
 
-					const update = compileMongoUpdate(data, queryAst.raws, now)
-					return await collection.findOneAndUpdate(filter, update, {
+					const update = compileMongoUpdate(data, filter.raws, now)
+					return await collection.findOneAndUpdate(mongoFilter, update, {
 						returnDocument: 'after',
 						session: sessionStore.getStore(),
 					})
 				},
-				upsertOne: async (queryAst, data, options) => {
-					const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
-					const now = options?.getTime?.() ?? new Date()
-					const id = schema.generateId(0)
+				upsertOne: async (filter, data) => {
+					const { filter: mongoFilter } = compileMongoQuery(filter, undefined, pk)
+					const now = new Date()
 
 					const updateData = 'update' in data ? data.update : {}
-					const updateOp = compileMongoUpdate(updateData, queryAst.raws, now)
-
-					const insertData = {
-						...data.insert,
-						[schema.primaryKey]: id,
-						createdAt: now.getTime(),
-					}
+					const updateOp = compileMongoUpdate(updateData, filter.raws, now)
 
 					const doc = await collection.findOneAndUpdate(
-						filter,
+						mongoFilter,
 						{
 							...updateOp,
-							$setOnInsert: insertData,
+							$setOnInsert: data.insert,
 						},
 						{
 							returnDocument: 'after',
@@ -140,25 +123,25 @@ export class MongoDbOrm extends configurable(
 
 					return doc as Record<string, unknown>
 				},
-				deleteMany: async (queryAst) => {
-					const docs = await use.findMany(queryAst)
-					const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
-					await collection.deleteMany(filter, { session: sessionStore.getStore() })
+				deleteMany: async (filter) => {
+					const docs = await use.findMany(filter)
+					const { filter: mongoFilter } = compileMongoQuery(filter, undefined, pk)
+					await collection.deleteMany(mongoFilter, { session: sessionStore.getStore() })
 					return docs
 				},
-				deleteOne: async (queryAst) => {
-					const doc = await use.findOne(queryAst)
+				deleteOne: async (filter) => {
+					const doc = await use.findOne(filter)
 					if (!doc) return null
-					const { filter } = compileMongoQuery(queryAst, schema.primaryKey)
-					await collection.deleteOne(filter, { session: sessionStore.getStore() })
+					const { filter: mongoFilter } = compileMongoQuery(filter, undefined, pk)
+					await collection.deleteOne(mongoFilter, { session: sessionStore.getStore() })
 					return doc
 				},
-				query: async (queryAst, pagination) => {
-					const { filter, sort, projection } = compileMongoQuery(queryAst, schema.primaryKey)
+				paginatedQuery: async (filter, pagination) => {
+					const { filter: mongoFilter, sort, projection } = compileMongoQuery(filter, undefined, pk)
 
-					const total = await collection.countDocuments(filter)
+					const total = await collection.countDocuments(mongoFilter)
 
-					let cursor = collection.find(filter, { session: sessionStore.getStore(), projection })
+					let cursor = collection.find(mongoFilter, { session: sessionStore.getStore(), projection })
 					if (sort) cursor = cursor.sort(sort)
 					if (!pagination.all && pagination.limit) {
 						cursor = cursor.limit(pagination.limit)
@@ -170,11 +153,9 @@ export class MongoDbOrm extends configurable(
 
 					const { page, limit: pLimit } = pagination
 					const last = Math.ceil(total / pLimit) || 1
-					const next = page >= last ? null : page + 1
-					const previous = page <= 1 ? null : page - 1
 
 					return {
-						pages: { start: 1, last, next, previous, current: page },
+						pages: { start: 1, last, next: page >= last ? null : page + 1, previous: page <= 1 ? null : page - 1, current: page },
 						docs: { limit: pLimit, total, count: results.length },
 						results,
 					}

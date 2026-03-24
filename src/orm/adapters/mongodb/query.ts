@@ -1,9 +1,12 @@
-import { Condition, type AndOp, type OrOp, type QueryAST, type WhereOp } from '../../query/types'
+import { WhereOp, AndOp, OrOp, Condition } from '../../query'
+import type { FilterOp, QueryFilter, QueryOptions } from '../../query'
+import { IncOp, MulOp, MinOp, MaxOp, UnsetOp, PushOp, PullOp, PatchOp } from '../../updates'
 
 type MongoFilter = Record<string, unknown>
 
 export function compileMongoQuery(
-	ast: QueryAST,
+	filter: QueryFilter,
+	options: QueryOptions | undefined,
 	primaryKey: string,
 ): {
 	filter: MongoFilter
@@ -14,39 +17,41 @@ export function compileMongoQuery(
 } {
 	const clauses: MongoFilter[] = []
 
-	for (const w of ast.wheres) {
+	for (const w of filter.wheres) {
 		clauses.push(compileWhere(w, primaryKey))
 	}
 
-	for (const a of ast.ands) {
+	for (const a of filter.ands) {
 		const compiled = compileAnd(a, primaryKey)
 		if (compiled) clauses.push(compiled)
 	}
 
-	for (const o of ast.ors) {
+	for (const o of filter.ors) {
 		const compiled = compileOr(o, primaryKey)
 		if (compiled) clauses.push(compiled)
 	}
 
-	let filter: MongoFilter = {}
+	let mongoFilter: MongoFilter = {}
 	if (clauses.length === 1) {
-		filter = clauses[0]
+		mongoFilter = clauses[0]
 	} else if (clauses.length > 1) {
-		filter = { $and: clauses }
+		mongoFilter = { $and: clauses }
 	}
 
+	const orderBys = options?.orderBy ?? []
 	const sort =
-		ast.orderBys.length > 0
-			? Object.fromEntries(ast.orderBys.map((o) => [mapField(o.field, primaryKey), o.direction === 'desc' ? -1 : 1]))
+		orderBys.length > 0
+			? Object.fromEntries(orderBys.map((o) => [mapField(o.field, primaryKey), o.direction === 'desc' ? -1 : 1]))
 			: undefined
 
-	const projection = ast.selects.length > 0 ? Object.fromEntries(ast.selects.map((f) => [mapField(f, primaryKey), 1])) : undefined
+	const selects = options?.select ?? []
+	const projection = selects.length > 0 ? Object.fromEntries(selects.map((f) => [mapField(f, primaryKey), 1])) : undefined
 
 	return {
-		filter,
+		filter: mongoFilter,
 		sort: sort as Record<string, 1 | -1> | undefined,
-		limit: ast.limit ?? undefined,
-		skip: ast.offset ?? undefined,
+		limit: options?.limit ?? undefined,
+		skip: options?.offset ?? undefined,
 		projection: projection as Record<string, 1> | undefined,
 	}
 }
@@ -105,40 +110,51 @@ function compileOr(o: OrOp, primaryKey: string): MongoFilter | null {
 	return { $or: clauses }
 }
 
-function compileOp(op: AndOp['clauses'][number], primaryKey: string): MongoFilter | null {
-	switch (op.kind) {
-		case 'where':
-			return compileWhere(op, primaryKey)
-		case 'and':
-			return compileAnd(op, primaryKey)
-		case 'or':
-			return compileOr(op, primaryKey)
-		default:
-			return null
-	}
+function compileOp(op: FilterOp, primaryKey: string): MongoFilter | null {
+	if (op instanceof WhereOp) return compileWhere(op, primaryKey)
+	if (op instanceof AndOp) return compileAnd(op, primaryKey)
+	if (op instanceof OrOp) return compileOr(op, primaryKey)
+	return null
 }
 
 export function compileMongoUpdate(data: Record<string, unknown>, raws: unknown[], now: Date): Record<string, unknown> {
-	const result: Record<string, unknown> = {}
+	const $set: Record<string, unknown> = { updatedAt: now.getTime() }
+	const $inc: Record<string, unknown> = {}
+	const $mul: Record<string, unknown> = {}
+	const $min: Record<string, unknown> = {}
+	const $max: Record<string, unknown> = {}
+	const $unset: Record<string, ''> = {}
+	const $push: Record<string, unknown> = {}
+	const $pull: Record<string, unknown> = {}
 
-	if (Object.keys(data).length > 0) {
-		result.$set = { ...data, updatedAt: now.getTime() }
+	for (const [key, value] of Object.entries(data)) {
+		if (value instanceof IncOp) $inc[key] = value.by
+		else if (value instanceof MulOp) $mul[key] = value.by
+		else if (value instanceof MinOp) $min[key] = value.value
+		else if (value instanceof MaxOp) $max[key] = value.value
+		else if (value instanceof UnsetOp) $unset[key] = ''
+		else if (value instanceof PushOp) $push[key] = value.value
+		else if (value instanceof PullOp) $pull[key] = value.value
+		else if (value instanceof PatchOp) $set[`${key}.${value.path.join('.')}`] = value.value
+		else $set[key] = value
 	}
+
+	const result: Record<string, unknown> = { $set }
+	if (Object.keys($inc).length) result.$inc = $inc
+	if (Object.keys($mul).length) result.$mul = $mul
+	if (Object.keys($min).length) result.$min = $min
+	if (Object.keys($max).length) result.$max = $max
+	if (Object.keys($unset).length) result.$unset = $unset
+	if (Object.keys($push).length) result.$push = $push
+	if (Object.keys($pull).length) result.$pull = $pull
 
 	for (const rawOp of raws) {
 		if (typeof rawOp === 'object' && rawOp !== null) {
 			for (const [key, value] of Object.entries(rawOp as Record<string, unknown>)) {
-				if (key === '$set') {
-					result.$set = { ...(result.$set as any), ...(value as any) }
-				} else {
-					result[key] = value
-				}
+				if (key === '$set') result.$set = { ...(result.$set as any), ...(value as any) }
+				else result[key] = value
 			}
 		}
-	}
-
-	if (Object.keys(result).length > 0 && !result.$set) {
-		result.$set = { updatedAt: now.getTime() }
 	}
 
 	return result

@@ -1,4 +1,6 @@
 export * from './adapters/base'
 export * from './query'
+export * from './relations'
 export * from './repo'
 export * from './schema'
+export * from './updates'
