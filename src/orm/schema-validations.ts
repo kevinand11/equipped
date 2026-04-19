@@ -1,24 +1,30 @@
-import type { Pipe, PipeInput, Prettify } from 'valleyed'
-import { v } from 'valleyed'
-import type { AnySchema, FieldEntry, SchemaFields, SchemaOutput } from './schema'
-import { Schema } from './schema'
-import { inc, IncOp, isUpdateOp, mul, MulOp, unset, UnsetOp, type AnyUpdateOp } from './updates'
+import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
+
+import type { AnySchemaField, SchemaField } from './fields'
+import { Schema, type AnySchema, type SchemaFields, type SchemaOutput } from './schema'
+import { isUpdateOp, type AnyUpdateOp } from './updates'
+import type { Prettify } from './utils'
 
 export type SchemaInsertInput<S extends AnySchema> = Prettify<
 	{
-		[K in keyof SchemaFields<S> as SchemaFields<S>[K] extends { readonly onCreate: () => any }
+		[K in keyof SchemaFields<S> as SchemaFields<S>[K] extends SchemaField<any, any, true>
 			? never
-			: K]: SchemaFields<S>[K] extends FieldEntry<infer P> ? PipeInput<P> : never
+			: K]: SchemaFields<S>[K] extends AnySchemaField ? PipeInput<SchemaFields<S>[K]['pipe']> : never
 	} & {
-		[K in keyof SchemaFields<S> as SchemaFields<S>[K] extends { readonly onCreate: () => any }
+		[K in keyof SchemaFields<S> as SchemaFields<S>[K] extends SchemaField<any, any, true>
 			? K
-			: never]?: SchemaFields<S>[K] extends FieldEntry<infer P> ? PipeInput<P> : never
+			: never]?: SchemaFields<S>[K] extends AnySchemaField ? PipeInput<SchemaFields<S>[K]['pipe']> : never
 	}
 >
 
 export type SchemaUpdateInput<S extends AnySchema> =
-	S extends Schema<any, any, any, infer F>
-		? Prettify<{ [K in keyof F]?: F[K] extends FieldEntry<infer P> ? PipeInput<P> | AnyUpdateOp : never }>
+	S extends Schema<any, any, infer F>
+		? Prettify<{ [K in keyof F]?: F[K] extends AnySchemaField ? PipeInput<F[K]['pipe']> | AnyUpdateOp : never }>
+		: Record<string, unknown>
+
+export type SchemaUpdateOutput<S extends AnySchema> =
+	S extends Schema<any, any, infer F>
+		? Prettify<{ [K in keyof F]?: F[K] extends AnySchemaField ? PipeOutput<F[K]['pipe']> | AnyUpdateOp : never }>
 		: Record<string, unknown>
 
 export function validateInsert<S extends AnySchema>(s: S, data: Record<string, unknown>): SchemaOutput<S> {
@@ -35,7 +41,7 @@ export function validateInsert<S extends AnySchema>(s: S, data: Record<string, u
 	) as SchemaOutput<S>
 }
 
-export function validateUpdate<S extends AnySchema>(s: S, data: Record<string, unknown>): Partial<SchemaOutput<S>> {
+export function validateUpdate<S extends AnySchema>(s: S, data: Record<string, unknown>): SchemaUpdateOutput<S> {
 	const pipes: Record<string, Pipe<any, any>> = {}
 	const ops: Record<string, unknown> = {}
 
@@ -49,11 +55,12 @@ export function validateUpdate<S extends AnySchema>(s: S, data: Record<string, u
 	}
 
 	const validated = v.assert(v.object(pipes), data) as Record<string, unknown>
-	return { ...validated, ...ops } as Partial<SchemaOutput<S>>
+	return { ...validated, ...ops } as SchemaUpdateOutput<S>
 }
 
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
+	const { inc, IncOp, mul, MulOp, unset, UnsetOp } = await import('./updates')
 
 	describe('validateInsert', () => {
 		const UserSchema = Schema.from('users')

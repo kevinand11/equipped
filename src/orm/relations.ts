@@ -1,68 +1,44 @@
-import type { AnySchema, SchemaOutput } from './schema'
+import type { AnySchemaField } from './fields'
+import type { AnySchema, SchemaFields, SchemaOutput } from './schema'
 
-type SchemaKey<S extends AnySchema> = keyof SchemaOutput<S> & string
+type SchemaKey<S extends AnySchema> = keyof SchemaFields<S> & string
+type SchemaFieldAt<S extends AnySchema, K extends SchemaKey<S> = SchemaKey<S>> = SchemaFields<S>[K]
 
-// ── Relation classes ──────────────────────────────────────────────────────────
-
-export class HasManyRelation<N extends string = string, Src extends AnySchema = AnySchema, Tgt extends AnySchema = AnySchema> {
-	constructor(
-		readonly name: N,
-		readonly source: Src,
-		readonly target: Tgt,
-		readonly foreignKey: string,
-	) {}
-}
-
-export class BelongsToRelation<N extends string = string, Src extends AnySchema = AnySchema, Tgt extends AnySchema = AnySchema> {
-	constructor(
-		readonly name: N,
-		readonly source: Src,
-		readonly target: Tgt,
-		readonly foreignKey: string,
-	) {}
-}
-
-export class HasOneRelation<N extends string = string, Src extends AnySchema = AnySchema, Tgt extends AnySchema = AnySchema> {
-	constructor(
-		readonly name: N,
-		readonly source: Src,
-		readonly target: Tgt,
-		readonly foreignKey: string,
-	) {}
-}
-
-export class ManyToManyRelation<
+export class ManyRelation<
 	N extends string = string,
-	Src extends AnySchema = AnySchema,
-	Tgt extends AnySchema = AnySchema,
-	Join extends AnySchema = AnySchema,
+	TgtOutput extends Record<string, any> = Record<string, any>,
+	FK extends AnySchemaField = AnySchemaField,
 > {
+	declare readonly _output: TgtOutput
 	constructor(
 		readonly name: N,
-		readonly source: Src,
-		readonly target: Tgt,
-		readonly joinSchema: Join,
-		readonly sourceFk: string,
-		readonly targetFk: string,
+		readonly source: AnySchema,
+		readonly target: AnySchema,
+		readonly foreignKey: FK,
+		readonly references: AnySchemaField,
 	) {}
 }
 
-export type AnyRelDef =
-	| HasManyRelation<string, AnySchema, AnySchema>
-	| BelongsToRelation<string, AnySchema, AnySchema>
-	| HasOneRelation<string, AnySchema, AnySchema>
-	| ManyToManyRelation<string, AnySchema, AnySchema, AnySchema>
+export class OneRelation<
+	N extends string = string,
+	TgtOutput extends Record<string, any> = Record<string, any>,
+	FK extends AnySchemaField = AnySchemaField,
+> {
+	declare readonly _output: TgtOutput
+	constructor(
+		readonly name: N,
+		readonly source: AnySchema,
+		readonly target: AnySchema,
+		readonly foreignKey: FK,
+		readonly fkOwner: 'source' | 'target',
+		readonly references: AnySchemaField,
+	) {}
+}
+
+export type AnyRelDef = ManyRelation<string, Record<string, any>, any> | OneRelation<string, Record<string, any>, any>
 
 export type ResolveRelDef<D extends AnyRelDef> =
-	D extends HasManyRelation<any, any, infer T>
-		? SchemaOutput<T>[]
-		: D extends ManyToManyRelation<any, any, infer T, any>
-			? SchemaOutput<T>[]
-			: D extends BelongsToRelation<any, any, infer T>
-				? SchemaOutput<T> | null
-				: D extends HasOneRelation<any, any, infer T>
-					? SchemaOutput<T> | null
-					: never
+	D extends ManyRelation<any, infer TOut, any> ? TOut[] : D extends OneRelation<any, infer TOut, any> ? TOut | null : never
 
 export type PreloadedMap<P extends readonly AnyRelDef[]> = {
 	[D in P[number] as D['name']]: ResolveRelDef<D>
@@ -78,42 +54,64 @@ export class Relations<S extends AnySchema, R extends Record<string, AnyRelDef> 
 		this.#source = source
 	}
 
-	hasMany<K extends string, Target extends AnySchema>(
+	hasMany<K extends string, Target extends AnySchema, FK extends SchemaKey<Target>, Ref extends SchemaKey<S> = never>(
 		name: K,
 		target: Target,
-		foreignKey: SchemaKey<Target>,
-	): Relations<S, R & Record<K, HasManyRelation<K, S, Target>>> {
-		this.#defs[name] = new HasManyRelation(name, this.#source, target, foreignKey) as any
-		return this as unknown as Relations<S, R & Record<K, HasManyRelation<K, S, Target>>>
+		foreignKey: FK,
+		references?: Ref,
+	): Relations<
+		S,
+		{
+			[Key in keyof R | K]: Key extends K
+				? ManyRelation<K, SchemaOutput<Target>, SchemaFieldAt<Target, FK>>
+				: Key extends keyof R
+					? R[Key]
+					: never
+		}
+	> {
+		const ref = references != null ? this.#source.fields[references] : this.#source.pkField
+		this.#defs[name] = new ManyRelation(name, this.#source, target, target.fields[foreignKey], ref) as any
+		return this as any
 	}
 
-	belongsTo<K extends string, Target extends AnySchema>(
+	belongsTo<K extends string, Target extends AnySchema, FK extends SchemaKey<S>, Ref extends SchemaKey<Target> = never>(
 		name: K,
 		target: Target,
-		foreignKey: SchemaKey<S>,
-	): Relations<S, R & Record<K, BelongsToRelation<K, S, Target>>> {
-		this.#defs[name] = new BelongsToRelation(name, this.#source, target, foreignKey) as any
-		return this as unknown as Relations<S, R & Record<K, BelongsToRelation<K, S, Target>>>
+		foreignKey: FK,
+		references?: Ref,
+	): Relations<
+		S,
+		{
+			[Key in keyof R | K]: Key extends K
+				? OneRelation<K, SchemaOutput<Target>, SchemaFieldAt<S, FK>>
+				: Key extends keyof R
+					? R[Key]
+					: never
+		}
+	> {
+		const ref = references ? target.fields[references] : target.pkField
+		this.#defs[name] = new OneRelation(name, this.#source, target, this.#source.fields[foreignKey], 'source', ref) as any
+		return this as any
 	}
 
-	hasOne<K extends string, Target extends AnySchema>(
+	hasOne<K extends string, Target extends AnySchema, FK extends SchemaKey<Target>, Ref extends SchemaKey<S> = never>(
 		name: K,
 		target: Target,
-		foreignKey: SchemaKey<Target>,
-	): Relations<S, R & Record<K, HasOneRelation<K, S, Target>>> {
-		this.#defs[name] = new HasOneRelation<K, S, Target>(name, this.#source, target, foreignKey) as any
-		return this as unknown as Relations<S, R & Record<K, HasOneRelation<K, S, Target>>>
-	}
-
-	manyToMany<K extends string, Target extends AnySchema, Join extends AnySchema>(
-		name: K,
-		target: Target,
-		joinSchema: Join,
-		sourceFk: SchemaKey<Join>,
-		targetFk: SchemaKey<Join>,
-	): Relations<S, R & Record<K, ManyToManyRelation<K, S, Target, Join>>> {
-		this.#defs[name] = new ManyToManyRelation<K, S, Target, Join>(name, this.#source, target, joinSchema, sourceFk, targetFk) as any
-		return this as unknown as Relations<S, R & Record<K, ManyToManyRelation<K, S, Target, Join>>>
+		foreignKey: FK,
+		references?: Ref,
+	): Relations<
+		S,
+		{
+			[Key in keyof R | K]: Key extends K
+				? OneRelation<K, SchemaOutput<Target>, SchemaFieldAt<Target, FK>>
+				: Key extends keyof R
+					? R[Key]
+					: never
+		}
+	> {
+		const ref = references ? this.#source.fields[references] : this.#source.pkField
+		this.#defs[name] = new OneRelation(name, this.#source, target, target.fields[foreignKey], 'target', ref) as any
+		return this as any
 	}
 
 	get definitions() {
@@ -166,14 +164,21 @@ if (import.meta.vitest) {
 
 		const PostRelations = Relations.of(PostSchema)
 			.belongsTo('author', UserSchema, 'userId')
-			.manyToMany('tags', TagSchema, PostTagSchema, 'postId', 'tagId')
+			.hasMany('postTags', PostTagSchema, 'postId')
+
+		const TagRelations = Relations.of(TagSchema).hasMany('postTags', PostTagSchema, 'tagId')
+
+		const PostTagRelations = Relations.of(PostTagSchema).belongsTo('post', PostSchema, 'postId').belongsTo('tag', TagSchema, 'tagId')
 
 		test('is a Relations instance', () => {
 			expect(UserRelations).toBeInstanceOf(Relations)
-			expect(UserRelations.definitions.posts).toBeInstanceOf(HasManyRelation)
-			expect(UserRelations.definitions.org).toBeInstanceOf(BelongsToRelation)
-			expect(UserRelations.definitions.profile).toBeInstanceOf(HasOneRelation)
-			expect(PostRelations.definitions.tags).toBeInstanceOf(ManyToManyRelation)
+			expect(UserRelations.definitions.posts).toBeInstanceOf(ManyRelation)
+			expect(UserRelations.definitions.org).toBeInstanceOf(OneRelation)
+			expect(UserRelations.definitions.profile).toBeInstanceOf(OneRelation)
+			expect(PostRelations.definitions.postTags).toBeInstanceOf(ManyRelation)
+			expect(TagRelations.definitions.postTags).toBeInstanceOf(ManyRelation)
+			expect(PostTagRelations.definitions.post).toBeInstanceOf(OneRelation)
+			expect(PostTagRelations.definitions.tag).toBeInstanceOf(OneRelation)
 		})
 
 		test('belongsTo stores correct source and target', () => {
@@ -184,7 +189,7 @@ if (import.meta.vitest) {
 		test('hasMany stores name, foreignKey, source, and target', () => {
 			const rel = UserRelations.definitions.posts
 			expect(rel.name).toBe('posts')
-			expect(rel.foreignKey).toBe('userId')
+			expect(rel.foreignKey).toBe(PostSchema.fields.userId)
 			expect(rel.source).toBe(UserSchema)
 			expect(rel.target).toBe(PostSchema)
 		})
@@ -192,7 +197,7 @@ if (import.meta.vitest) {
 		test('hasOne stores name, foreignKey, source, and target', () => {
 			const rel = UserRelations.definitions.profile
 			expect(rel.name).toBe('profile')
-			expect(rel.foreignKey).toBe('userId')
+			expect(rel.foreignKey).toBe(ProfileSchema.fields.userId)
 			expect(rel.source).toBe(UserSchema)
 			expect(rel.target).toBe(ProfileSchema)
 		})
@@ -200,17 +205,23 @@ if (import.meta.vitest) {
 		test('belongsTo stores name and foreignKey', () => {
 			const rel = UserRelations.definitions.org
 			expect(rel.name).toBe('org')
-			expect(rel.foreignKey).toBe('orgId')
+			expect(rel.foreignKey).toBe(UserSchema.fields.orgId)
 		})
 
-		test('manyToMany stores name, joinSchema, sourceFk, targetFk, source, and target', () => {
-			const rel = PostRelations.definitions.tags
-			expect(rel.name).toBe('tags')
+		test('join-table hasMany stores name, foreignKey, source, and target', () => {
+			const rel = PostRelations.definitions.postTags
+			expect(rel.name).toBe('postTags')
 			expect(rel.source).toBe(PostSchema)
+			expect(rel.target).toBe(PostTagSchema)
+			expect(rel.foreignKey).toBe(PostTagSchema.fields.postId)
+		})
+
+		test('join-table belongsTo stores name, foreignKey, source, and target', () => {
+			const rel = PostTagRelations.definitions.tag
+			expect(rel.name).toBe('tag')
+			expect(rel.source).toBe(PostTagSchema)
 			expect(rel.target).toBe(TagSchema)
-			expect(rel.joinSchema).toBe(PostTagSchema)
-			expect(rel.sourceFk).toBe('postId')
-			expect(rel.targetFk).toBe('tagId')
+			expect(rel.foreignKey).toBe(PostTagSchema.fields.tagId)
 		})
 	})
 }

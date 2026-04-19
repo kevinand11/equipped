@@ -3,10 +3,10 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { Pool, type PoolClient } from 'pg'
 import { v, type PipeOutput } from 'valleyed'
 
+import { buildCountQuery, buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery } from './query'
 import { configurable } from '../../../utilities'
 import type { AnySchema } from '../../schema'
 import { OrmAdapter, type OrmUse } from '../base'
-import { buildCountQuery, buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery } from './query'
 
 const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
 
@@ -54,7 +54,7 @@ export class PostgresqlOrm extends configurable(
 			const tableName = config.schema && config.schema !== 'public' ? `${config.schema}.${config.table}` : config.table
 			const use: OrmUse = {
 				findMany: async (filter, options) => {
-					const { sql, params } = buildSelectQuery(filter, options, tableName, schema.pkName)
+					const { sql, params } = buildSelectQuery(filter, options, tableName, schema.pkField.name)
 					const result = await this.#getClient().query(sql, params)
 					return result.rows
 				},
@@ -77,7 +77,7 @@ export class PostgresqlOrm extends configurable(
 					return results[0]
 				},
 				updateMany: async (filter, data) => {
-					const { sql, params } = buildUpdateQuery(filter, tableName, schema.pkName, data)
+					const { sql, params } = buildUpdateQuery(filter, tableName, schema.pkField.name, data)
 					const result = await this.#getClient().query(sql, params)
 					return result.rows
 				},
@@ -97,7 +97,7 @@ export class PostgresqlOrm extends configurable(
 						return `"${key}" = $${values.length}`
 					})
 					const sql =
-						`INSERT INTO "${tableName}" (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${placeholders.join(', ')}) ON CONFLICT ("${schema.pkName}") DO UPDATE SET ${updateParts.join(', ')} RETURNING *`.replace(
+						`INSERT INTO "${tableName}" (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${placeholders.join(', ')}) ON CONFLICT ("${schema.pkField.name}") DO UPDATE SET ${updateParts.join(', ')} RETURNING *`.replace(
 							/\s+/g,
 							' ',
 						)
@@ -105,7 +105,7 @@ export class PostgresqlOrm extends configurable(
 					return result.rows[0]
 				},
 				deleteMany: async (filter) => {
-					const { sql, params } = buildDeleteQuery(filter, tableName, schema.pkName)
+					const { sql, params } = buildDeleteQuery(filter, tableName, schema.pkField.name)
 					const result = await this.#getClient().query(sql, params)
 					return result.rows
 				},
@@ -114,7 +114,7 @@ export class PostgresqlOrm extends configurable(
 					return results[0] ?? null
 				},
 				paginatedQuery: async (filter, pagination) => {
-					const { sql: countSql, params: countParams } = buildCountQuery(filter, tableName, schema.pkName)
+					const { sql: countSql, params: countParams } = buildCountQuery(filter, tableName, schema.pkField.name)
 					const countResult = await this.#getClient().query(countSql, countParams)
 					const total = Number(countResult.rows[0]?.count ?? 0)
 					const options = pagination.all

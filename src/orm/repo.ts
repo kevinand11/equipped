@@ -4,7 +4,7 @@ import type { InferAdapterConfig, OrmAdapter, OrmUse, PaginatedResult } from './
 import type { QueryFilter, QueryOptions } from './query'
 import { eq, isIn, query } from './query'
 import type { AnyRelDef, PreloadedMap } from './relations'
-import { BelongsToRelation, HasManyRelation, HasOneRelation, ManyToManyRelation } from './relations'
+import { ManyRelation, OneRelation } from './relations'
 import type { AnySchema, SchemaOutput } from './schema'
 import { validateInsert, validateUpdate, type SchemaInsertInput, type SchemaUpdateInput } from './schema-validations'
 
@@ -202,64 +202,41 @@ async function resolvePreload(
 	def: AnyRelDef,
 	getUse: (s: AnySchema) => OrmUse,
 ): Promise<Record<string, unknown>[]> {
-	const { source, target, name } = def
-	const sourcePk = source.pkName
-	const targetPk = target.pkName
+	const { source: _source, target, name } = def
 
-	if (def instanceof BelongsToRelation) {
-		const fkValues = [...new Set(entities.map((e) => e[def.foreignKey]).filter((v) => v != null))]
-		if (fkValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
+	if (def instanceof OneRelation) {
+		if (def.fkOwner === 'source') {
+			const refCol = def.references.name
+			const fkValues = [...new Set(entities.map((e) => e[def.foreignKey.name]).filter((v) => v != null))]
+			if (fkValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
 
-		const related = await getUse(target).findMany(query(isIn(targetPk, fkValues as string[])))
-		const lookup = new Map(related.map((r) => [r[targetPk], r]))
-		return entities.map((e) => ({ ...e, [name]: lookup.get(e[def.foreignKey] as any) ?? null }))
+			const related = await getUse(target).findMany(query(isIn(refCol, fkValues as string[])))
+			const lookup = new Map(related.map((r) => [r[refCol], r]))
+			return entities.map((e) => ({ ...e, [name]: lookup.get(e[def.foreignKey.name] as any) ?? null }))
+		} else {
+			const refCol = def.references.name
+			const refValues = [...new Set(entities.map((e) => e[refCol]).filter((v) => v != null))]
+			if (refValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
+
+			const related = await getUse(target).findMany(query(isIn(def.foreignKey, refValues as string[])))
+			const lookup = new Map(related.map((r) => [r[def.foreignKey.name], r]))
+			return entities.map((e) => ({ ...e, [name]: lookup.get(e[refCol] as any) ?? null }))
+		}
 	}
 
-	if (def instanceof HasOneRelation) {
-		const pkValues = [...new Set(entities.map((e) => e[sourcePk]).filter((v) => v != null))]
-		if (pkValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
+	if (def instanceof ManyRelation) {
+		const refCol = def.references.name
+		const refValues = [...new Set(entities.map((e) => e[refCol]).filter((v) => v != null))]
+		if (refValues.length === 0) return entities.map((e) => ({ ...e, [name]: [] }))
 
-		const related = await getUse(target).findMany(query(isIn(def.foreignKey, pkValues as string[])))
-		const lookup = new Map(related.map((r) => [r[def.foreignKey], r]))
-		return entities.map((e) => ({ ...e, [name]: lookup.get(e[sourcePk] as any) ?? null }))
-	}
-
-	if (def instanceof HasManyRelation) {
-		const pkValues = [...new Set(entities.map((e) => e[sourcePk]).filter((v) => v != null))]
-		if (pkValues.length === 0) return entities.map((e) => ({ ...e, [name]: [] }))
-
-		const related = await getUse(target).findMany(query(isIn(def.foreignKey, pkValues as string[])))
+		const related = await getUse(target).findMany(query(isIn(def.foreignKey, refValues as string[])))
 		const grouped = new Map<unknown, Record<string, unknown>[]>()
 		for (const r of related) {
-			const fk = r[def.foreignKey]
+			const fk = r[def.foreignKey.name]
 			if (!grouped.has(fk)) grouped.set(fk, [])
 			grouped.get(fk)!.push(r)
 		}
-		return entities.map((e) => ({ ...e, [name]: grouped.get(e[sourcePk] as any) ?? [] }))
-	}
-
-	if (def instanceof ManyToManyRelation) {
-		const pkValues = [...new Set(entities.map((e) => e[sourcePk]).filter((v) => v != null))]
-		if (pkValues.length === 0) return entities.map((e) => ({ ...e, [name]: [] }))
-
-		const joinRecords = await getUse(def.joinSchema).findMany(query(isIn(def.sourceFk, pkValues as string[])))
-		if (joinRecords.length === 0) return entities.map((e) => ({ ...e, [name]: [] }))
-
-		const targetIds = [...new Set(joinRecords.map((r) => r[def.targetFk]).filter((v) => v != null))]
-		const targetRecords = await getUse(target).findMany(query(isIn(targetPk, targetIds as string[])))
-
-		const targetLookup = new Map(targetRecords.map((r) => [r[targetPk], r]))
-
-		const grouped = new Map<unknown, Record<string, unknown>[]>()
-		for (const jr of joinRecords) {
-			const related = targetLookup.get(jr[def.targetFk] as any)
-			if (related) {
-				if (!grouped.has(jr[def.sourceFk])) grouped.set(jr[def.sourceFk], [])
-				grouped.get(jr[def.sourceFk])!.push(related)
-			}
-		}
-
-		return entities.map((e) => ({ ...e, [name]: grouped.get(e[sourcePk] as any) ?? [] }))
+		return entities.map((e) => ({ ...e, [name]: grouped.get(e[refCol] as any) ?? [] }))
 	}
 
 	throw new Error(`Unknown relation kind: ${(def as any).kind}`)
@@ -306,7 +283,7 @@ if (import.meta.vitest) {
 						return results[0] ?? null
 					},
 					async insertOne(data) {
-						store.set(data[s.pkName] as string, data)
+						store.set(data[s.pkField.name] as string, data)
 						return data
 					},
 					async insertMany(data) {
@@ -316,7 +293,7 @@ if (import.meta.vitest) {
 						const results = await this.findMany(filter)
 						return results.map((r) => {
 							const updated = { ...r, ...data }
-							store.set(r[s.pkName] as string, updated)
+							store.set(r[s.pkField.name] as string, updated)
 							return updated
 						})
 					},
@@ -326,17 +303,17 @@ if (import.meta.vitest) {
 					},
 					async upsertOne(_filter, data) {
 						const row = { ...data.insert }
-						store.set(row[s.pkName] as string, row)
+						store.set(row[s.pkField.name] as string, row)
 						return row
 					},
 					async deleteOne(filter) {
 						const result = await this.findMany(filter, { limit: 1 })
-						if (result[0]) store.delete(result[0][s.pkName] as string)
+						if (result[0]) store.delete(result[0][s.pkField.name] as string)
 						return result[0] ?? null
 					},
 					async deleteMany(filter) {
 						const results = await this.findMany(filter)
-						for (const r of results) store.delete(r[s.pkName] as string)
+						for (const r of results) store.delete(r[s.pkField.name] as string)
 						return results
 					},
 					async paginatedQuery(filter, pagination) {
@@ -415,7 +392,9 @@ if (import.meta.vitest) {
 
 		const PostRelations = Relations.of(PostSchema)
 			.belongsTo('author', UserSchema, 'userId')
-			.manyToMany('tags', TagSchema, PostTagSchema, 'postId', 'tagId')
+			.hasMany('postTags', PostTagSchema, 'postId')
+
+		const PostTagRelations = Relations.of(PostTagSchema).belongsTo('post', PostSchema, 'postId').belongsTo('tag', TagSchema, 'tagId')
 
 		// Each test gets a fresh adapter + repo to avoid shared state
 		function makeRepo() {
@@ -708,8 +687,8 @@ if (import.meta.vitest) {
 			expect(users[0].org).toBeNull()
 		})
 
-		// ── preload: manyToMany ───────────────────────────────────────────────
-		test('preload manyToMany resolves related entities through join table', async () => {
+		// ── preload: explicit join table ──────────────────────────────────────
+		test('preload hasMany resolves join records through explicit join table', async () => {
 			const Repo = makeRepo()
 			const post = await Repo.insertOne(PostSchema, { title: 'My Post', userId: 'u1' })
 			const tag1 = await Repo.insertOne(TagSchema, { label: 'ts' })
@@ -718,20 +697,33 @@ if (import.meta.vitest) {
 			await Repo.insertOne(PostTagSchema, { postId: post.id, tagId: tag2.id })
 
 			const posts = await Repo.findMany(PostSchema, query(), {
-				preloads: [PostRelations.definitions.tags] as const,
+				preloads: [PostRelations.definitions.postTags] as const,
 			})
-			expect(posts[0].tags).toHaveLength(2)
-			expect((posts[0].tags as any[]).map((t) => t.label).sort()).toEqual(['orm', 'ts'])
+			expect(posts[0].postTags).toHaveLength(2)
+			expect((posts[0].postTags as any[]).map((t) => t.tagId).sort()).toEqual([tag1.id, tag2.id].sort())
 		})
 
-		test('preload manyToMany returns empty array when no join records', async () => {
+		test('preload explicit join-table relation returns empty array when no join records', async () => {
 			const Repo = makeRepo()
 			await Repo.insertOne(PostSchema, { title: 'No Tags', userId: 'u1' })
 
 			const posts = await Repo.findMany(PostSchema, query(), {
-				preloads: [PostRelations.definitions.tags] as const,
+				preloads: [PostRelations.definitions.postTags] as const,
 			})
-			expect(posts[0].tags).toEqual([])
+			expect(posts[0].postTags).toEqual([])
+		})
+
+		test('preload belongsTo resolves join record target explicitly', async () => {
+			const Repo = makeRepo()
+			const post = await Repo.insertOne(PostSchema, { title: 'My Post', userId: 'u1' })
+			const tag = await Repo.insertOne(TagSchema, { label: 'ts' })
+			await Repo.insertOne(PostTagSchema, { postId: post.id, tagId: tag.id })
+
+			const postTags = await Repo.findMany(PostTagSchema, query(), {
+				preloads: [PostTagRelations.definitions.tag] as const,
+			})
+			expect(postTags[0].tag).not.toBeNull()
+			expect((postTags[0].tag as any).label).toBe('ts')
 		})
 
 		// ── preload on mutation methods ───────────────────────────────────────

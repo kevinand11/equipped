@@ -1,3 +1,6 @@
+import type { AnyField, Field } from './fields'
+import { toFieldName } from './fields'
+
 export enum Condition {
 	eq = 'eq',
 	ne = 'ne',
@@ -14,11 +17,14 @@ export enum Condition {
 }
 
 export class WhereOp {
+	readonly field: string
 	constructor(
-		readonly field: string,
+		field: string | AnyField,
 		readonly condition: Condition,
 		readonly value: unknown,
-	) {}
+	) {
+		this.field = toFieldName(field)
+	}
 }
 export class AndOp {
 	constructor(readonly clauses: FilterOp[]) {}
@@ -30,10 +36,13 @@ export class RawOp {
 	constructor(readonly value: unknown) {}
 }
 export class OrderByOp {
+	readonly field: string
 	constructor(
-		readonly field: string,
+		field: string | AnyField,
 		readonly direction: 'asc' | 'desc',
-	) {}
+	) {
+		this.field = toFieldName(field)
+	}
 }
 
 export type FilterOp = WhereOp | AndOp | OrOp | RawOp
@@ -63,26 +72,97 @@ export function query(...ops: FilterOp[]): QueryFilter {
 	return filter
 }
 
-export const eq = <T>(field: string, value: T) => new WhereOp(field, Condition.eq, value)
-export const ne = <T>(field: string, value: T) => new WhereOp(field, Condition.ne, value)
-export const gt = <T>(field: string, value: T) => new WhereOp(field, Condition.gt, value)
-export const gte = <T>(field: string, value: T) => new WhereOp(field, Condition.gte, value)
-export const lt = <T>(field: string, value: T) => new WhereOp(field, Condition.lt, value)
-export const lte = <T>(field: string, value: T) => new WhereOp(field, Condition.lte, value)
-export const isIn = <T>(field: string, value: T[]) => new WhereOp(field, Condition.in, value)
-export const notIn = <T>(field: string, value: T[]) => new WhereOp(field, Condition.nin, value)
-export const like = (field: string, value: string) => new WhereOp(field, Condition.like, value)
-export const exists = (field: string) => new WhereOp(field, Condition.exists, true)
-export const notExists = (field: string) => new WhereOp(field, Condition.exists, false)
-export const contains = <T>(field: string, value: T[]) => new WhereOp(field, Condition.contains, value)
-export const notContains = <T>(field: string, value: T[]) => new WhereOp(field, Condition.notContains, value)
+export function eq<T>(field: Field<T>, value: T): WhereOp
+export function eq<T>(field: string, value: T): WhereOp
+export function eq<T>(field: string | AnyField, value: T) {
+	return new WhereOp(field, Condition.eq, value)
+}
+
+export function ne<T>(field: Field<T>, value: T): WhereOp
+export function ne<T>(field: string, value: T): WhereOp
+export function ne<T>(field: string | AnyField, value: T) {
+	return new WhereOp(field, Condition.ne, value)
+}
+
+export function gt<T>(field: Field<T>, value: T): WhereOp
+export function gt<T>(field: string, value: T): WhereOp
+export function gt<T>(field: string | AnyField, value: T) {
+	return new WhereOp(field, Condition.gt, value)
+}
+
+export function gte<T>(field: Field<T>, value: T): WhereOp
+export function gte<T>(field: string, value: T): WhereOp
+export function gte<T>(field: string | AnyField, value: T) {
+	return new WhereOp(field, Condition.gte, value)
+}
+
+export function lt<T>(field: Field<T>, value: T): WhereOp
+export function lt<T>(field: string, value: T): WhereOp
+export function lt<T>(field: string | AnyField, value: T) {
+	return new WhereOp(field, Condition.lt, value)
+}
+
+export function lte<T>(field: Field<T>, value: T): WhereOp
+export function lte<T>(field: string, value: T): WhereOp
+export function lte<T>(field: string | AnyField, value: T) {
+	return new WhereOp(field, Condition.lte, value)
+}
+
+export function isIn<T>(field: Field<T>, value: T[]): WhereOp
+export function isIn<T>(field: string, value: T[]): WhereOp
+export function isIn<T>(field: string | AnyField, value: T[]) {
+	return new WhereOp(field, Condition.in, value)
+}
+
+export function notIn<T>(field: Field<T>, value: T[]): WhereOp
+export function notIn<T>(field: string, value: T[]): WhereOp
+export function notIn<T>(field: string | AnyField, value: T[]) {
+	return new WhereOp(field, Condition.nin, value)
+}
+
+export function like(field: Field<string>, value: string): WhereOp
+export function like(field: string, value: string): WhereOp
+export function like(field: string | AnyField, value: string) {
+	return new WhereOp(field, Condition.like, value)
+}
+
+export function exists(field: Field<unknown>): WhereOp
+export function exists(field: string): WhereOp
+export function exists(field: string | AnyField) {
+	return new WhereOp(field, Condition.exists, true)
+}
+
+export function notExists(field: Field<unknown>): WhereOp
+export function notExists(field: string): WhereOp
+export function notExists(field: string | AnyField) {
+	return new WhereOp(field, Condition.exists, false)
+}
+
+export function contains<T>(field: Field<T>, value: T[]): WhereOp
+export function contains<T>(field: string, value: T[]): WhereOp
+export function contains<T>(field: string | AnyField, value: T[]) {
+	return new WhereOp(field, Condition.contains, value)
+}
+
+export function notContains<T>(field: Field<T>, value: T[]): WhereOp
+export function notContains<T>(field: string, value: T[]): WhereOp
+export function notContains<T>(field: string | AnyField, value: T[]) {
+	return new WhereOp(field, Condition.notContains, value)
+}
+
 export const and = (...clauses: FilterOp[]) => new AndOp(clauses)
 export const or = (...clauses: FilterOp[]) => new OrOp(clauses)
 export const raw = (value: unknown) => new RawOp(value)
-export const orderBy = (field: string, direction: 'asc' | 'desc' = 'asc') => new OrderByOp(field, direction)
+export function orderBy(field: Field<unknown>, direction?: 'asc' | 'desc'): OrderByOp
+export function orderBy(field: string, direction?: 'asc' | 'desc'): OrderByOp
+export function orderBy(field: string | AnyField, direction: 'asc' | 'desc' = 'asc') {
+	return new OrderByOp(field, direction)
+}
 
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
+	const { v } = await import('valleyed')
+	const { Schema } = await import('./schema')
 
 	describe('query', () => {
 		describe('query() builder', () => {
@@ -163,6 +243,17 @@ if (import.meta.vitest) {
 			test('notContains', () => {
 				expect(notContains('tags', ['a']).condition).toBe(Condition.notContains)
 			})
+			test('accepts typed field refs from schema', () => {
+				const UserSchema = Schema.from('users')
+					.pk('id', v.string(), () => 'u1')
+					.field('age', v.number())
+					.field('email', v.string())
+				const ageEq = eq(UserSchema.fields.age, 18)
+				const emailLike = like(UserSchema.fields.email, 'alice')
+				expect(ageEq.field).toBe('age')
+				expect(ageEq.value).toBe(18)
+				expect(emailLike.field).toBe('email')
+			})
 		})
 
 		describe('and() / or()', () => {
@@ -195,6 +286,12 @@ if (import.meta.vitest) {
 			})
 			test('returns OrderByOp', () => {
 				expect(orderBy('x')).toBeInstanceOf(OrderByOp)
+			})
+			test('accepts typed field refs', () => {
+				const UserSchema = Schema.from('users')
+					.pk('id', v.string(), () => 'u1')
+					.field('createdAt', v.number())
+				expect(orderBy(UserSchema.fields.createdAt).field).toBe('createdAt')
 			})
 		})
 

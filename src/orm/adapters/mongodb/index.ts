@@ -3,10 +3,10 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { MongoClient, type ClientSession, type OptionalUnlessRequiredId } from 'mongodb'
 import { v, type PipeOutput } from 'valleyed'
 
+import { compileMongoQuery, compileMongoUpdate } from './query'
 import { configurable } from '../../../utilities'
 import type { AnySchema } from '../../schema'
 import { OrmAdapter, type OrmUse } from '../base'
-import { compileMongoQuery, compileMongoUpdate } from './query'
 
 const sessionStore = new AsyncLocalStorage<ClientSession | undefined>()
 
@@ -47,7 +47,7 @@ export class MongoDbOrm extends configurable(
 			await this.#client.close()
 		}
 		use(schema: AnySchema, config: MongoDbRepoConfig) {
-			const pk = schema.pkName
+			const pk = schema.pkField.name
 			const collection = this.#client.db(config.db).collection(config.col)
 			const use: OrmUse = {
 				findMany: async (filter, options) => {
