@@ -72,90 +72,62 @@ export function query(...ops: FilterOp[]): QueryFilter {
 	return filter
 }
 
-export function eq<T>(field: Field<T>, value: T): WhereOp
-export function eq<T>(field: string, value: T): WhereOp
-export function eq<T>(field: string | AnyField, value: T) {
+export function eq<T>(field: string | Field<T>, value: T): WhereOp {
 	return new WhereOp(field, Condition.eq, value)
 }
 
-export function ne<T>(field: Field<T>, value: T): WhereOp
-export function ne<T>(field: string, value: T): WhereOp
-export function ne<T>(field: string | AnyField, value: T) {
+export function ne<T>(field: string | Field<T>, value: T): WhereOp {
 	return new WhereOp(field, Condition.ne, value)
 }
 
-export function gt<T>(field: Field<T>, value: T): WhereOp
-export function gt<T>(field: string, value: T): WhereOp
-export function gt<T>(field: string | AnyField, value: T) {
+export function gt<T>(field: string | Field<T>, value: T): WhereOp {
 	return new WhereOp(field, Condition.gt, value)
 }
 
-export function gte<T>(field: Field<T>, value: T): WhereOp
-export function gte<T>(field: string, value: T): WhereOp
-export function gte<T>(field: string | AnyField, value: T) {
+export function gte<T>(field: string | Field<T>, value: T): WhereOp {
 	return new WhereOp(field, Condition.gte, value)
 }
 
-export function lt<T>(field: Field<T>, value: T): WhereOp
-export function lt<T>(field: string, value: T): WhereOp
-export function lt<T>(field: string | AnyField, value: T) {
+export function lt<T>(field: string | Field<T>, value: T): WhereOp {
 	return new WhereOp(field, Condition.lt, value)
 }
 
-export function lte<T>(field: Field<T>, value: T): WhereOp
-export function lte<T>(field: string, value: T): WhereOp
-export function lte<T>(field: string | AnyField, value: T) {
+export function lte<T>(field: string | Field<T>, value: T): WhereOp {
 	return new WhereOp(field, Condition.lte, value)
 }
 
-export function isIn<T>(field: Field<T>, value: T[]): WhereOp
-export function isIn<T>(field: string, value: T[]): WhereOp
-export function isIn<T>(field: string | AnyField, value: T[]) {
+export function isIn<T>(field: string | Field<T>, value: T[]): WhereOp {
 	return new WhereOp(field, Condition.in, value)
 }
 
-export function notIn<T>(field: Field<T>, value: T[]): WhereOp
-export function notIn<T>(field: string, value: T[]): WhereOp
-export function notIn<T>(field: string | AnyField, value: T[]) {
+export function notIn<T>(field: string | Field<T>, value: T[]): WhereOp {
 	return new WhereOp(field, Condition.nin, value)
 }
 
-export function like(field: Field<string>, value: string): WhereOp
-export function like(field: string, value: string): WhereOp
-export function like(field: string | AnyField, value: string) {
+export function like(field: string | Field<string>, value: string): WhereOp {
 	return new WhereOp(field, Condition.like, value)
 }
 
-export function exists(field: Field<unknown>): WhereOp
-export function exists(field: string): WhereOp
-export function exists(field: string | AnyField) {
+export function exists(field: string | Field<unknown>): WhereOp {
 	return new WhereOp(field, Condition.exists, true)
 }
 
-export function notExists(field: Field<unknown>): WhereOp
-export function notExists(field: string): WhereOp
-export function notExists(field: string | AnyField) {
+export function notExists(field: string | Field<unknown>): WhereOp {
 	return new WhereOp(field, Condition.exists, false)
 }
 
-export function contains<T>(field: Field<T>, value: T[]): WhereOp
-export function contains<T>(field: string, value: T[]): WhereOp
-export function contains<T>(field: string | AnyField, value: T[]) {
+export function contains<T>(field: string | Field<T>, value: T[]): WhereOp {
 	return new WhereOp(field, Condition.contains, value)
 }
 
-export function notContains<T>(field: Field<T>, value: T[]): WhereOp
-export function notContains<T>(field: string, value: T[]): WhereOp
-export function notContains<T>(field: string | AnyField, value: T[]) {
+export function notContains<T>(field: string | Field<T>, value: T[]): WhereOp {
 	return new WhereOp(field, Condition.notContains, value)
 }
 
 export const and = (...clauses: FilterOp[]) => new AndOp(clauses)
 export const or = (...clauses: FilterOp[]) => new OrOp(clauses)
 export const raw = (value: unknown) => new RawOp(value)
-export function orderBy(field: Field<unknown>, direction?: 'asc' | 'desc'): OrderByOp
-export function orderBy(field: string, direction?: 'asc' | 'desc'): OrderByOp
-export function orderBy(field: string | AnyField, direction: 'asc' | 'desc' = 'asc') {
+export function orderBy(field: string | Field<unknown>, direction: 'asc' | 'desc' = 'asc'): OrderByOp {
 	return new OrderByOp(field, direction)
 }
 

@@ -136,30 +136,6 @@ export class MongoDbOrm extends configurable(
 					await collection.deleteOne(mongoFilter, { session: sessionStore.getStore() })
 					return doc
 				},
-				paginatedQuery: async (filter, pagination) => {
-					const { filter: mongoFilter, sort, projection } = compileMongoQuery(filter, undefined, pk)
-
-					const total = await collection.countDocuments(mongoFilter)
-
-					let cursor = collection.find(mongoFilter, { session: sessionStore.getStore(), projection })
-					if (sort) cursor = cursor.sort(sort)
-					if (!pagination.all && pagination.limit) {
-						cursor = cursor.limit(pagination.limit)
-						if (pagination.page) cursor = cursor.skip((pagination.page - 1) * pagination.limit)
-					}
-
-					const docs = await cursor.toArray()
-					const results = docs.map((d) => d as Record<string, unknown>)
-
-					const { page, limit: pLimit } = pagination
-					const last = Math.ceil(total / pLimit) || 1
-
-					return {
-						pages: { start: 1, last, next: page >= last ? null : page + 1, previous: page <= 1 ? null : page - 1, current: page },
-						docs: { limit: pLimit, total, count: results.length },
-						results,
-					}
-				},
 			}
 			return use
 		}

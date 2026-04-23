@@ -40,9 +40,39 @@ export type AnyRelDef = ManyRelation<string, Record<string, any>, any> | OneRela
 export type ResolveRelDef<D extends AnyRelDef> =
 	D extends ManyRelation<any, infer TOut, any> ? TOut[] : D extends OneRelation<any, infer TOut, any> ? TOut | null : never
 
-export type PreloadedMap<P extends readonly AnyRelDef[]> = {
-	[D in P[number] as D['name']]: ResolveRelDef<D>
+export interface NestedPreloadDef<D extends AnyRelDef = AnyRelDef> {
+	def: D
+	preloads?: readonly AnyPreloadDef[]
 }
+
+export type AnyPreloadDef = AnyRelDef | NestedPreloadDef
+
+type Shift<T extends readonly unknown[]> = T extends readonly [unknown, ...infer R] ? R : []
+type NodeName<N extends AnyPreloadDef> = N extends AnyRelDef
+	? N['name']
+	: N extends NestedPreloadDef<infer D extends AnyRelDef>
+		? D['name']
+		: never
+
+type ResolveRelDefWithNested<D extends AnyRelDef, P extends readonly AnyPreloadDef[], Depth extends readonly unknown[]> = Depth extends []
+	? ResolveRelDef<D>
+	: D extends ManyRelation<any, infer TOut, any>
+		? (TOut & PreloadedMap<P, Shift<Depth>>)[]
+		: D extends OneRelation<any, infer TOut, any>
+			? (TOut & PreloadedMap<P, Shift<Depth>>) | null
+			: never
+
+type NodeValue<N extends AnyPreloadDef, Depth extends readonly unknown[]> = N extends AnyRelDef
+	? ResolveRelDef<N>
+	: N extends { def: infer D extends AnyRelDef; preloads?: infer P extends readonly AnyPreloadDef[] }
+		? ResolveRelDefWithNested<D, P, Depth>
+		: never
+
+export type PreloadedMap<P extends readonly AnyPreloadDef[], Depth extends readonly unknown[] = [1, 2, 3, 4, 5]> = Depth extends []
+	? Record<never, never>
+	: {
+			[N in P[number] as NodeName<N>]: NodeValue<N, Depth>
+		}
 
 // ── Relations builder class ───────────────────────────────────────────────────
 

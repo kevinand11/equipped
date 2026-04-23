@@ -19,10 +19,12 @@ export enum Conditions {
 	nin = 'nin',
 }
 
+// eslint-disable-next-line promise/valid-params -- valleyed v.catch(schema, fallback) is not Promise.prototype.catch
 const queryKeys = v.catch(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
 const queryWhere = v.object({
 	field: v.string(),
 	value: v.any(),
+	// eslint-disable-next-line promise/valid-params -- valleyed v.catch(schema, fallback) is not Promise.prototype.catch
 	condition: v.catch(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
 })
 const queryWhereBlock = v.recursive(
@@ -57,8 +59,10 @@ export function queryParamsPipe() {
 				all: v.defaults(v.boolean(), false),
 				limit: v.lazy(() => {
 					const pagLimit = Instance.get().settings.utils.paginationDefaultLimit
+					// eslint-disable-next-line promise/valid-params -- valleyed v.catch(schema, fallback) is not Promise.prototype.catch
 					return v.catch(v.defaults(v.number().pipe(v.lte(pagLimit)), pagLimit), pagLimit)
 				}),
+				// eslint-disable-next-line promise/valid-params -- valleyed v.catch(schema, fallback) is not Promise.prototype.catch
 				page: v.catch(v.defaults(v.number().pipe(v.gte(1)), 1), 1),
 				search: v.defaults(
 					v.nullish(

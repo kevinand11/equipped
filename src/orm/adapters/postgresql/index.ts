@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { Pool, type PoolClient } from 'pg'
 import { v, type PipeOutput } from 'valleyed'
 
-import { buildCountQuery, buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery } from './query'
+import { buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery } from './query'
 import { configurable } from '../../../utilities'
 import type { AnySchema } from '../../schema'
 import { OrmAdapter, type OrmUse } from '../base'
@@ -112,22 +112,6 @@ export class PostgresqlOrm extends configurable(
 				deleteOne: async (filter) => {
 					const results = await use.deleteMany(filter)
 					return results[0] ?? null
-				},
-				paginatedQuery: async (filter, pagination) => {
-					const { sql: countSql, params: countParams } = buildCountQuery(filter, tableName, schema.pkField.name)
-					const countResult = await this.#getClient().query(countSql, countParams)
-					const total = Number(countResult.rows[0]?.count ?? 0)
-					const options = pagination.all
-						? undefined
-						: { limit: pagination.limit, offset: (pagination.page - 1) * pagination.limit }
-					const results = await use.findMany(filter, options)
-					const { page, limit: pLimit } = pagination
-					const last = Math.ceil(total / pLimit) || 1
-					return {
-						pages: { start: 1, last, next: page >= last ? null : page + 1, previous: page <= 1 ? null : page - 1, current: page },
-						docs: { limit: pLimit, total, count: results.length },
-						results,
-					}
 				},
 			}
 			return use
