@@ -38,6 +38,21 @@ export class SchemaField<
 
 export type AnySchemaField = SchemaField<string, Pipe<any, any>, boolean>
 
+export class ComputedField<
+	Name extends string = string,
+	P extends Pipe<any, any> = Pipe<any, any>,
+	Deps extends readonly string[] = readonly string[],
+> {
+	constructor(
+		readonly name: Name,
+		readonly pipe: P,
+		readonly deps: Deps,
+		readonly compute: (data: Record<Deps[number], unknown>) => PipeOutput<P>,
+	) {}
+}
+
+export type AnyComputedField = ComputedField<string, Pipe<any, any>, readonly string[]>
+
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 

@@ -1,9 +1,11 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
+import { v } from 'valleyed'
+
 import { EquippedError } from '../../errors'
 import type { InferAdapterConfig, OrmAdapter, OrmUse } from '../adapters/base'
-import { eq, query } from '../query'
 import type { QueryFilter, QueryOptions } from '../query'
+import { eq, query } from '../query'
 import type { AnyPreloadDef, PreloadedMap } from '../relations'
 import type { AnySchema, SchemaOutput } from '../schema'
 import { validateInsert, validateUpdate, type SchemaInsertInput, type SchemaUpdateInput } from '../schema-validations'
@@ -11,6 +13,11 @@ import { resolvePreloads } from './preloads'
 import type { Selected } from './types'
 
 type SchemaPrimaryKeyValue<S extends AnySchema> = SchemaOutput<S>[S['pkField']['name'] & keyof SchemaOutput<S>]
+type ComputedSelectionPlan = {
+	requestedSelect: Set<string> | null
+	adapterSelect?: string[]
+	computeNames: string[]
+}
 
 export class Repo<A extends OrmAdapter<any>> {
 	readonly #adapter: A
@@ -38,6 +45,82 @@ export class Repo<A extends OrmAdapter<any>> {
 		return this.#adapter.use(s, this.#getConfig(s))
 	}
 
+	#planComputedSelection(s: AnySchema, select?: readonly string[]): ComputedSelectionPlan {
+		const computedDefs = s.computedDefs as Record<string, { deps: readonly string[] }>
+		const computedNames = new Set(Object.keys(computedDefs))
+		const persistedNames = new Set(Object.keys(s.fields))
+
+		if (!select || select.length === 0) {
+			return {
+				requestedSelect: null,
+				adapterSelect: undefined,
+				computeNames: [...computedNames],
+			}
+		}
+
+		const requestedSelect = new Set(select)
+		const adapterSelect = new Set<string>()
+		const computeNames = new Set<string>()
+
+		for (const key of select) {
+			if (persistedNames.has(key)) {
+				adapterSelect.add(key)
+				continue
+			}
+			if (computedNames.has(key)) {
+				computeNames.add(key)
+				for (const dep of computedDefs[key].deps) adapterSelect.add(dep)
+				continue
+			}
+			throw new EquippedError('Unknown selected field', {
+				schema: s.name,
+				selectedField: key,
+				availableFields: [...persistedNames, ...computedNames],
+			})
+		}
+
+		return {
+			requestedSelect,
+			adapterSelect: [...adapterSelect],
+			computeNames: [...computeNames],
+		}
+	}
+
+	#applyComputedSelection(s: AnySchema, rows: Record<string, unknown>[], plan: ComputedSelectionPlan): Record<string, unknown>[] {
+		const computedDefs = s.computedDefs as Record<
+			string,
+			{ pipe: Parameters<typeof v.assert>[0]; deps: readonly string[]; compute: (data: Record<string, unknown>) => unknown }
+		>
+
+		return rows.map((row) => {
+			const enriched: Record<string, unknown> = { ...row }
+			for (const computeName of plan.computeNames) {
+				const def = computedDefs[computeName]
+				const depInput: Record<string, unknown> = {}
+				for (const dep of def.deps) {
+					if (!(dep in row)) {
+						throw new EquippedError('Computed field dependency missing from adapter result', {
+							schema: s.name,
+							computedField: computeName,
+							dependency: dep,
+							dependencies: def.deps,
+						})
+					}
+					depInput[dep] = row[dep]
+				}
+				enriched[computeName] = v.assert(def.pipe, def.compute(depInput))
+			}
+
+			if (!plan.requestedSelect) return enriched
+
+			const shaped: Record<string, unknown> = {}
+			for (const key of plan.requestedSelect) {
+				if (key in enriched) shaped[key] = enriched[key]
+			}
+			return shaped
+		})
+	}
+
 	async findOne<S extends AnySchema, P extends readonly AnyPreloadDef[] = []>(
 		s: S,
 		filter: QueryFilter,
@@ -45,9 +128,10 @@ export class Repo<A extends OrmAdapter<any>> {
 	): Promise<(SchemaOutput<S> & PreloadedMap<P>) | null> {
 		const result = await this.#getUse(s).findOne(filter)
 		if (!result) return null
+		const [computedResult] = this.#applyComputedSelection(s, [result], this.#planComputedSelection(s))
 		const { preloads } = options ?? {}
-		if (!preloads || preloads.length === 0) return result as any
-		const [resolved] = await resolvePreloads([result], [...preloads], (schema) => this.#getUse(schema))
+		if (!preloads || preloads.length === 0) return computedResult as any
+		const [resolved] = await resolvePreloads([computedResult], [...preloads], (schema) => this.#getUse(schema))
 		return (resolved ?? null) as any
 	}
 
@@ -65,8 +149,12 @@ export class Repo<A extends OrmAdapter<any>> {
 		options?: QueryOptions<Sel> & { preloads?: P },
 	): Promise<(Selected<S, Sel> & PreloadedMap<P>)[]> {
 		const { preloads, ...queryOptions } = options ?? {}
-		const results = await this.#getUse(s).findMany(filter, queryOptions)
-		const entities = results as SchemaOutput<typeof s>[]
+		const plan = this.#planComputedSelection(s, queryOptions?.select as string[] | undefined)
+		const adapterQueryOptions: QueryOptions | undefined = queryOptions
+			? ({ ...queryOptions, select: plan.adapterSelect } as QueryOptions)
+			: undefined
+		const results = await this.#getUse(s).findMany(filter, adapterQueryOptions)
+		const entities = this.#applyComputedSelection(s, results as Record<string, unknown>[], plan) as SchemaOutput<typeof s>[]
 
 		if (!preloads || preloads.length === 0) return entities as any
 
@@ -224,6 +312,12 @@ if (import.meta.vitest) {
 			.pk('id', v.string(), () => `o${++orgCounter}`)
 			.field('name', v.string())
 
+		const PersonSchema = Schema.from('people')
+			.pk('id', v.string(), () => `person-${++userCounter}`)
+			.field('firstName', v.string())
+			.field('lastName', v.string())
+			.computed('fullName', ['firstName', 'lastName'], v.string(), ({ firstName, lastName }) => `${firstName} ${lastName}`)
+
 		const UserRelations = Relations.of(UserSchema)
 			.hasMany('posts', PostSchema, 'userId')
 			.hasOne('profile', ProfileSchema, 'userId')
@@ -324,7 +418,7 @@ if (import.meta.vitest) {
 			const user = await repo.insertOne(
 				UserSchema,
 				{ email: 'u@test.com', name: 'User', orgId: org.id },
-				{ preloads: [UserRelations.definitions.org] as const },
+				{ preloads: [UserRelations.definitions.org] },
 			)
 			expect((user.org as any).name).toBe('Corp')
 
@@ -333,7 +427,7 @@ if (import.meta.vitest) {
 				UserSchema,
 				query(eq('id', user.id)),
 				{ name: 'Updated' },
-				{ preloads: [UserRelations.definitions.posts] as const },
+				{ preloads: [UserRelations.definitions.posts] },
 			)
 			expect(updated?.posts).toHaveLength(1)
 		})
@@ -342,6 +436,60 @@ if (import.meta.vitest) {
 			const repo = makeRepo()
 			const error = await repo.raw(UserSchema, 'SELECT * FROM users').catch((e) => e)
 			expect(error).toBeInstanceOf(EquippedError)
+		})
+
+		test('computed fields are derived and shaped correctly when selected', async () => {
+			const repo = makeRepo()
+			const created = await repo.insertOne(PersonSchema, { firstName: 'Ada', lastName: 'Lovelace' })
+			const rows = await repo.findMany(PersonSchema, query(), { select: ['id', 'fullName'] })
+
+			expect(rows).toEqual([{ id: created.id, fullName: 'Ada Lovelace' }])
+		})
+
+		test('computed field selection auto-includes dependencies for adapter reads', async () => {
+			const adapter = new InMemoryOrm()
+			const origUse = adapter.use.bind(adapter)
+			let seenSelect: string[] | undefined
+			adapter.use = vi.fn((schema, config) => {
+				const use = origUse(schema, config)
+				return {
+					...use,
+					findMany: async (filter, options) => {
+						seenSelect = options?.select as string[] | undefined
+						return use.findMany(filter, options)
+					},
+				}
+			})
+
+			const repo = Repo.from({ adapter, defaults: (s) => ({ prefix: s.name }) })
+			await repo.insertOne(PersonSchema, { firstName: 'Grace', lastName: 'Hopper' })
+			await repo.findMany(PersonSchema, query(), { select: ['id', 'fullName'] })
+
+			expect(seenSelect).toEqual(expect.arrayContaining(['id', 'firstName', 'lastName']))
+		})
+
+		test('missing computed dependencies in adapter output fail fast', async () => {
+			const adapter = new InMemoryOrm()
+			const origUse = adapter.use.bind(adapter)
+			adapter.use = vi.fn((schema, config) => {
+				const use = origUse(schema, config)
+				return {
+					...use,
+					findMany: async (filter, options) => {
+						const rows = await use.findMany(filter, options)
+						return rows.map((row) => {
+							const next = { ...row }
+							delete (next as any).lastName
+							return next
+						})
+					},
+				}
+			})
+
+			const repo = Repo.from({ adapter, defaults: (s) => ({ prefix: s.name }) })
+			await repo.insertOne(PersonSchema, { firstName: 'Katherine', lastName: 'Johnson' })
+
+			await expect(repo.findMany(PersonSchema, query(), { select: ['fullName'] })).rejects.toBeInstanceOf(EquippedError)
 		})
 	})
 }

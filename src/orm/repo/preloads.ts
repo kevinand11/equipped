@@ -221,7 +221,7 @@ if (import.meta.vitest) {
 			await Repo.insertOne(PostSchema, { title: 'Post 1', userId: user.id })
 			await Repo.insertOne(PostSchema, { title: 'Post 2', userId: user.id })
 
-			const users = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.posts] as const })
+			const users = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.posts] })
 			expect(users[0].posts).toHaveLength(2)
 		})
 
@@ -230,10 +230,10 @@ if (import.meta.vitest) {
 			const user = await Repo.insertOne(UserSchema, { email: 'x@test.com', name: 'X' })
 			await Repo.insertOne(ProfileSchema, { bio: 'Hello', userId: user.id })
 
-			const users = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.profile] as const })
+			const users = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.profile] })
 			expect((users[0].profile as any).bio).toBe('Hello')
 
-			const usersWithoutOrg = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.org] as const })
+			const usersWithoutOrg = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.org] })
 			expect(usersWithoutOrg[0].org).toBeNull()
 		})
 
@@ -249,7 +249,7 @@ if (import.meta.vitest) {
 						def: UserRelations.definitions.posts,
 						preloads: [{ def: PostRelations.definitions.author, preloads: [UserRelations.definitions.profile] }],
 					},
-				] as const,
+				],
 			})
 
 			const author = Array.isArray(users[0].posts[0].author) ? users[0].posts[0].author[0] : users[0].posts[0].author
@@ -270,7 +270,7 @@ if (import.meta.vitest) {
 							def: UserRelations.definitions.posts,
 							preloads: [{ def: PostRelations.definitions.author, preloads: [UserRelations.definitions.posts] }],
 						},
-					] as const,
+					],
 				}),
 			).rejects.toThrow(/Preload cycle detected/)
 		})
@@ -312,7 +312,7 @@ if (import.meta.vitest) {
 								},
 							],
 						},
-					] as const,
+					],
 				}),
 			).rejects.toThrow(/Preload depth exceeded/)
 		})
@@ -323,7 +323,7 @@ if (import.meta.vitest) {
 
 			await expect(
 				Repo.findMany(UserSchema, query(), {
-					preloads: [{ def: {} as any }] as const,
+					preloads: [{ def: {} as any }],
 				}),
 			).rejects.toThrow(/Invalid preload definition/)
 		})
@@ -334,7 +334,7 @@ if (import.meta.vitest) {
 			await Repo.insertOne(PostSchema, { title: 'Post', userId: user.id })
 
 			const found = await Repo.findOne(UserSchema, query(eq('id', user.id)), {
-				preloads: [UserRelations.definitions.posts] as const,
+				preloads: [UserRelations.definitions.posts],
 			})
 			expect(found?.posts).toHaveLength(1)
 		})
