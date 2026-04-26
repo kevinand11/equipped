@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { differ } from 'valleyed'
 
+import { EquippedError } from '../../../errors'
 import { AndOp, Condition, OrOp, WhereOp, type FilterOp, type QueryFilter, type QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
@@ -302,6 +303,12 @@ export class InMemoryOrm extends OrmAdapter<InMemoryRepoConfig> {
 					getStore().delete(String(row[pk]))
 				}
 				return rows
+			},
+			raw: async () => {
+				throw new EquippedError('In-memory adapter does not support raw operations', {
+					adapter: 'in-memory',
+					operation: 'raw',
+				})
 			},
 		}
 

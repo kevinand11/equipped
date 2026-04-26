@@ -14,6 +14,7 @@ export type OrmUse = {
 	) => Promise<Record<string, unknown>>
 	deleteOne: (filter: QueryFilter) => Promise<Record<string, unknown> | null>
 	deleteMany: (filter: QueryFilter) => Promise<Record<string, unknown>[]>
+	raw: <T = unknown>(command: unknown, params?: unknown[]) => Promise<T>
 }
 
 export abstract class OrmAdapter<Config extends object = object> {

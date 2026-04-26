@@ -1,12 +1,16 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
+import { EquippedError } from '../../errors'
 import type { InferAdapterConfig, OrmAdapter, OrmUse } from '../adapters/base'
+import { eq, query } from '../query'
 import type { QueryFilter, QueryOptions } from '../query'
 import type { AnyPreloadDef, PreloadedMap } from '../relations'
 import type { AnySchema, SchemaOutput } from '../schema'
 import { validateInsert, validateUpdate, type SchemaInsertInput, type SchemaUpdateInput } from '../schema-validations'
 import { resolvePreloads } from './preloads'
 import type { Selected } from './types'
+
+type SchemaPrimaryKeyValue<S extends AnySchema> = SchemaOutput<S>[S['pkField']['name'] & keyof SchemaOutput<S>]
 
 export class Repo<A extends OrmAdapter<any>> {
 	readonly #adapter: A
@@ -15,9 +19,13 @@ export class Repo<A extends OrmAdapter<any>> {
 		((config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>) | undefined
 	>()
 
-	constructor({ adapter, defaults }: { adapter: A; defaults: (schema: AnySchema) => InferAdapterConfig<A> }) {
+	private constructor({ adapter, defaults }: { adapter: A; defaults: (schema: AnySchema) => InferAdapterConfig<A> }) {
 		this.#adapter = adapter
 		this.#defaults = defaults
+	}
+
+	static from<A extends OrmAdapter<any>>({ adapter, defaults }: { adapter: A; defaults: (schema: AnySchema) => InferAdapterConfig<A> }) {
+		return new Repo<A>({ adapter, defaults })
 	}
 
 	#getConfig(s: AnySchema): InferAdapterConfig<A> {
@@ -41,6 +49,14 @@ export class Repo<A extends OrmAdapter<any>> {
 		if (!preloads || preloads.length === 0) return result as any
 		const [resolved] = await resolvePreloads([result], [...preloads], (schema) => this.#getUse(schema))
 		return (resolved ?? null) as any
+	}
+
+	async findById<S extends AnySchema, P extends readonly AnyPreloadDef[] = []>(
+		s: S,
+		id: SchemaPrimaryKeyValue<S>,
+		options?: { preloads?: P },
+	): Promise<(SchemaOutput<S> & PreloadedMap<P>) | null> {
+		return this.findOne(s, query(eq(s.pkField, id)), options)
 	}
 
 	async findMany<S extends AnySchema, P extends readonly AnyPreloadDef[] = [], Sel extends keyof SchemaOutput<S> & string = never>(
@@ -97,6 +113,15 @@ export class Repo<A extends OrmAdapter<any>> {
 		return (resolved ?? null) as any
 	}
 
+	async updateById<S extends AnySchema, P extends readonly AnyPreloadDef[] = []>(
+		s: S,
+		id: SchemaPrimaryKeyValue<S>,
+		data: SchemaUpdateInput<S>,
+		options?: { preloads?: P },
+	): Promise<(SchemaOutput<S> & PreloadedMap<P>) | null> {
+		return this.updateOne(s, query(eq(s.pkField, id)), data, options)
+	}
+
 	async updateMany<S extends AnySchema, P extends readonly AnyPreloadDef[] = []>(
 		s: S,
 		filter: QueryFilter,
@@ -131,9 +156,24 @@ export class Repo<A extends OrmAdapter<any>> {
 		return (result ?? null) as SchemaOutput<typeof s> | null
 	}
 
+	async deleteById<S extends AnySchema>(s: S, id: SchemaPrimaryKeyValue<S>): Promise<SchemaOutput<S> | null> {
+		return this.deleteOne(s, query(eq(s.pkField, id)))
+	}
+
 	async deleteMany<S extends AnySchema>(s: S, filter: QueryFilter): Promise<SchemaOutput<S>[]> {
 		const results = await this.#getUse(s).deleteMany(filter)
 		return results as SchemaOutput<typeof s>[]
+	}
+
+	async raw<S extends AnySchema, T = unknown>(s: S, command: unknown, params?: unknown[]): Promise<T> {
+		const use = this.#getUse(s)
+		if (!use.raw) {
+			throw new EquippedError('Raw operations are not supported by this adapter', {
+				operation: 'raw',
+				schema: s.name,
+			})
+		}
+		return use.raw<T>(command, params)
 	}
 
 	async session<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
@@ -154,7 +194,6 @@ if (import.meta.vitest) {
 	const { describe, test, expect, vi } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { InMemoryOrm } = await import('../adapters/in-memory')
-	const { eq, query } = await import('../query')
 	const { Relations } = await import('../relations')
 	const { Schema } = await import('../schema')
 
@@ -192,7 +231,7 @@ if (import.meta.vitest) {
 
 		function makeRepo() {
 			const adapter = new InMemoryOrm()
-			return new Repo({ adapter, defaults: (s) => ({ prefix: s.name }) })
+			return Repo.from({ adapter, defaults: (s) => ({ prefix: s.name }) })
 		}
 
 		test('insert/find/update/delete flows work', async () => {
@@ -209,6 +248,21 @@ if (import.meta.vitest) {
 
 			const deleted = await repo.deleteOne(UserSchema, query(eq('id', user.id)))
 			expect(deleted?.id).toBe(user.id)
+		})
+
+		test('findById, updateById, and deleteById target the schema primary key', async () => {
+			const repo = makeRepo()
+			const user = await repo.insertOne(UserSchema, { email: 'id@test.com', name: 'ById' })
+
+			const found = await repo.findById(UserSchema, user.id)
+			expect(found?.id).toBe(user.id)
+
+			const updated = await repo.updateById(UserSchema, user.id, { name: 'Changed' })
+			expect(updated?.name).toBe('Changed')
+
+			const deleted = await repo.deleteById(UserSchema, user.id)
+			expect(deleted?.id).toBe(user.id)
+			expect(await repo.findById(UserSchema, user.id)).toBeNull()
 		})
 
 		test('insertMany, findMany and upsertOne work', async () => {
@@ -234,7 +288,7 @@ if (import.meta.vitest) {
 				return origUse(s, config)
 			})
 
-			const repo = new Repo({ adapter: spyAdapter, defaults: (s) => ({ prefix: s.name }) })
+			const repo = Repo.from({ adapter: spyAdapter, defaults: (s) => ({ prefix: s.name }) })
 
 			await repo.resolve(
 				(config) => ({ prefix: `a_${config.prefix}` }),
@@ -282,6 +336,12 @@ if (import.meta.vitest) {
 				{ preloads: [UserRelations.definitions.posts] as const },
 			)
 			expect(updated?.posts).toHaveLength(1)
+		})
+
+		test('raw operations throw EquippedError on in-memory adapter', async () => {
+			const repo = makeRepo()
+			const error = await repo.raw(UserSchema, 'SELECT * FROM users').catch((e) => e)
+			expect(error).toBeInstanceOf(EquippedError)
 		})
 	})
 }

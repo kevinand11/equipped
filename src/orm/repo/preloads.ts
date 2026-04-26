@@ -1,3 +1,4 @@
+import { EquippedError } from '../../errors'
 import type { OrmUse } from '../adapters/base'
 import { isIn, query } from '../query'
 import type { AnyPreloadDef, AnyRelDef, NestedPreloadDef } from '../relations'
@@ -66,14 +67,22 @@ async function resolvePreload(
 	path: readonly string[],
 ): Promise<Record<string, unknown>[]> {
 	if (depth > MAX_PRELOAD_DEPTH) {
-		throw new Error(`Preload depth exceeded max depth ${MAX_PRELOAD_DEPTH}`)
+		throw new EquippedError(`Preload depth exceeded max depth ${MAX_PRELOAD_DEPTH}`, {
+			operation: 'resolvePreload',
+			depth,
+			maxDepth: MAX_PRELOAD_DEPTH,
+		})
 	}
 
 	const { def } = node
 	const { target, name } = def
 	const step = relationStep(def)
 	if (path.includes(step)) {
-		throw new Error(`Preload cycle detected: ${[...path, step].join(' -> ')}`)
+		throw new EquippedError(`Preload cycle detected: ${[...path, step].join(' -> ')}`, {
+			operation: 'resolvePreload',
+			path,
+			step,
+		})
 	}
 	const nextPath = [...path, step]
 
@@ -122,7 +131,7 @@ async function resolvePreload(
 		return entities.map((e) => ({ ...e, [name]: grouped.get(e[refCol] as any) ?? [] }))
 	}
 
-	throw new Error(`Unknown relation kind: ${(def as any).kind}`)
+	throw new Error(`Unknown relation kind: ${(def as any).kind}; expected OneRelation or ManyRelation`)
 }
 
 if (import.meta.vitest) {
@@ -203,7 +212,7 @@ if (import.meta.vitest) {
 
 		function makeRepo() {
 			const adapter = new InMemoryOrm()
-			return new Repo({ adapter, defaults: (s) => ({ prefix: s.name }) })
+			return Repo.from({ adapter, defaults: (s) => ({ prefix: s.name }) })
 		}
 
 		test('hasMany preload resolves related entities', async () => {

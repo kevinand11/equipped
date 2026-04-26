@@ -80,7 +80,7 @@ export class Relations<S extends AnySchema, R extends Record<string, AnyRelDef> 
 	readonly #source: S
 	readonly #defs: R = {} as R
 
-	constructor(source: S) {
+	private constructor(source: S) {
 		this.#source = source
 	}
 
