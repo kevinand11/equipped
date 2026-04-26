@@ -1,5 +1,6 @@
 import type { AnySchema, SchemaOutput } from '../schema'
+import type { Prettify } from '../utils'
 
 export type Selected<S extends AnySchema, Sel extends string> = [Sel] extends [never]
 	? SchemaOutput<S>
-	: Pick<SchemaOutput<S>, Sel & keyof SchemaOutput<S>>
+	: Prettify<Pick<SchemaOutput<S>, Sel & keyof SchemaOutput<S>>>

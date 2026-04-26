@@ -226,7 +226,7 @@ export class MongoDbOrm extends configurable(
 								collection: config.col,
 							})
 						}
-						const result = await collection.aggregate(command as any, { session: sessionStore.getStore() }).toArray()
+						const result = await collection.aggregate(command, { session: sessionStore.getStore() }).toArray()
 						return result as T
 					} catch (error) {
 						if (error instanceof EquippedError) throw error

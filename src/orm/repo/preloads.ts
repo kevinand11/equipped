@@ -212,7 +212,7 @@ if (import.meta.vitest) {
 
 		function makeRepo() {
 			const adapter = new InMemoryOrm()
-			return Repo.from({ adapter, defaults: (s) => ({ prefix: s.name }) })
+			return Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
 		}
 
 		test('hasMany preload resolves related entities', async () => {
@@ -231,7 +231,7 @@ if (import.meta.vitest) {
 			await Repo.insertOne(ProfileSchema, { bio: 'Hello', userId: user.id })
 
 			const users = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.profile] })
-			expect((users[0].profile as any).bio).toBe('Hello')
+			expect(users[0].profile?.bio).toBe('Hello')
 
 			const usersWithoutOrg = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.org] })
 			expect(usersWithoutOrg[0].org).toBeNull()
@@ -252,8 +252,8 @@ if (import.meta.vitest) {
 				],
 			})
 
-			const author = Array.isArray(users[0].posts[0].author) ? users[0].posts[0].author[0] : users[0].posts[0].author
-			const profile = author && Array.isArray((author as any).profile) ? (author as any).profile[0] : (author as any)?.profile
+			const author = users[0].posts[0].author
+			const profile = author?.profile
 			expect(author?.id).toBe(user.id)
 			expect(profile?.bio).toBe('Hello nested')
 		})

@@ -199,7 +199,7 @@ export class PostgresqlOrm extends configurable(
 								table: tableName,
 							})
 						}
-						const result = await this._getClient().query(command, params as any[])
+						const result = await this._getClient().query(command, params)
 						return result as T
 					} catch (error) {
 						if (error instanceof EquippedError) throw error

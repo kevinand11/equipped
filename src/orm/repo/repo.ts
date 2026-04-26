@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
-import { v } from 'valleyed'
+import { v, type Prettify } from 'valleyed'
 
 import { EquippedError } from '../../errors'
 import type { InferAdapterConfig, OrmAdapter, OrmUse } from '../adapters/base'
@@ -26,13 +26,13 @@ export class Repo<A extends OrmAdapter<any>> {
 		((config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>) | undefined
 	>()
 
-	private constructor({ adapter, defaults }: { adapter: A; defaults: (schema: AnySchema) => InferAdapterConfig<A> }) {
+	private constructor({ adapter, resolve }: { adapter: A; resolve: (schema: AnySchema) => InferAdapterConfig<A> }) {
 		this.#adapter = adapter
-		this.#defaults = defaults
+		this.#defaults = resolve
 	}
 
-	static from<A extends OrmAdapter<any>>({ adapter, defaults }: { adapter: A; defaults: (schema: AnySchema) => InferAdapterConfig<A> }) {
-		return new Repo<A>({ adapter, defaults })
+	static from<A extends OrmAdapter<any>>({ adapter, resolve }: { adapter: A; resolve: (schema: AnySchema) => InferAdapterConfig<A> }) {
+		return new Repo<A>({ adapter, resolve })
 	}
 
 	#getConfig(s: AnySchema): InferAdapterConfig<A> {
@@ -125,7 +125,7 @@ export class Repo<A extends OrmAdapter<any>> {
 		s: S,
 		filter: QueryFilter,
 		options?: { preloads?: P },
-	): Promise<(SchemaOutput<S> & PreloadedMap<P>) | null> {
+	): Promise<Prettify<SchemaOutput<S> & PreloadedMap<P>> | null> {
 		const result = await this.#getUse(s).findOne(filter)
 		if (!result) return null
 		const [computedResult] = this.#applyComputedSelection(s, [result], this.#planComputedSelection(s))
@@ -139,7 +139,7 @@ export class Repo<A extends OrmAdapter<any>> {
 		s: S,
 		id: SchemaPrimaryKeyValue<S>,
 		options?: { preloads?: P },
-	): Promise<(SchemaOutput<S> & PreloadedMap<P>) | null> {
+	): Promise<Prettify<SchemaOutput<S> & PreloadedMap<P>> | null> {
 		return this.findOne(s, query(eq(s.pkField, id)), options)
 	}
 
@@ -147,7 +147,7 @@ export class Repo<A extends OrmAdapter<any>> {
 		s: S,
 		filter: QueryFilter,
 		options?: QueryOptions<Sel> & { preloads?: P },
-	): Promise<(Selected<S, Sel> & PreloadedMap<P>)[]> {
+	): Promise<Prettify<Selected<S, Sel> & PreloadedMap<P>>[]> {
 		const { preloads, ...queryOptions } = options ?? {}
 		const plan = this.#planComputedSelection(s, queryOptions?.select as string[] | undefined)
 		const adapterQueryOptions: QueryOptions | undefined = queryOptions
@@ -165,7 +165,7 @@ export class Repo<A extends OrmAdapter<any>> {
 		s: S,
 		data: SchemaInsertInput<S>,
 		options?: { preloads?: P },
-	): Promise<SchemaOutput<S> & PreloadedMap<P>> {
+	): Promise<Prettify<SchemaOutput<S> & PreloadedMap<P>>> {
 		const validated = validateInsert(s, data as Record<string, unknown>)
 		const result = await this.#getUse(s).insertOne(validated as Record<string, unknown>)
 		const { preloads } = options ?? {}
@@ -178,7 +178,7 @@ export class Repo<A extends OrmAdapter<any>> {
 		s: S,
 		data: SchemaInsertInput<S>[],
 		options?: { preloads?: P },
-	): Promise<(SchemaOutput<S> & PreloadedMap<P>)[]> {
+	): Promise<Prettify<SchemaOutput<S> & PreloadedMap<P>>[]> {
 		const validated = (data as Record<string, unknown>[]).map((d) => validateInsert(s, d) as Record<string, unknown>)
 		const results = await this.#getUse(s).insertMany(validated)
 		const { preloads } = options ?? {}
@@ -191,7 +191,7 @@ export class Repo<A extends OrmAdapter<any>> {
 		filter: QueryFilter,
 		data: SchemaUpdateInput<S>,
 		options?: { preloads?: P },
-	): Promise<(SchemaOutput<S> & PreloadedMap<P>) | null> {
+	): Promise<Prettify<SchemaOutput<S> & PreloadedMap<P>> | null> {
 		const validated = validateUpdate(s, data as Record<string, unknown>)
 		const result = await this.#getUse(s).updateOne(filter, validated as Record<string, unknown>)
 		if (!result) return null
@@ -206,7 +206,7 @@ export class Repo<A extends OrmAdapter<any>> {
 		id: SchemaPrimaryKeyValue<S>,
 		data: SchemaUpdateInput<S>,
 		options?: { preloads?: P },
-	): Promise<(SchemaOutput<S> & PreloadedMap<P>) | null> {
+	): Promise<Prettify<SchemaOutput<S> & PreloadedMap<P>> | null> {
 		return this.updateOne(s, query(eq(s.pkField, id)), data, options)
 	}
 
@@ -215,7 +215,7 @@ export class Repo<A extends OrmAdapter<any>> {
 		filter: QueryFilter,
 		data: SchemaUpdateInput<S>,
 		options?: { preloads?: P },
-	): Promise<(SchemaOutput<S> & PreloadedMap<P>)[]> {
+	): Promise<Prettify<SchemaOutput<S> & PreloadedMap<P>>[]> {
 		const validated = validateUpdate(s, data as Record<string, unknown>)
 		const results = await this.#getUse(s).updateMany(filter, validated as Record<string, unknown>)
 		const { preloads } = options ?? {}
@@ -325,7 +325,7 @@ if (import.meta.vitest) {
 
 		function makeRepo() {
 			const adapter = new InMemoryOrm()
-			return Repo.from({ adapter, defaults: (s) => ({ prefix: s.name }) })
+			return Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
 		}
 
 		test('insert/find/update/delete flows work', async () => {
@@ -382,7 +382,7 @@ if (import.meta.vitest) {
 				return origUse(s, config)
 			})
 
-			const repo = Repo.from({ adapter: spyAdapter, defaults: (s) => ({ prefix: s.name }) })
+			const repo = Repo.from({ adapter: spyAdapter, resolve: (s) => ({ prefix: s.name }) })
 
 			await repo.resolve(
 				(config) => ({ prefix: `a_${config.prefix}` }),
@@ -461,7 +461,7 @@ if (import.meta.vitest) {
 				}
 			})
 
-			const repo = Repo.from({ adapter, defaults: (s) => ({ prefix: s.name }) })
+			const repo = Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
 			await repo.insertOne(PersonSchema, { firstName: 'Grace', lastName: 'Hopper' })
 			await repo.findMany(PersonSchema, query(), { select: ['id', 'fullName'] })
 
@@ -486,7 +486,7 @@ if (import.meta.vitest) {
 				}
 			})
 
-			const repo = Repo.from({ adapter, defaults: (s) => ({ prefix: s.name }) })
+			const repo = Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
 			await repo.insertOne(PersonSchema, { firstName: 'Katherine', lastName: 'Johnson' })
 
 			await expect(repo.findMany(PersonSchema, query(), { select: ['fullName'] })).rejects.toBeInstanceOf(EquippedError)
