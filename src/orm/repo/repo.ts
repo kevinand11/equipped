@@ -118,6 +118,30 @@ if (import.meta.vitest) {
 			expect(all).toEqual([{ id: created.id }])
 		})
 
+		test('builder snapshots are immutable across chain branches', async () => {
+			const repo = makeRepo()
+			await repo
+				.from(UserSchema)
+				.all()
+				.insert([
+					{ email: 'alice@branch.com', name: 'Alice' },
+					{ email: 'bob@branch.com', name: 'Bob' },
+				])
+				.run()
+
+			const base = repo.from(UserSchema).all()
+			const branchA = base.where((q) => q.eq('name', 'Alice')).select(['id'])
+			const branchB = base.where((q) => q.eq('name', 'Bob')).select(['name'])
+
+			const rowsA = await branchA.run()
+			const rowsB = await branchB.run()
+
+			expect(rowsA).toHaveLength(1)
+			expect(rowsB).toHaveLength(1)
+			expect(rowsA.every((r) => 'id' in r && !('name' in r))).toBe(true)
+			expect(rowsB).toEqual([{ name: 'Bob' }])
+		})
+
 		test('fluent builders support write chains with preloads', async () => {
 			const repo = makeRepo()
 			const org = await repo.from(OrgSchema).one().insert({ name: 'Fluent Org' }).run()
@@ -325,6 +349,19 @@ if (import.meta.vitest) {
 			await repo.from(PersonSchema).all().select(['id', 'fullName']).run()
 
 			expect(seenSelect).toEqual(expect.arrayContaining(['id', 'firstName', 'lastName']))
+		})
+
+		test('unknown selected fields fail fast', async () => {
+			const repo = makeRepo()
+			await repo.from(PersonSchema).one().insert({ firstName: 'Ada', lastName: 'Lovelace' }).run()
+
+			await expect(
+				repo
+					.from(PersonSchema)
+					.all()
+					.select(['unknownField' as any])
+					.run(),
+			).rejects.toBeInstanceOf(EquippedError)
 		})
 
 		test('missing computed dependencies in adapter output fail fast', async () => {
