@@ -1,7 +1,7 @@
 import type { AnyField, Field } from './fields'
 import { toFieldName } from './fields'
 
-export enum Condition {
+export enum WhereOp {
 	eq = 'eq',
 	ne = 'ne',
 	gt = 'gt',
@@ -16,26 +16,22 @@ export enum Condition {
 	notContains = 'notContains',
 }
 
-export class WhereOp {
+export enum WhereBlockOp {
+	and = 'and',
+	or = 'or',
+}
+
+export class Where {
 	readonly field: string
 	constructor(
 		field: string | AnyField,
-		readonly condition: Condition,
+		readonly op: WhereOp,
 		readonly value: unknown,
 	) {
 		this.field = toFieldName(field)
 	}
 }
-export class AndOp {
-	constructor(readonly clauses: FilterOp[]) {}
-}
-export class OrOp {
-	constructor(readonly clauses: FilterOp[]) {}
-}
-export class RawOp {
-	constructor(readonly value: unknown) {}
-}
-export class OrderByOp {
+export class OrderBy {
 	readonly field: string
 	constructor(
 		field: string | AnyField,
@@ -45,90 +41,220 @@ export class OrderByOp {
 	}
 }
 
-export type FilterOp = WhereOp | AndOp | OrOp | RawOp
+export type FilterOp = Where | QueryGroup
 
-export type QueryFilter = {
-	wheres: WhereOp[]
-	ands: AndOp[]
-	ors: OrOp[]
-	raws: unknown[]
+export type QuerySpec = {
+	clauses: FilterOp[]
 }
 
 export type QueryOptions<Sel extends string = string> = {
-	orderBy?: OrderByOp[]
+	orderBy?: OrderBy[]
 	limit?: number
 	offset?: number
-	select?: Sel[]
+	select?: readonly Sel[]
 }
 
-export function query(...ops: FilterOp[]): QueryFilter {
-	const filter: QueryFilter = { wheres: [], ands: [], ors: [], raws: [] }
-	for (const op of ops) {
-		if (op instanceof WhereOp) filter.wheres.push(op)
-		else if (op instanceof AndOp) filter.ands.push(op)
-		else if (op instanceof OrOp) filter.ors.push(op)
-		else if (op instanceof RawOp) filter.raws.push(op.value)
+export class QueryGroup {
+	children: (Where | QueryGroup)[] = []
+
+	private constructor(readonly op: WhereBlockOp | null = null) {}
+
+	#where(field: string | AnyField, condition: WhereOp, value: unknown): this {
+		this.children.push(new Where(field, condition, value))
+		return this
 	}
-	return filter
+
+	eq<T>(field: string | Field<T>, value: T): this {
+		return this.#where(field, WhereOp.eq, value)
+	}
+
+	ne<T>(field: string | Field<T>, value: T): this {
+		return this.#where(field, WhereOp.ne, value)
+	}
+
+	gt<T>(field: string | Field<T>, value: T): this {
+		return this.#where(field, WhereOp.gt, value)
+	}
+
+	gte<T>(field: string | Field<T>, value: T): this {
+		return this.#where(field, WhereOp.gte, value)
+	}
+
+	lt<T>(field: string | Field<T>, value: T): this {
+		return this.#where(field, WhereOp.lt, value)
+	}
+
+	lte<T>(field: string | Field<T>, value: T): this {
+		return this.#where(field, WhereOp.lte, value)
+	}
+
+	isIn<T>(field: string | Field<T>, value: T[]): this {
+		return this.#where(field, WhereOp.in, value)
+	}
+
+	notIn<T>(field: string | Field<T>, value: T[]): this {
+		return this.#where(field, WhereOp.nin, value)
+	}
+
+	like(field: string | Field<string>, value: string): this {
+		return this.#where(field, WhereOp.like, value)
+	}
+
+	exists(field: string | Field<unknown>): this {
+		return this.#where(field, WhereOp.exists, true)
+	}
+
+	notExists(field: string | Field<unknown>): this {
+		return this.#where(field, WhereOp.exists, false)
+	}
+
+	contains<T>(field: string | Field<T>, value: T[]): this {
+		return this.#where(field, WhereOp.contains, value)
+	}
+
+	notContains<T>(field: string | Field<T>, value: T[]): this {
+		return this.#where(field, WhereOp.notContains, value)
+	}
+
+	and(facFn: (query: QueryGroup) => QueryGroup): this {
+		const group = new QueryGroup(WhereBlockOp.and)
+		this.children.push(facFn(group))
+		return this
+	}
+
+	or(facFn: (query: QueryGroup) => QueryGroup): this {
+		const group = new QueryGroup(WhereBlockOp.or)
+		this.children.push(facFn(group))
+		return this
+	}
+
+	static from() {
+		return new QueryGroup()
+	}
 }
 
-export function eq<T>(field: string | Field<T>, value: T): WhereOp {
-	return new WhereOp(field, Condition.eq, value)
-}
+export class Query<Sel extends readonly string[] = string[]> {
+	readonly #group = QueryGroup.from()
+	readonly #orderByOps: OrderBy[] = []
+	#limit: number | undefined
+	#offset: number | undefined
+	#select: Sel | undefined
 
-export function ne<T>(field: string | Field<T>, value: T): WhereOp {
-	return new WhereOp(field, Condition.ne, value)
-}
+	private constructor() {}
 
-export function gt<T>(field: string | Field<T>, value: T): WhereOp {
-	return new WhereOp(field, Condition.gt, value)
-}
+	static from(): Query {
+		return new Query()
+	}
 
-export function gte<T>(field: string | Field<T>, value: T): WhereOp {
-	return new WhereOp(field, Condition.gte, value)
-}
+	eq<T>(field: string | Field<T>, value: T): this {
+		this.#group.eq(field, value)
+		return this
+	}
 
-export function lt<T>(field: string | Field<T>, value: T): WhereOp {
-	return new WhereOp(field, Condition.lt, value)
-}
+	ne<T>(field: string | Field<T>, value: T): this {
+		this.#group.ne(field, value)
+		return this
+	}
 
-export function lte<T>(field: string | Field<T>, value: T): WhereOp {
-	return new WhereOp(field, Condition.lte, value)
-}
+	gt<T>(field: string | Field<T>, value: T): this {
+		this.#group.gt(field, value)
+		return this
+	}
 
-export function isIn<T>(field: string | Field<T>, value: T[]): WhereOp {
-	return new WhereOp(field, Condition.in, value)
-}
+	gte<T>(field: string | Field<T>, value: T): this {
+		this.#group.gte(field, value)
+		return this
+	}
 
-export function notIn<T>(field: string | Field<T>, value: T[]): WhereOp {
-	return new WhereOp(field, Condition.nin, value)
-}
+	lt<T>(field: string | Field<T>, value: T): this {
+		this.#group.lt(field, value)
+		return this
+	}
 
-export function like(field: string | Field<string>, value: string): WhereOp {
-	return new WhereOp(field, Condition.like, value)
-}
+	lte<T>(field: string | Field<T>, value: T): this {
+		this.#group.lte(field, value)
+		return this
+	}
 
-export function exists(field: string | Field<unknown>): WhereOp {
-	return new WhereOp(field, Condition.exists, true)
-}
+	isIn<T>(field: string | Field<T>, value: T[]): this {
+		this.#group.isIn(field, value)
+		return this
+	}
 
-export function notExists(field: string | Field<unknown>): WhereOp {
-	return new WhereOp(field, Condition.exists, false)
-}
+	notIn<T>(field: string | Field<T>, value: T[]): this {
+		this.#group.notIn(field, value)
+		return this
+	}
 
-export function contains<T>(field: string | Field<T>, value: T[]): WhereOp {
-	return new WhereOp(field, Condition.contains, value)
-}
+	like(field: string | Field<string>, value: string): this {
+		this.#group.like(field, value)
+		return this
+	}
 
-export function notContains<T>(field: string | Field<T>, value: T[]): WhereOp {
-	return new WhereOp(field, Condition.notContains, value)
-}
+	exists(field: string | Field<unknown>): this {
+		this.#group.exists(field)
+		return this
+	}
 
-export const and = (...clauses: FilterOp[]) => new AndOp(clauses)
-export const or = (...clauses: FilterOp[]) => new OrOp(clauses)
-export const raw = (value: unknown) => new RawOp(value)
-export function orderBy(field: string | Field<unknown>, direction: 'asc' | 'desc' = 'asc'): OrderByOp {
-	return new OrderByOp(field, direction)
+	notExists(field: string | Field<unknown>): this {
+		this.#group.notExists(field)
+		return this
+	}
+
+	contains<T>(field: string | Field<T>, value: T[]): this {
+		this.#group.contains(field, value)
+		return this
+	}
+
+	notContains<T>(field: string | Field<T>, value: T[]): this {
+		this.#group.notContains(field, value)
+		return this
+	}
+
+	and(group: (query: QueryGroup) => QueryGroup): this {
+		this.#group.and(group)
+		return this
+	}
+
+	or(group: (query: QueryGroup) => QueryGroup): this {
+		this.#group.or(group)
+		return this
+	}
+
+	orderBy(field: string | Field<unknown>, direction: 'asc' | 'desc' = 'asc'): this {
+		this.#orderByOps.push(new OrderBy(field, direction))
+		return this
+	}
+
+	limit(limit: number): this {
+		this.#limit = limit
+		return this
+	}
+
+	offset(offset: number): this {
+		this.#offset = offset
+		return this
+	}
+
+	select(select: Sel): this {
+		this.#select = select
+		return this
+	}
+
+	toQuerySpec(): QuerySpec {
+		return {
+			clauses: this.#group.children,
+		}
+	}
+
+	toOptions(): QueryOptions {
+		return {
+			orderBy: this.#orderByOps,
+			offset: this.#offset,
+			limit: this.#limit,
+			select: this.#select,
+		}
+	}
 }
 
 if (import.meta.vitest) {
@@ -137,141 +263,56 @@ if (import.meta.vitest) {
 	const { Schema } = await import('./schema')
 
 	describe('query', () => {
-		describe('query() builder', () => {
-			test('empty filter has all empty collections', () => {
-				const f = query()
-				expect(f.wheres).toEqual([])
-				expect(f.ands).toEqual([])
-				expect(f.ors).toEqual([])
-				expect(f.raws).toEqual([])
+		describe('QueryGroup', () => {
+			test('stores clauses and nested groups', () => {
+				const group = QueryGroup.from()
+					.eq('a', 1)
+					.or((nested) => nested.eq('b', 2).eq('c', 3))
+				const clauses = group.children
+				expect(clauses).toHaveLength(2)
+				expect(clauses[0]).toBeInstanceOf(Where)
+				expect(clauses[1]).toBeInstanceOf(QueryGroup)
+				expect((clauses[1] as QueryGroup).op).toBe(WhereBlockOp.or)
 			})
-			test('routes WhereOp to wheres', () => {
-				const f = query(eq('x', 1))
-				expect(f.wheres).toHaveLength(1)
-				expect(f.wheres[0]).toBeInstanceOf(WhereOp)
-			})
-			test('routes AndOp to ands', () => {
-				expect(query(and(eq('a', 1), eq('b', 2))).ands).toHaveLength(1)
-			})
-			test('routes OrOp to ors', () => {
-				expect(query(or(eq('a', 1), eq('b', 2))).ors).toHaveLength(1)
-			})
-			test('routes RawOp value to raws', () => {
-				expect(query(raw({ custom: true })).raws).toEqual([{ custom: true }])
-			})
-			test('accepts mixed op types in one call', () => {
-				const f = query(eq('a', 1), and(eq('b', 2), eq('c', 3)), or(eq('d', 4), eq('e', 5)), raw(null))
-				expect(f.wheres).toHaveLength(1)
-				expect(f.ands).toHaveLength(1)
-				expect(f.ors).toHaveLength(1)
-				expect(f.raws).toHaveLength(1)
-			})
-		})
 
-		describe('condition factories', () => {
-			test('eq stores field, condition, value', () => {
-				const op = eq('age', 18)
-				expect(op).toBeInstanceOf(WhereOp)
-				expect(op.field).toBe('age')
-				expect(op.condition).toBe(Condition.eq)
-				expect(op.value).toBe(18)
-			})
-			test('ne', () => {
-				expect(ne('x', 1).condition).toBe(Condition.ne)
-			})
-			test('gt', () => {
-				expect(gt('x', 1).condition).toBe(Condition.gt)
-			})
-			test('gte', () => {
-				expect(gte('x', 1).condition).toBe(Condition.gte)
-			})
-			test('lt', () => {
-				expect(lt('x', 1).condition).toBe(Condition.lt)
-			})
-			test('lte', () => {
-				expect(lte('x', 1).condition).toBe(Condition.lte)
-			})
-			test('isIn stores array value', () => {
-				const op = isIn('status', ['a', 'b'])
-				expect(op.condition).toBe(Condition.in)
-				expect(op.value).toEqual(['a', 'b'])
-			})
-			test('notIn', () => {
-				expect(notIn('x', ['y']).condition).toBe(Condition.nin)
-			})
-			test('like', () => {
-				expect(like('name', 'alice').condition).toBe(Condition.like)
-			})
-			test('exists sets value true', () => {
-				expect(exists('email').condition).toBe(Condition.exists)
-				expect(exists('email').value).toBe(true)
-			})
-			test('notExists sets value false', () => {
-				expect(notExists('email').value).toBe(false)
-			})
-			test('contains', () => {
-				expect(contains('tags', ['a']).condition).toBe(Condition.contains)
-			})
-			test('notContains', () => {
-				expect(notContains('tags', ['a']).condition).toBe(Condition.notContains)
-			})
 			test('accepts typed field refs from schema', () => {
 				const UserSchema = Schema.from('users')
 					.pk('id', v.string(), () => 'u1')
 					.field('age', v.number())
 					.field('email', v.string())
-				const ageEq = eq(UserSchema.fields.age, 18)
-				const emailLike = like(UserSchema.fields.email, 'alice')
-				expect(ageEq.field).toBe('age')
-				expect(ageEq.value).toBe(18)
-				expect(emailLike.field).toBe('email')
+				const clauses = QueryGroup.from().eq(UserSchema.fields.age, 18).like(UserSchema.fields.email, 'alice').children
+				expect((clauses[0] as Where).field).toBe('age')
+				expect((clauses[1] as Where).field).toBe('email')
 			})
 		})
 
-		describe('and() / or()', () => {
-			test('and stores all clauses', () => {
-				const op = and(eq('a', 1), eq('b', 2), eq('c', 3))
-				expect(op).toBeInstanceOf(AndOp)
-				expect(op.clauses).toHaveLength(3)
-			})
-			test('or stores all clauses', () => {
-				const op = or(eq('a', 1), eq('b', 2))
-				expect(op).toBeInstanceOf(OrOp)
-				expect(op.clauses).toHaveLength(2)
-			})
-			test('clauses can be nested', () => {
-				const op = or(and(eq('a', 1), eq('b', 2)), eq('c', 3))
-				expect(op.clauses[0]).toBeInstanceOf(AndOp)
-				expect(op.clauses[1]).toBeInstanceOf(WhereOp)
-			})
-		})
+		describe('Query chainable API', () => {
+			test('query spec', () => {
+				const built = Query.from()
+					.eq('age', 18)
+					.and((q) => q.eq('status', 'active').or((nested) => nested.like('name', 'ali').eq('role', 'admin')))
+					.orderBy('createdAt', 'desc')
+					.limit(10)
+					.offset(5)
+					.select(['id', 'name'])
 
-		describe('orderBy()', () => {
-			test('defaults direction to asc', () => {
-				expect(orderBy('name').direction).toBe('asc')
-			})
-			test('accepts desc', () => {
-				expect(orderBy('name', 'desc').direction).toBe('desc')
-			})
-			test('stores field name', () => {
-				expect(orderBy('createdAt').field).toBe('createdAt')
-			})
-			test('returns OrderByOp', () => {
-				expect(orderBy('x')).toBeInstanceOf(OrderByOp)
-			})
-			test('accepts typed field refs', () => {
-				const UserSchema = Schema.from('users')
-					.pk('id', v.string(), () => 'u1')
-					.field('createdAt', v.number())
-				expect(orderBy(UserSchema.fields.createdAt).field).toBe('createdAt')
-			})
-		})
 
-		describe('raw()', () => {
-			test('stores value as RawOp', () => {
-				const r = raw({ $expr: 1 })
-				expect(r).toBeInstanceOf(RawOp)
-				expect(r.value).toEqual({ $expr: 1 })
+				const spec = built.toQuerySpec()
+				const options = built.toOptions()
+
+				expect(spec.clauses).toHaveLength(2)
+				expect(spec.clauses[0]).toBeInstanceOf(Where)
+				expect(spec.clauses[1]).toBeInstanceOf(QueryGroup)
+				expect((spec.clauses[1] as QueryGroup).op).toBe(WhereBlockOp.and)
+				expect(options.orderBy).toHaveLength(1)
+				expect(options.limit).toBe(10)
+				expect(options.offset).toBe(5)
+				expect(options.select).toEqual(['id', 'name'])
+			})
+
+			test('defaults orderBy direction to asc', () => {
+				const options = Query.from().orderBy('name').toOptions()
+				expect(options.orderBy?.[0].direction).toBe('asc')
 			})
 		})
 	})

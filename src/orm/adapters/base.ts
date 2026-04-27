@@ -1,19 +1,19 @@
-import type { QueryFilter, QueryOptions } from '../query'
+import type { QueryOptions, QuerySpec } from '../query'
 import type { AnySchema } from '../schema'
 
 export type OrmUse = {
-	findMany: (filter: QueryFilter, options?: QueryOptions) => Promise<Record<string, unknown>[]>
-	findOne: (filter: QueryFilter) => Promise<Record<string, unknown> | null>
+	findMany: (filter: QuerySpec, options?: QueryOptions) => Promise<Record<string, unknown>[]>
+	findOne: (filter: QuerySpec) => Promise<Record<string, unknown> | null>
 	insertOne: (data: Record<string, unknown>) => Promise<Record<string, unknown>>
 	insertMany: (data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>
-	updateMany: (filter: QueryFilter, data: Record<string, unknown>) => Promise<Record<string, unknown>[]>
-	updateOne: (filter: QueryFilter, data: Record<string, unknown>) => Promise<Record<string, unknown> | null>
+	updateMany: (filter: QuerySpec, data: Record<string, unknown>) => Promise<Record<string, unknown>[]>
+	updateOne: (filter: QuerySpec, data: Record<string, unknown>) => Promise<Record<string, unknown> | null>
 	upsertOne: (
-		filter: QueryFilter,
+		filter: QuerySpec,
 		data: { insert: Record<string, unknown> } | { insert: Record<string, unknown>; update: Record<string, unknown> },
 	) => Promise<Record<string, unknown>>
-	deleteOne: (filter: QueryFilter) => Promise<Record<string, unknown> | null>
-	deleteMany: (filter: QueryFilter) => Promise<Record<string, unknown>[]>
+	deleteOne: (filter: QuerySpec) => Promise<Record<string, unknown> | null>
+	deleteMany: (filter: QuerySpec) => Promise<Record<string, unknown>[]>
 	raw: <T = unknown>(command: unknown, params?: unknown[]) => Promise<T>
 }
 

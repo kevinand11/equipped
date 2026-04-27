@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { differ } from 'valleyed'
 
 import { EquippedError } from '../../../errors'
-import { AndOp, Condition, OrOp, WhereOp, type FilterOp, type QueryFilter, type QueryOptions } from '../../query'
+import { QueryGroup, Where, WhereBlockOp, WhereOp, type FilterOp, type QueryOptions, type QuerySpec } from '../../query'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
 import { OrmAdapter, type OrmUse } from '../base'
@@ -65,40 +65,40 @@ function setByPath(obj: Record<string, unknown>, path: readonly string[], value:
 	current[path[path.length - 1]] = value
 }
 
-function evaluateWhere(doc: Record<string, unknown>, where: WhereOp): boolean {
+function evaluateWhere(doc: Record<string, unknown>, where: Where): boolean {
 	const fieldValue = doc[where.field]
 	const value = where.value
 
-	switch (where.condition) {
-		case Condition.eq:
+	switch (where.op) {
+		case WhereOp.eq:
 			return differ.equal(fieldValue, value)
-		case Condition.ne:
+		case WhereOp.ne:
 			return !differ.equal(fieldValue, value)
-		case Condition.gt:
+		case WhereOp.gt:
 			return compareValues(fieldValue, value) > 0
-		case Condition.gte:
+		case WhereOp.gte:
 			return compareValues(fieldValue, value) >= 0
-		case Condition.lt:
+		case WhereOp.lt:
 			return compareValues(fieldValue, value) < 0
-		case Condition.lte:
+		case WhereOp.lte:
 			return compareValues(fieldValue, value) <= 0
-		case Condition.in: {
+		case WhereOp.in: {
 			if (!Array.isArray(value)) return false
 			return value.some((v) => differ.equal(fieldValue, v))
 		}
-		case Condition.nin: {
+		case WhereOp.nin: {
 			if (!Array.isArray(value)) return true
 			return !value.some((v) => differ.equal(fieldValue, v))
 		}
-		case Condition.like:
+		case WhereOp.like:
 			return String(fieldValue ?? '')
 				.toLowerCase()
 				.includes(String(value ?? '').toLowerCase())
-		case Condition.exists:
+		case WhereOp.exists:
 			return value ? fieldValue != null : fieldValue == null
-		case Condition.contains:
+		case WhereOp.contains:
 			return containsSubset(fieldValue, value)
-		case Condition.notContains:
+		case WhereOp.notContains:
 			return !containsSubset(fieldValue, value)
 		default:
 			return false
@@ -106,21 +106,18 @@ function evaluateWhere(doc: Record<string, unknown>, where: WhereOp): boolean {
 }
 
 function evaluateOp(doc: Record<string, unknown>, op: FilterOp): boolean {
-	if (op instanceof WhereOp) return evaluateWhere(doc, op)
-	if (op instanceof AndOp) return op.clauses.every((c) => evaluateOp(doc, c))
-	if (op instanceof OrOp) return op.clauses.some((c) => evaluateOp(doc, c))
+	if (op instanceof Where) return evaluateWhere(doc, op)
+	if (op instanceof QueryGroup) {
+		if (op.op == null) return op.children.every((c) => evaluateOp(doc, c))
+		if (op.op === WhereBlockOp.and) return op.children.every((c) => evaluateOp(doc, c))
+		if (op.op === WhereBlockOp.or) return op.children.some((c) => evaluateOp(doc, c))
+	}
 	return true
 }
 
-function matchesFilter(doc: Record<string, unknown>, filter: QueryFilter): boolean {
-	for (const where of filter.wheres) {
-		if (!evaluateWhere(doc, where)) return false
-	}
-	for (const andClause of filter.ands) {
-		if (!evaluateOp(doc, andClause)) return false
-	}
-	for (const orClause of filter.ors) {
-		if (!evaluateOp(doc, orClause)) return false
+function matchesFilter(doc: Record<string, unknown>, filter: QuerySpec): boolean {
+	for (const clause of filter.clauses) {
+		if (!evaluateOp(doc, clause)) return false
 	}
 	return true
 }
@@ -147,7 +144,7 @@ function applyOptions(rows: Record<string, unknown>[], options?: QueryOptions): 
 	}
 
 	if (options?.select?.length) {
-		const fields = new Set(options.select)
+		const fields = new Set<string>(options.select)
 		results = results.map((row) => {
 			const out: Record<string, unknown> = {}
 			for (const key of fields) out[key] = row[key]
@@ -329,7 +326,7 @@ export class InMemoryOrm extends OrmAdapter<InMemoryRepoConfig> {
 
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
-	const { query, eq, and, or, gt, orderBy } = await import('../../query')
+	const { Query } = await import('../../query')
 	const { Schema } = await import('../../schema')
 	const { inc, patch, pull, push } = await import('../../updates')
 
@@ -346,12 +343,12 @@ if (import.meta.vitest) {
 				{ id: 'u2', name: 'Bob', age: 20 },
 				{ id: 'u3', name: 'Carol', age: 40 },
 			])
-			const rows = await use.findMany(query(and(gt('age', 19), or(eq('name', 'Alice'), eq('name', 'Carol')))), {
-				orderBy: [orderBy('age', 'desc')],
-				offset: 1,
-				limit: 1,
-				select: ['id', 'name'],
-			})
+			const built = Query.from()
+				.and((q) => q.gt('age', 19).or((nested) => nested.eq('name', 'Alice').eq('name', 'Carol')))
+				.orderBy('age', 'desc')
+				.offset(1)
+				.limit(1)
+			const rows = await use.findMany(built.toQuerySpec(), { ...built.toOptions(), select: ['id', 'name'] })
 			expect(rows).toEqual([{ id: 'u1', name: 'Alice' }])
 		})
 
@@ -367,7 +364,7 @@ if (import.meta.vitest) {
 			await use.insertOne({ id: 'd1', count: 1, tags: ['x'], meta: { a: 1 } })
 
 			await orm.session(async () => {
-				await use.updateOne(query(eq('id', 'd1')), {
+				await use.updateOne(Query.from().eq('id', 'd1').toQuerySpec(), {
 					count: inc(2),
 					tags: push('y'),
 					meta: patch(['a'], 9),
@@ -376,12 +373,12 @@ if (import.meta.vitest) {
 
 			await expect(
 				orm.session(async () => {
-					await use.updateOne(query(eq('id', 'd1')), { tags: pull('x') })
+					await use.updateOne(Query.from().eq('id', 'd1').toQuerySpec(), { tags: pull('x') })
 					throw new Error('boom')
 				}),
 			).rejects.toThrow('boom')
 
-			const row = await use.findOne(query(eq('id', 'd1')))
+			const row = await use.findOne(Query.from().eq('id', 'd1').toQuerySpec())
 			expect(row).toEqual({ id: 'd1', count: 3, tags: ['x', 'y'], meta: { a: 9 } })
 		})
 	})

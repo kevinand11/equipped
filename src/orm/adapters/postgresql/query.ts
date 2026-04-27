@@ -1,16 +1,13 @@
-import { Condition, WhereOp, AndOp, OrOp } from '../../query'
-import type { FilterOp, QueryFilter, QueryOptions } from '../../query'
-import { IncOp, MulOp, MinOp, MaxOp, UnsetOp, PushOp, PullOp, PatchOp } from '../../updates'
+import type { FilterOp, QueryOptions, QuerySpec } from '../../query'
+import { QueryGroup, Where, WhereBlockOp, WhereOp } from '../../query'
+import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
 
 function mapField(field: string, primaryKey: string): string {
 	if (field === 'id' && primaryKey !== 'id') return primaryKey
 	return field
 }
 
-function compilePgFilter(
-	filter: QueryFilter,
-	primaryKey: string,
-): { whereClause: string; params: unknown[]; nextParamIndex: number } {
+function compilePgFilter(filter: QuerySpec, primaryKey: string): { whereClause: string; params: unknown[]; nextParamIndex: number } {
 	const params: unknown[] = []
 	let paramIndex = 1
 
@@ -21,15 +18,8 @@ function compilePgFilter(
 
 	const whereParts: string[] = []
 
-	for (const w of filter.wheres) {
-		whereParts.push(compileWhere(w, primaryKey, nextParam))
-	}
-	for (const a of filter.ands) {
-		const compiled = compileAnd(a, primaryKey, nextParam)
-		if (compiled) whereParts.push(compiled)
-	}
-	for (const o of filter.ors) {
-		const compiled = compileOr(o, primaryKey, nextParam)
+	for (const clause of filter.clauses) {
+		const compiled = compileOp(clause, primaryKey, nextParam)
 		if (compiled) whereParts.push(compiled)
 	}
 
@@ -37,62 +27,65 @@ function compilePgFilter(
 	return { whereClause, params, nextParamIndex: paramIndex }
 }
 
-function compileWhere(w: WhereOp, primaryKey: string, nextParam: (v: unknown) => string): string {
+function compileWhere(w: Where, primaryKey: string, nextParam: (v: unknown) => string): string {
 	const field = `"${mapField(w.field, primaryKey)}"`
 
-	switch (w.condition) {
-		case Condition.eq:
+	switch (w.op) {
+		case WhereOp.eq:
 			return w.value === null ? `${field} IS NULL` : `${field} = ${nextParam(w.value)}`
-		case Condition.ne:
+		case WhereOp.ne:
 			return w.value === null ? `${field} IS NOT NULL` : `${field} != ${nextParam(w.value)}`
-		case Condition.gt:
+		case WhereOp.gt:
 			return `${field} > ${nextParam(w.value)}`
-		case Condition.gte:
+		case WhereOp.gte:
 			return `${field} >= ${nextParam(w.value)}`
-		case Condition.lt:
+		case WhereOp.lt:
 			return `${field} < ${nextParam(w.value)}`
-		case Condition.lte:
+		case WhereOp.lte:
 			return `${field} <= ${nextParam(w.value)}`
-		case Condition.in:
+		case WhereOp.in:
 			return `${field} = ANY(${nextParam(w.value)})`
-		case Condition.nin:
+		case WhereOp.nin:
 			return `NOT (${field} = ANY(${nextParam(w.value)}))`
-		case Condition.like:
+		case WhereOp.like:
 			return `${field} ILIKE ${nextParam(`%${w.value}%`)}`
-		case Condition.exists:
+		case WhereOp.exists:
 			return w.value ? `${field} IS NOT NULL` : `${field} IS NULL`
-		case Condition.contains:
+		case WhereOp.contains:
 			return `${field} @> ${nextParam(JSON.stringify(w.value))}::jsonb`
-		case Condition.notContains:
+		case WhereOp.notContains:
 			return `NOT (${field} @> ${nextParam(JSON.stringify(w.value))}::jsonb)`
 		default:
 			return `${field} = ${nextParam(w.value)}`
 	}
 }
 
-function compileAnd(a: AndOp, primaryKey: string, nextParam: (v: unknown) => string): string | null {
-	const parts = a.clauses.map((c) => compileOp(c, primaryKey, nextParam)).filter((c): c is string => c !== null)
+function compileAnd(group: QueryGroup, primaryKey: string, nextParam: (v: unknown) => string): string | null {
+	const parts = group.children.map((c) => compileOp(c, primaryKey, nextParam)).filter((c): c is string => c !== null)
 	if (parts.length === 0) return null
 	if (parts.length === 1) return parts[0]
 	return `(${parts.join(' AND ')})`
 }
 
-function compileOr(o: OrOp, primaryKey: string, nextParam: (v: unknown) => string): string | null {
-	const parts = o.clauses.map((c) => compileOp(c, primaryKey, nextParam)).filter((c): c is string => c !== null)
+function compileOr(group: QueryGroup, primaryKey: string, nextParam: (v: unknown) => string): string | null {
+	const parts = group.children.map((c) => compileOp(c, primaryKey, nextParam)).filter((c): c is string => c !== null)
 	if (parts.length === 0) return null
 	if (parts.length === 1) return parts[0]
 	return `(${parts.join(' OR ')})`
 }
 
 function compileOp(op: FilterOp, primaryKey: string, nextParam: (v: unknown) => string): string | null {
-	if (op instanceof WhereOp) return compileWhere(op, primaryKey, nextParam)
-	if (op instanceof AndOp) return compileAnd(op, primaryKey, nextParam)
-	if (op instanceof OrOp) return compileOr(op, primaryKey, nextParam)
+	if (op instanceof Where) return compileWhere(op, primaryKey, nextParam)
+	if (op instanceof QueryGroup) {
+		if (op.op == null) return compileAnd(op, primaryKey, nextParam)
+		if (op.op === WhereBlockOp.and) return compileAnd(op, primaryKey, nextParam)
+		if (op.op === WhereBlockOp.or) return compileOr(op, primaryKey, nextParam)
+	}
 	return null
 }
 
 export function buildSelectQuery(
-	filter: QueryFilter,
+	filter: QuerySpec,
 	options: QueryOptions | undefined,
 	tableName: string,
 	primaryKey: string,
@@ -104,9 +97,15 @@ export function buildSelectQuery(
 	const orderClause = orderParts.length > 0 ? `ORDER BY ${orderParts.join(', ')}` : ''
 
 	let limitClause = ''
-	if (options?.limit != null) { params.push(options.limit); limitClause = `LIMIT $${i++}` }
+	if (options?.limit != null) {
+		params.push(options.limit)
+		limitClause = `LIMIT $${i++}`
+	}
 	let offsetClause = ''
-	if (options?.offset != null) { params.push(options.offset); offsetClause = `OFFSET $${i++}` }
+	if (options?.offset != null) {
+		params.push(options.offset)
+		offsetClause = `OFFSET $${i++}`
+	}
 	const selectClause = options?.select?.length ? options.select.map((f) => `"${mapField(f, primaryKey)}"`).join(', ') : '*'
 
 	const sql = `SELECT ${selectClause} FROM "${tableName}" ${whereClause} ${orderClause} ${limitClause} ${offsetClause}`
@@ -115,7 +114,7 @@ export function buildSelectQuery(
 	return { sql, params }
 }
 
-export function buildCountQuery(filter: QueryFilter, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
+export function buildCountQuery(filter: QuerySpec, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
 	const { whereClause, params } = compilePgFilter(filter, primaryKey)
 	const sql = `SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`.trim().replace(/\s+/g, ' ')
 	return { sql, params }
@@ -131,7 +130,7 @@ export function buildInsertQuery(tableName: string, data: Record<string, unknown
 }
 
 export function buildUpdateQuery(
-	filter: QueryFilter,
+	filter: QuerySpec,
 	tableName: string,
 	primaryKey: string,
 	data: Record<string, unknown>,
@@ -187,7 +186,7 @@ export function buildUpdateQuery(
 	return { sql, params }
 }
 
-export function buildDeleteQuery(filter: QueryFilter, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
+export function buildDeleteQuery(filter: QuerySpec, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
 	const { whereClause, params } = compilePgFilter(filter, primaryKey)
 	const sql = `DELETE FROM "${tableName}" ${whereClause} RETURNING *`.trim().replace(/\s+/g, ' ')
 	return { sql, params }

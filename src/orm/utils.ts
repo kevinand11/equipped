@@ -1,7 +1,7 @@
 import type { Prettify as ValleyedPrettify } from 'valleyed'
 
 import type { ComputedField, Field, SchemaField } from './fields'
-import type { AndOp, OrderByOp, OrOp, RawOp, WhereOp } from './query'
+import type { OrderBy, QueryGroup, Where } from './query'
 import type { AnyRelDef, Relations } from './relations'
 import type { Schema } from './schema'
 import type { AnyUpdateOp } from './updates'
@@ -13,11 +13,9 @@ type AnyOrmClass =
 	| Schema<any, any, any>
 	| Relations<any, any>
 	| AnyRelDef
-	| WhereOp
-	| AndOp
-	| OrOp
-	| RawOp
-	| OrderByOp
+	| Where
+	| QueryGroup
+	| OrderBy
 	| AnyUpdateOp
 
 export type Prettify<T> = T extends AnyOrmClass ? T : ValleyedPrettify<T>

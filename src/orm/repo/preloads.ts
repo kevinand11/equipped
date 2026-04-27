@@ -1,6 +1,6 @@
 import { EquippedError } from '../../errors'
 import type { OrmUse } from '../adapters/base'
-import { isIn, query } from '../query'
+import { Query } from '../query'
 import type { AnyPreloadDef, AnyRelDef, NestedPreloadDef } from '../relations'
 import { ManyRelation, OneRelation } from '../relations'
 import type { AnySchema } from '../schema'
@@ -18,6 +18,28 @@ function isNestedPreloadDef(def: AnyPreloadDef): def is NestedPreloadDef {
 
 function relationStep(def: AnyRelDef) {
 	return `${def.source.name}.${def.name}->${def.target.name}`
+}
+
+function uniqueDefinedValues(entities: readonly Record<string, unknown>[], key: string) {
+	return [...new Set(entities.map((entity) => entity[key]).filter((value) => value != null))]
+}
+
+function attachOneRelation(
+	entities: readonly Record<string, unknown>[],
+	name: string,
+	lookupKey: string,
+	lookup: ReadonlyMap<unknown, Record<string, unknown>>,
+) {
+	return entities.map((entity) => ({ ...entity, [name]: lookup.get(entity[lookupKey]) ?? null }))
+}
+
+function attachManyRelation(
+	entities: readonly Record<string, unknown>[],
+	name: string,
+	lookupKey: string,
+	lookup: ReadonlyMap<unknown, Record<string, unknown>[]>,
+) {
+	return entities.map((entity) => ({ ...entity, [name]: lookup.get(entity[lookupKey]) ?? [] }))
 }
 
 function normalizePreloads(defs: readonly AnyPreloadDef[]): ResolvedPreloadDef[] {
@@ -89,35 +111,35 @@ async function resolvePreload(
 	if (def instanceof OneRelation) {
 		if (def.fkOwner === 'source') {
 			const refCol = def.references.name
-			const fkValues = [...new Set(entities.map((e) => e[def.foreignKey.name]).filter((v) => v != null))]
+			const fkValues = uniqueDefinedValues(entities, def.foreignKey.name)
 			if (fkValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
 
-			let related = (await getUse(target).findMany(query(isIn(refCol, fkValues as string[])))) as Record<string, unknown>[]
+			let related = await getUse(target).findMany(Query.from().isIn(refCol, fkValues).toQuerySpec())
 			if (node.preloads.length > 0 && related.length > 0) {
 				related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 			}
 			const lookup = new Map(related.map((r) => [r[refCol], r]))
-			return entities.map((e) => ({ ...e, [name]: lookup.get(e[def.foreignKey.name] as any) ?? null }))
+			return attachOneRelation(entities, name, def.foreignKey.name, lookup)
 		}
 
 		const refCol = def.references.name
-		const refValues = [...new Set(entities.map((e) => e[refCol]).filter((v) => v != null))]
+		const refValues = uniqueDefinedValues(entities, refCol)
 		if (refValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
 
-		let related = (await getUse(target).findMany(query(isIn(def.foreignKey, refValues as string[])))) as Record<string, unknown>[]
+		let related = await getUse(target).findMany(Query.from().isIn(def.foreignKey, refValues).toQuerySpec())
 		if (node.preloads.length > 0 && related.length > 0) {
 			related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 		}
 		const lookup = new Map(related.map((r) => [r[def.foreignKey.name], r]))
-		return entities.map((e) => ({ ...e, [name]: lookup.get(e[refCol] as any) ?? null }))
+		return attachOneRelation(entities, name, refCol, lookup)
 	}
 
 	if (def instanceof ManyRelation) {
 		const refCol = def.references.name
-		const refValues = [...new Set(entities.map((e) => e[refCol]).filter((v) => v != null))]
+		const refValues = uniqueDefinedValues(entities, refCol)
 		if (refValues.length === 0) return entities.map((e) => ({ ...e, [name]: [] }))
 
-		let related = (await getUse(target).findMany(query(isIn(def.foreignKey, refValues as string[])))) as Record<string, unknown>[]
+		let related = await getUse(target).findMany(Query.from().isIn(def.foreignKey, refValues).toQuerySpec())
 		if (node.preloads.length > 0 && related.length > 0) {
 			related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 		}
@@ -128,17 +150,16 @@ async function resolvePreload(
 			if (!grouped.has(fk)) grouped.set(fk, [])
 			grouped.get(fk)!.push(r)
 		}
-		return entities.map((e) => ({ ...e, [name]: grouped.get(e[refCol] as any) ?? [] }))
+		return attachManyRelation(entities, name, refCol, grouped)
 	}
 
-	throw new Error(`Unknown relation kind: ${(def as any).kind}; expected OneRelation or ManyRelation`)
+	throw new Error(`Unknown relation kind: ${String(Reflect.get(def as object, 'kind'))}; expected OneRelation or ManyRelation`)
 }
 
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { InMemoryOrm } = await import('../adapters/in-memory')
-	const { eq, query } = await import('../query')
 	const { Relations } = await import('../relations')
 	const { Repo } = await import('./repo')
 	const { Schema } = await import('../schema')
@@ -217,40 +238,41 @@ if (import.meta.vitest) {
 
 		test('hasMany preload resolves related entities', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.insertOne(UserSchema, { email: 'u@test.com', name: 'User' })
-			await Repo.insertOne(PostSchema, { title: 'Post 1', userId: user.id })
-			await Repo.insertOne(PostSchema, { title: 'Post 2', userId: user.id })
+			const user = await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' }).run()
+			await Repo.from(PostSchema).one().insert({ title: 'Post 1', userId: user.id }).run()
+			await Repo.from(PostSchema).one().insert({ title: 'Post 2', userId: user.id }).run()
 
-			const users = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.posts] })
+			const users = await Repo.from(UserSchema).all().preload([UserRelations.definitions.posts]).run()
 			expect(users[0].posts).toHaveLength(2)
 		})
 
 		test('hasOne and belongsTo preloads resolve null and non-null branches', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.insertOne(UserSchema, { email: 'x@test.com', name: 'X' })
-			await Repo.insertOne(ProfileSchema, { bio: 'Hello', userId: user.id })
+			const user = await Repo.from(UserSchema).one().insert({ email: 'x@test.com', name: 'X' }).run()
+			await Repo.from(ProfileSchema).one().insert({ bio: 'Hello', userId: user.id }).run()
 
-			const users = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.profile] })
+			const users = await Repo.from(UserSchema).all().preload([UserRelations.definitions.profile]).run()
 			expect(users[0].profile?.bio).toBe('Hello')
 
-			const usersWithoutOrg = await Repo.findMany(UserSchema, query(), { preloads: [UserRelations.definitions.org] })
+			const usersWithoutOrg = await Repo.from(UserSchema).all().preload([UserRelations.definitions.org]).run()
 			expect(usersWithoutOrg[0].org).toBeNull()
 		})
 
 		test('nested preload resolves recursively', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.insertOne(UserSchema, { email: 'nested@test.com', name: 'Nested User' })
-			await Repo.insertOne(ProfileSchema, { bio: 'Hello nested', userId: user.id })
-			await Repo.insertOne(PostSchema, { title: 'Nested Post', userId: user.id })
+			const user = await Repo.from(UserSchema).one().insert({ email: 'nested@test.com', name: 'Nested User' }).run()
+			await Repo.from(ProfileSchema).one().insert({ bio: 'Hello nested', userId: user.id }).run()
+			await Repo.from(PostSchema).one().insert({ title: 'Nested Post', userId: user.id }).run()
 
-			const users = await Repo.findMany(UserSchema, query(), {
-				preloads: [
+			const users = await Repo.from(UserSchema)
+				.all()
+				.preload([
 					{
 						def: UserRelations.definitions.posts,
 						preloads: [{ def: PostRelations.definitions.author, preloads: [UserRelations.definitions.profile] }],
 					},
-				],
-			})
+				])
+				.run()
 
 			const author = users[0].posts[0].author
 			const profile = author?.profile
@@ -260,34 +282,36 @@ if (import.meta.vitest) {
 
 		test('cycle detection throws descriptive error', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.insertOne(UserSchema, { email: 'cycle@test.com', name: 'Cycle User' })
-			await Repo.insertOne(PostSchema, { title: 'Cycle Post', userId: user.id })
+			const user = await Repo.from(UserSchema).one().insert({ email: 'cycle@test.com', name: 'Cycle User' }).run()
+			await Repo.from(PostSchema).one().insert({ title: 'Cycle Post', userId: user.id }).run()
 
 			await expect(
-				Repo.findMany(UserSchema, query(), {
-					preloads: [
+				Repo.from(UserSchema)
+					.all()
+					.preload([
 						{
 							def: UserRelations.definitions.posts,
 							preloads: [{ def: PostRelations.definitions.author, preloads: [UserRelations.definitions.posts] }],
 						},
-					],
-				}),
+					])
+					.run(),
 			).rejects.toThrow(/Preload cycle detected/)
 		})
 
 		test('depth limit throws when chain exceeds max depth', async () => {
 			const Repo = makeRepo()
-			const a = await Repo.insertOne(ASchema, {})
-			const b = await Repo.insertOne(BSchema, { aId: a.id })
-			const c = await Repo.insertOne(CSchema, { bId: b.id })
-			const d = await Repo.insertOne(DSchema, { cId: c.id })
-			const e = await Repo.insertOne(ESchema, { dId: d.id })
-			const f = await Repo.insertOne(FSchema, { eId: e.id })
-			await Repo.insertOne(GSchema, { fId: f.id })
+			const a = await Repo.from(ASchema).one().insert({}).run()
+			const b = await Repo.from(BSchema).one().insert({ aId: a.id }).run()
+			const c = await Repo.from(CSchema).one().insert({ bId: b.id }).run()
+			const d = await Repo.from(DSchema).one().insert({ cId: c.id }).run()
+			const e = await Repo.from(ESchema).one().insert({ dId: d.id }).run()
+			const f = await Repo.from(FSchema).one().insert({ eId: e.id }).run()
+			await Repo.from(GSchema).one().insert({ fId: f.id }).run()
 
 			await expect(
-				Repo.findMany(ASchema, query(), {
-					preloads: [
+				Repo.from(ASchema)
+					.all()
+					.preload([
 						{
 							def: ARelations.definitions.bs,
 							preloads: [
@@ -312,30 +336,29 @@ if (import.meta.vitest) {
 								},
 							],
 						},
-					],
-				}),
+					])
+					.run(),
 			).rejects.toThrow(/Preload depth exceeded/)
 		})
 
 		test('invalid nested preload definition throws a validation error', async () => {
 			const Repo = makeRepo()
-			await Repo.insertOne(UserSchema, { email: 'u@test.com', name: 'User' })
+			await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' }).run()
 
 			await expect(
-				Repo.findMany(UserSchema, query(), {
-					preloads: [{ def: {} as any }],
-				}),
+				Repo.from(UserSchema)
+					.all()
+					.preload([{ def: {} as any }])
+					.run(),
 			).rejects.toThrow(/Invalid preload definition/)
 		})
 
 		test('findOne with preloads resolves relations', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.insertOne(UserSchema, { email: 'u@test.com', name: 'User' })
-			await Repo.insertOne(PostSchema, { title: 'Post', userId: user.id })
+			const user = await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' }).run()
+			await Repo.from(PostSchema).one().insert({ title: 'Post', userId: user.id }).run()
 
-			const found = await Repo.findOne(UserSchema, query(eq('id', user.id)), {
-				preloads: [UserRelations.definitions.posts],
-			})
+			const found = await Repo.from(UserSchema).one().id(user.id).preload([UserRelations.definitions.posts]).run()
 			expect(found?.posts).toHaveLength(1)
 		})
 	})

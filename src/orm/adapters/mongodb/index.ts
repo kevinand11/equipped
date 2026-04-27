@@ -127,7 +127,7 @@ export class MongoDbOrm extends configurable(
 						const ids = matchingDocs.map((d) => d[pk])
 						const idFilter = { [pk]: { $in: ids } }
 
-						const update = compileMongoUpdate(data, filter.raws, now)
+						const update = compileMongoUpdate(data, now)
 						await collection.updateMany(idFilter, update, { session })
 
 						const cursor = collection.find({ [pk]: { $in: ids } }, { session })
@@ -145,7 +145,7 @@ export class MongoDbOrm extends configurable(
 						const { filter: mongoFilter } = compileMongoQuery(filter, undefined, pk)
 						const now = new Date()
 
-						const update = compileMongoUpdate(data, filter.raws, now)
+						const update = compileMongoUpdate(data, now)
 						return await collection.findOneAndUpdate(mongoFilter, update, {
 							returnDocument: 'after',
 							session: sessionStore.getStore(),
@@ -164,7 +164,7 @@ export class MongoDbOrm extends configurable(
 						const now = new Date()
 
 						const updateData = 'update' in data ? data.update : {}
-						const updateOp = compileMongoUpdate(updateData, filter.raws, now)
+						const updateOp = compileMongoUpdate(updateData, now)
 
 						const doc = await collection.findOneAndUpdate(
 							mongoFilter,

@@ -15,7 +15,7 @@ This file describes three things:
 - Typed field definition with `.field(...)`
 - Computed/virtual field definition with `.computed(...)` and strict dependency resolution
 - Field lifecycle hooks via `onCreate` and `onUpdate`
-- Typed field references that can be reused in query helpers
+- Typed field references that can be reused in `Query` filters
 - Validation of insert and update payloads before persistence
 - Shared error handling through `EquippedError`
 
@@ -36,17 +36,17 @@ This file describes three things:
 
 ### Query API
 
-- `query(...)` to compose filters
-- comparison filters: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`
-- membership filters: `isIn`, `notIn`
-- text filter: `like`
-- existence filters: `exists`, `notExists`
-- collection / object matching: `contains`, `notContains`
-- logical composition: `and(...)`, `or(...)`
-- adapter-specific escape hatch with `raw(...)`
-- ordering with `orderBy(...)`
-- pagination with `limit` and `offset`
-- field projection with `select`
+- fluent entry point with `Query.from()`
+- comparison filters: `.eq`, `.ne`, `.gt`, `.gte`, `.lt`, `.lte`
+- membership filters: `.isIn`, `.notIn`
+- text filter: `.like`
+- existence filters: `.exists`, `.notExists`
+- collection / object matching: `.contains`, `.notContains`
+- logical composition with callback groups: `.and(...)`, `.or(...)`
+- adapter-specific escape hatch with `.raw(...)`
+- ordering with `.orderBy(...)`
+- pagination with `.limit(...)` and `.offset(...)`
+- field projection via repository/query options `select`
 
 ### Relations and preload resolution
 
@@ -87,7 +87,7 @@ These are either commonly expected ORM capabilities or shapes that older/planned
 
 ### API shapes that do not exist today
 
-- no separate fluent model query builder like `.where().limit().offset().select()`
+- no separate DSL outside `Query.from()` for model-level builders
 
 ### Missing ORM capabilities
 
@@ -107,7 +107,6 @@ These are the most natural next steps based on the current implementation and th
 
 ### High-value API improvements
 
-- add a fluent query builder wrapper on top of `QueryFilter` and `QueryOptions`
 - add aggregate helpers like `count`, `exists`, and grouped aggregate queries
 
 ### Schema and persistence improvements
