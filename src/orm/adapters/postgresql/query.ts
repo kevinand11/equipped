@@ -1,5 +1,5 @@
-import type { FilterOp, QueryOptions, QuerySpec } from '../../query'
-import { QueryGroup, Where, WhereBlockOp, WhereOp } from '../../query'
+import type { FilterOp, QueryOptions } from '../../query'
+import { QueryGroup, Where, WhereGroupOp, WhereOp } from '../../query'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
 
 function mapField(field: string, primaryKey: string): string {
@@ -7,7 +7,8 @@ function mapField(field: string, primaryKey: string): string {
 	return field
 }
 
-function compilePgFilter(filter: QuerySpec, primaryKey: string): { whereClause: string; params: unknown[]; nextParamIndex: number } {
+function compilePgFilter(group: QueryGroup, primaryKey: string): { whereClause: string; params: unknown[]; nextParamIndex: number } {
+	const clauses: FilterOp[] = group.children
 	const params: unknown[] = []
 	let paramIndex = 1
 
@@ -18,7 +19,7 @@ function compilePgFilter(filter: QuerySpec, primaryKey: string): { whereClause: 
 
 	const whereParts: string[] = []
 
-	for (const clause of filter.clauses) {
+	for (const clause of clauses) {
 		const compiled = compileOp(clause, primaryKey, nextParam)
 		if (compiled) whereParts.push(compiled)
 	}
@@ -53,7 +54,7 @@ function compileWhere(w: Where, primaryKey: string, nextParam: (v: unknown) => s
 			return w.value ? `${field} IS NOT NULL` : `${field} IS NULL`
 		case WhereOp.contains:
 			return `${field} @> ${nextParam(JSON.stringify(w.value))}::jsonb`
-		case WhereOp.notContains:
+		case WhereOp.ncontains:
 			return `NOT (${field} @> ${nextParam(JSON.stringify(w.value))}::jsonb)`
 		default:
 			return `${field} = ${nextParam(w.value)}`
@@ -77,20 +78,19 @@ function compileOr(group: QueryGroup, primaryKey: string, nextParam: (v: unknown
 function compileOp(op: FilterOp, primaryKey: string, nextParam: (v: unknown) => string): string | null {
 	if (op instanceof Where) return compileWhere(op, primaryKey, nextParam)
 	if (op instanceof QueryGroup) {
-		if (op.op == null) return compileAnd(op, primaryKey, nextParam)
-		if (op.op === WhereBlockOp.and) return compileAnd(op, primaryKey, nextParam)
-		if (op.op === WhereBlockOp.or) return compileOr(op, primaryKey, nextParam)
+		if (op.op === WhereGroupOp.and) return compileAnd(op, primaryKey, nextParam)
+		if (op.op === WhereGroupOp.or) return compileOr(op, primaryKey, nextParam)
 	}
 	return null
 }
 
 export function buildSelectQuery(
-	filter: QuerySpec,
+	group: QueryGroup,
 	options: QueryOptions | undefined,
 	tableName: string,
 	primaryKey: string,
 ): { sql: string; params: unknown[] } {
-	const { whereClause, params, nextParamIndex } = compilePgFilter(filter, primaryKey)
+	const { whereClause, params, nextParamIndex } = compilePgFilter(group, primaryKey)
 	let i = nextParamIndex
 
 	const orderParts = (options?.orderBy ?? []).map((o) => `"${mapField(o.field, primaryKey)}" ${o.direction.toUpperCase()}`)
@@ -114,8 +114,8 @@ export function buildSelectQuery(
 	return { sql, params }
 }
 
-export function buildCountQuery(filter: QuerySpec, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
-	const { whereClause, params } = compilePgFilter(filter, primaryKey)
+export function buildCountQuery(group: QueryGroup, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
+	const { whereClause, params } = compilePgFilter(group, primaryKey)
 	const sql = `SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`.trim().replace(/\s+/g, ' ')
 	return { sql, params }
 }
@@ -130,7 +130,7 @@ export function buildInsertQuery(tableName: string, data: Record<string, unknown
 }
 
 export function buildUpdateQuery(
-	filter: QuerySpec,
+	group: QueryGroup,
 	tableName: string,
 	primaryKey: string,
 	data: Record<string, unknown>,
@@ -178,7 +178,7 @@ export function buildUpdateQuery(
 		return `${col} = $${paramIndex++}`
 	})
 
-	const { whereClause, params: whereParams } = compilePgFilter(filter, primaryKey)
+	const { whereClause, params: whereParams } = compilePgFilter(group, primaryKey)
 	const adjustedWhere = whereClause.replace(/\$(\d+)/g, () => `$${paramIndex++}`)
 	params.push(...whereParams)
 
@@ -186,8 +186,8 @@ export function buildUpdateQuery(
 	return { sql, params }
 }
 
-export function buildDeleteQuery(filter: QuerySpec, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
-	const { whereClause, params } = compilePgFilter(filter, primaryKey)
+export function buildDeleteQuery(group: QueryGroup, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
+	const { whereClause, params } = compilePgFilter(group, primaryKey)
 	const sql = `DELETE FROM "${tableName}" ${whereClause} RETURNING *`.trim().replace(/\s+/g, ' ')
 	return { sql, params }
 }

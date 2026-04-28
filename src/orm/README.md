@@ -15,7 +15,7 @@ This file describes three things:
 - Typed field definition with `.field(...)`
 - Computed/virtual field definition with `.computed(...)` and strict dependency resolution
 - Field lifecycle hooks via `onCreate` and `onUpdate`
-- Typed field references that can be reused in `Query` filters
+-- Typed field references that can be reused in `QueryGroup` filters
 - Validation of insert and update payloads before persistence
 - Shared error handling through `EquippedError`
 
@@ -36,7 +36,7 @@ This file describes three things:
 
 ### Query API
 
-- fluent entry point with `Query.from()`
+- fluent entry point with `QueryGroup.from()`
 - comparison filters: `.eq`, `.ne`, `.gt`, `.gte`, `.lt`, `.lte`
 - membership filters: `.isIn`, `.notIn`
 - text filter: `.like`
@@ -87,7 +87,7 @@ These are either commonly expected ORM capabilities or shapes that older/planned
 
 ### API shapes that do not exist today
 
-- no separate DSL outside `Query.from()` for model-level builders
+- no separate DSL outside `QueryGroup.from()` for model-level builders
 
 ### Missing ORM capabilities
 

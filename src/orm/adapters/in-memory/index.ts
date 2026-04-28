@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { differ } from 'valleyed'
 
 import { EquippedError } from '../../../errors'
-import { QueryGroup, Where, WhereBlockOp, WhereOp, type FilterOp, type QueryOptions, type QuerySpec } from '../../query'
+import { QueryGroup, Where, WhereGroupOp, WhereOp, type FilterOp, type QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
 import { OrmAdapter, type OrmUse } from '../base'
@@ -98,7 +98,7 @@ function evaluateWhere(doc: Record<string, unknown>, where: Where): boolean {
 			return value ? fieldValue != null : fieldValue == null
 		case WhereOp.contains:
 			return containsSubset(fieldValue, value)
-		case WhereOp.notContains:
+		case WhereOp.ncontains:
 			return !containsSubset(fieldValue, value)
 		default:
 			return false
@@ -108,15 +108,14 @@ function evaluateWhere(doc: Record<string, unknown>, where: Where): boolean {
 function evaluateOp(doc: Record<string, unknown>, op: FilterOp): boolean {
 	if (op instanceof Where) return evaluateWhere(doc, op)
 	if (op instanceof QueryGroup) {
-		if (op.op == null) return op.children.every((c) => evaluateOp(doc, c))
-		if (op.op === WhereBlockOp.and) return op.children.every((c) => evaluateOp(doc, c))
-		if (op.op === WhereBlockOp.or) return op.children.some((c) => evaluateOp(doc, c))
+		if (op.op === WhereGroupOp.and) return op.children.every((c) => evaluateOp(doc, c))
+		if (op.op === WhereGroupOp.or) return op.children.some((c) => evaluateOp(doc, c))
 	}
 	return true
 }
 
-function matchesFilter(doc: Record<string, unknown>, filter: QuerySpec): boolean {
-	for (const clause of filter.clauses) {
+function matchesFilter(doc: Record<string, unknown>, group: QueryGroup): boolean {
+	for (const clause of group.children) {
 		if (!evaluateOp(doc, clause)) return false
 	}
 	return true
@@ -246,8 +245,8 @@ export class InMemoryOrm extends OrmAdapter<InMemoryRepoConfig> {
 		const pk = schema.pkField.name
 
 		const use: OrmUse = {
-			findMany: async (filter, options) => {
-				const rows = [...getStore().values()].filter((doc) => matchesFilter(doc, filter)).map((doc) => clone(doc))
+			findMany: async (group, options) => {
+				const rows = [...getStore().values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc))
 				return applyOptions(rows, options)
 			},
 			findOne: async (filter) => {
@@ -260,9 +259,9 @@ export class InMemoryOrm extends OrmAdapter<InMemoryRepoConfig> {
 				return clone(row)
 			},
 			insertMany: async (data) => Promise.all(data.map((d) => use.insertOne(d))),
-			updateMany: async (filter, data) => {
+			updateMany: async (group, data) => {
 				const store = getStore()
-				const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, filter)).map(([id]) => id)
+				const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, group)).map(([id]) => id)
 
 				const updated: Record<string, unknown>[] = []
 				for (const id of ids) {
@@ -326,7 +325,7 @@ export class InMemoryOrm extends OrmAdapter<InMemoryRepoConfig> {
 
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
-	const { Query } = await import('../../query')
+	const { QueryGroup, OrderBy } = await import('../../query')
 	const { Schema } = await import('../../schema')
 	const { inc, patch, pull, push } = await import('../../updates')
 
@@ -343,12 +342,12 @@ if (import.meta.vitest) {
 				{ id: 'u2', name: 'Bob', age: 20 },
 				{ id: 'u3', name: 'Carol', age: 40 },
 			])
-			const built = Query.from()
-				.and((q) => q.gt('age', 19).or((nested) => nested.eq('name', 'Alice').eq('name', 'Carol')))
-				.orderBy('age', 'desc')
-				.offset(1)
-				.limit(1)
-			const rows = await use.findMany(built.toQuerySpec(), { ...built.toOptions(), select: ['id', 'name'] })
+			const builtGroup = QueryGroup.from().and([
+				(q) => q.gt('age', 19),
+				(q) => q.or([(g) => g.eq('name', 'Alice'), (g) => g.eq('name', 'Carol')]),
+			])
+			const options = { orderBy: [new OrderBy('age', 'desc')], offset: 1, limit: 1, select: ['id', 'name'] }
+			const rows = await use.findMany(builtGroup, options)
 			expect(rows).toEqual([{ id: 'u1', name: 'Alice' }])
 		})
 
@@ -364,7 +363,7 @@ if (import.meta.vitest) {
 			await use.insertOne({ id: 'd1', count: 1, tags: ['x'], meta: { a: 1 } })
 
 			await orm.session(async () => {
-				await use.updateOne(Query.from().eq('id', 'd1').toQuerySpec(), {
+				await use.updateOne(QueryGroup.from().eq('id', 'd1'), {
 					count: inc(2),
 					tags: push('y'),
 					meta: patch(['a'], 9),
@@ -373,12 +372,12 @@ if (import.meta.vitest) {
 
 			await expect(
 				orm.session(async () => {
-					await use.updateOne(Query.from().eq('id', 'd1').toQuerySpec(), { tags: pull('x') })
+					await use.updateOne(QueryGroup.from().eq('id', 'd1'), { tags: pull('x') })
 					throw new Error('boom')
 				}),
 			).rejects.toThrow('boom')
 
-			const row = await use.findOne(Query.from().eq('id', 'd1').toQuerySpec())
+			const row = await use.findOne(QueryGroup.from().eq('id', 'd1'))
 			expect(row).toEqual({ id: 'd1', count: 3, tags: ['x', 'y'], meta: { a: 9 } })
 		})
 	})

@@ -101,9 +101,9 @@ if (import.meta.vitest) {
 
 		test('fluent builders support one/all read chains', async () => {
 			const repo = makeRepo()
-			const created = await repo.from(UserSchema).one().insert({ email: 'fluent@test.com', name: 'Fluent User' }).run()
+			const created = await repo.from(UserSchema).one().insert({ email: 'fluent@test.com', name: 'Fluent User' })
 
-			const one = await repo.from(UserSchema).one().id(created.id).select(['id', 'name']).run()
+			const one = await repo.from(UserSchema).one().id(created.id).select(['id', 'name']).find()
 			expect(one).toEqual({ id: created.id, name: 'Fluent User' })
 
 			const all = await repo
@@ -113,7 +113,7 @@ if (import.meta.vitest) {
 				.orderBy('createdAt', 'desc')
 				.limit(1)
 				.select(['id'])
-				.run()
+				.find()
 
 			expect(all).toEqual([{ id: created.id }])
 		})
@@ -127,14 +127,13 @@ if (import.meta.vitest) {
 					{ email: 'alice@branch.com', name: 'Alice' },
 					{ email: 'bob@branch.com', name: 'Bob' },
 				])
-				.run()
 
 			const base = repo.from(UserSchema).all()
 			const branchA = base.where((q) => q.eq('name', 'Alice')).select(['id'])
 			const branchB = base.where((q) => q.eq('name', 'Bob')).select(['name'])
 
-			const rowsA = await branchA.run()
-			const rowsB = await branchB.run()
+			const rowsA = await branchA.find()
+			const rowsB = await branchB.find()
 
 			expect(rowsA).toHaveLength(1)
 			expect(rowsB).toHaveLength(1)
@@ -144,22 +143,21 @@ if (import.meta.vitest) {
 
 		test('fluent builders support write chains with preloads', async () => {
 			const repo = makeRepo()
-			const org = await repo.from(OrgSchema).one().insert({ name: 'Fluent Org' }).run()
+			const org = await repo.from(OrgSchema).one().insert({ name: 'Fluent Org' })
 
 			const user = await repo
 				.from(UserSchema)
 				.one()
-				.insert({ email: 'writer@test.com', name: 'Writer', orgId: org.id })
 				.preload([UserRelations.definitions.org])
-				.run()
+				.insert({ email: 'writer@test.com', name: 'Writer', orgId: org.id })
 
 			expect((user.org as any).name).toBe('Fluent Org')
 
-			const updated = await repo.from(UserSchema).one().id(user.id).update({ name: 'Updated Writer' }).select(['id', 'name']).run()
+			const updated = await repo.from(UserSchema).one().id(user.id).select(['id', 'name']).update({ name: 'Updated Writer' })
 
 			expect(updated).toEqual({ id: user.id, name: 'Updated Writer' })
 
-			const deleted = await repo.from(UserSchema).one().id(user.id).delete().select(['id']).run()
+			const deleted = await repo.from(UserSchema).one().id(user.id).select(['id']).delete()
 			expect(deleted).toEqual({ id: user.id })
 		})
 
@@ -167,44 +165,44 @@ if (import.meta.vitest) {
 			const repo = makeRepo()
 
 			const insertedId = await repo.session(async (tx) => {
-				const created = await tx.from(UserSchema).one().insert({ email: 'tx@fluent.com', name: 'Tx Fluent' }).run()
-				await tx.from(UserSchema).one().id(created.id).update({ name: 'Tx Fluent Updated' }).run()
+				const created = await tx.from(UserSchema).one().insert({ email: 'tx@fluent.com', name: 'Tx Fluent' })
+				await tx.from(UserSchema).one().id(created.id).update({ name: 'Tx Fluent Updated' })
 				return created.id
 			})
 
-			const persisted = await repo.from(UserSchema).one().id(insertedId).select(['name']).run()
+			const persisted = await repo.from(UserSchema).one().id(insertedId).select(['name']).find()
 			expect(persisted).toEqual({ name: 'Tx Fluent Updated' })
 		})
 
 		test('insert/find/update/delete flows work', async () => {
 			const repo = makeRepo()
-			const user = await repo.from(UserSchema).one().insert({ email: 'a@b.com', name: 'Alice' }).run()
+			const user = await repo.from(UserSchema).one().insert({ email: 'a@b.com', name: 'Alice' })
 			expect(user.id).toMatch(/^u\d+$/)
 			expect(user.createdAt).toBe(1000)
 
-			const found = await repo.from(UserSchema).one().id(user.id).run()
+			const found = await repo.from(UserSchema).one().id(user.id).find()
 			expect(found?.id).toBe(user.id)
 
-			const updated = await repo.from(UserSchema).one().id(user.id).update({ name: 'Updated' }).run()
+			const updated = await repo.from(UserSchema).one().id(user.id).update({ name: 'Updated' })
 			expect(updated?.name).toBe('Updated')
 
-			const deleted = await repo.from(UserSchema).one().id(user.id).delete().run()
+			const deleted = await repo.from(UserSchema).one().id(user.id).delete()
 			expect(deleted?.id).toBe(user.id)
 		})
 
 		test('findById, updateById, and deleteById target the schema primary key', async () => {
 			const repo = makeRepo()
-			const user = await repo.from(UserSchema).one().insert({ email: 'id@test.com', name: 'ById' }).run()
+			const user = await repo.from(UserSchema).one().insert({ email: 'id@test.com', name: 'ById' })
 
-			const found = await repo.from(UserSchema).one().id(user.id).run()
+			const found = await repo.from(UserSchema).one().id(user.id).find()
 			expect(found?.id).toBe(user.id)
 
-			const updated = await repo.from(UserSchema).one().id(user.id).update({ name: 'Changed' }).run()
+			const updated = await repo.from(UserSchema).one().id(user.id).update({ name: 'Changed' })
 			expect(updated?.name).toBe('Changed')
 
-			const deleted = await repo.from(UserSchema).one().id(user.id).delete().run()
+			const deleted = await repo.from(UserSchema).one().id(user.id).delete()
 			expect(deleted?.id).toBe(user.id)
-			expect(await repo.from(UserSchema).one().id(user.id).run()).toBeNull()
+			expect(await repo.from(UserSchema).one().id(user.id).find()).toBeNull()
 		})
 
 		test('insertMany, findMany and upsertOne work', async () => {
@@ -216,15 +214,13 @@ if (import.meta.vitest) {
 					{ email: 'a@b.com', name: 'Alice' },
 					{ email: 'b@c.com', name: 'Bob' },
 				])
-				.run()
-			expect(await repo.from(UserSchema).all().run()).toHaveLength(2)
+			expect(await repo.from(UserSchema).all().find()).toHaveLength(2)
 
 			const inserted = await repo
 				.from(UserSchema)
 				.one()
 				.where((q) => q.eq('id', 'u-fixed'))
 				.upsert({ insert: { email: 'new@test.com', name: 'New' } })
-				.run()
 			expect(inserted.name).toBe('New')
 		})
 
@@ -237,15 +233,14 @@ if (import.meta.vitest) {
 					{ email: 'a@b.com', name: 'Alice' },
 					{ email: 'b@c.com', name: 'Bob' },
 				])
-				.run()
 
 			const rows = await repo
 				.from(UserSchema)
 				.all()
-				.where((q) => q.or((g) => g.eq('name', 'Alice').eq('name', 'Bob')))
+				.where((q) => q.or([(g) => g.eq('name', 'Alice'), (g) => g.eq('name', 'Bob')]))
 				.orderBy('name', 'desc')
 				.limit(1)
-				.run()
+				.find()
 
 			expect(rows).toHaveLength(1)
 			expect(rows[0].name).toBe('Bob')
@@ -268,7 +263,7 @@ if (import.meta.vitest) {
 					await repo.resolve(
 						(config) => ({ prefix: `b_${config.prefix}` }),
 						async () => {
-							await repo.from(UserSchema).all().run()
+							await repo.from(UserSchema).all().find()
 						},
 					)
 				},
@@ -281,34 +276,32 @@ if (import.meta.vitest) {
 			const repo = makeRepo()
 			let insertedId = ''
 			const result = await repo.session(async (tx) => {
-				const inserted = await tx.from(UserSchema).one().insert({ email: 't@test.com', name: 'TxUser' }).run()
+				const inserted = await tx.from(UserSchema).one().insert({ email: 't@test.com', name: 'TxUser' })
 				insertedId = inserted.id
 				return 42
 			})
 
 			expect(result).toBe(42)
-			expect(await repo.from(UserSchema).one().id(insertedId).run()).not.toBeNull()
+			expect(await repo.from(UserSchema).one().id(insertedId).find()).not.toBeNull()
 		})
 
 		test('preloads can be resolved on mutation methods', async () => {
 			const repo = makeRepo()
-			const org = await repo.from(OrgSchema).one().insert({ name: 'Corp' }).run()
+			const org = await repo.from(OrgSchema).one().insert({ name: 'Corp' })
 			const user = await repo
 				.from(UserSchema)
 				.one()
-				.insert({ email: 'u@test.com', name: 'User', orgId: org.id })
 				.preload([UserRelations.definitions.org])
-				.run()
+				.insert({ email: 'u@test.com', name: 'User', orgId: org.id })
 			expect((user.org as any).name).toBe('Corp')
 
-			await repo.from(PostSchema).one().insert({ title: 'Post', userId: user.id }).run()
+			await repo.from(PostSchema).one().insert({ title: 'Post', userId: user.id })
 			const updated = await repo
 				.from(UserSchema)
 				.one()
 				.id(user.id)
-				.update({ name: 'Updated' })
 				.preload([UserRelations.definitions.posts])
-				.run()
+				.update({ name: 'Updated' })
 			expect(updated?.posts).toHaveLength(1)
 		})
 
@@ -323,8 +316,8 @@ if (import.meta.vitest) {
 
 		test('computed fields are derived and shaped correctly when selected', async () => {
 			const repo = makeRepo()
-			const created = await repo.from(PersonSchema).one().insert({ firstName: 'Ada', lastName: 'Lovelace' }).run()
-			const rows = await repo.from(PersonSchema).all().select(['id', 'fullName']).run()
+			const created = await repo.from(PersonSchema).one().insert({ firstName: 'Ada', lastName: 'Lovelace' })
+			const rows = await repo.from(PersonSchema).all().select(['id', 'fullName']).find()
 
 			expect(rows).toEqual([{ id: created.id, fullName: 'Ada Lovelace' }])
 		})
@@ -345,22 +338,22 @@ if (import.meta.vitest) {
 			})
 
 			const repo = Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
-			await repo.from(PersonSchema).one().insert({ firstName: 'Grace', lastName: 'Hopper' }).run()
-			await repo.from(PersonSchema).all().select(['id', 'fullName']).run()
+			await repo.from(PersonSchema).one().insert({ firstName: 'Grace', lastName: 'Hopper' })
+			await repo.from(PersonSchema).all().select(['id', 'fullName']).find()
 
 			expect(seenSelect).toEqual(expect.arrayContaining(['id', 'firstName', 'lastName']))
 		})
 
 		test('unknown selected fields fail fast', async () => {
 			const repo = makeRepo()
-			await repo.from(PersonSchema).one().insert({ firstName: 'Ada', lastName: 'Lovelace' }).run()
+			await repo.from(PersonSchema).one().insert({ firstName: 'Ada', lastName: 'Lovelace' })
 
 			await expect(
 				repo
 					.from(PersonSchema)
 					.all()
 					.select(['unknownField' as any])
-					.run(),
+					.find(),
 			).rejects.toBeInstanceOf(EquippedError)
 		})
 
@@ -383,9 +376,9 @@ if (import.meta.vitest) {
 			})
 
 			const repo = Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
-			await repo.from(PersonSchema).one().insert({ firstName: 'Katherine', lastName: 'Johnson' }).run()
+			await repo.from(PersonSchema).one().insert({ firstName: 'Katherine', lastName: 'Johnson' })
 
-			await expect(repo.from(PersonSchema).all().select(['fullName']).run()).rejects.toBeInstanceOf(EquippedError)
+			await expect(repo.from(PersonSchema).all().select(['fullName']).find()).rejects.toBeInstanceOf(EquippedError)
 		})
 	})
 }

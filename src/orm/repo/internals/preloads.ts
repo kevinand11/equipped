@@ -1,9 +1,9 @@
-import { EquippedError } from '../../errors'
-import type { OrmUse } from '../adapters/base'
-import { Query } from '../query'
-import type { AnyPreloadDef, AnyRelDef, NestedPreloadDef } from '../relations'
-import { ManyRelation, OneRelation } from '../relations'
-import type { AnySchema } from '../schema'
+import { EquippedError } from '../../../errors'
+import type { OrmUse } from '../../adapters/base'
+import { QueryGroup } from '../../query'
+import type { AnyPreloadDef, AnyRelDef, NestedPreloadDef } from '../../relations'
+import { ManyRelation, OneRelation } from '../../relations'
+import type { AnySchema } from '../../schema'
 
 const MAX_PRELOAD_DEPTH = 5
 
@@ -59,12 +59,12 @@ function normalizePreloads(defs: readonly AnyPreloadDef[]): ResolvedPreloadDef[]
 	})
 }
 
-export async function resolvePreloads(
-	entities: Record<string, unknown>[],
+export async function resolvePreloads<T extends Record<string, unknown>>(
+	entities: T[],
 	defs: readonly AnyPreloadDef[],
 	getUse: (s: AnySchema) => OrmUse,
 ) {
-	return resolvePreloadNodes(entities, normalizePreloads(defs), getUse, 1, [])
+	return resolvePreloadNodes(entities, normalizePreloads(defs), getUse, 1, []) as unknown as T[]
 }
 
 async function resolvePreloadNodes(
@@ -74,11 +74,8 @@ async function resolvePreloadNodes(
 	depth: number,
 	path: readonly string[],
 ) {
-	let results = entities
-	for (const def of defs) {
-		results = await resolvePreload(results, def, getUse, depth, path)
-	}
-	return results
+	for (const def of defs) entities = await resolvePreload(entities, def, getUse, depth, path)
+	return entities
 }
 
 async function resolvePreload(
@@ -114,7 +111,7 @@ async function resolvePreload(
 			const fkValues = uniqueDefinedValues(entities, def.foreignKey.name)
 			if (fkValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
 
-			let related = await getUse(target).findMany(Query.from().isIn(refCol, fkValues).toQuerySpec())
+			let related = await getUse(target).findMany(QueryGroup.from().in(refCol, fkValues))
 			if (node.preloads.length > 0 && related.length > 0) {
 				related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 			}
@@ -126,7 +123,7 @@ async function resolvePreload(
 		const refValues = uniqueDefinedValues(entities, refCol)
 		if (refValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
 
-		let related = await getUse(target).findMany(Query.from().isIn(def.foreignKey, refValues).toQuerySpec())
+		let related = await getUse(target).findMany(QueryGroup.from().in(def.foreignKey, refValues))
 		if (node.preloads.length > 0 && related.length > 0) {
 			related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 		}
@@ -139,7 +136,7 @@ async function resolvePreload(
 		const refValues = uniqueDefinedValues(entities, refCol)
 		if (refValues.length === 0) return entities.map((e) => ({ ...e, [name]: [] }))
 
-		let related = await getUse(target).findMany(Query.from().isIn(def.foreignKey, refValues).toQuerySpec())
+		let related = await getUse(target).findMany(QueryGroup.from().in(def.foreignKey, refValues))
 		if (node.preloads.length > 0 && related.length > 0) {
 			related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 		}
@@ -159,10 +156,10 @@ async function resolvePreload(
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { InMemoryOrm } = await import('../adapters/in-memory')
-	const { Relations } = await import('../relations')
-	const { Repo } = await import('./repo')
-	const { Schema } = await import('../schema')
+	const { InMemoryOrm } = await import('../../adapters/in-memory')
+	const { Relations } = await import('../../relations')
+	const { Repo } = await import('../repo')
+	const { Schema } = await import('../../schema')
 
 	describe('repo preload resolution', () => {
 		let userCounter = 0
@@ -238,31 +235,31 @@ if (import.meta.vitest) {
 
 		test('hasMany preload resolves related entities', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' }).run()
-			await Repo.from(PostSchema).one().insert({ title: 'Post 1', userId: user.id }).run()
-			await Repo.from(PostSchema).one().insert({ title: 'Post 2', userId: user.id }).run()
+			const user = await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' })
+			await Repo.from(PostSchema).one().insert({ title: 'Post 1', userId: user.id })
+			await Repo.from(PostSchema).one().insert({ title: 'Post 2', userId: user.id })
 
-			const users = await Repo.from(UserSchema).all().preload([UserRelations.definitions.posts]).run()
+			const users = await Repo.from(UserSchema).all().preload([UserRelations.definitions.posts]).find()
 			expect(users[0].posts).toHaveLength(2)
 		})
 
 		test('hasOne and belongsTo preloads resolve null and non-null branches', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.from(UserSchema).one().insert({ email: 'x@test.com', name: 'X' }).run()
-			await Repo.from(ProfileSchema).one().insert({ bio: 'Hello', userId: user.id }).run()
+			const user = await Repo.from(UserSchema).one().insert({ email: 'x@test.com', name: 'X' })
+			await Repo.from(ProfileSchema).one().insert({ bio: 'Hello', userId: user.id })
 
-			const users = await Repo.from(UserSchema).all().preload([UserRelations.definitions.profile]).run()
+			const users = await Repo.from(UserSchema).all().preload([UserRelations.definitions.profile]).find()
 			expect(users[0].profile?.bio).toBe('Hello')
 
-			const usersWithoutOrg = await Repo.from(UserSchema).all().preload([UserRelations.definitions.org]).run()
+			const usersWithoutOrg = await Repo.from(UserSchema).all().preload([UserRelations.definitions.org]).find()
 			expect(usersWithoutOrg[0].org).toBeNull()
 		})
 
 		test('nested preload resolves recursively', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.from(UserSchema).one().insert({ email: 'nested@test.com', name: 'Nested User' }).run()
-			await Repo.from(ProfileSchema).one().insert({ bio: 'Hello nested', userId: user.id }).run()
-			await Repo.from(PostSchema).one().insert({ title: 'Nested Post', userId: user.id }).run()
+			const user = await Repo.from(UserSchema).one().insert({ email: 'nested@test.com', name: 'Nested User' })
+			await Repo.from(ProfileSchema).one().insert({ bio: 'Hello nested', userId: user.id })
+			await Repo.from(PostSchema).one().insert({ title: 'Nested Post', userId: user.id })
 
 			const users = await Repo.from(UserSchema)
 				.all()
@@ -272,7 +269,7 @@ if (import.meta.vitest) {
 						preloads: [{ def: PostRelations.definitions.author, preloads: [UserRelations.definitions.profile] }],
 					},
 				])
-				.run()
+				.find()
 
 			const author = users[0].posts[0].author
 			const profile = author?.profile
@@ -282,8 +279,8 @@ if (import.meta.vitest) {
 
 		test('cycle detection throws descriptive error', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.from(UserSchema).one().insert({ email: 'cycle@test.com', name: 'Cycle User' }).run()
-			await Repo.from(PostSchema).one().insert({ title: 'Cycle Post', userId: user.id }).run()
+			const user = await Repo.from(UserSchema).one().insert({ email: 'cycle@test.com', name: 'Cycle User' })
+			await Repo.from(PostSchema).one().insert({ title: 'Cycle Post', userId: user.id })
 
 			await expect(
 				Repo.from(UserSchema)
@@ -294,19 +291,19 @@ if (import.meta.vitest) {
 							preloads: [{ def: PostRelations.definitions.author, preloads: [UserRelations.definitions.posts] }],
 						},
 					])
-					.run(),
+					.find(),
 			).rejects.toThrow(/Preload cycle detected/)
 		})
 
 		test('depth limit throws when chain exceeds max depth', async () => {
 			const Repo = makeRepo()
-			const a = await Repo.from(ASchema).one().insert({}).run()
-			const b = await Repo.from(BSchema).one().insert({ aId: a.id }).run()
-			const c = await Repo.from(CSchema).one().insert({ bId: b.id }).run()
-			const d = await Repo.from(DSchema).one().insert({ cId: c.id }).run()
-			const e = await Repo.from(ESchema).one().insert({ dId: d.id }).run()
-			const f = await Repo.from(FSchema).one().insert({ eId: e.id }).run()
-			await Repo.from(GSchema).one().insert({ fId: f.id }).run()
+			const a = await Repo.from(ASchema).one().insert({})
+			const b = await Repo.from(BSchema).one().insert({ aId: a.id })
+			const c = await Repo.from(CSchema).one().insert({ bId: b.id })
+			const d = await Repo.from(DSchema).one().insert({ cId: c.id })
+			const e = await Repo.from(ESchema).one().insert({ dId: d.id })
+			const f = await Repo.from(FSchema).one().insert({ eId: e.id })
+			await Repo.from(GSchema).one().insert({ fId: f.id })
 
 			await expect(
 				Repo.from(ASchema)
@@ -337,28 +334,28 @@ if (import.meta.vitest) {
 							],
 						},
 					])
-					.run(),
+					.find(),
 			).rejects.toThrow(/Preload depth exceeded/)
 		})
 
 		test('invalid nested preload definition throws a validation error', async () => {
 			const Repo = makeRepo()
-			await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' }).run()
+			await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' })
 
 			await expect(
 				Repo.from(UserSchema)
 					.all()
 					.preload([{ def: {} as any }])
-					.run(),
+					.find(),
 			).rejects.toThrow(/Invalid preload definition/)
 		})
 
 		test('findOne with preloads resolves relations', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' }).run()
-			await Repo.from(PostSchema).one().insert({ title: 'Post', userId: user.id }).run()
+			const user = await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' })
+			await Repo.from(PostSchema).one().insert({ title: 'Post', userId: user.id })
 
-			const found = await Repo.from(UserSchema).one().id(user.id).preload([UserRelations.definitions.posts]).run()
+			const found = await Repo.from(UserSchema).one().id(user.id).preload([UserRelations.definitions.posts]).find()
 			expect(found?.posts).toHaveLength(1)
 		})
 	})

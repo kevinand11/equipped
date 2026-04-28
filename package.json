@@ -175,6 +175,17 @@
 				"default": "./dist/esm/orm/index.mjs"
 			}
 		},
+		"./orm/adapters/in-memory": {
+			"types": "./dist/types/orm/adapters/in-memory/index.d.ts",
+			"require": {
+				"min": "./dist/cjs/orm/adapters/in-memory/index.min.cjs",
+				"default": "./dist/cjs/orm/adapters/in-memory/index.cjs"
+			},
+			"import": {
+				"min": "./dist/esm/orm/adapters/in-memory/index.min.mjs",
+				"default": "./dist/esm/orm/adapters/in-memory/index.mjs"
+			}
+		},
 		"./orm/adapters/mongodb": {
 			"types": "./dist/types/orm/adapters/mongodb/index.d.ts",
 			"require": {

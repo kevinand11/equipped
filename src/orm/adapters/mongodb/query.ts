@@ -1,11 +1,11 @@
-import type { FilterOp, QueryOptions, QuerySpec } from '../../query'
-import { QueryGroup, Where, WhereBlockOp, WhereOp } from '../../query'
+import type { FilterOp, QueryOptions } from '../../query'
+import { QueryGroup, Where, WhereGroupOp, WhereOp } from '../../query'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
 
 type MongoFilter = Record<string, unknown>
 
 export function compileMongoQuery(
-	filter: QuerySpec,
+	group: QueryGroup,
 	options: QueryOptions | undefined,
 	primaryKey: string,
 ): {
@@ -16,8 +16,7 @@ export function compileMongoQuery(
 	projection: Record<string, 1> | undefined
 } {
 	const clauses: MongoFilter[] = []
-
-	for (const clause of filter.clauses) {
+	for (const clause of group.children) {
 		const compiled = compileOp(clause, primaryKey)
 		if (compiled) clauses.push(compiled)
 	}
@@ -78,7 +77,7 @@ function compileWhere(w: Where, primaryKey: string): MongoFilter {
 			return { [field]: { $exists: w.value } }
 		case WhereOp.contains:
 			return { [field]: { $all: Array.isArray(w.value) ? w.value : [w.value] } }
-		case WhereOp.notContains:
+		case WhereOp.ncontains:
 			return { [field]: { $not: { $all: Array.isArray(w.value) ? w.value : [w.value] } } }
 		default:
 			return { [field]: { $eq: w.value } }
@@ -104,9 +103,8 @@ function compileOr(group: QueryGroup, primaryKey: string): MongoFilter | null {
 function compileOp(op: FilterOp, primaryKey: string): MongoFilter | null {
 	if (op instanceof Where) return compileWhere(op, primaryKey)
 	if (op instanceof QueryGroup) {
-		if (op.op == null) return compileAnd(op, primaryKey)
-		if (op.op === WhereBlockOp.and) return compileAnd(op, primaryKey)
-		if (op.op === WhereBlockOp.or) return compileOr(op, primaryKey)
+		if (op.op === WhereGroupOp.and) return compileAnd(op, primaryKey)
+		if (op.op === WhereGroupOp.or) return compileOr(op, primaryKey)
 	}
 	return null
 }
