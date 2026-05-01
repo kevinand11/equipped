@@ -35,7 +35,7 @@ Build an ORM in `equipped` that:
 
 ### Q3.x — authoring style: factory wrapping a builder chain (REVISED post-Q9)
 
-**Canonical pattern: `defineX(callback)` where the callback receives a builder and returns the chained result.** Applied to every API definition in the ORM (`defineSchema`, `defineRelations`, `defineAdapter`, `defineOrm`).
+**Canonical pattern: `defineX(callback)` where the callback receives a builder and returns the chained result.** Applied to every API definition in the ORM (`defineSchema`, `defineRelations`, `defineAdapter`, `defineRepo`).
 
 ```ts
 const X = defineX((b) => b
@@ -67,10 +67,8 @@ If a user attempts `.step('foo', ...).step('foo', ...)`, the second `'foo'` reso
 **Rest-args for op lists:** `.queryableOps('eq', 'ne', 'gt')` instead of `.queryableOps(['eq', 'ne', 'gt'])`. TS 5.0+ `const` type parameter (`<const Ops extends readonly OpName[]>`) preserves literal types in rest-args without `as const`. Same for `.updateOps(...)`.
 
 **Things that stay as direct calls (NOT builders):**
-- `orm.repo(schema, cfg)` — Repo construction.
-- `repo.withConfig(transform)` — single-transform derivation.
-- `repo.findByPk / findOne / updateMany / ...` — invocation methods.
-- `orm.session(fn)` — transaction entry.
+- `repo.findByPk / findOne / updateMany / upsertOne / ...` — invocation methods (schema-per-call).
+- `repo.session(fn)` — transaction entry.
 - `set(...) / inc(...) / hasMany(...) / belongsTo(...)` — op/descriptor helper functions.
 
 **The principle: builder-chain for declarative artifact construction; direct calls for invocation/operations.**
@@ -96,8 +94,8 @@ If a user attempts `.step('foo', ...).step('foo', ...)`, the second `'foo'` reso
 #### Op lists (closed canonical sets, adapter subsets a portion)
 
 ```ts
-queryableOps:  'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'nin' | 'like' | 'exists' | 'contains' | 'ncontains'
-updateOps:     'set' | 'inc' | 'mul' | 'min' | 'max' | 'unset' | 'push' | 'pull' | 'patch'
+queryableOps:  'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'notIn' | 'like' | 'exists' | 'notExists' | 'contains' | 'notContains'
+updateOps:     'set' | 'inc' | 'mul' | 'min' | 'max' | 'unset' | 'push' | 'pull' | 'patch' | 'upsert'
 ```
 
 - **`set` is a declarable op, not always-on.** An adapter that doesn't list `'set'` in `updateOps` cannot do set-shape writes through the typed API. (In practice every realistic adapter will list it; framework no longer assumes.)
@@ -148,7 +146,7 @@ updateOps:     'set' | 'inc' | 'mul' | 'min' | 'max' | 'unset' | 'push' | 'pull'
 
 ---
 
-## Decisions UNRESOLVED — pick up here
+## Decisions LOCKED (continued)
 
 ### Q5.2 — input shape adapters receive (LOCKED)
 
@@ -173,7 +171,7 @@ The all-or-none "honesty" worry that motivated open-as-a-relief-valve is now sol
 
 ### Q5.4 — one update method or two (LOCKED)
 
-**Decision: two methods.** `repo.updateOne(filter, ...ops): T | null` + `repo.updateMany(filter, ...ops): T[]`. Symmetric with the locked `findOne` / `findMany` and `deleteOne` / `deleteMany` pairs. Adapter-level `LIMIT 1` / native `updateOne` is faster than scanning all matches when the user only wants one. `updateOne` with a non-unique filter selects "first match wins" (matches today's Mongo / PG-with-LIMIT-1 semantics).
+**Decision: two methods.** `repo.updateOne(schema, filter, ...ops): T | null` + `repo.updateMany(schema, filter, ...ops): T[]`. Symmetric with the locked `findOne` / `findMany` and `deleteOne` / `deleteMany` pairs. Adapter-level `LIMIT 1` / native `updateOne` is faster than scanning all matches when the user only wants one. `updateOne` with a non-unique filter selects "first match wins" (matches today's Mongo / PG-with-LIMIT-1 semantics).
 
 ### Q5.5 — storage CRUD-by-PK quartet + lifecycle split (LOCKED — emerged during Q5.4 grill)
 
@@ -197,83 +195,185 @@ AdapterCrud?:               // optional, methods optional within
 
 Reason: Firebase has native PK update (`updateDoc(docRef, data)`) but no native query-based update. Putting `updateByPk` in always-on storage (alongside the already-mutating `insertMany` / `deleteByPk`) lets Firebase honestly declare a useful write path without claiming `queryable`. Mongo / PG / file-DB all trivially support PK update. `updateByPk` accepts the full `updateOps`-gated op list — same signature pattern as `updateOne` / `updateMany`.
 
-### Q6 — Repo construction & multi-tenancy (LOCKED)
+### Q6 — Repo construction & multi-tenancy (LOCKED — REVISED post-Q9.5)
 
-**Decision: multi-Repo "blend" — shared `Orm` root + per-schema typed Repos + optional pluggable `scope` hook.**
+**Decision: single-Repo D + user-provided `ContextSource`.** Library imports zero `node:async_hooks`. User wires their own propagation mechanism (ALS, Hono context, DI container, explicit threading) and provides a `ContextSource` to the repo.
 
-DDL/migrations are out of scope (Q4.4g), and physical name mapping lives in adapters (Q5.2 F), so the original "where does PG `varchar(255)` live" question dissolved. Per-field adapter config has no canonical use case in scope; deferred until a concrete adapter forces it. The real open branch was **how to bind schemas to adapter routing config and how to handle multi-tenancy + transactions**.
+The earlier multi-Repo blend was overturned because preloads + multi-tenancy created an unfixable footgun: `withConfig` derivations didn't propagate to preloaded queries (preload framework looked up the originally-registered repo from an orm registry). Subagent research (multi-source: Drizzle, Prisma, TypeORM, Sequelize, MikroORM, Kysely + 2026 edge-runtime ALS state + non-ALS context propagation patterns) converged on the hook-based pattern: ORM core ships zero ALS dependency; user owns context propagation. This matches Prisma's `$extends` model and aligns with TypeORM's March 2026 rejection of native ALS support (PR #11199).
 
 #### Shape
 
 ```ts
-const orm = defineOrm((o) => o
+const repo = defineRepo((r) => r
   .adapter(PostgresAdapter)
-  .scope(() => currentTenantTransform())   // optional
+  .resolve((schema) => ({ table: schema.name }))
+  .context(myContextSource)             // optional; if absent, no transform applied per query
 )
+```
 
-const userRepo  = orm.repo(UserSchema,  { table: 'users' })   // direct call — not a builder
-const orderRepo = orm.repo(OrderSchema, { table: 'orders' })
+**Schema arg per call** (not per-schema typed repos):
 
-await orm.session(async () => {
-  await userRepo.updateOne(...)   // tx-bound
-  await orderRepo.insertOne(...)  // same tx
+```ts
+await repo.findByPk(UserSchema, 'u1')
+await repo.findOne(UserSchema, q => q.eq(UserSchema.fields.id, 'u1'))
+await repo.findMany(UserSchema, q => q.gt(UserSchema.fields.age, 18), {
+  preload: [UserRels.orders]            // preloads work — one Repo, one cfg-resolution path
+})
+await repo.insertOne(UserSchema, { ... })
+await repo.updateOne(UserSchema, q, set({...}))
+await repo.updateByPk(UserSchema, 'u1', set({...}), inc(UserSchema.fields.views, 1))
+await repo.deleteByPk(UserSchema, 'u1')
+
+await repo.session(async () => {
+  await repo.updateOne(UserSchema, q, set({...}))
+  await repo.insertOne(OrderSchema, {...})
 })
 ```
 
-#### Three configuration layers (composition order locked)
+#### `ContextSource` contract
 
-`base config → static withConfig transforms → dynamic scope transform`
+Library exposes:
 
-1. **Base config** — provided at `orm.repo(schema, cfg)`.
-2. **Static `withConfig(transform)`** — derives a new Repo with statically-overridden config. Cheap (no per-Repo connection — adapter is shared).
-3. **Dynamic `scope` hook** — optional `(): ConfigTransform | null` on the Orm root, runs per query. Returns `null` for "no override," or a transform applied on top of the static-resolved config.
+```ts
+type ConfigTransform<C> = (cfg: C, schema: AnySchema) => C
 
-Users can use any combination. Composition is in the order above so the final config is predictable.
+type ContextSource<C> = {
+  get: () => ConfigTransform<C> | null
+}
+```
 
-#### Why "blend" over D (single Repo, schema-per-call) or pure E (multi-Repo, no scope hook)
+The library calls `contextSource.get()` per query, applies the returned transform on top of the resolved config (`base resolve → context transform`), hands the result to the adapter. **`run`/scope-entry is owned by the user**; library never enters or runs ALS scopes itself.
 
-| | D | E (pure) | Blend |
-|---|---|---|---|
-| Per-schema typing (`Repo<S, A>`) | no | yes | yes |
-| ALS in library code | yes | no | no |
-| Implicit tenant propagation | yes (built-in ALS) | no (user must thread `orm`) | yes (user wires their own ALS into `scope`) |
-| Cross-runtime portable | depends | yes | yes |
-| Cross-schema transactions | yes | yes | yes |
+#### Configuration resolution order (locked)
 
-The blend gives users every option without the library committing to a runtime or tenancy mechanism.
+For each query: `base resolve(schema) → contextSource.get()?(cfg, schema)`.
 
-#### Multi-tenancy paths (user picks per their stack)
+1. **Base resolve** — `defineRepo(.resolve((schema) => Cfg))` runs; produces base cfg per schema.
+2. **Context transform** — `contextSource.get()` runs per query; if non-null, the returned `ConfigTransform` is applied on top of base cfg.
 
-- **Path 2 — explicit per-request derivation** (edge-runtime safe, no ALS): handler calls `userRepo.withConfig(prefix)` to get a tenant-scoped repo per request.
-- **Path 3 — implicit ALS propagation** (Node): user wires their own `AsyncLocalStorage` into `scope: () => store.getStore() ? transform : null`. Middleware does `tenantStore.run({ id }, () => next())`. Library has zero `node:async_hooks` dependency.
-- **Path 4 — DI framework**: `scope: () => container.get('tenant') ? transform : null`. Same downstream code as Path 3.
+Same flow for every query, including preloaded sub-queries. No registry, no per-schema typing, no `withConfig`.
 
-All paths support cross-schema transactions: `userRepo` and `orderRepo` are typed handles into the same adapter, so `orm.session(fn)` tx-binds calls through any of them.
+#### Multi-tenancy patterns (user picks per their stack and runtime)
 
-#### Cross-schema transactions are an adapter concern
+**Node + ALS (typical):**
+```ts
+import { AsyncLocalStorage } from 'node:async_hooks'
 
-Transactions don't push toward D. The framework just calls `adapter.session(fn)`. The adapter implements tx-binding however its runtime allows (internal ALS on Node, Workers' tx-per-request, etc.). Multiple Repos sharing one adapter are all tx-affected because the tx state lives in the adapter, not the Repo. ALS belongs in adapter implementations (where runtime-specific concerns belong), not in the framework.
+const tenantStore = new AsyncLocalStorage<{ id: string }>()
+
+const tenantContext = {
+  get: () => {
+    const t = tenantStore.getStore()
+    if (!t) return null
+    return (cfg) => ({ ...cfg, table: `t_${t.id}_${cfg.table}` })
+  },
+}
+
+export function runInTenant<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  return tenantStore.run({ id }, fn)
+}
+
+const repo = defineRepo((r) => r
+  .adapter(PgAdapter)
+  .resolve((s) => ({ table: s.name }))
+  .context(tenantContext)
+)
+
+// Middleware
+app.use((req, _res, next) => runInTenant(req.header('x-tenant')!, () => next()))
+```
+
+**Cloudflare Workers + Hono context-storage:**
+```ts
+import { contextStorage, getContext } from 'hono/context-storage'
+
+const tenantContext = {
+  get: () => {
+    const c = getContext()
+    const id = c.var.tenantId
+    return id ? (cfg) => ({ ...cfg, table: `t_${id}_${cfg.table}` }) : null
+  },
+}
+```
+
+**DI container (NestJS / tsyringe / awilix):**
+```ts
+const tenantContext = {
+  get: () => {
+    const t = container.get<Tenant | null>('tenant')
+    return t ? (cfg) => ({ ...cfg, table: `t_${t.id}_${cfg.table}` }) : null
+  },
+}
+```
+
+**Explicit threading (no global mechanism):**
+```ts
+let active: ConfigTransform | null = null
+const tenantContext = { get: () => active }
+
+export async function withTenant<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  const prev = active
+  active = (cfg) => ({ ...cfg, table: `t_${id}_${cfg.table}` })
+  try { return await fn() } finally { active = prev }
+}
+```
+(Safe for fully-sequential code; breaks under concurrent requests in same isolate.)
+
+In all patterns: handler/service code reads as if single-tenant. Tenant prefix flows through preloads automatically because the same `contextSource.get()` is called for every query, including downstream preload queries.
+
+#### Cross-schema transactions
+
+`repo.session(async () => ...)` calls the adapter's `session(fn)`. Inside `fn`, every `repo.<method>(schema, ...)` call resolves through the same single Repo, hits the adapter, picks up the tx connection from adapter-internal ALS (Q8). Cross-schema, cross-table all work.
+
+If a tenant scope wraps a session: tenant transform is applied on top of base cfg for every query inside the session. Both layers compose: tenant scope (user-owned) → session (adapter-internal). No interaction issues.
 
 #### Footgun documented (not enforced)
 
-In Path 3 with implicit propagation, forgetting the tenant middleware causes `scope()` to return `null` and queries silently hit the un-prefixed base table. Two user-side mitigations to document:
+If user forgets to wire the tenant middleware on a route, `contextSource.get()` returns `null` and queries silently hit the un-prefixed base table. Two user-side mitigations to document:
 
-- Throw-on-missing inside the user's `scope` hook (`if (!t) throw`).
-- Sentinel for legitimately untenanted scopes (`tenantStore.run({ id: '__untenanted__' }, ...)`) so missing-tenant is impossible by construction.
+- Throw-on-missing inside `contextSource.get()` (`if (!t) throw`) — fail loud for any untenanted query.
+- Sentinel scope (`tenantStore.run({ id: '__untenanted__' }, ...)`) for legitimate untenanted code (admin routes, migrations) so missing-tenant is impossible by construction.
 
-Library doesn't enforce either — admin routes / migrations have legitimate untenanted use.
+Library doesn't enforce either; admin/migration routes have legitimate untenanted use.
 
-#### Naming
+#### Why this beats library-side ALS (the original D plan)
 
-- Hook field: **`scope`** (short, evocative; doesn't collide with the locked Q5.2 boundary "normalisation"-as-resolve concept).
-- Static derivation: **`repo.withConfig(transform)`**.
-- Transaction entry: **`orm.session(fn)`** (matches the locked `AdapterTransactional.session` signature).
-- Root factory: **`defineOrm({ adapter, scope? })`**. Per-schema factory: **`orm.repo(schema, baseConfig)`**.
+| | Library-side ALS | Hook-based (locked) |
+|---|---|---|
+| Library imports `node:async_hooks` | yes | **no** |
+| Edge-runtime portable | depends on runtime | yes |
+| User-pluggable for non-ALS strategies | no | yes |
+| Multi-tenancy "just works" | yes (built-in) | one-time setup (~10 lines) |
+| Thenable-bug exposure | direct (library returns thenables → ALS may lose context) | user-owned (their hook, their problem) |
+| ORM-industry alignment | older pattern (Sequelize) | modern pattern (Prisma `$extends`, TypeORM PR #11199 rejected, Kysely's `withSchema`) |
+
+#### Naming (locked)
+
+- Library factory: **`defineRepo`** (matches today's `Repo.from`; "Orm" was a Q6-blend invention dropped here).
+- Builder methods: **`.adapter(...)`**, **`.resolve(schema => Cfg)`**, **`.context(contextSource)`**.
+- Context-source contract: **`{ get: () => ConfigTransform | null }`**. No `run` — user owns scope-entry.
+- Transaction entry: **`repo.session(fn)`** (matches `AdapterTransactional.session`).
+- Schema-per-call methods: `repo.findByPk(schema, pk)`, `repo.findOne(schema, q)`, `repo.findMany(schema, q, opts?)`, `repo.insertOne(schema, row)`, `repo.insertMany(schema, rows)`, `repo.updateOne(schema, q, ...ops)`, `repo.updateMany(schema, q, ...ops)`, `repo.updateByPk(schema, pk, ...ops)`, `repo.deleteByPk(schema, pk)`, `repo.deleteOne(schema, q)`, `repo.deleteMany(schema, q)`, `repo.raw(...)`.
+
+#### What was removed (vs Q6 multi-Repo blend)
+
+- ❌ `defineOrm` two-tier shape — collapsed into single `defineRepo`.
+- ❌ `orm.repo(schema, cfg)` factory — replaced by `defineRepo(.resolve(...))` + schema-per-call methods.
+- ❌ `repo.withConfig(transform)` — no per-Repo derivation; user wraps a scope at the application layer instead.
+- ❌ Orm registry / `repoFor(schema)` lookup — single Repo, no registry needed.
+- ❌ Per-schema typing (`Repo<S, A>`) — back to `Repo<A>` with schema-arg-per-call.
+- ❌ Built-in `scope` hook on the orm root — replaced by `ContextSource` wired by the user.
 
 #### Out of scope / deferred
 
 - **Per-field adapter config** (PG types, Mongo index hints): no canonical in-scope use case; deferred. DDL/migrations remain out of scope per Q4.4g.
-- **Schema-side adapter binding** (`UserSchema.for(adapter, cfg)` chained on the schema): rejected. Couples schemas to adapters; library ships no adapters; adapter imports from schema files would be ugly. Use `orm.repo(schema, cfg)` instead.
+- **Schema-side adapter binding**: rejected. Schema is fully relations- and adapter-agnostic.
+
+#### Costs accepted
+
+1. **Schema-arg-per-call ergonomics.** `repo.findMany(UserSchema, q)` instead of `userRepo.findMany(q)`. Per-call return types still narrow correctly via TS generics; IDE autocomplete is slightly worse (you have to type the schema arg first to get accurate field hints).
+2. **One-time `~10 lines` of user setup** to wire ALS (or Hono context, or DI). Library can't make multi-tenancy work without the user wiring something.
+3. **No per-schema config divergence** at the Repo layer — a schema's config is whatever `resolve(schema)` returns. Different configs require different repos or context-driven transforms.
 
 ### Q7 — Validation flow (LOCKED)
 
@@ -315,7 +415,7 @@ Library doesn't enforce either — admin routes / migrations have legitimate unt
 
 ### Q8 — Transactions / `session` shape (LOCKED)
 
-**Shape: simple callback** (`orm.session<T>(fn: () => Promise<T>): Promise<T>`).
+**Shape: simple callback** (`repo.session<T>(fn: () => Promise<T>): Promise<T>`).
 
 - Drizzle / Knex / Prisma idiom; native fit for async/await composition.
 - Ecto.Multi-style chained operations rejected — Elixir-specific idiom (depends on pipe operator + tagged tuples) that doesn't add value in JS land.
@@ -332,13 +432,13 @@ Library doesn't enforce either — admin routes / migrations have legitimate unt
 - **Asymmetry with Q6's `scope` hook accepted.** `scope` is pluggable because not every user needs multi-tenancy and runtimes vary; sessions are universal but the *mechanism* still varies — adapter-side ALS keeps the library portable while consolidating ALS code per-adapter.
 
 **Nested sessions: framework delegates to adapter.**
-- `orm.session(...)` inside another `orm.session(...)` → framework just calls `adapter.transactional.session(fn)` again.
+- `repo.session(...)` inside another `repo.session(...)` → framework just calls `adapter.transactional.session(fn)` again.
 - Adapter decides its own nesting behavior (PG can use savepoints, Mongo has its own semantics, Firebase has no transactions).
 - Adapter author documents nesting behavior in the adapter's README.
 - No framework-level rule.
 
 **Isolation levels: out of scope; DB default wins.**
-- No `isolation` option on `orm.session(fn)`.
+- No `isolation` option on `repo.session(fn)`.
 - No `defaultIsolation` declaration required on adapters.
 - Each DB uses whatever default level its `BEGIN` statement implies (PG: `READ COMMITTED`, MySQL InnoDB: `REPEATABLE READ`, SQLite: `SERIALIZABLE`, Mongo 5.0+: snapshot, etc.).
 - Inconsistent across adapters by design; same behavior every other JS ORM has.
@@ -346,8 +446,7 @@ Library doesn't enforce either — admin routes / migrations have legitimate unt
 - Slot-in answer if real demand emerges later: per-adapter `isolationLevels: [...] as const` declaration + optional `isolation` arg on `session()`. Force-uniform-value rejected (SQLite/Mongo/Firebase can't comply).
 
 **Cross-schema transactions:**
-- Multiple Repos sharing one Orm root all flow through the same adapter; `orm.session(fn)` tx-binds them all.
-- This is true regardless of Repo design (single-Repo / multi-Repo): tx state lives in the adapter, not in the Repo.
+- Q6 was revised to single-Repo (one repo handles all schemas); cross-schema transactions just work because every schema-per-call goes through the same adapter, which `repo.session(fn)` tx-binds. Tx state lives in the adapter, not in the Repo.
 
 **Return value:**
 - `session<T>(fn): Promise<T>` returns the callback's return value after a successful commit. If commit fails (e.g., serialization error), `session` rejects with the commit error rather than the value.
@@ -397,13 +496,13 @@ README's Repository API list is updated to match locked decisions:
 
 **Removed:**
 - `upsertOne` — deferred (Q5.5 deferred upsert; not yet decided where it lands).
-- `resolve` Repo method — replaced by Q6's `orm.scope` hook + `repo.withConfig(transform)` static derivation. The old `repo.resolve(transformer, fn)` AsyncLocalStorage pattern is gone.
+- `resolve` Repo method — replaced by Q6's `defineRepo(.resolve(schema => Cfg).context(ctxSource))` + user-owned scope-entry. The old `repo.resolve(transformer, fn)` AsyncLocalStorage pattern is gone (library imports zero `node:async_hooks`).
 
 **Stays:**
 - `findOne`, `findMany`, `insertOne`, `insertMany`, `updateOne`, `updateMany`, `deleteOne`, `deleteMany`, `raw`.
 
 **Moved to Orm root (per Q6 / Q8):**
-- `session(fn)` — now `orm.session(fn)` (cross-schema), not per-Repo.
+- `session(fn)` — `repo.session(fn)` (single-Repo handles all schemas; cross-schema works because all schema-per-call routes through the same adapter).
 
 #### Adapter contract (Q10.5 — README ↔ locked design reconciliation)
 
@@ -423,8 +522,8 @@ Branch #7 closure means a follow-up implementation pass needs to:
 3. Update tests and the in-memory / mongo / postgres adapter compilers (`compileMongoQuery` etc.) for the new enum names.
 4. Rewrite README "Repository API" + "Query API" + "Adapters" sections to match locked design.
 5. Drop `QueryGroup.raw` mention from README.
-6. Drop `upsertOne` from Repository API list (or note as "deferred").
-7. Drop `resolve` from Repository API list; add docs for `orm.scope` and `repo.withConfig`.
+6. Add `upsertOne(schema, q, insert, ...ops)` to the Repository API list (Q12 locked).
+7. Drop the old `resolve` Repo method from the Repository API list. Document the new `defineRepo(.resolve(schema => Cfg).context(ctxSource))` shape and the user-provided `ContextSource` hook for multi-tenancy / scope propagation. Library imports zero `node:async_hooks`.
 8. Add `findByPk` / `updateByPk` / `deleteByPk` to Repository API list.
 
 ### Q9 — Relations declaration shape (LOCKED) + builder-chain upgrade
@@ -460,9 +559,9 @@ Calling `.hasMany('posts', ...).hasMany('posts', ...)` produces a TS error: the 
 - `defineSchema('users', (s) => s.pk(...).field(...))` (rename of `Schema.from(...)`)
 - `defineRelations(source, (b) => b.hasMany(...))`
 - `defineAdapter((a) => a.config(...).queryableOps(...).crud({...}))`
-- `defineOrm((o) => o.adapter(...).scope(...))`
+- `defineRepo((r) => r.adapter(...).resolve(...).context(...))`
 
-Direct calls (not builders): `orm.repo(schema, cfg)`, `repo.withConfig(...)`, `repo.findByPk(...)`, `orm.session(...)`, op/descriptor helper functions (`set`, `inc`, `hasMany`, `belongsTo`, etc.).
+Direct calls (not builders): `repo.findByPk(...)` (and other invocation methods, schema-per-call), `repo.session(...)`, op/descriptor helper functions (`set`, `inc`, `hasMany`, `belongsTo`, etc.).
 
 #### Q9.3 — FK refs (LOCKED)
 
@@ -564,27 +663,268 @@ User accesses tags from a post via two-step preload (`post.postTags[].tag`). No 
 
 **Reason:** join tables frequently carry their own data (e.g. `created_at` on `post_tags`, role on a `user_roles` join). Sugar that hides the join schema obscures this. Explicit form keeps the join as a first-class entity.
 
-#### Sub-questions still open in branch #5
+#### Q9.5 — Orm/Repo integration for preloads (RESOLVED via Q6 revision)
 
-- **Orm/Repo integration**: how the package resolves the target Repo when preloading a relation, given Q6's per-schema multi-Repo design.
-- **Composite foreign keys**: today's single-FK pattern vs multi-field FK support.
+The original Q9.5 question (how does the preload framework find the target Repo given multi-Repo) **dissolved** when Q6 was reverted to single-Repo D. With one Repo handling all schemas, preloads call `repo.findMany(targetSchema, ...)` directly — no registry, no `repoFor` lookup, no footgun.
+
+The user-provided `ContextSource` flows through preloads automatically because every query (top-level or preloaded) goes through the same per-query config-resolution path: `base resolve(schema) → contextSource.get()?.(cfg, schema)`.
+
+#### Q9.6 — Composite foreign keys (OUT OF SCOPE)
+
+**Decision: composite FKs and composite PKs are not supported.** Single-FK and single-PK only.
+
+Reasons:
+- No locked use case forces it. The most plausible composite-FK case (multi-tenancy with `(tenant_id, entity_id)`) is handled by Q6's hook-based `ContextSource` config transform — tenants don't appear as columns.
+- Composite PK would affect the entire CRUD-by-PK surface (`findByPk` / `updateByPk` / `deleteByPk` all take tuples; adapter contract grows). Significant blast radius.
+- DDL out of scope (Q4.4g) — framework doesn't generate composite key constraints.
+- Modern TypeScript apps trend toward surrogate UUIDs + composite UNIQUE indexes rather than composite PKs.
+- Mongo / Firebase don't have native composite FKs — universal-adapter rough fit.
+
+**Users with composite-key schemas:** model with surrogate UUIDs + composite UNIQUE indexes (modern alternative documented in Q9.6 grill). For genuine composite-key requirements that can't be modelled this way, use `raw`.
+
+#### Q9 sub-questions resolved
+
 - **Self-referential relations**: confirmed working — pass same schema as target. No special case needed.
+
+### Q11 — Schema field-type ↔ adapter compatibility (LOCKED)
+
+**Decision: `supportedValueTypes` literal list with TS-level compile-time enforcement.** Same pattern as `queryableOps` / `updateOps` (Q4): closed canonical set, adapter subsets a portion, builder-chain factory method, TS narrowing at the call site.
+
+#### Closed canonical set
+
+```ts
+type ValueType =
+  | 'string'    // → JS string
+  | 'number'    // → JS number
+  | 'boolean'   // → JS boolean
+  | 'null'      // → null
+  | 'object'    // → record-shaped JS object (incl. Map encoded as object)
+  | 'array'     // → JS array (incl. Set encoded as array)
+  | 'date'      // → Date instance
+```
+
+7 tags. **Closed and final.** Custom value shapes fall under `'object'` (record-like) or `'array'` (list-like).
+
+`'binary'` (Uint8Array / Buffer) and `'bigint'` are **out of scope**. Users who need binary blobs or arbitrary-precision integers:
+- Encode them as a supported type (e.g., binary → base64 string; bigint → string).
+- Go through `raw` for adapter-specific handling.
+
+These are not deferred — they are not part of the framework's value-type model.
+
+#### Adapter declaration
+
+```ts
+const PostgresAdapter = defineAdapter((a) => a
+  .config({} as PgCfg)
+  .queryableOps(...)
+  .updateOps(...)
+  .supportedValueTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
+  .lifecycle({ connect, disconnect })
+  .crud({ ... })
+  .queryable({ ... })
+  .transactional({ session })
+)
+
+const SqliteAdapter = defineAdapter((a) => a
+  .config({} as SqliteCfg)
+  .queryableOps(...)
+  .updateOps('set')
+  .supportedValueTypes('string', 'number', 'boolean', 'null')   // honest: no native objects/arrays/dates
+  .lifecycle({ connect, disconnect })
+  .crud({ ... })
+  .queryable({ ... })
+)
+
+const FirebaseAdapter = defineAdapter((a) => a
+  .config({} as FirebaseCfg)
+  .queryableOps(...)
+  .updateOps('set')
+  .supportedValueTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')   // Firestore native types
+  .crud({ ... })
+  .queryable({ ... })
+)
+```
+
+If `.supportedValueTypes(...)` is omitted, default to **`readonly []`** — adapter supports zero value types. Pairing such an adapter with any schema produces a TS error at every Repo method call (since every schema has at least a PK field, which has some kind). Forces adapter authors to declare honestly; matches the locked Q4 rule for `queryableOps` / `updateOps` (omission = empty list).
+
+#### TS-level narrowing
+
+Framework derives a "value kind" per schema field by inspecting the pipe's output type:
+
+```ts
+type ValueKindOf<P extends Pipe<any, any>> =
+  [PipeOutput<P>] extends [string]                ? 'string'  :
+  [PipeOutput<P>] extends [number]                ? 'number'  :
+  [PipeOutput<P>] extends [boolean]               ? 'boolean' :
+  [PipeOutput<P>] extends [null]                  ? 'null'    :
+  [PipeOutput<P>] extends [Date]                  ? 'date'    :
+  [PipeOutput<P>] extends [readonly unknown[]]    ? 'array'   :
+  [PipeOutput<P>] extends [object]                ? 'object'  :
+  never
+
+type SchemaValueKinds<S extends AnySchema> = {
+  [K in keyof SchemaFields<S>]: ValueKindOf<SchemaFields<S>[K]['pipe']>
+}[keyof SchemaFields<S>]
+
+type SchemaCompatible<A, S extends AnySchema> =
+  SchemaValueKinds<S> extends A['supportedValueTypes'][number] ? S : never
+```
+
+Repo methods constrain the schema arg:
+
+```ts
+findMany<S extends AnySchema>(
+  schema: SchemaCompatible<A, S>,
+  q: WhereFactory,
+  opts?: QueryOptions,
+): Promise<SchemaOutput<S>[]>
+// ↑ schema typed `never` when adapter can't persist some field type → TS error at the call site
+```
+
+Pairing `SqliteAdapter` with a schema containing `v.object(...)`:
+
+```ts
+const repo = defineRepo((r) => r.adapter(SqliteAdapter).resolve(...))
+await repo.findMany(SchemaWithObject, q)
+//                  ^^^^^^^^^^^^^^^^
+// TS error: argument of type 'SchemaWithObject' is not assignable to parameter of type 'never'
+// (one of its fields uses an output type SqliteAdapter cannot persist)
+```
+
+Same UX as misdeclaring an op against `queryableOps` / `updateOps` — compile-time refusal.
+
+#### Trade-offs accepted
+
+1. **TS-level pipe-output analysis is brittle for non-trivial pipes.** A pipe whose output is `Map<K, V>` matches the `[object]` branch (close enough); a pipe producing `Promise<X>` or other anomalous output resolves to `never`, which makes `SchemaValueKinds<S>` include `never`, which is vacuously compatible. Documentation note: pipe authors should ensure their pipe output types map cleanly to a canonical kind.
+2. **Default-to-empty when omitted.** Adapters that don't declare are incompatible with every schema (since every schema has at least one field). Forces honest declaration. Matches Q4's omission-equals-empty rule for `queryableOps` / `updateOps`.
+3. **One-level kind check.** `v.object({ foo: v.array(...) })` is tagged `'object'`; framework doesn't recursively validate nested types against the adapter. If the adapter supports `'object'`, nested arbitrary structure is the adapter's problem (Mongo handles via BSON; PG via JSONB; SQLite via JSON.stringify).
+4. **No silent serialization fallback in the framework.** If SQLite doesn't declare `'object'`, the framework refuses to compile a schema with `v.object()` against it. The adapter never sees an unsupported value.
+
+#### Cross-cutting consistency with locked principles
+
+- **Closed canonical set** matches filter-ops / update-ops design.
+- **Per-adapter subsetting** matches per-op declaration philosophy (Q4 revision).
+- **Compile-time over runtime** matches "type system is the contract" cross-cutting principle.
+- **No silent emulation** — adapter has to honestly declare what it can store.
+
+### Q12 — Upsert placement (LOCKED)
+
+**Decision: query-based `upsertOne(schema, q, insert, ...ops)`.** No PK-keyed variant. PK-based upsert expressed as `q.eq(schema.pkField, pk)` if needed.
+
+#### Why query-based, not PK-keyed
+
+`upsertByPk` doesn't match real-world app patterns. Real upsert is "find-or-create by natural key" — email, slug, FK, hash — where the lookup field isn't the PK. PK-keyed variant rejected.
+
+#### API shape
+
+```ts
+await repo.upsertOne(UserSchema,
+  q => q.eq(UserSchema.fields.email, 'a@b.com'),     // matching filter
+  { name: 'Alice', email: 'a@b.com' },                // full insert payload (typed SchemaInput<S>)
+  set({ lastSeen: Date.now() }),                      // ops applied if existing
+  inc(UserSchema.fields.loginCount, 1),
+)
+```
+
+Returns the row (created or updated). Atomic per the adapter's native semantics.
+
+#### Capability gating
+
+`'upsert'` joins the `updateOps` canonical literal list:
+
+```ts
+updateOps:    'set' | 'inc' | 'mul' | 'min' | 'max' | 'unset' | 'push' | 'pull' | 'patch' | 'upsert'
+```
+
+Repo `upsertOne` exists when:
+- `'upsert' in A['updateOps']`, AND
+- `A['queryableOps']` is non-empty (since upsert takes a filter).
+
+If either is missing, `repo.upsertOne` is `never`.
+
+#### Adapter contract
+
+Lives in `queryable` bag (alongside `findMany`/`updateMany`/`deleteMany`) since it takes a `QueryGroup`:
+
+```ts
+interface AdapterQueryable<C> {
+  findMany?(...)
+  updateMany?(...)
+  deleteMany?(...)
+  upsertOne?(
+    schema: AnySchema,
+    q: QueryGroup,
+    insert: Record<string, unknown>,
+    ops: UpdateOp[],
+    cfg: C,
+  ): Promise<Record<string, unknown>>
+}
+```
+
+#### Adapter implementability — store-by-store
+
+| Adapter | Implementation | Filter constraint |
+|---|---|---|
+| **MongoDB** | `findOneAndUpdate(filter, {$setOnInsert: insert, $set:..., $inc:...}, {upsert: true})` | Any filter — native support |
+| **PostgreSQL** | `INSERT ... ON CONFLICT (col) DO UPDATE SET ...` — adapter inspects filter for single `eq` on a UNIQUE-indexed column → uses as `ON CONFLICT` target | Single `eq` on unique-indexed column |
+| **SQLite** | Same as PG | Single `eq` on unique-indexed column |
+| **Firebase** | `setDoc(ref, {...}, { merge: true })` — adapter inspects filter for `eq` on PK; otherwise refuses | Single `eq` on PK |
+
+**Adapter-side runtime check:** if filter shape isn't natively supported, throw clear `EquippedError`:
+
+```ts
+upsertOne(schema, q, insert, ops, cfg) {
+  const eq = extractSingleEq(q)
+  if (!eq || !isUniqueIndexed(schema, eq.field)) {
+    throw new EquippedError(
+      `PG upsert requires filter to be a single eq on a UNIQUE-indexed column; got: ${describe(q)}`,
+      { schema: schema.name, filter: q }
+    )
+  }
+  // ... ON CONFLICT (eq.field) DO UPDATE SET ...
+}
+```
+
+Documented per-adapter in their README. Matches "honest adapters fail loudly" principle.
+
+#### Insert-path semantics
+
+- **Row exists**: ignore `insert` payload; apply ops to existing row. Standard update semantics. Q7.α onUpdate auto-bump applies (any field touched by ops suppresses its `onUpdate` generator; untouched fields with `onUpdate` get implicit `set` ops).
+- **Row missing**: insert `insert` payload (validated via pipes per `insertOne` rules; `onCreate` defaults applied for missing fields), then apply ops on top.
+  - SetOp values override the inserted fields.
+  - Atomic ops apply to the inserted values (e.g., `inc(views, 1)` on insert with `views: 0` → `views: 1`).
+
+Matches Mongo's `$setOnInsert` + ops-merge model and PG's `EXCLUDED.col` + ops semantics.
+
+#### Validation (Q7-consistent)
+
+- `insert` payload: `validateInsert(schema, insert)` — full row validated, `onCreate` defaults injected.
+- Filter: `assertNormalisedFilter(schema, q)` — A + B + F from Q5.2 (existence, op closure, logical names).
+- Ops: same Q5.1 rules — `SetOp` values pipe-validated; atomic op operands not validated.
+- Conflict-rejection (Q5.x) applies: same field touched by both `insert` payload values and a conflicting op → throws.
+- All errors collected (Q7 collect-all) → single `OrmValidationError` if any failures.
+
+#### Bulk upsert out of scope
+
+`upsertMany(schema, q, ...)` for bulk upsert is **not supported**. Single-row upsert only. Users who need bulk find-or-create semantics use `raw` for the adapter-specific implementation (Mongo `bulkWrite`, PG `INSERT ... VALUES (...), (...) ON CONFLICT ...`).
 
 ### Q5.x — Q5.1 sub-decisions (LOCKED)
 
 - **Reject conflicting ops on the same field at the package layer.** `repo.updateMany(filter, set({views: 0}), inc(views, 1))` throws at the boundary with "conflicting ops on field views". Walk the op list collecting `{op.kind, op.field}` pairs; any field touched twice is a conflict. Includes cross-kind conflicts (e.g. `unset(x) + push(x)`). Reason: order-dependent semantics across adapters (Mongo / PG / Firebase apply set+inc in different orders) is exactly the silent inconsistency we banned. Conflicts are almost always bugs; loud failure beats a wrong number in prod. Users who genuinely want sequential semantics use two calls inside `session()`.
 - **Require ≥1 op in `update*` call signatures (compile error).** Signature: `update*(filter, op0: UpdateOp<S, A>, ...rest: UpdateOp<S, A>[])`. An update with no ops is meaningless — TS catches it at the call site. Same family as the builder-time empty `and([])` / `or([])` rejection.
 
-### Branches NOT YET DRILLED (planned next, in this order)
+### Branches — all resolved
 
-1. **`AdapterStorage` exact required surface** — RESOLVED for find/update/delete by PK (see Q5.5). Storage is `connect`, `disconnect`, `findByPk`, `insertMany`, `updateByPk`, `deleteByPk`, `raw`. Still open: where does `upsert` end up given Q5.1's op-list update model?
-1b. **Schema field type ↔ adapter capability sync (DEFERRED).** Open question: how should adapters express which JS value types they can persist (e.g., Mongo/PG can store JSON objects natively; SQLite can only via JSON.stringify; a hypothetical string-only KV adapter can't store objects at all)? Today there's no compile-time check — schema declares JS shape, adapter handles persistence transparently per its own contract (documented in adapter README). A real candidate exists (`supportedValueTypes` literal list, narrowed via TS analysis of pipe outputs) but the type-level analyzer is heavy and the adapter-author burden is real. **Revisit when a concrete adapter forces the question.**
-2. **Schema portability for adapter-specific config (LOCKED — see Q6 below).**
-3. **Validation flow (LOCKED — see Q7 below).**
-4. **Transactions / `session` shape (LOCKED — see Q8 below).**
-5. **Relations declaration shape** — Drizzle declares relations separately; Ecto declares them inline with the schema. Today's code has `hasOne / hasMany / belongsTo`. Confirm the shape and decide on many-to-many ergonomics (currently explicit join schemas).
-6. **Repo construction surface** — RESOLVED via Q6: `defineOrm({ adapter, scope? })` root + `orm.repo(schema, cfg)` per-schema factory + `repo.withConfig(transform)` for static derivation.
-7. **Naming drift (LOCKED — see Q10 below).**
+All architectural branches locked. No deferred decisions remain. Cross-reference index:
+
+1. `AdapterStorage` surface → Q5.5 (CRUD-by-PK quartet + lifecycle split + all-bags-optional) + Q12 (upsert placement).
+1b. Schema field-type ↔ adapter capability → Q11 (`supportedValueTypes`, 7-tag closed canonical set).
+2. Schema portability for adapter-specific config → Q6 (`defineRepo(.resolve(...))` + per-query `ContextSource.get()`).
+3. Validation flow → Q7 (Repo-entry boundary; collect-all; `OrmValidationError`).
+4. Transactions / `session` → Q8 (callback shape; throw-to-rollback; adapter-internal ALS; nested delegated to adapter; isolation deferred to DB default).
+5. Relations declaration → Q9 (separate from schema; builder-chain factory `defineRelations((rel, src) => ...)`; `Field<T,N,S>` phantom; explicit join schemas; composite FK/PK out of scope).
+6. Repo construction surface → Q6 (single-Repo D; `defineRepo((r) => r.adapter(...).resolve(...).context(ctxSource))`; library imports zero `node:async_hooks`).
+7. Naming drift → Q10 (positives short / negatives `notX`; `notExists` own enum value; `QueryGroup.raw` dropped; README reconciliation).
 
 ---
 
@@ -596,11 +936,12 @@ User accesses tags from a post via two-step preload (`post.postTags[].tag`). No 
 |---|---|---|
 | Lifecycle | optional `lifecycle` bag | — |
 | CRUD (PK-keyed + raw) | optional `crud` bag — methods independently optional | — |
-| Queryable (filter-based) | optional `queryable` bag (requires non-empty `queryableOps`) | `'eq'\|'ne'\|'gt'\|'gte'\|'lt'\|'lte'\|'in'\|'nin'\|'like'\|'exists'\|'contains'\|'ncontains'` |
-| Updatable | non-empty `updateOps` (governs ops in `updateByPk` / `updateMany`) | `'set'\|'inc'\|'mul'\|'min'\|'max'\|'unset'\|'push'\|'pull'\|'patch'` |
+| Queryable (filter-based) | optional `queryable` bag (requires non-empty `queryableOps`) | `'eq'\|'ne'\|'gt'\|'gte'\|'lt'\|'lte'\|'in'\|'notIn'\|'like'\|'exists'\|'notExists'\|'contains'\|'notContains'` |
+| Updatable | non-empty `updateOps` (governs ops in `updateByPk` / `updateMany`; `'upsert'` gates `upsertOne`) | `'set'\|'inc'\|'mul'\|'min'\|'max'\|'unset'\|'push'\|'pull'\|'patch'\|'upsert'` |
+| Value-type compatibility | non-empty `supportedValueTypes` (gates schema arg) | `'string'\|'number'\|'boolean'\|'null'\|'object'\|'array'\|'date'` |
 | Transactional | optional `transactional` bag | — |
 
-All bags optional. No required adapter fields except `config` (type marker).
+All bags optional. No required adapter fields except `config` (type marker). Op-list fields default to `readonly []` when omitted (omission = empty list).
 
 ### Behaviour interfaces
 
@@ -624,6 +965,7 @@ interface AdapterQueryable<C> {
   findMany?   (schema: AnySchema, q: QueryGroup, opts: QueryOptions, cfg: C): Promise<Record<string, unknown>[]>
   updateMany? (schema: AnySchema, q: QueryGroup, ops: UpdateOp[], cfg: C): Promise<Record<string, unknown>[]>
   deleteMany? (schema: AnySchema, q: QueryGroup, cfg: C): Promise<number>
+  upsertOne?  (schema: AnySchema, q: QueryGroup, insert: Record<string, unknown>, ops: UpdateOp[], cfg: C): Promise<Record<string, unknown>>
 }
 
 interface AdapterTransactional {
@@ -643,33 +985,47 @@ Notes:
 const PostgresAdapter = defineAdapter((a) => a
   .config({} as PgCfg)
   .queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-  .updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
+  .updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch', 'upsert')
+  .supportedValueTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
   .lifecycle({ connect, disconnect })
   .crud({ findByPk, insertMany, updateByPk, deleteByPk, raw })
-  .queryable({ findMany, updateMany, deleteMany })
+  .queryable({ findMany, updateMany, deleteMany, upsertOne })
   .transactional({ session })
 )
 
 const FirebaseAdapter = defineAdapter((a) => a
   .config({} as FirebaseCfg)
-  .queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn')   // honest: no like/contains server-side
-  .updateOps('set')                                                      // atomic FieldValue.* via raw
+  .queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn')        // honest: no like/contains server-side
+  .updateOps('set', 'upsert')                                                // atomic FieldValue.* via raw; setDoc(merge:true) handles upsert
+  .supportedValueTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
   // no .lifecycle — Firestore lazy-connects
   .crud({ findByPk, insertMany, updateByPk, deleteByPk, raw })
-  .queryable({ findMany, updateMany, deleteMany })
+  .queryable({ findMany, updateMany, deleteMany, upsertOne })
+)
+
+const SqliteAdapter = defineAdapter((a) => a
+  .config({} as SqliteCfg)
+  .queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like')
+  .updateOps('set', 'upsert')
+  .supportedValueTypes('string', 'number', 'boolean', 'null')                // honest: no native objects/arrays/dates
+  .lifecycle({ connect, disconnect })
+  .crud({ findByPk, insertMany, updateByPk, deleteByPk, raw })
+  .queryable({ findMany, updateMany, deleteMany, upsertOne })
 )
 
 const KVOnlyAdapter = defineAdapter((a) => a
   .config({} as KVCfg)
   .updateOps('set')
+  .supportedValueTypes('string', 'number', 'boolean', 'null', 'object', 'array')
   .lifecycle({ connect, disconnect })
   .crud({ findByPk, insertMany, updateByPk, deleteByPk, raw })
-  // no .queryable → pure key-value
+  // no .queryable → pure key-value, no upsert (which is filter-based)
 )
 
 const ReadOnlyWarehouseAdapter = defineAdapter((a) => a
   .config({} as WHCfg)
   .queryableOps('eq', 'gt', 'gte', 'lt', 'lte', 'in')
+  .supportedValueTypes('string', 'number', 'boolean', 'null', 'date')
   .lifecycle({ connect, disconnect })
   .crud({ findByPk, raw })            // read + escape hatch only
   .queryable({ findMany })            // read-only filter
@@ -678,63 +1034,79 @@ const ReadOnlyWarehouseAdapter = defineAdapter((a) => a
 
 The builder enforces (per-step type checks):
 - `.queryable({...})` resolves to `never` if `.queryableOps(...)` was not called with a non-empty list — TS error at the offending line.
-- Each method (`.config`, `.queryableOps`, `.updateOps`, `.lifecycle`, `.crud`, `.queryable`, `.transactional`) callable at most once. Second call is a TS error via the never-trick.
-- Op rest-args (`'eq', 'ne', ...`) drawn from closed canonical sets; unknown ops are TS errors.
+- `upsertOne` in `queryable` bag resolves to `never` if `'upsert'` is not in `.updateOps(...)`.
+- Each method (`.config`, `.queryableOps`, `.updateOps`, `.supportedValueTypes`, `.lifecycle`, `.crud`, `.queryable`, `.transactional`) callable at most once. Second call is a TS error via the never-trick.
+- Op rest-args (`'eq', 'ne', ...`, `'string', 'number', ...`) drawn from closed canonical sets; unknown values are TS errors.
 - Methods not called default to absent → corresponding capability not declared → Repo surface narrows.
+- Pairing the adapter with a schema whose field types aren't all in `.supportedValueTypes(...)` is a TS error at the schema arg of every Repo method (Q11).
 
-### Repo type narrowing
+### Repo type narrowing (single-Repo, schema-per-call)
+
+Every schema-arg position is wrapped in `SchemaCompatible<A, S>` (Q11) so pairing an incompatible schema is a TS error.
 
 ```ts
-type RepoSurface<S extends AnySchema, A> =
+type RepoSurface<A> =
   & {
-      // Always-on storage surface
-      findByPk(pk: unknown): Promise<SchemaOutput<S> | null>
-      insertOne(row: SchemaInput<S>): Promise<SchemaOutput<S>>
-      insertMany(rows: SchemaInput<S>[]): Promise<SchemaOutput<S>[]>
-      deleteByPk(pk: unknown): Promise<boolean>
+      // Always-on storage surface (schema-per-call)
+      findByPk  <S extends AnySchema>(schema: SchemaCompatible<A, S>, pk: unknown): Promise<SchemaOutput<S> | null>
+      insertOne <S extends AnySchema>(schema: SchemaCompatible<A, S>, row: SchemaInput<S>): Promise<SchemaOutput<S>>
+      insertMany<S extends AnySchema>(schema: SchemaCompatible<A, S>, rows: SchemaInput<S>[]): Promise<SchemaOutput<S>[]>
+      deleteByPk<S extends AnySchema>(schema: SchemaCompatible<A, S>, pk: unknown): Promise<boolean>
       raw: A['raw']
       // updateByPk types to never if updateOps is empty
       updateByPk: A['updateOps']['length'] extends 0
         ? never
-        : (pk: unknown, ...ops: UpdateOp<S, A>[]) => Promise<SchemaOutput<S> | null>
+        : <S extends AnySchema>(schema: SchemaCompatible<A, S>, pk: unknown, op0: UpdateOp<S, A>, ...rest: UpdateOp<S, A>[]) => Promise<SchemaOutput<S> | null>
     }
   & (A['queryableOps']['length'] extends 0
       ? {}
       : {
-          findOne (q: WhereFactory): Promise<SchemaOutput<S> | null>
-          findMany(q: WhereFactory, opts?: QueryOptions): Promise<SchemaOutput<S>[]>
-          // updateOne / updateMany are typed never if updateOps is empty
-          updateOne : A['updateOps']['length'] extends 0
+          findOne  <S extends AnySchema>(schema: SchemaCompatible<A, S>, q: WhereFactory): Promise<SchemaOutput<S> | null>
+          findMany <S extends AnySchema>(schema: SchemaCompatible<A, S>, q: WhereFactory, opts?: QueryOptions): Promise<SchemaOutput<S>[]>
+          updateOne: A['updateOps']['length'] extends 0
             ? never
-            : (q: WhereFactory, ...ops: UpdateOp<S, A>[]) => Promise<SchemaOutput<S> | null>
+            : <S extends AnySchema>(schema: SchemaCompatible<A, S>, q: WhereFactory, op0: UpdateOp<S, A>, ...rest: UpdateOp<S, A>[]) => Promise<SchemaOutput<S> | null>
           updateMany: A['updateOps']['length'] extends 0
             ? never
-            : (q: WhereFactory, ...ops: UpdateOp<S, A>[]) => Promise<SchemaOutput<S>[]>
-          deleteOne (q: WhereFactory): Promise<boolean>
-          deleteMany(q: WhereFactory): Promise<number>
+            : <S extends AnySchema>(schema: SchemaCompatible<A, S>, q: WhereFactory, op0: UpdateOp<S, A>, ...rest: UpdateOp<S, A>[]) => Promise<SchemaOutput<S>[]>
+          // upsertOne — gated by 'upsert' in updateOps
+          upsertOne: 'upsert' extends A['updateOps'][number]
+            ? <S extends AnySchema>(schema: SchemaCompatible<A, S>, q: WhereFactory, insert: SchemaInput<S>, ...ops: UpdateOp<S, A>[]) => Promise<SchemaOutput<S>>
+            : never
+          deleteOne <S extends AnySchema>(schema: SchemaCompatible<A, S>, q: WhereFactory): Promise<boolean>
+          deleteMany<S extends AnySchema>(schema: SchemaCompatible<A, S>, q: WhereFactory): Promise<number>
         })
   & (A extends { transactional: { session: any } }
       ? { session<T>(fn: () => Promise<T>): Promise<T> }
       : {})
 ```
 
-(Extensions merge dropped — adapter-specific power is `raw` only.)
+Repo is parameterised by adapter only (`Repo<A>`, not `Repo<S, A>`). Per-call return types narrow via the `S` generic on each method. Adapter capability narrowing (`updateOps`, `queryableOps`, `transactional`, `supportedValueTypes`) drives method existence and schema compatibility.
+
+`update*` signatures require ≥1 op via `op0` + `...rest` (Q5.x lock — empty op list is a compile error).
 
 ### Update operation list (user-facing helpers)
 
 ```ts
 import { set, inc, mul, min, max, unset, push, pull, patch } from 'equipped/orm'
 
-await repo.updateMany(
-  q => q.eq(User.fields.id, 'u1'),
+await repo.updateMany(UserSchema,
+  q => q.eq(UserSchema.fields.id, 'u1'),
   set({ name: 'Alice', email: 'a@b.com' }),       // values validated against schema pipes
-  inc(User.fields.views, 1),                       // not validated
-  push(User.fields.tags, 'rust'),                  // not validated
-  unset(User.fields.deprecatedField),
+  inc(UserSchema.fields.views, 1),                 // not validated
+  push(UserSchema.fields.tags, 'rust'),            // not validated
+  unset(UserSchema.fields.deprecatedField),
 )
 
 // PK-keyed — same op list, no filter
-await repo.updateByPk('u1', set({ name: 'Alice' }), inc(User.fields.views, 1))
+await repo.updateByPk(UserSchema, 'u1', set({ name: 'Alice' }), inc(UserSchema.fields.views, 1))
+
+// Upsert (filter-based) — gated by 'upsert' in updateOps
+await repo.upsertOne(UserSchema,
+  q => q.eq(UserSchema.fields.email, 'a@b.com'),
+  { name: 'Alice', email: 'a@b.com' },                  // insert if missing (full SchemaInput)
+  set({ lastSeen: Date.now() }),                         // ops if existing
+)
 ```
 
 Discriminant types:
@@ -750,6 +1122,7 @@ type UpdateOp<S, A> =
   | ('push'  extends A['updateOps'][number] ? PushOp<S>  : never)
   | ('pull'  extends A['updateOps'][number] ? PullOp<S>  : never)
   | ('patch' extends A['updateOps'][number] ? PatchOp<S> : never)
+  // 'upsert' is not an in-line op — it gates the existence of repo.upsertOne (Q12)
 
 interface SetOp<S>   { kind: 'set';   values: Partial<SchemaInput<S>> }
 interface IncOp<S>   { kind: 'inc';   field: NumericFieldOf<S>; value: number }
@@ -774,16 +1147,21 @@ Locked Q10: positives stay short (`in`, `exists`, `contains`); negatives use `no
 
 ## Cross-cutting principles agreed
 
-- **Builder-chain factory** for all API definitions (`defineSchema`, `defineRelations`, `defineAdapter`, `defineOrm`). Direct function calls for invocation/operations (`orm.repo`, `repo.findByPk`, `orm.session`, op helpers). See Q3.x (revised post-Q9).
-- **No silent emulation.** Capabilities are honest; missing means missing. Extensions or `raw` for DB-specific power.
+- **Builder-chain factory** for all API definitions (`defineSchema`, `defineRelations`, `defineAdapter`, `defineRepo`). Direct function calls for invocation/operations (`repo.findByPk`, `repo.session`, op helpers). See Q3.x (revised post-Q9).
+- **No silent emulation.** Capabilities are honest; missing means missing. Adapter-specific power lives in `raw` only (extensions out of scope).
 - **Type system is the contract.** Capability mismatches are compile errors, not runtime throws, wherever feasible.
-- **Capabilities are per-op subsettable.** Adapters declare exactly which ops they support via `queryableOps` / `atomicOps` literal lists. TS narrows the surface accordingly. (Revised from earlier all-or-none rule — see Q4.)
+- **Capabilities are per-op subsettable.** Adapters declare exactly which ops/types they support via `queryableOps` / `updateOps` / `supportedValueTypes` literal lists. TS narrows the surface accordingly. (Revised from earlier all-or-none rule — see Q4 and Q11.)
 - **Validation lives once, in the package**, not duplicated across adapters. The boundary normalisation pass (Q5.2) enforces structural guarantees (field existence, op closure, logical names); filter *value* types are a TypeScript-only contract — no runtime coercion.
 - **Always throw, never silently drop.** Empty groups, missing fields, unknown ops fail loudly. No silent short-circuits, no "match-all" or "match-none" fallbacks at boundaries.
 - **Migrations / aggregates / streaming are out of scope** for this layer.
 
 ---
 
-## Continuation prompt for the next agent
+## Implementation handoff
 
-> I'm continuing a `/grill-me` design conversation about redesigning the ORM in `equipped` (`src/orm`). Read `src/orm/REDESIGN-NOTES.md` for the locked decisions, unresolved branches, and code shapes so far. Resume the grill at the next unresolved decision (Q5.4 — one update method vs two), then drill the not-yet-explored branches in the order listed under "Branches NOT YET DRILLED". Honour the locked principles, especially: factory > class for authoring APIs, no silent emulation, capabilities are per-op subsettable (not all-or-none), filter-value types are a TS-only contract (no runtime coercion), always throw never silently drop.
+The redesign tree is fully closed. All architectural decisions are locked (Q1 through Q12 + Q5.x). No deferred items remain. Out-of-scope items (composite FKs/PKs, `'binary'` / `'bigint'` value types, bulk upsert, adapter extensions, migrations, aggregates, streaming, server-side joins) are explicitly *not supported* — users who need them go through `raw`.
+
+Implementation notes:
+- The package's existing `src/orm` code reflects the *pre-redesign* shape (class-based `Schema.from(...)`, `Relations.of(...)`, `OrmAdapter` class, `Repo.from({ adapter, resolve })`, `OrmUse` shim, old op names like `nin` / `nexists`).
+- A focused implementation pass converts those to the locked redesign: builder-chain factories (`defineSchema`, `defineRelations`, `defineAdapter`, `defineRepo`), retired `OrmUse`, renamed enum values (`notIn` / `notExists` / `notContains`), separate `'notExists'` enum, added `findByPk` / `updateByPk` / `deleteByPk` to Repo + Storage, locked `ContextSource` hook, removed library-side ALS, etc.
+- Honour the locked principles: builder-chain for definitions, no silent emulation, per-op subsettable capabilities, filter-value types as TS-only contract (no runtime coercion), always-throw-never-silently-drop, validation lives once in the package, library imports zero `node:async_hooks`.
