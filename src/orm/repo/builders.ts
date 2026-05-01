@@ -315,7 +315,7 @@ if (import.meta.vitest) {
 		let repo: any
 		beforeEach(() => {
 			const { adapter } = createInMemoryAdapter()
-			repo = defineRepo((r) => r.adapter(adapter as any).resolve((s) => ({ prefix: s.name })))
+			repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 		})
 
 		test('update() executes and returns updated row', async () => {

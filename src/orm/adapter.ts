@@ -143,6 +143,10 @@ export type AdapterResult<Acc> = {
 	readonly queryable: 'queryable' extends keyof Acc ? Acc['queryable'] : undefined
 	readonly transactional: 'transactional' extends keyof Acc ? Acc['transactional'] : undefined
 	readonly lifecycle: 'lifecycle' extends keyof Acc ? Acc['lifecycle'] : undefined
+	use(schema: AnySchema, config: InferConfig<Acc>): OrmUse
+	connect(): Promise<void>
+	disconnect(): Promise<void>
+	session<T>(fn: () => Promise<T>): Promise<T>
 } & ('config' extends keyof Acc ? { readonly __config: Acc['config'] } : {})
 
 export type AnyAdapterResult = {
@@ -154,6 +158,10 @@ export type AnyAdapterResult = {
 	readonly transactional?: TransactionalBag
 	readonly lifecycle?: LifecycleBag
 	readonly __config?: unknown
+	use(schema: AnySchema, config: any): OrmUse
+	connect(): Promise<void>
+	disconnect(): Promise<void>
+	session<T>(fn: () => Promise<T>): Promise<T>
 }
 
 export function defineAdapter<Acc>(build: (b: AdapterBuilder) => AdapterBuilder<Acc>): AdapterResult<Acc> {
@@ -303,6 +311,17 @@ if (import.meta.vitest) {
 		test('duplicate .field() name is a TS error', () => {
 			// @ts-expect-error — duplicate field name 'email' should fail
 			defineSchema('test', (s) => s.pk('id', v.string(), () => 'x').field('email', v.string()).field('email', v.string()))
+		})
+	})
+
+	describe('type-level: schema-tagged Fields', () => {
+		test('fields accessor returns schema-tagged Field instances', () => {
+			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x').field('email', v.string()))
+			type FieldS = NonNullable<(typeof _TestSchema.fields.id)['__schema']>
+			expectTypeOf<FieldS>().toEqualTypeOf<typeof _TestSchema>()
+
+			type FieldS2 = NonNullable<(typeof _TestSchema.fields.email)['__schema']>
+			expectTypeOf<FieldS2>().toEqualTypeOf<typeof _TestSchema>()
 		})
 	})
 }

@@ -347,7 +347,7 @@ if (import.meta.vitest) {
 					.field('age', v.number()),
 			)
 			const { adapter } = createInMemoryAdapter()
-			const use = (adapter as any).use(schema, { table: 'users' })
+			const use = adapter.use(schema, { table: 'users' })
 			await use.insertMany([
 				{ id: 'u1', name: 'Alice', age: 30 },
 				{ id: 'u2', name: 'Bob', age: 20 },
@@ -371,10 +371,10 @@ if (import.meta.vitest) {
 					.field('meta', v.object({ a: v.number() })),
 			)
 			const { adapter } = createInMemoryAdapter()
-			const use = (adapter as any).use(schema, { table: 'docs' })
+			const use = adapter.use(schema, { table: 'docs' })
 			await use.insertOne({ id: 'd1', count: 1, tags: ['x'], meta: { a: 1 } })
 
-			await (adapter as any).session(async () => {
+			await adapter.session(async () => {
 				await use.updateOne(QueryGroup.from().eq('id', 'd1'), {
 					count: inc(2),
 					tags: push('y'),
@@ -383,7 +383,7 @@ if (import.meta.vitest) {
 			})
 
 			await expect(
-				(adapter as any).session(async () => {
+				adapter.session(async () => {
 					await use.updateOne(QueryGroup.from().eq('id', 'd1'), { tags: pull('x') })
 					throw new Error('boom')
 				}),
@@ -397,7 +397,7 @@ if (import.meta.vitest) {
 			const schema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'gen'))
 			const { adapter } = createInMemoryAdapter()
 
-			const use = (adapter as any).use(schema, { prefix: 'test' })
+			const use = adapter.use(schema, { prefix: 'test' })
 			await use.insertOne({ id: 'x' })
 
 			const found = await adapter.crud.findByPk!(schema, { prefix: 'test' }, 'x')

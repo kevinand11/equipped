@@ -242,7 +242,7 @@ if (import.meta.vitest) {
 
 		function makeRepo() {
 			const { adapter } = createInMemoryAdapter()
-			return defineRepo((r) => r.adapter(adapter as any).resolve((s) => ({ prefix: s.name })))
+			return defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 		}
 
 		test('hasMany preload resolves related entities', async () => {

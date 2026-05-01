@@ -32,6 +32,10 @@ export type SchemaFields<S extends AnySchema> =
 			: F
 		: never
 
+export type SchemaTaggedFields<S extends AnySchema> = {
+	[K in keyof SchemaFields<S>]: SchemaFields<S>[K] & { readonly __schema?: S }
+}
+
 export class Schema<
 	N extends string,
 	PKField extends AnyPrimaryKeyField | never = never,
@@ -122,7 +126,7 @@ export class Schema<
 		return {
 			...(this.#pkField ? { [this.#pkField.name]: this.#pkField } : {}),
 			...this.#fieldDefs,
-		} as unknown as SchemaFields<this>
+		} as unknown as SchemaTaggedFields<this>
 	}
 
 }
