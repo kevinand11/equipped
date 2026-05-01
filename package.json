@@ -296,6 +296,7 @@
 		"@types/pg": "^8.18.0",
 		"@types/pug": "^2.0.10",
 		"@types/supertest": "^6.0.3",
+		"commander": "^14.0.3",
 		"esbuild-fix-imports-plugin": "^1.0.23",
 		"eslint": "^9.39.2",
 		"husky": "^9.1.7",

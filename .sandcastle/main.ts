@@ -32,36 +32,54 @@ import { promisify } from "node:util"
 
 import * as sandcastle from "@ai-hero/sandcastle"
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker"
+import { Command, InvalidArgumentError } from "commander"
 
 const exec = promisify(execFile)
 
 // ---------------------------------------------------------------------------
-// Configuration
+// CLI
 // ---------------------------------------------------------------------------
 
-const MAX_ITERATIONS = 10
+const parsePositiveInt = (raw: string): number => {
+	const n = Number.parseInt(raw, 10)
+	if (!Number.isFinite(n) || n < 1) {
+		throw new InvalidArgumentError(`must be a positive integer (got '${raw}')`)
+	}
+	return n
+}
+
+const parseFeature = (raw: string): string => {
+	if (!raw.startsWith("feature/") || raw === "feature/") {
+		throw new InvalidArgumentError(
+			`must start with 'feature/' and have a non-empty slug (got '${raw}')`,
+		)
+	}
+	return raw
+}
+
+const program = new Command()
+	.name("sandcastle")
+	.description(
+		"Run the Sandcastle parallel-planner-with-review loop scoped to a single feature. Multiple devs can run scoped loops for different features in parallel.",
+	)
+	.argument(
+		"<feature>",
+		"feature label (e.g. 'feature/orm') — must start with 'feature/' and exist as a branch on origin",
+		parseFeature,
+	)
+	.option(
+		"-m, --max-iterations <n>",
+		"maximum number of plan/execute/publish cycles per run",
+		parsePositiveInt,
+		10,
+	)
+	.parse()
+
+const FEATURE: string = program.processedArgs[0]
+const MAX_ITERATIONS: number = program.opts().maxIterations
+
 const IN_PR_LABEL = "in-pr"
 const SANDCASTLE_BRANCH_PREFIX = "sandcastle/issue-"
-
-// Scope every iteration to a single feature so multiple devs can run their
-// own loops in parallel without colliding on issue selection or feedback PRs.
-// Pass via CLI arg (`npm run sandcastle -- feature/<slug>`) or env var
-// (`SANDCASTLE_FEATURE=feature/<slug> npm run sandcastle`).
-const FEATURE = process.argv[2] ?? process.env.SANDCASTLE_FEATURE ?? ""
-
-if (!FEATURE) {
-	throw new Error(
-		"Sandcastle loop requires a feature scope. Pass one via CLI arg " +
-			"(`npm run sandcastle -- feature/<slug>`) or env var " +
-			"(`SANDCASTLE_FEATURE=feature/<slug>`).",
-	)
-}
-
-if (!FEATURE.startsWith("feature/") || FEATURE === "feature/") {
-	throw new Error(
-		`Feature scope must start with 'feature/' and have a non-empty slug. Got: '${FEATURE}'.`,
-	)
-}
 
 // `pnpm install --prefer-offline` matches this repo's package manager and
 // reuses cached/host-copied node_modules wherever possible. The default
@@ -115,18 +133,35 @@ async function remoteBranchExists(branch: string): Promise<boolean> {
 	}
 }
 
-async function ensureIssueBranchOffFeature(issueBranch: string, featureBranch: string) {
+async function ensureLinkedIssueBranch(
+	issueId: string,
+	issueBranch: string,
+	featureBranch: string,
+) {
 	// Make sure we have the latest feature-branch tip locally.
 	await exec("git", ["fetch", "origin", featureBranch])
 
-	// Create the issue branch off the remote feature-branch tip if it doesn't
-	// already exist locally. If it exists, leave it alone — a previous run may
-	// have made progress on it that we don't want to discard.
+	// If the issue branch doesn't yet exist on origin, create it via
+	// `gh issue develop` — this both creates the branch on the remote off the
+	// feature branch AND links it to the issue (visible in the issue's
+	// "Development" sidebar). On re-runs the branch already exists; we leave it
+	// alone so prior progress is preserved.
+	if (!(await remoteBranchExists(issueBranch))) {
+		console.log(`  → Creating linked branch ${issueBranch} for issue #${issueId}`)
+		await exec("gh", [
+			"issue", "develop", issueId,
+			"--name", issueBranch,
+			"--base", featureBranch,
+		])
+		// Fetch the freshly-created remote ref so we can build a local branch on top.
+		await exec("git", ["fetch", "origin", issueBranch])
+	}
+
+	// Ensure a local branch exists tracking the remote.
 	try {
 		await exec("git", ["rev-parse", "--verify", `refs/heads/${issueBranch}`])
-		// Branch exists locally. Nothing to do — sandcastle will reuse it.
 	} catch {
-		await exec("git", ["branch", issueBranch, `origin/${featureBranch}`])
+		await exec("git", ["branch", issueBranch, `origin/${issueBranch}`])
 	}
 }
 
@@ -258,10 +293,11 @@ async function addressFeedback(pr: FeedbackPR) {
 }
 
 async function implementAndReview(issue: Issue) {
-	// Prepare the local issue branch as a child of the feature-branch tip.
-	// This ensures the sandbox starts from the right base, even if the local
-	// repo's HEAD or the issue branch is stale.
-	await ensureIssueBranchOffFeature(issue.branch, issue.featureBranch)
+	// Prepare the issue branch on origin (linked to the issue via
+	// `gh issue develop`) and locally, off the feature-branch tip. This
+	// ensures the sandbox starts from the right base AND the branch shows up
+	// under the issue's "Development" sidebar on GitHub.
+	await ensureLinkedIssueBranch(issue.id, issue.branch, issue.featureBranch)
 
 	const sandbox = await sandcastle.createSandbox({
 		branch: issue.branch,

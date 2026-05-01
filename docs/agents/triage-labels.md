@@ -27,7 +27,7 @@ Edit the right-hand column to match whatever vocabulary you actually use.
 
 1. Issue starts at `needs-triage`.
 2. Maintainer evaluates; when AFK-ready, applies `ready-for-agent` and exactly one `feature/<slug>` label naming the target branch.
-3. A dev runs the loop scoped to a specific feature: `npm run sandcastle -- feature/<slug>` (or `SANDCASTLE_FEATURE=feature/<slug> npm run sandcastle`). The loop is required to run with a feature scope; multiple devs can run loops in parallel for different features without colliding.
+3. A dev runs the loop scoped to a specific feature: `npm run sandcastle -- feature/<slug>` (or with a custom iteration cap, `npm run sandcastle -- feature/<slug> --max-iterations 5`). The feature arg is required; the loop refuses to start without it. Multiple devs can run loops in parallel for different features without colliding.
 4. Sandcastle's planner picks up issues matching `label:ready-for-agent label:"feature/<slug>" -label:in-pr` on its next iteration.
 5. After implementation + review, Sandcastle pushes a branch and opens a PR targeting the feature branch, then auto-applies `in-pr` so subsequent iterations skip the issue.
 6. A human reviews the PR. Merging closes the issue (PR body uses `Closes #<id>`). Requesting changes triggers Sandcastle's Phase 0 addresser on the next iteration of any loop scoped to the same feature.
