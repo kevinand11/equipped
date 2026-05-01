@@ -43,13 +43,17 @@ export class Schema<
 	#fieldDefs: F = {} as F
 	#computedDefs: C = {} as C
 
-	private constructor(name: N) {
+	constructor(name: N) {
 		this.#name = name
 	}
 
-	pk<K extends string, P extends Pipe<any, any>>(name: K, pipe: P, generate: () => PipeOutput<P>): Schema<N, SchemaField<K, P, true>, F> {
+	pk<K extends string, P extends Pipe<any, any>>(
+		name: [PKField] extends [never] ? K : never,
+		pipe: P,
+		generate: () => PipeOutput<P>,
+	): Schema<N, SchemaField<K, P, true>, F> {
 		const schema = this as unknown as Schema<N, SchemaField<K, P, true>, F>
-		schema.#pkField = new SchemaField(name, pipe, { onCreate: generate })
+		schema.#pkField = new SchemaField(name as string as any, pipe, { onCreate: generate })
 		return schema
 	}
 
@@ -58,7 +62,7 @@ export class Schema<
 		P extends Pipe<any, any>,
 		O extends { onCreate?: () => PipeOutput<P>; onUpdate?: () => PipeOutput<P> } | undefined = undefined,
 	>(
-		name: K,
+		name: K extends keyof F ? never : K,
 		pipe: P,
 		opts?: O,
 	): Schema<
@@ -121,30 +125,33 @@ export class Schema<
 		} as unknown as SchemaFields<this>
 	}
 
-	static from<N extends string>(name: N) {
-		return new Schema<N>(name)
-	}
+}
+
+export function defineSchema<N extends string, S>(name: N, build: (s: Schema<N>) => S): S {
+	return build(new Schema(name))
 }
 
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 
 	describe('SchemaBuilder', () => {
-		const UserSchema = Schema.from('users')
-			.pk('id', v.string(), () => 'generated-id')
-			.field('email', v.string())
-			.field('name', v.string())
-			.field('age', v.optional(v.number()))
-			.field('createdAt', v.number(), { onCreate: () => 1000 })
-			.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 })
+		const UserSchema = defineSchema('users', (s) =>
+			s
+				.pk('id', v.string(), () => 'generated-id')
+				.field('email', v.string())
+				.field('name', v.string())
+				.field('age', v.optional(v.number()))
+				.field('createdAt', v.number(), { onCreate: () => 1000 })
+				.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 }),
+		)
 
-		describe('Schema.from()', () => {
+		describe('defineSchema()', () => {
 			test('returns a Schema instance', () => {
-				expect(Schema.from('test')).toBeInstanceOf(Schema)
+				expect(defineSchema('test', (s) => s)).toBeInstanceOf(Schema)
 			})
 
 			test('stores the schema name', () => {
-				expect(Schema.from('orders').name).toBe('orders')
+				expect(defineSchema('orders', (s) => s).name).toBe('orders')
 			})
 		})
 
@@ -177,7 +184,7 @@ if (import.meta.vitest) {
 			})
 
 			test('pkField throws when no pk defined', () => {
-				expect(() => Schema.from('nopk').field('name', v.string()).pkField).toThrow()
+				expect(() => defineSchema('nopk', (s) => s.field('name', v.string())).pkField).toThrow()
 			})
 		})
 
@@ -219,11 +226,13 @@ if (import.meta.vitest) {
 
 		describe('.computed()', () => {
 			test('registers computed fields and dependencies', () => {
-				const WithComputed = Schema.from('users')
-					.pk('id', v.string(), () => 'u1')
-					.field('name', v.string())
-					.field('email', v.string())
-					.computed('display', ['name', 'email'], v.string(), ({ name, email }) => `${name} <${email}>`)
+				const WithComputed = defineSchema('users', (s) =>
+					s
+						.pk('id', v.string(), () => 'u1')
+						.field('name', v.string())
+						.field('email', v.string())
+						.computed('display', ['name', 'email'], v.string(), ({ name, email }) => `${name} <${email}>`),
+				)
 
 				expect(Object.keys(WithComputed.computedDefs)).toEqual(['display'])
 				expect(WithComputed.computedDefs.display.deps).toEqual(['name', 'email'])
@@ -231,10 +240,12 @@ if (import.meta.vitest) {
 			})
 
 			test('computed field names are included in schema output type', () => {
-				const WithComputed = Schema.from('users')
-					.pk('id', v.string(), () => 'u1')
-					.field('name', v.string())
-					.computed('nameUpper', ['name'], v.string(), ({ name }) => name.toUpperCase())
+				const WithComputed = defineSchema('users', (s) =>
+					s
+						.pk('id', v.string(), () => 'u1')
+						.field('name', v.string())
+						.computed('nameUpper', ['name'], v.string(), ({ name }) => name.toUpperCase()),
+				)
 
 				type Out = SchemaOutput<typeof WithComputed>
 				const value: Out = { id: 'u1', name: 'Alice', nameUpper: 'ALICE' }
@@ -253,7 +264,7 @@ if (import.meta.vitest) {
 			})
 
 			test('schema with no fields has only pk in fields', () => {
-				const PkOnly = Schema.from('minimal').pk('id', v.string(), () => 'x')
+				const PkOnly = defineSchema('minimal', (s) => s.pk('id', v.string(), () => 'x'))
 				expect(Object.keys(PkOnly.fields)).toEqual(['id'])
 			})
 		})
@@ -268,7 +279,7 @@ if (import.meta.vitest) {
 			})
 
 			test('schema with no fields has empty fieldDefs', () => {
-				const PkOnly = Schema.from('minimal').pk('id', v.string(), () => 'x')
+				const PkOnly = defineSchema('minimal', (s) => s.pk('id', v.string(), () => 'x'))
 				expect(Object.keys(PkOnly.fieldDefs)).toHaveLength(0)
 			})
 		})
