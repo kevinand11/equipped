@@ -35,7 +35,7 @@ Address the review feedback on PR #{{PR_NUMBER}}. You are on branch `{{BRANCH}}`
 # EXECUTION
 
 1. Make the changes directly on this branch (`{{BRANCH}}`).
-2. Run `npm run prebuild` (typecheck) and `npm run test` to verify nothing broke.
+2. Run `pnpm run prebuild` (typecheck via `tsc --noEmit`) and `pnpm test` (vitest) to verify nothing broke.
 3. Commit with a message that names the feedback you addressed, e.g. `address review: rename foo → bar; tighten input validation`.
 4. For each comment thread you addressed, post a brief reply on that thread describing what you did, using:
    `gh api repos/{owner}/{repo}/pulls/{{PR_NUMBER}}/comments/<comment_id>/replies -f body="..."`

@@ -19,10 +19,27 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # This keeps UID 1000 so that --userns=keep-id (Podman) and
 # --user 1000:1000 (Docker) map to the correct home directory owner.
 RUN usermod -d /home/agent -m -l agent node
-USER agent
 
-# Install Claude Code CLI
+# Install pnpm globally as root (matches host version) — this repo uses pnpm-lock.yaml.
+RUN npm install -g pnpm@9.5.0
+
+# Install Claude Code CLI as `agent` so the install script targets /home/agent/.local/bin
+# and creates /home/agent/.claude with the right layout.
+USER agent
 RUN curl -fsSL https://claude.ai/install.sh | bash
+USER root
+
+# AFTER all installs are done, open up /home/agent for any UID/GID to write.
+# Sandcastle's Docker provider runs the container with `--user $HOST_UID:$HOST_GID`
+# (your host user's IDs) so bind-mounted worktree files get the right ownership
+# on the host. On macOS the host UID is typically 501 — not 1000 — so the
+# running container user does not own /home/agent. It needs write access to
+# /home/agent/.gitconfig (for git's safe.directory hook) and to
+# /home/agent/.claude/projects/ (for Claude Code's session JSONL files).
+# Chmod must run AFTER any tool that creates files in /home/agent.
+RUN chmod -R a+rwX /home/agent
+
+USER agent
 
 # Add Claude to PATH
 ENV PATH="/home/agent/.local/bin:$PATH"

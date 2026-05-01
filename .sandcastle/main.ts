@@ -43,8 +43,36 @@ const MAX_ITERATIONS = 10
 const IN_PR_LABEL = "in-pr"
 const SANDCASTLE_BRANCH_PREFIX = "sandcastle/issue-"
 
+// Scope every iteration to a single feature so multiple devs can run their
+// own loops in parallel without colliding on issue selection or feedback PRs.
+// Pass via CLI arg (`npm run sandcastle -- feature/<slug>`) or env var
+// (`SANDCASTLE_FEATURE=feature/<slug> npm run sandcastle`).
+const FEATURE = process.argv[2] ?? process.env.SANDCASTLE_FEATURE ?? ""
+
+if (!FEATURE) {
+	throw new Error(
+		"Sandcastle loop requires a feature scope. Pass one via CLI arg " +
+			"(`npm run sandcastle -- feature/<slug>`) or env var " +
+			"(`SANDCASTLE_FEATURE=feature/<slug>`).",
+	)
+}
+
+if (!FEATURE.startsWith("feature/") || FEATURE === "feature/") {
+	throw new Error(
+		`Feature scope must start with 'feature/' and have a non-empty slug. Got: '${FEATURE}'.`,
+	)
+}
+
+// `pnpm install --prefer-offline` matches this repo's package manager and
+// reuses cached/host-copied node_modules wherever possible. The default
+// 60s hook timeout is too short for a clean install on a non-trivial repo —
+// bump it generously. Reduce if you find runs are reliably faster.
 const hooks = {
-	sandbox: { onSandboxReady: [{ command: "npm install" }] },
+	sandbox: {
+		onSandboxReady: [
+			{ command: "pnpm install --prefer-offline", timeoutMs: 600_000 },
+		],
+	},
 }
 
 const copyToWorktree = ["node_modules"]
@@ -107,46 +135,68 @@ async function getPRsNeedingFeedback(): Promise<FeedbackPR[]> {
 	// match what humans see on GitHub.
 	await exec("git", ["fetch", "--all", "--prune"])
 
-	const { stdout } = await exec("gh", [
+	// Step 1: list candidate PRs with only the minimal fields needed to filter
+	// by branch prefix. GitHub's GraphQL rejects the broader query that asked
+	// for reviews+commits inline because the (PRs × reviews × commits) fanout
+	// exceeds the connection node budget on busy repos.
+	const { stdout: listOut } = await exec("gh", [
 		"pr", "list",
 		"--state", "open",
 		"--search", "review:changes-requested",
 		"--limit", "100",
-		"--json", "number,title,url,headRefName,reviews,commits",
+		"--json", "number,title,url,headRefName,baseRefName",
 	])
 
-	const prs = JSON.parse(stdout) as Array<{
-		number: number
-		title: string
-		url: string
-		headRefName: string
-		reviews: Array<{ state: string; submittedAt: string }>
-		commits: Array<{ committedDate: string }>
-	}>
-
-	return prs
+	const candidates = (
+		JSON.parse(listOut) as Array<{
+			number: number
+			title: string
+			url: string
+			headRefName: string
+			baseRefName: string
+		}>
+	)
 		.filter((pr) => pr.headRefName.startsWith(SANDCASTLE_BRANCH_PREFIX))
-		.filter((pr) => {
-			const submitted = pr.reviews.filter((r) => r.state !== "PENDING")
-			if (submitted.length === 0) return false
-			const lastReviewAt = submitted
-				.map((r) => new Date(r.submittedAt).getTime())
-				.reduce((a, b) => Math.max(a, b), 0)
-			const lastCommitAt = pr.commits
-				.map((c) => new Date(c.committedDate).getTime())
-				.reduce((a, b) => Math.max(a, b), 0)
-			// Feedback is unaddressed when the latest review is newer than the
-			// latest commit on the branch. After the addresser pushes new
-			// commits, lastCommitAt overtakes lastReviewAt and the PR drops out
-			// of this list until a human re-reviews and requests more changes.
-			return lastReviewAt > lastCommitAt
-		})
-		.map((pr) => ({
-			number: pr.number,
-			title: pr.title,
-			branch: pr.headRefName,
-			url: pr.url,
-		}))
+		.filter((pr) => pr.baseRefName === FEATURE)
+
+	// Step 2: per-PR detail fetch (single PR per call stays well under the
+	// GraphQL node limit).
+	const result: FeedbackPR[] = []
+	for (const c of candidates) {
+		const { stdout: detailOut } = await exec("gh", [
+			"pr", "view", String(c.number),
+			"--json", "reviews,commits",
+		])
+		const detail = JSON.parse(detailOut) as {
+			reviews: Array<{ state: string; submittedAt: string }>
+			commits: Array<{ committedDate: string }>
+		}
+
+		const submitted = detail.reviews.filter((r) => r.state !== "PENDING")
+		if (submitted.length === 0) continue
+
+		const lastReviewAt = submitted
+			.map((r) => new Date(r.submittedAt).getTime())
+			.reduce((a, b) => Math.max(a, b), 0)
+		const lastCommitAt = detail.commits
+			.map((cm) => new Date(cm.committedDate).getTime())
+			.reduce((a, b) => Math.max(a, b), 0)
+
+		// Feedback is unaddressed when the latest review is newer than the
+		// latest commit on the branch. After the addresser pushes new commits,
+		// lastCommitAt overtakes lastReviewAt and the PR drops out of this
+		// list until a human re-reviews and requests more changes.
+		if (lastReviewAt > lastCommitAt) {
+			result.push({
+				number: c.number,
+				title: c.title,
+				url: c.url,
+				branch: c.headRefName,
+			})
+		}
+	}
+
+	return result
 }
 
 async function publishNewIssue(issue: Issue) {
@@ -244,7 +294,7 @@ async function implementAndReview(issue: Issue) {
 			promptFile: "./.sandcastle/review-prompt.md",
 			promptArgs: {
 				BRANCH: issue.branch,
-				SOURCE_BRANCH: issue.featureBranch,
+				FEATURE_BRANCH: issue.featureBranch,
 			},
 		})
 
@@ -261,8 +311,10 @@ async function implementAndReview(issue: Issue) {
 // Main loop
 // ---------------------------------------------------------------------------
 
+console.log(`Sandcastle scoped to feature: ${FEATURE}`)
+
 for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
-	console.log(`\n=== Iteration ${iteration}/${MAX_ITERATIONS} ===\n`)
+	console.log(`\n=== Iteration ${iteration}/${MAX_ITERATIONS} (${FEATURE}) ===\n`)
 
 	// Phase 0: Address feedback on open Sandcastle PRs
 	const feedbackPRs = await getPRsNeedingFeedback()
@@ -291,7 +343,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		console.log("No open PRs need feedback addressed.")
 	}
 
-	// Phase 1: Plan new work
+	// Phase 1: Plan new work (scoped to FEATURE)
 	const plan = await sandcastle.run({
 		hooks,
 		sandbox: docker(),
@@ -299,6 +351,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		maxIterations: 1,
 		agent: sandcastle.claudeCode("claude-opus-4-6"),
 		promptFile: "./.sandcastle/plan-prompt.md",
+		promptArgs: { FEATURE },
 	})
 
 	const planMatch = plan.stdout.match(/<plan>([\s\S]*?)<\/plan>/)
@@ -327,6 +380,12 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 			)
 		}
 		const featureBranch = raw.featureLabels[0]!
+		if (featureBranch !== FEATURE) {
+			throw new Error(
+				`Issue #${raw.id} ("${raw.title}") declares feature '${featureBranch}', but this loop is scoped to '${FEATURE}'. ` +
+					`The planner should only return issues matching the scope; this is a planner bug or a stale label cache.`,
+			)
+		}
 		if (!(await remoteBranchExists(featureBranch))) {
 			throw new Error(
 				`Feature branch '${featureBranch}' (declared by issue #${raw.id}) does not exist on origin. ` +

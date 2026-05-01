@@ -4,7 +4,7 @@ Here are the open issues in the repo:
 
 <issues-json>
 
-!`gh issue list --state open --search 'label:Sandcastle -label:in-pr' --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'`
+!`gh issue list --state open --search 'label:ready-for-agent label:"{{FEATURE}}" -label:in-pr' --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'`
 
 </issues-json>
 
@@ -24,7 +24,7 @@ For each unblocked issue, assign a branch name using the format `sandcastle/issu
 
 ## Feature labels
 
-For each unblocked issue, list every label on it that matches the `feature/*` pattern in a `featureLabels` array. Do **not** default, filter, or omit issues based on this — emit every unblocked issue with whatever `feature/*` labels it has (zero, one, or many). The host script validates the array and will halt with a loud error if the count is not exactly one. Your job here is to report, not to filter.
+The gh query above already restricts the issue list to those carrying the `{{FEATURE}}` label. For each unblocked issue, list every label on it that matches the `feature/*` pattern in a `featureLabels` array — do not default, filter, or omit issues based on this. The host script validates the array and will halt with a loud error if it does not contain exactly the `{{FEATURE}}` label.
 
 # OUTPUT
 

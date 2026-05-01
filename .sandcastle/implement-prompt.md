@@ -35,7 +35,7 @@ If applicable, use RGR to complete the task.
 
 # FEEDBACK LOOPS
 
-Before committing, run `npm run typecheck` and `npm run test` to ensure the tests pass.
+Before committing, run the project's typecheck and test commands (see `package.json` scripts — this repo uses `pnpm`, so `pnpm run prebuild` runs `tsc --noEmit` and `pnpm test` runs vitest). Ensure both pass.
 
 # COMMIT
 
