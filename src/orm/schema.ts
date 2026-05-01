@@ -128,7 +128,6 @@ export class Schema<
 			...this.#fieldDefs,
 		} as unknown as SchemaTaggedFields<this>
 	}
-
 }
 
 export function defineSchema<N extends string, S>(name: N, build: (s: Schema<N>) => S): S {
@@ -136,7 +135,7 @@ export function defineSchema<N extends string, S>(name: N, build: (s: Schema<N>)
 }
 
 if (import.meta.vitest) {
-	const { describe, test, expect } = import.meta.vitest
+	const { describe, test, expect, expectTypeOf } = import.meta.vitest
 
 	describe('SchemaBuilder', () => {
 		const UserSchema = defineSchema('users', (s) =>
@@ -286,6 +285,24 @@ if (import.meta.vitest) {
 				const PkOnly = defineSchema('minimal', (s) => s.pk('id', v.string(), () => 'x'))
 				expect(Object.keys(PkOnly.fieldDefs)).toHaveLength(0)
 			})
+		})
+	})
+
+	describe('type-level: defineSchema uniqueness guard', () => {
+		test('duplicate .field() name is a TS error', () => {
+			// @ts-expect-error — duplicate field name 'email' should fail
+			defineSchema('test', (s) => s.pk('id', v.string(), () => 'x').field('email', v.string()).field('email', v.string()))
+		})
+	})
+
+	describe('type-level: schema-tagged Fields', () => {
+		test('fields accessor returns schema-tagged Field instances', () => {
+			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x').field('email', v.string()))
+			type FieldS = NonNullable<(typeof _TestSchema.fields.id)['__schema']>
+			expectTypeOf<FieldS>().toEqualTypeOf<typeof _TestSchema>()
+
+			type FieldS2 = NonNullable<(typeof _TestSchema.fields.email)['__schema']>
+			expectTypeOf<FieldS2>().toEqualTypeOf<typeof _TestSchema>()
 		})
 	})
 }

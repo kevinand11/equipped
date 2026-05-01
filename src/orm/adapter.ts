@@ -150,9 +150,9 @@ export type AdapterResult<Acc> = {
 } & ('config' extends keyof Acc ? { readonly __config: Acc['config'] } : {})
 
 export type AnyAdapterResult = {
-	readonly supportedFieldTypes: readonly FieldTypeName[] | readonly []
-	readonly queryableOps: readonly FilterOpName[] | readonly []
-	readonly updateOps: readonly UpdateOpName[] | readonly []
+	readonly supportedFieldTypes: readonly FieldTypeName[]
+	readonly queryableOps: readonly FilterOpName[]
+	readonly updateOps: readonly UpdateOpName[]
 	readonly crud?: CrudBag<any>
 	readonly queryable?: QueryableBag<any>
 	readonly transactional?: TransactionalBag
@@ -307,21 +307,4 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('type-level: defineSchema uniqueness guard', () => {
-		test('duplicate .field() name is a TS error', () => {
-			// @ts-expect-error — duplicate field name 'email' should fail
-			defineSchema('test', (s) => s.pk('id', v.string(), () => 'x').field('email', v.string()).field('email', v.string()))
-		})
-	})
-
-	describe('type-level: schema-tagged Fields', () => {
-		test('fields accessor returns schema-tagged Field instances', () => {
-			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x').field('email', v.string()))
-			type FieldS = NonNullable<(typeof _TestSchema.fields.id)['__schema']>
-			expectTypeOf<FieldS>().toEqualTypeOf<typeof _TestSchema>()
-
-			type FieldS2 = NonNullable<(typeof _TestSchema.fields.email)['__schema']>
-			expectTypeOf<FieldS2>().toEqualTypeOf<typeof _TestSchema>()
-		})
-	})
 }

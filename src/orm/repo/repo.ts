@@ -60,27 +60,29 @@ export class Repo<A extends OrmAdapterLike<any>> {
 }
 
 class RepoBuilder<A = never, Config = never> {
-	_adapter!: A
-	_resolve!: (schema: AnySchema) => Config
+	#adapter: unknown
+	#resolve: unknown
 
 	adapter<NewA>(a: [A] extends [never] ? NewA : never): RepoBuilder<NewA, Config> {
-		const next = this as unknown as RepoBuilder<NewA, Config>
-		next._adapter = a as any
-		return next
+		this.#adapter = a
+		return this as unknown as RepoBuilder<NewA, Config>
 	}
 
 	resolve<NewConfig>(fn: [Config] extends [never] ? (schema: AnySchema) => NewConfig : never): RepoBuilder<A, NewConfig> {
-		const next = this as unknown as RepoBuilder<A, NewConfig>
-		next._resolve = fn as any
-		return next
+		this.#resolve = fn
+		return this as unknown as RepoBuilder<A, NewConfig>
+	}
+
+	_build() {
+		return { adapter: this.#adapter, resolve: this.#resolve }
 	}
 }
 
 export function defineRepo<A extends OrmAdapterLike<any>, Config>(
 	build: (b: RepoBuilder) => RepoBuilder<A, Config>,
 ): Repo<A> {
-	const builder = build(new RepoBuilder())
-	return new Repo<A>({ adapter: builder._adapter, resolve: builder._resolve as any })
+	const data = build(new RepoBuilder())._build()
+	return new Repo<A>({ adapter: data.adapter as A, resolve: data.resolve as any })
 }
 
 if (import.meta.vitest) {
