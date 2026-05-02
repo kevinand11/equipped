@@ -44,7 +44,7 @@ export class Repo<A extends OrmAdapter<any>> {
 	async insertOne<S extends AnySchema>(schema: S, data: SchemaInsertInput<S>): Promise<SchemaOutput<S>> {
 		const validated = validateInsert(schema, data as Record<string, unknown>)
 		const use = this.#getUse(schema)
-		const [row] = await use.insertMany([validated as Record<string, unknown>])
+		const row = await use.insertOne(validated as Record<string, unknown>)
 		return row as SchemaOutput<S>
 	}
 

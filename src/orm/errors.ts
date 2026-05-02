@@ -17,12 +17,12 @@ export class OrmValidationError extends EquippedError {
 	readonly operation: OrmValidationOperation
 	readonly failures: OrmValidationFailure[]
 
-	constructor(opts: { kind: OrmValidationErrorKind; schema: string; operation: OrmValidationOperation; failures: OrmValidationFailure[] }) {
-		super(`ORM validation failed: ${opts.kind}`, { kind: opts.kind, schema: opts.schema, operation: opts.operation })
-		this.kind = opts.kind
-		this.schema = opts.schema
-		this.operation = opts.operation
-		this.failures = opts.failures
+	constructor({ kind, schema, operation, failures }: { kind: OrmValidationErrorKind; schema: string; operation: OrmValidationOperation; failures: OrmValidationFailure[] }) {
+		super(`ORM validation failed: ${kind}`, { kind, schema, operation })
+		this.kind = kind
+		this.schema = schema
+		this.operation = operation
+		this.failures = failures
 	}
 }
 
