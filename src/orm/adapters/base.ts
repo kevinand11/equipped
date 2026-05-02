@@ -17,14 +17,10 @@ export type OrmUse = {
 	raw: <T = unknown>(command: unknown, params?: unknown[]) => Promise<T>
 }
 
-export abstract class OrmAdapter<Config extends object = object> {
-	abstract connect(): Promise<void>
-
-	abstract disconnect(): Promise<void>
-
-	abstract use(schema: AnySchema, config: Config): OrmUse
-
-	abstract session<T>(fn: () => Promise<T>): Promise<T>
+export type OrmAdapterLike<Config extends object = object> = {
+	connect(): Promise<void>
+	disconnect(): Promise<void>
+	use(schema: AnySchema, config: Config): OrmUse
+	session<T>(fn: () => Promise<T>): Promise<T>
 }
 
-export type InferAdapterConfig<A> = A extends OrmAdapter<infer C> ? C : never

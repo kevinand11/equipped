@@ -1,3 +1,4 @@
+export * from './adapter'
 export * from './adapters/base'
 export * from './fields'
 export * from './query'

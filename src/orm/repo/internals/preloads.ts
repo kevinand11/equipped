@@ -156,10 +156,10 @@ async function resolvePreload(
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { InMemoryOrm } = await import('../../adapters/in-memory')
+	const { createInMemoryAdapter } = await import('../../adapters/in-memory')
 	const { Relations } = await import('../../relations')
-	const { Repo } = await import('../repo')
-	const { Schema } = await import('../../schema')
+	const { defineRepo } = await import('../repo')
+	const { defineSchema } = await import('../../schema')
 
 	describe('repo preload resolution', () => {
 		let userCounter = 0
@@ -174,45 +174,57 @@ if (import.meta.vitest) {
 		let fCounter = 0
 		let gCounter = 0
 
-		const UserSchema = Schema.from('users')
-			.pk('id', v.string(), () => `u${++userCounter}`)
-			.field('email', v.string())
-			.field('name', v.string())
-			.field('orgId', v.optional(v.string()), { onCreate: () => undefined })
+		const UserSchema = defineSchema('users', (s) =>
+			s.pk('id', v.string(), () => `u${++userCounter}`)
+			 .field('email', v.string())
+			 .field('name', v.string())
+			 .field('orgId', v.optional(v.string()), { onCreate: () => undefined }),
+		)
 
-		const PostSchema = Schema.from('posts')
-			.pk('id', v.string(), () => `p${++postCounter}`)
-			.field('title', v.string())
-			.field('userId', v.string())
+		const PostSchema = defineSchema('posts', (s) =>
+			s.pk('id', v.string(), () => `p${++postCounter}`)
+			 .field('title', v.string())
+			 .field('userId', v.string()),
+		)
 
-		const ProfileSchema = Schema.from('profiles')
-			.pk('id', v.string(), () => `pr${++profileCounter}`)
-			.field('bio', v.string())
-			.field('userId', v.string())
+		const ProfileSchema = defineSchema('profiles', (s) =>
+			s.pk('id', v.string(), () => `pr${++profileCounter}`)
+			 .field('bio', v.string())
+			 .field('userId', v.string()),
+		)
 
-		const OrgSchema = Schema.from('orgs')
-			.pk('id', v.string(), () => `o${++orgCounter}`)
-			.field('name', v.string())
+		const OrgSchema = defineSchema('orgs', (s) =>
+			s.pk('id', v.string(), () => `o${++orgCounter}`)
+			 .field('name', v.string()),
+		)
 
-		const ASchema = Schema.from('as').pk('id', v.string(), () => `a${++aCounter}`)
-		const BSchema = Schema.from('bs')
-			.pk('id', v.string(), () => `b${++bCounter}`)
-			.field('aId', v.string())
-		const CSchema = Schema.from('cs')
-			.pk('id', v.string(), () => `c${++cCounter}`)
-			.field('bId', v.string())
-		const DSchema = Schema.from('ds')
-			.pk('id', v.string(), () => `d${++dCounter}`)
-			.field('cId', v.string())
-		const ESchema = Schema.from('es')
-			.pk('id', v.string(), () => `e${++eCounter}`)
-			.field('dId', v.string())
-		const FSchema = Schema.from('fs')
-			.pk('id', v.string(), () => `f${++fCounter}`)
-			.field('eId', v.string())
-		const GSchema = Schema.from('gs')
-			.pk('id', v.string(), () => `g${++gCounter}`)
-			.field('fId', v.string())
+		const ASchema = defineSchema('as', (s) =>
+			s.pk('id', v.string(), () => `a${++aCounter}`),
+		)
+		const BSchema = defineSchema('bs', (s) =>
+			s.pk('id', v.string(), () => `b${++bCounter}`)
+			 .field('aId', v.string()),
+		)
+		const CSchema = defineSchema('cs', (s) =>
+			s.pk('id', v.string(), () => `c${++cCounter}`)
+			 .field('bId', v.string()),
+		)
+		const DSchema = defineSchema('ds', (s) =>
+			s.pk('id', v.string(), () => `d${++dCounter}`)
+			 .field('cId', v.string()),
+		)
+		const ESchema = defineSchema('es', (s) =>
+			s.pk('id', v.string(), () => `e${++eCounter}`)
+			 .field('dId', v.string()),
+		)
+		const FSchema = defineSchema('fs', (s) =>
+			s.pk('id', v.string(), () => `f${++fCounter}`)
+			 .field('eId', v.string()),
+		)
+		const GSchema = defineSchema('gs', (s) =>
+			s.pk('id', v.string(), () => `g${++gCounter}`)
+			 .field('fId', v.string()),
+		)
 
 		const UserRelations = Relations.of(UserSchema)
 			.hasMany('posts', PostSchema, 'userId')
@@ -229,8 +241,8 @@ if (import.meta.vitest) {
 		const FRelations = Relations.of(FSchema).hasMany('gs', GSchema, 'fId')
 
 		function makeRepo() {
-			const adapter = new InMemoryOrm()
-			return Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
+			const { adapter } = createInMemoryAdapter()
+			return defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 		}
 
 		test('hasMany preload resolves related entities', async () => {

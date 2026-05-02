@@ -307,21 +307,23 @@ export class AllBuilder<S extends AnySchema, Sel extends string, P extends reado
 if (import.meta.vitest) {
 	const { describe, test, expect, beforeEach } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { InMemoryOrm } = await import('../adapters/in-memory')
-	const { Repo } = await import('./repo')
-	const { Schema } = await import('../schema')
+	const { createInMemoryAdapter } = await import('../adapters/in-memory')
+	const { defineRepo } = await import('./repo')
+	const { defineSchema } = await import('../schema')
 
 	describe('builders', () => {
 		let repo: any
 		beforeEach(() => {
-			repo = Repo.from({ adapter: new InMemoryOrm(), resolve: (s) => ({ prefix: s.name }) })
+			const { adapter } = createInMemoryAdapter()
+			repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 		})
 
 		test('update() executes and returns updated row', async () => {
-			const UserSchema = Schema.from('users')
-				.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
-				.field('email', v.string())
-				.field('name', v.string())
+			const UserSchema = defineSchema('users', (s) =>
+				s.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
+				 .field('email', v.string())
+				 .field('name', v.string()),
+			)
 
 			const created = await repo.from(UserSchema).one().insert({ email: 'up@test.com', name: 'Before' })
 			const updated = await repo.from(UserSchema).one().id(created.id).update({ name: 'After' })
@@ -331,10 +333,11 @@ if (import.meta.vitest) {
 		})
 
 		test('find() returns rows', async () => {
-			const UserSchema = Schema.from('users')
-				.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
-				.field('email', v.string())
-				.field('name', v.string())
+			const UserSchema = defineSchema('users', (s) =>
+				s.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
+				 .field('email', v.string())
+				 .field('name', v.string()),
+			)
 
 			await repo
 				.from(UserSchema)
@@ -347,16 +350,17 @@ if (import.meta.vitest) {
 			const rows = await repo
 				.from(UserSchema)
 				.all()
-				.where((q) => q.or((g) => [g.eq('name', 'Alice'), g.eq('name', 'Bob')]))
+				.where((q) => q.or([(g) => g.eq('name', 'Alice'), (g) => g.eq('name', 'Bob')]))
 				.find()
 			expect(rows).toHaveLength(2)
 		})
 
 		test('write branches do not leak filters', async () => {
-			const UserSchema = Schema.from('users')
-				.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
-				.field('email', v.string())
-				.field('name', v.string())
+			const UserSchema = defineSchema('users', (s) =>
+				s.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
+				 .field('email', v.string())
+				 .field('name', v.string()),
+			)
 
 			await repo
 				.from(UserSchema)

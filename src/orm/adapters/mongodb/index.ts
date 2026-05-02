@@ -7,7 +7,7 @@ import { compileMongoQuery, compileMongoUpdate } from './query'
 import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities'
 import type { AnySchema } from '../../schema'
-import { OrmAdapter, type OrmUse } from '../base'
+import type { OrmUse } from '../base'
 
 const sessionStore = new AsyncLocalStorage<ClientSession | undefined>()
 
@@ -28,10 +28,9 @@ export type MongoDbRepoConfig = {
 
 export class MongoDbOrm extends configurable(
 	mongoDbOrmConfigPipe,
-	class extends OrmAdapter<MongoDbRepoConfig> {
+	class {
 		_client: MongoClient
 		constructor(config: PipeOutput<ReturnType<typeof mongoDbOrmConfigPipe>>) {
-			super()
 			const protocol = config.ssl ? 'mongodb+srv' : 'mongodb'
 			const host = config.ssl ? config.host : `${config.host}:${config.port}`
 			this._client = new MongoClient(`${protocol}://${host}`, {
