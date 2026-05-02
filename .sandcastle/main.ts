@@ -29,12 +29,12 @@
 // Usage:
 //   npx tsx .sandcastle/main.ts
 
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 
-import * as sandcastle from "@ai-hero/sandcastle"
-import { docker } from "@ai-hero/sandcastle/sandboxes/docker"
-import { Command, InvalidArgumentError } from "commander"
+import * as sandcastle from '@ai-hero/sandcastle'
+import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
+import { Command, InvalidArgumentError } from 'commander'
 
 const exec = promisify(execFile)
 
@@ -51,38 +51,27 @@ const parsePositiveInt = (raw: string): number => {
 }
 
 const parseFeature = (raw: string): string => {
-	if (!raw.startsWith("feature/") || raw === "feature/") {
-		throw new InvalidArgumentError(
-			`must start with 'feature/' and have a non-empty slug (got '${raw}')`,
-		)
+	if (!raw.startsWith('feature/') || raw === 'feature/') {
+		throw new InvalidArgumentError(`must start with 'feature/' and have a non-empty slug (got '${raw}')`)
 	}
 	return raw
 }
 
 const program = new Command()
-	.name("sandcastle")
+	.name('sandcastle')
 	.description(
-		"Run the Sandcastle parallel-planner-with-review loop scoped to a single feature. Multiple devs can run scoped loops for different features in parallel.",
+		'Run the Sandcastle parallel-planner-with-review loop scoped to a single feature. Multiple devs can run scoped loops for different features in parallel.',
 	)
-	.argument(
-		"<feature>",
-		"feature label (e.g. 'feature/orm') — must start with 'feature/' and exist as a branch on origin",
-		parseFeature,
-	)
-	.option(
-		"-m, --max-iterations <n>",
-		"maximum number of plan/execute/publish cycles per run",
-		parsePositiveInt,
-		10,
-	)
+	.argument('<feature>', "feature label (e.g. 'feature/orm') — must start with 'feature/' and exist as a branch on origin", parseFeature)
+	.option('-m, --max-iterations <n>', 'maximum number of plan/execute/publish cycles per run', parsePositiveInt, 1)
 	.parse()
 
 const FEATURE: string = program.processedArgs[0]
 const MAX_ITERATIONS: number = program.opts().maxIterations
 
-const IN_PR_LABEL = "in-pr"
-const NEEDS_REVISION_LABEL = "needs-revision"
-const SANDCASTLE_BRANCH_PREFIX = "sandcastle/issue-"
+const IN_PR_LABEL = 'in-pr'
+const NEEDS_REVISION_LABEL = 'needs-revision'
+const SANDCASTLE_BRANCH_PREFIX = 'sandcastle/issue-'
 
 // `pnpm install --prefer-offline` matches this repo's package manager and
 // reuses cached/host-copied node_modules wherever possible. The default
@@ -90,13 +79,11 @@ const SANDCASTLE_BRANCH_PREFIX = "sandcastle/issue-"
 // bump it generously. Reduce if you find runs are reliably faster.
 const hooks = {
 	sandbox: {
-		onSandboxReady: [
-			{ command: "pnpm install --prefer-offline", timeoutMs: 600_000 },
-		],
+		onSandboxReady: [{ command: 'pnpm install --prefer-offline', timeoutMs: 600_000 }],
 	},
 }
 
-const copyToWorktree = ["node_modules"]
+const copyToWorktree = ['node_modules']
 
 // ---------------------------------------------------------------------------
 // Types
@@ -129,20 +116,16 @@ type FeedbackPR = {
 
 async function remoteBranchExists(branch: string): Promise<boolean> {
 	try {
-		await exec("git", ["ls-remote", "--exit-code", "--heads", "origin", branch])
+		await exec('git', ['ls-remote', '--exit-code', '--heads', 'origin', branch])
 		return true
 	} catch {
 		return false
 	}
 }
 
-async function ensureLinkedIssueBranch(
-	issueId: string,
-	issueBranch: string,
-	featureBranch: string,
-) {
+async function ensureLinkedIssueBranch(issueId: string, issueBranch: string, featureBranch: string) {
 	// Make sure we have the latest feature-branch tip locally.
-	await exec("git", ["fetch", "origin", featureBranch])
+	await exec('git', ['fetch', 'origin', featureBranch])
 
 	// If the issue branch doesn't yet exist on origin, create it via
 	// `gh issue develop` — this both creates the branch on the remote off the
@@ -151,38 +134,39 @@ async function ensureLinkedIssueBranch(
 	// alone so prior progress is preserved.
 	if (!(await remoteBranchExists(issueBranch))) {
 		console.log(`  → Creating linked branch ${issueBranch} for issue #${issueId}`)
-		await exec("gh", [
-			"issue", "develop", issueId,
-			"--name", issueBranch,
-			"--base", featureBranch,
-		])
+		await exec('gh', ['issue', 'develop', issueId, '--name', issueBranch, '--base', featureBranch])
 		// Fetch the freshly-created remote ref so we can build a local branch on top.
-		await exec("git", ["fetch", "origin", issueBranch])
+		await exec('git', ['fetch', 'origin', issueBranch])
 	}
 
 	// Ensure a local branch exists tracking the remote.
 	try {
-		await exec("git", ["rev-parse", "--verify", `refs/heads/${issueBranch}`])
+		await exec('git', ['rev-parse', '--verify', `refs/heads/${issueBranch}`])
 	} catch {
-		await exec("git", ["branch", issueBranch, `origin/${issueBranch}`])
+		await exec('git', ['branch', issueBranch, `origin/${issueBranch}`])
 	}
 }
 
 async function getPRsNeedingFeedback(): Promise<FeedbackPR[]> {
 	// Fetch the latest refs so local branches the agent will check out
 	// match what humans see on GitHub.
-	await exec("git", ["fetch", "--all", "--prune"])
+	await exec('git', ['fetch', '--all', '--prune'])
 
 	// We use a label as the trigger because GitHub doesn't let PR authors
 	// request changes on their own PR. The human reviewer adds
 	// `needs-revision` after leaving comments; the addresser removes it once
 	// it pushes a fix.
-	const { stdout } = await exec("gh", [
-		"pr", "list",
-		"--state", "open",
-		"--label", NEEDS_REVISION_LABEL,
-		"--limit", "100",
-		"--json", "number,title,url,headRefName,baseRefName",
+	const { stdout } = await exec('gh', [
+		'pr',
+		'list',
+		'--state',
+		'open',
+		'--label',
+		NEEDS_REVISION_LABEL,
+		'--limit',
+		'100',
+		'--json',
+		'number,title,url,headRefName,baseRefName',
 	])
 
 	return (
@@ -206,21 +190,26 @@ async function getPRsNeedingFeedback(): Promise<FeedbackPR[]> {
 
 async function publishNewIssue(issue: Issue) {
 	console.log(`  → Pushing ${issue.branch}`)
-	await exec("git", ["push", "-u", "origin", issue.branch])
+	await exec('git', ['push', '-u', 'origin', issue.branch])
 
 	console.log(`  → Opening PR for issue #${issue.id} → ${issue.featureBranch}`)
-	const { stdout } = await exec("gh", [
-		"pr", "create",
-		"--head", issue.branch,
-		"--base", issue.featureBranch,
-		"--title", `Sandcastle: ${issue.title} (#${issue.id})`,
-		"--body", [
+	const { stdout } = await exec('gh', [
+		'pr',
+		'create',
+		'--head',
+		issue.branch,
+		'--base',
+		issue.featureBranch,
+		'--title',
+		`Sandcastle: ${issue.title} (#${issue.id})`,
+		'--body',
+		[
 			`Automated implementation by Sandcastle for issue #${issue.id}.`,
-			"",
+			'',
 			`Closes #${issue.id}`,
-			"",
+			'',
 			`_Awaiting human review and approval. This PR targets the long-lived feature branch \`${issue.featureBranch}\`._`,
-		].join("\n"),
+		].join('\n'),
 	])
 	const url = stdout.trim()
 	console.log(`  → PR opened: ${url}`)
@@ -228,17 +217,12 @@ async function publishNewIssue(issue: Issue) {
 	// Hit the REST API directly instead of `gh issue edit --add-label` because
 	// the latter goes through a GraphQL path that touches the deprecated
 	// `projectCards` field and fails on repos with Projects (classic) sunset.
-	await exec("gh", [
-		"api",
-		"--method", "POST",
-		`repos/{owner}/{repo}/issues/${issue.id}/labels`,
-		"-f", `labels[]=${IN_PR_LABEL}`,
-	])
+	await exec('gh', ['api', '--method', 'POST', `repos/{owner}/{repo}/issues/${issue.id}/labels`, '-f', `labels[]=${IN_PR_LABEL}`])
 }
 
 async function pushFeedbackBranch(pr: FeedbackPR) {
 	console.log(`  → Pushing ${pr.branch} (PR #${pr.number})`)
-	await exec("git", ["push", "origin", pr.branch])
+	await exec('git', ['push', 'origin', pr.branch])
 	// Hand the ball back to the human reviewer — they re-apply the label if
 	// they want another pass.
 	//
@@ -247,11 +231,7 @@ async function pushFeedbackBranch(pr: FeedbackPR) {
 	// `repository.pullRequest.projectCards` field and fails outright on repos
 	// where Projects (classic) has been sunset. The REST labels endpoint takes
 	// a clean DELETE and isn't affected.
-	await exec("gh", [
-		"api",
-		"--method", "DELETE",
-		`repos/{owner}/{repo}/issues/${pr.number}/labels/${NEEDS_REVISION_LABEL}`,
-	])
+	await exec('gh', ['api', '--method', 'DELETE', `repos/{owner}/{repo}/issues/${pr.number}/labels/${NEEDS_REVISION_LABEL}`])
 }
 
 // ---------------------------------------------------------------------------
@@ -270,8 +250,8 @@ async function addressFeedback(pr: FeedbackPR) {
 		const result = await sandbox.run({
 			name: `addresser-pr${pr.number}`,
 			maxIterations: 50,
-			agent: sandcastle.claudeCode("claude-opus-4-6"),
-			promptFile: "./.sandcastle/respond-to-feedback-prompt.md",
+			agent: sandcastle.claudeCode('claude-opus-4-6'),
+			promptFile: './.sandcastle/respond-to-feedback-prompt.md',
 			promptArgs: {
 				PR_NUMBER: String(pr.number),
 				BRANCH: pr.branch,
@@ -299,10 +279,10 @@ async function implementAndReview(issue: Issue) {
 
 	try {
 		const implement = await sandbox.run({
-			name: "implementer",
+			name: 'implementer',
 			maxIterations: 100,
-			agent: sandcastle.claudeCode("claude-opus-4-6"),
-			promptFile: "./.sandcastle/implement-prompt.md",
+			agent: sandcastle.claudeCode('claude-opus-4-6'),
+			promptFile: './.sandcastle/implement-prompt.md',
 			promptArgs: {
 				TASK_ID: issue.id,
 				ISSUE_TITLE: issue.title,
@@ -315,10 +295,10 @@ async function implementAndReview(issue: Issue) {
 		}
 
 		const review = await sandbox.run({
-			name: "reviewer",
+			name: 'reviewer',
 			maxIterations: 1,
-			agent: sandcastle.claudeCode("claude-opus-4-6"),
-			promptFile: "./.sandcastle/review-prompt.md",
+			agent: sandcastle.claudeCode('claude-opus-4-6'),
+			promptFile: './.sandcastle/review-prompt.md',
 			promptArgs: {
 				BRANCH: issue.branch,
 				FEATURE_BRANCH: issue.featureBranch,
@@ -352,7 +332,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		const settled = await Promise.allSettled(feedbackPRs.map(addressFeedback))
 		for (const [i, outcome] of settled.entries()) {
 			const pr = feedbackPRs[i]!
-			if (outcome.status === "rejected") {
+			if (outcome.status === 'rejected') {
 				console.error(`  ✗ PR #${pr.number} addresser failed: ${outcome.reason}`)
 				continue
 			}
@@ -367,23 +347,23 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 			}
 		}
 	} else {
-		console.log("No open PRs need feedback addressed.")
+		console.log('No open PRs need feedback addressed.')
 	}
 
 	// Phase 1: Plan new work (scoped to FEATURE)
 	const plan = await sandcastle.run({
 		hooks,
 		sandbox: docker(),
-		name: "planner",
+		name: 'planner',
 		maxIterations: 1,
-		agent: sandcastle.claudeCode("claude-opus-4-6"),
-		promptFile: "./.sandcastle/plan-prompt.md",
+		agent: sandcastle.claudeCode('claude-opus-4-6'),
+		promptFile: './.sandcastle/plan-prompt.md',
 		promptArgs: { FEATURE },
 	})
 
 	const planMatch = plan.stdout.match(/<plan>([\s\S]*?)<\/plan>/)
 	if (!planMatch) {
-		throw new Error("Planning agent did not produce a <plan> tag.\n\n" + plan.stdout)
+		throw new Error('Planning agent did not produce a <plan> tag.\n\n' + plan.stdout)
 	}
 
 	const rawIssues = (JSON.parse(planMatch[1]!) as { issues: RawIssue[] }).issues
@@ -402,7 +382,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		}
 		if (raw.featureLabels.length > 1) {
 			throw new Error(
-				`Issue #${raw.id} ("${raw.title}") has multiple \`feature/*\` labels: ${raw.featureLabels.join(", ")}. ` +
+				`Issue #${raw.id} ("${raw.title}") has multiple \`feature/*\` labels: ${raw.featureLabels.join(', ')}. ` +
 					`Each issue must target exactly one feature branch. Remove the extras with \`gh issue edit\` and re-run.`,
 			)
 		}
@@ -423,10 +403,10 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 	}
 
 	if (issues.length === 0) {
-		console.log("No unblocked issues to work on.")
+		console.log('No unblocked issues to work on.')
 		// If there was also no feedback work this iteration, the queue is empty.
 		if (feedbackPRs.length === 0) {
-			console.log("Queue empty. Exiting.")
+			console.log('Queue empty. Exiting.')
 			break
 		}
 		continue
@@ -441,18 +421,18 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 	const settled = await Promise.allSettled(issues.map(implementAndReview))
 
 	for (const [i, outcome] of settled.entries()) {
-		if (outcome.status === "rejected") {
+		if (outcome.status === 'rejected') {
 			console.error(`  ✗ ${issues[i]!.id} (${issues[i]!.branch}) failed: ${outcome.reason}`)
 		}
 	}
 
 	// Phase 3: Publish — push branches and open PRs
 	const completed = settled
-		.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.value] : []))
+		.flatMap((outcome) => (outcome.status === 'fulfilled' ? [outcome.value] : []))
 		.filter((v) => v.commits.length > 0)
 
 	if (completed.length === 0) {
-		console.log("No commits produced. Nothing to publish.")
+		console.log('No commits produced. Nothing to publish.')
 		continue
 	}
 
@@ -466,4 +446,4 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 	}
 }
 
-console.log("\nAll done.")
+console.log('\nAll done.')
