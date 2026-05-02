@@ -159,21 +159,6 @@ export type AdapterResult<Acc> = {
 	session<T>(fn: () => Promise<T>): Promise<T>
 } & ('config' extends keyof Acc ? { readonly __config: Acc['config'] } : {})
 
-export type AnyAdapterResult = {
-	readonly supportedFieldTypes: readonly FieldTypeName[]
-	readonly queryableOps: readonly FilterOpName[]
-	readonly updateOps: readonly UpdateOpName[]
-	readonly crud?: CrudBag<any>
-	readonly queryable?: QueryableBag<any>
-	readonly transactional?: TransactionalBag
-	readonly lifecycle?: LifecycleBag
-	readonly __config?: unknown
-	use(schema: AnySchema, config: any): OrmUse
-	connect(): Promise<void>
-	disconnect(): Promise<void>
-	session<T>(fn: () => Promise<T>): Promise<T>
-}
-
 export function defineAdapter<Acc>(build: (b: AdapterBuilder) => AdapterBuilder<Acc>): AdapterResult<Acc> {
 	const builder = build(new AdapterBuilder())
 	const data = builder._build() as AdapterResult<Acc>
@@ -242,10 +227,6 @@ export type InferAdapterConfig<A> = A extends { __config: infer C }
 export type InferAdapterQueryableOps<A> = A extends { queryableOps: infer Ops extends readonly FilterOpName[] }
 	? Ops
 	: readonly []
-
-export type HasQueryable<A> = A extends { queryable: infer Q }
-	? Q extends undefined ? false : true
-	: false
 
 type ToFieldTypeName<T> = T extends undefined
 	? never

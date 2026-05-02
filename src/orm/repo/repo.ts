@@ -52,9 +52,9 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	): Promise<SchemaPersistedOutput<S>[]> {
 		const s = schema as unknown as AnySchema
 		const group = (q as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group as FilterGroup)
+		assertNormalisedFilter(s, group)
 		const use = this.#getUse(s)
-		return (await use.findMany(group as FilterGroup)) as SchemaPersistedOutput<S>[]
+		return (await use.findMany(group)) as SchemaPersistedOutput<S>[]
 	}
 
 	async findOne<S extends AnySchema>(
@@ -63,9 +63,9 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
 		const group = (q as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group as FilterGroup)
+		assertNormalisedFilter(s, group)
 		const use = this.#getUse(s)
-		return (await use.findOne(group as FilterGroup)) as SchemaPersistedOutput<S> | null
+		return (await use.findOne(group)) as SchemaPersistedOutput<S> | null
 	}
 
 	async session<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
