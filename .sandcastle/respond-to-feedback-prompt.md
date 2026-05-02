@@ -2,6 +2,8 @@
 
 Address the review feedback on PR #{{PR_NUMBER}}. You are on branch `{{BRANCH}}`.
 
+The PR has been flagged with the `needs-revision` label by a human reviewer. Their feedback lives in PR comments (top-level and inline) — those comments are the source of truth for what needs to change. GitHub does not allow PR authors to formally request changes on their own PR, so a label + comments is the trigger here, not a `CHANGES_REQUESTED` review.
+
 # CONTEXT
 
 ## PR overview

@@ -1,10 +1,12 @@
 // Parallel Planner with Review + Publish + Feedback — orchestration loop
 //
-// Phase 0 (Address Feedback): For each open Sandcastle-authored PR with
-//                             unaddressed `CHANGES_REQUESTED` review feedback,
-//                             spawn a sandbox on the PR's branch and run an
-//                             "addresser" agent. Push the branch back when
+// Phase 0 (Address Feedback): For each open Sandcastle-authored PR carrying
+//                             the `needs-revision` label, spawn a sandbox on
+//                             the PR's branch and run an "addresser" agent.
+//                             Push the branch back and remove the label when
 //                             done. Pipelines run concurrently.
+//                             (GitHub doesn't let PR authors request changes
+//                             on their own PR, so a label is the trigger.)
 // Phase 1 (Plan):             An opus agent analyses open issues, builds a
 //                             dependency graph, and outputs a <plan> JSON
 //                             listing unblocked issues with branch names and
@@ -79,6 +81,7 @@ const FEATURE: string = program.processedArgs[0]
 const MAX_ITERATIONS: number = program.opts().maxIterations
 
 const IN_PR_LABEL = "in-pr"
+const NEEDS_REVISION_LABEL = "needs-revision"
 const SANDCASTLE_BRANCH_PREFIX = "sandcastle/issue-"
 
 // `pnpm install --prefer-offline` matches this repo's package manager and
@@ -170,20 +173,20 @@ async function getPRsNeedingFeedback(): Promise<FeedbackPR[]> {
 	// match what humans see on GitHub.
 	await exec("git", ["fetch", "--all", "--prune"])
 
-	// Step 1: list candidate PRs with only the minimal fields needed to filter
-	// by branch prefix. GitHub's GraphQL rejects the broader query that asked
-	// for reviews+commits inline because the (PRs × reviews × commits) fanout
-	// exceeds the connection node budget on busy repos.
-	const { stdout: listOut } = await exec("gh", [
+	// We use a label as the trigger because GitHub doesn't let PR authors
+	// request changes on their own PR. The human reviewer adds
+	// `needs-revision` after leaving comments; the addresser removes it once
+	// it pushes a fix.
+	const { stdout } = await exec("gh", [
 		"pr", "list",
 		"--state", "open",
-		"--search", "review:changes-requested",
+		"--label", NEEDS_REVISION_LABEL,
 		"--limit", "100",
 		"--json", "number,title,url,headRefName,baseRefName",
 	])
 
-	const candidates = (
-		JSON.parse(listOut) as Array<{
+	return (
+		JSON.parse(stdout) as Array<{
 			number: number
 			title: string
 			url: string
@@ -193,45 +196,12 @@ async function getPRsNeedingFeedback(): Promise<FeedbackPR[]> {
 	)
 		.filter((pr) => pr.headRefName.startsWith(SANDCASTLE_BRANCH_PREFIX))
 		.filter((pr) => pr.baseRefName === FEATURE)
-
-	// Step 2: per-PR detail fetch (single PR per call stays well under the
-	// GraphQL node limit).
-	const result: FeedbackPR[] = []
-	for (const c of candidates) {
-		const { stdout: detailOut } = await exec("gh", [
-			"pr", "view", String(c.number),
-			"--json", "reviews,commits",
-		])
-		const detail = JSON.parse(detailOut) as {
-			reviews: Array<{ state: string; submittedAt: string }>
-			commits: Array<{ committedDate: string }>
-		}
-
-		const submitted = detail.reviews.filter((r) => r.state !== "PENDING")
-		if (submitted.length === 0) continue
-
-		const lastReviewAt = submitted
-			.map((r) => new Date(r.submittedAt).getTime())
-			.reduce((a, b) => Math.max(a, b), 0)
-		const lastCommitAt = detail.commits
-			.map((cm) => new Date(cm.committedDate).getTime())
-			.reduce((a, b) => Math.max(a, b), 0)
-
-		// Feedback is unaddressed when the latest review is newer than the
-		// latest commit on the branch. After the addresser pushes new commits,
-		// lastCommitAt overtakes lastReviewAt and the PR drops out of this
-		// list until a human re-reviews and requests more changes.
-		if (lastReviewAt > lastCommitAt) {
-			result.push({
-				number: c.number,
-				title: c.title,
-				url: c.url,
-				branch: c.headRefName,
-			})
-		}
-	}
-
-	return result
+		.map((pr) => ({
+			number: pr.number,
+			title: pr.title,
+			url: pr.url,
+			branch: pr.headRefName,
+		}))
 }
 
 async function publishNewIssue(issue: Issue) {
@@ -261,6 +231,9 @@ async function publishNewIssue(issue: Issue) {
 async function pushFeedbackBranch(pr: FeedbackPR) {
 	console.log(`  → Pushing ${pr.branch} (PR #${pr.number})`)
 	await exec("git", ["push", "origin", pr.branch])
+	// Hand the ball back to the human reviewer — they re-apply the label if
+	// they want another pass.
+	await exec("gh", ["pr", "edit", String(pr.number), "--remove-label", NEEDS_REVISION_LABEL])
 }
 
 // ---------------------------------------------------------------------------
