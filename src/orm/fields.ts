@@ -1,7 +1,8 @@
 import { v, type Pipe, type PipeOutput } from 'valleyed'
 
-export class Field<T = unknown, Name extends string = string> {
+export class Field<T = unknown, Name extends string = string, S = unknown> {
 	declare readonly __valueType?: T
+	declare readonly __schema?: S
 	readonly name: Name
 	readonly path: readonly string[]
 
@@ -11,7 +12,7 @@ export class Field<T = unknown, Name extends string = string> {
 	}
 }
 
-export type AnyField = Field<unknown, string>
+export type AnyField = Field<unknown, string, any>
 
 export function toFieldName(field: string | AnyField): string {
 	if (field instanceof Field) return field.path.join('.')

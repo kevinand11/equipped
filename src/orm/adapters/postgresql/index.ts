@@ -7,7 +7,7 @@ import { buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery 
 import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities'
 import type { AnySchema } from '../../schema'
-import { OrmAdapter, type OrmUse } from '../base'
+import type { OrmUse } from '../base'
 
 const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
 
@@ -28,10 +28,9 @@ export type PostgresqlRepoConfig = {
 
 export class PostgresqlOrm extends configurable(
 	postgresqlConfigPipe,
-	class extends OrmAdapter<PostgresqlRepoConfig> {
+	class {
 		_pool: Pool
 		constructor(config: PipeOutput<ReturnType<typeof postgresqlConfigPipe>>) {
-			super()
 			this._pool = new Pool({
 				host: config.host,
 				port: config.port,
