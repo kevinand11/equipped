@@ -57,7 +57,7 @@ export class Schema<
 		generate: () => PipeOutput<P>,
 	): Schema<N, SchemaField<K, P, true>, F> {
 		const schema = this as unknown as Schema<N, SchemaField<K, P, true>, F>
-		schema.#pkField = new SchemaField(name as string as any, pipe, { onCreate: generate })
+		schema.#pkField = new SchemaField(name, pipe, { onCreate: generate })
 		return schema
 	}
 
