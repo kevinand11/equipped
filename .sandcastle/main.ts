@@ -225,7 +225,15 @@ async function publishNewIssue(issue: Issue) {
 	const url = stdout.trim()
 	console.log(`  → PR opened: ${url}`)
 
-	await exec("gh", ["issue", "edit", issue.id, "--add-label", IN_PR_LABEL])
+	// Hit the REST API directly instead of `gh issue edit --add-label` because
+	// the latter goes through a GraphQL path that touches the deprecated
+	// `projectCards` field and fails on repos with Projects (classic) sunset.
+	await exec("gh", [
+		"api",
+		"--method", "POST",
+		`repos/{owner}/{repo}/issues/${issue.id}/labels`,
+		"-f", `labels[]=${IN_PR_LABEL}`,
+	])
 }
 
 async function pushFeedbackBranch(pr: FeedbackPR) {
@@ -233,7 +241,17 @@ async function pushFeedbackBranch(pr: FeedbackPR) {
 	await exec("git", ["push", "origin", pr.branch])
 	// Hand the ball back to the human reviewer — they re-apply the label if
 	// they want another pass.
-	await exec("gh", ["pr", "edit", String(pr.number), "--remove-label", NEEDS_REVISION_LABEL])
+	//
+	// We hit `gh api` directly instead of `gh pr edit --remove-label` because
+	// `gh pr edit` issues a GraphQL query that touches the deprecated
+	// `repository.pullRequest.projectCards` field and fails outright on repos
+	// where Projects (classic) has been sunset. The REST labels endpoint takes
+	// a clean DELETE and isn't affected.
+	await exec("gh", [
+		"api",
+		"--method", "DELETE",
+		`repos/{owner}/{repo}/issues/${pr.number}/labels/${NEEDS_REVISION_LABEL}`,
+	])
 }
 
 // ---------------------------------------------------------------------------
