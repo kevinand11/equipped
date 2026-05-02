@@ -7,7 +7,7 @@ function mapField(field: string, primaryKey: string): string {
 	return field
 }
 
-function compilePgFilter(group: QueryGroup, primaryKey: string): { whereClause: string; params: unknown[]; nextParamIndex: number } {
+function compilePgFilter(group: any, primaryKey: string): { whereClause: string; params: unknown[]; nextParamIndex: number } {
 	const clauses: FilterOp[] = group.children
 	const params: unknown[] = []
 	let paramIndex = 1
@@ -61,14 +61,14 @@ function compileWhere(w: Where, primaryKey: string, nextParam: (v: unknown) => s
 	}
 }
 
-function compileAnd(group: QueryGroup, primaryKey: string, nextParam: (v: unknown) => string): string | null {
+function compileAnd(group: any, primaryKey: string, nextParam: (v: unknown) => string): string | null {
 	const parts = group.children.map((c) => compileOp(c, primaryKey, nextParam)).filter((c): c is string => c !== null)
 	if (parts.length === 0) return null
 	if (parts.length === 1) return parts[0]
 	return `(${parts.join(' AND ')})`
 }
 
-function compileOr(group: QueryGroup, primaryKey: string, nextParam: (v: unknown) => string): string | null {
+function compileOr(group: any, primaryKey: string, nextParam: (v: unknown) => string): string | null {
 	const parts = group.children.map((c) => compileOp(c, primaryKey, nextParam)).filter((c): c is string => c !== null)
 	if (parts.length === 0) return null
 	if (parts.length === 1) return parts[0]
@@ -85,7 +85,7 @@ function compileOp(op: FilterOp, primaryKey: string, nextParam: (v: unknown) => 
 }
 
 export function buildSelectQuery(
-	group: QueryGroup,
+	group: any,
 	options: QueryOptions | undefined,
 	tableName: string,
 	primaryKey: string,
@@ -114,7 +114,7 @@ export function buildSelectQuery(
 	return { sql, params }
 }
 
-export function buildCountQuery(group: QueryGroup, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
+export function buildCountQuery(group: any, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
 	const { whereClause, params } = compilePgFilter(group, primaryKey)
 	const sql = `SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`.trim().replace(/\s+/g, ' ')
 	return { sql, params }
@@ -130,7 +130,7 @@ export function buildInsertQuery(tableName: string, data: Record<string, unknown
 }
 
 export function buildUpdateQuery(
-	group: QueryGroup,
+	group: any,
 	tableName: string,
 	primaryKey: string,
 	data: Record<string, unknown>,
@@ -186,7 +186,7 @@ export function buildUpdateQuery(
 	return { sql, params }
 }
 
-export function buildDeleteQuery(group: QueryGroup, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
+export function buildDeleteQuery(group: any, tableName: string, primaryKey: string): { sql: string; params: unknown[] } {
 	const { whereClause, params } = compilePgFilter(group, primaryKey)
 	const sql = `DELETE FROM "${tableName}" ${whereClause} RETURNING *`.trim().replace(/\s+/g, ' ')
 	return { sql, params }

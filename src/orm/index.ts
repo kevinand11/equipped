@@ -1,6 +1,7 @@
 export * from './adapter'
 export * from './adapters/base'
 export * from './fields'
+export * from './filter'
 export * from './query'
 export * from './relations'
 export * from './repo'

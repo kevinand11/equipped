@@ -1,8 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { SchemaContext, SchemaRef } from './builders'
-import type { InferAdapterConfig, SchemaCompatible } from '../adapter'
+import type { InferAdapterConfig, InferAdapterQueryableOps, SchemaCompatible } from '../adapter'
 import type { OrmAdapterLike } from '../adapters/base'
+import { assertNormalisedFilter, FilterGroup, type FilterFactory, type GatedFilterFactory } from '../filter'
 import type { AnySchema, SchemaPersistedOutput } from '../schema'
 
 export class Repo<A extends OrmAdapterLike<any>> {
@@ -43,6 +44,28 @@ export class Repo<A extends OrmAdapterLike<any>> {
 			return (result as SchemaPersistedOutput<S>) ?? null
 		}
 		throw new Error('Adapter does not implement crud.findByPk')
+	}
+
+	async findMany<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		q: GatedFilterFactory<InferAdapterQueryableOps<A>>,
+	): Promise<SchemaPersistedOutput<S>[]> {
+		const s = schema as unknown as AnySchema
+		const group = (q as unknown as FilterFactory)(FilterGroup.create())
+		assertNormalisedFilter(s, group as FilterGroup)
+		const use = this.#getUse(s)
+		return (await use.findMany(group as FilterGroup)) as SchemaPersistedOutput<S>[]
+	}
+
+	async findOne<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		q: GatedFilterFactory<InferAdapterQueryableOps<A>>,
+	): Promise<SchemaPersistedOutput<S> | null> {
+		const s = schema as unknown as AnySchema
+		const group = (q as unknown as FilterFactory)(FilterGroup.create())
+		assertNormalisedFilter(s, group as FilterGroup)
+		const use = this.#getUse(s)
+		return (await use.findOne(group as FilterGroup)) as SchemaPersistedOutput<S> | null
 	}
 
 	async session<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
@@ -468,6 +491,268 @@ if (import.meta.vitest) {
 			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x'))
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.findByPk<typeof _TestSchema>).toBeFunction()
+		})
+	})
+
+	describe('repo.findMany / repo.findOne end-to-end', () => {
+		const TestSchema = defineSchema('e2e', (s) =>
+			s
+				.pk('id', v.string(), () => `e-${Math.random().toString(36).slice(2)}`)
+				.field('name', v.string())
+				.field('age', v.number())
+				.field('active', v.boolean())
+				.field('tags', v.array(v.string()))
+				.field('score', v.optional(v.number()), { onCreate: () => undefined }),
+		)
+
+		function makeE2eRepo() {
+			const { adapter } = createInMemoryAdapter()
+			const repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
+			return { repo, adapter }
+		}
+
+		async function seedData(repo: any) {
+			await repo.from(TestSchema).all().insert([
+				{ name: 'Alice', age: 30, active: true, tags: ['admin', 'user'] },
+				{ name: 'Bob', age: 20, active: false, tags: ['user'] },
+				{ name: 'Carol', age: 40, active: true, tags: ['admin'] },
+				{ name: 'Dave', age: 25, active: true, tags: ['user', 'guest'], score: 100 },
+			])
+		}
+
+		test('repo.findMany returns matching documents', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.eq(TestSchema.fields.active, true))
+			expect(results).toHaveLength(3)
+			expect(results.every((r) => r.active === true)).toBe(true)
+		})
+
+		test('repo.findOne returns first matching document', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const result = await repo.findOne(TestSchema, (q) => q.eq(TestSchema.fields.name, 'Bob'))
+			expect(result).not.toBeNull()
+			expect(result!.name).toBe('Bob')
+		})
+
+		test('repo.findOne returns null when no match', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const result = await repo.findOne(TestSchema, (q) => q.eq(TestSchema.fields.name, 'Nobody'))
+			expect(result).toBeNull()
+		})
+
+		test('eq filter op matches exact value', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.eq(TestSchema.fields.age, 30))
+			expect(results).toHaveLength(1)
+			expect(results[0].name).toBe('Alice')
+		})
+
+		test('ne filter op excludes matching values', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.ne(TestSchema.fields.name, 'Alice'))
+			expect(results).toHaveLength(3)
+			expect(results.every((r) => r.name !== 'Alice')).toBe(true)
+		})
+
+		test('gt filter op matches values greater than', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.gt(TestSchema.fields.age, 25))
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
+		})
+
+		test('gte filter op matches values greater than or equal', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.gte(TestSchema.fields.age, 30))
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
+		})
+
+		test('lt filter op matches values less than', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.lt(TestSchema.fields.age, 25))
+			expect(results).toHaveLength(1)
+			expect(results[0].name).toBe('Bob')
+		})
+
+		test('lte filter op matches values less than or equal', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.lte(TestSchema.fields.age, 25))
+			expect(results.map((r) => r.name).sort()).toEqual(['Bob', 'Dave'])
+		})
+
+		test('in filter op matches values in array', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.in(TestSchema.fields.name, ['Alice', 'Carol']))
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
+		})
+
+		test('notIn filter op excludes values in array', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.notIn(TestSchema.fields.name, ['Alice', 'Carol']))
+			expect(results.map((r) => r.name).sort()).toEqual(['Bob', 'Dave'])
+		})
+
+		test('like filter op matches substring case-insensitively', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.like(TestSchema.fields.name, 'ali'))
+			expect(results).toHaveLength(1)
+			expect(results[0].name).toBe('Alice')
+		})
+
+		test('exists filter op matches non-null values', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.exists(TestSchema.fields.score))
+			expect(results).toHaveLength(1)
+			expect(results[0].name).toBe('Dave')
+		})
+
+		test('notExists filter op matches null/undefined values', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.notExists(TestSchema.fields.score))
+			expect(results).toHaveLength(3)
+		})
+
+		test('contains filter op matches array subset', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.contains('tags', ['admin']))
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
+		})
+
+		test('notContains filter op excludes array subset', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.notContains('tags', ['admin']))
+			expect(results.map((r) => r.name).sort()).toEqual(['Bob', 'Dave'])
+		})
+
+		test('and combinator requires all conditions', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) =>
+				q.and([
+					(g) => g.gt(TestSchema.fields.age, 20),
+					(g) => g.eq(TestSchema.fields.active, true),
+				]),
+			)
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol', 'Dave'])
+		})
+
+		test('or combinator matches any condition', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) =>
+				q.or([
+					(g) => g.eq(TestSchema.fields.name, 'Alice'),
+					(g) => g.eq(TestSchema.fields.name, 'Bob'),
+				]),
+			)
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Bob'])
+		})
+
+		test('raw-string field overload works end-to-end', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo.findMany(TestSchema, (q) => q.eq('name', 'Alice'))
+			expect(results).toHaveLength(1)
+			expect(results[0].name).toBe('Alice')
+		})
+
+		test('empty and([]) throws at builder time', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			await expect(
+				repo.findMany(TestSchema, (q) => q.and([])),
+			).rejects.toThrow()
+		})
+
+		test('empty or([]) throws at builder time', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			await expect(
+				repo.findMany(TestSchema, (q) => q.or([])),
+			).rejects.toThrow()
+		})
+
+		test('unknown field in filter throws OrmValidationError at boundary', async () => {
+			const { OrmValidationError: OrmValErr } = await import('../filter')
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			await expect(
+				repo.findMany(TestSchema, (q) => q.eq('nonexistentField', 42)),
+			).rejects.toBeInstanceOf(OrmValErr)
+		})
+	})
+
+	describe('type-level: per-op gating on FilterGroup', () => {
+		test('undeclared filter op is never on GatedFilterGroup', () => {
+			const { GatedFilterGroup: _type } = {} as any
+			type EqOnlyOps = readonly ['eq']
+			type Gated = import('../filter').GatedFilterGroup<EqOnlyOps>
+			expectTypeOf<Gated['eq']>().not.toBeNever()
+			expectTypeOf<Gated['ne']>().toBeNever()
+			expectTypeOf<Gated['gt']>().toBeNever()
+			expectTypeOf<Gated['and']>().not.toBeNever()
+			expectTypeOf<Gated['or']>().not.toBeNever()
+		})
+
+		test('all declared ops are available, undeclared are never', () => {
+			type TwoOps = readonly ['eq', 'gt']
+			type Gated = import('../filter').GatedFilterGroup<TwoOps>
+			expectTypeOf<Gated['eq']>().not.toBeNever()
+			expectTypeOf<Gated['gt']>().not.toBeNever()
+			expectTypeOf<Gated['ne']>().toBeNever()
+			expectTypeOf<Gated['lt']>().toBeNever()
+			expectTypeOf<Gated['in']>().toBeNever()
+		})
+	})
+
+	describe('type-level: co-required pair (queryable needs queryableOps)', () => {
+		test('queryable without queryableOps is a TS error and runtime throw', () => {
+			expect(() =>
+				// @ts-expect-error — queryable() without queryableOps() is a compile error
+				defineAdapter((a) => a.queryable({ findMany: async () => [] })),
+			).toThrow()
+		})
+
+		test('queryable after queryableOps with zero ops is a TS error and runtime throw', () => {
+			expect(() =>
+				defineAdapter((a) => {
+					const b = a.queryableOps()
+					// @ts-expect-error — queryable() after empty queryableOps should fail
+					return b.queryable({ findMany: async () => [] })
+				}),
+			).toThrow()
+		})
+
+		test('queryable with non-empty queryableOps compiles', () => {
+			const _adapter = defineAdapter((a) =>
+				a.queryableOps('eq').queryable({ findMany: async () => [] }),
+			)
+			expect(_adapter.queryableOps).toEqual(['eq'])
+		})
+	})
+
+	describe('type-level: missing queryableOps makes findMany never', () => {
+		test('adapter without queryableOps yields never findMany on repo', () => {
+			const _crudOnlyAdapter = defineAdapter((a) =>
+				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
+			)
+			type Ops = import('../adapter').InferAdapterQueryableOps<typeof _crudOnlyAdapter>
+			expectTypeOf<Ops>().toEqualTypeOf<readonly []>()
 		})
 	})
 }
