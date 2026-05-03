@@ -1,8 +1,9 @@
 import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
+import { EquippedError } from '../errors'
 import type { AnySchemaField, SchemaField } from './fields'
 import { Schema, defineSchema, type AnySchema, type SchemaFields, type SchemaOutput } from './schema'
-import { isUpdateOp, type AnyUpdateOp } from './updates'
+import { SetOp, isUpdateOp, opTouchedFields, type AnyUpdateOp } from './updates'
 import type { Prettify } from './utils'
 
 export type SchemaInsertInput<S extends AnySchema> = Prettify<
@@ -19,26 +20,64 @@ export type SchemaInsertInput<S extends AnySchema> = Prettify<
 
 export type SchemaUpdateInput<S extends AnySchema> =
 	S extends Schema<any, any, infer F>
-		? Prettify<{ [K in keyof F]?: F[K] extends AnySchemaField ? PipeInput<F[K]['pipe']> | AnyUpdateOp : never }>
+		? { [K in keyof F]?: F[K] extends AnySchemaField ? PipeInput<F[K]['pipe']> | AnyUpdateOp : never }
 		: Record<string, unknown>
 
 export type SchemaUpdateOutput<S extends AnySchema> =
 	S extends Schema<any, any, infer F>
-		? Prettify<{ [K in keyof F]?: F[K] extends AnySchemaField ? PipeOutput<F[K]['pipe']> | AnyUpdateOp : never }>
+		? { [K in keyof F]?: F[K] extends AnySchemaField ? PipeOutput<F[K]['pipe']> | AnyUpdateOp : never }
 		: Record<string, unknown>
 
+export function tryValidateInsertRow<S extends AnySchema>(
+	s: S,
+	data: Record<string, unknown>,
+): { ok: true; value: SchemaOutput<S> } | { ok: false; failures: OrmValidationFailure[] } {
+	const failures: OrmValidationFailure[] = []
+	const result: Record<string, unknown> = {}
+
+	for (const [key, entry] of Object.entries(s.fields)) {
+		const pipe = entry.onCreate ? v.defaults(entry.pipe, entry.onCreate()) : entry.pipe
+		const fieldValue = key in data ? data[key] : undefined
+		const validated = v.validate(pipe, fieldValue)
+		if (validated.valid) {
+			result[key] = validated.value
+		} else {
+			failures.push({ field: key, cause: validated.error })
+		}
+	}
+
+	if (failures.length > 0) return { ok: false, failures }
+	return { ok: true, value: result as SchemaOutput<S> }
+}
+
 export function validateInsert<S extends AnySchema>(s: S, data: Record<string, unknown>): SchemaOutput<S> {
-	return v.assert(
-		v.object(
-			Object.fromEntries(
-				Object.entries(s.fields).map(([key, entry]) => [
-					key,
-					entry.onCreate ? v.defaults(entry.pipe, entry.onCreate()) : entry.pipe,
-				]),
-			),
-		),
-		data,
-	) as SchemaOutput<S>
+	const result = tryValidateInsertRow(s, data)
+	if (!result.ok) {
+		throw new OrmValidationError('validation', s.name, 'insertOne', result.failures)
+	}
+	return result.value
+}
+
+export function validateInsertMany<S extends AnySchema>(s: S, rows: Record<string, unknown>[]): SchemaOutput<S>[] {
+	const allFailures: OrmValidationFailure[] = []
+	const validated: SchemaOutput<S>[] = []
+
+	for (let i = 0; i < rows.length; i++) {
+		const result = tryValidateInsertRow(s, rows[i])
+		if (result.ok) {
+			validated.push(result.value)
+		} else {
+			for (const failure of result.failures) {
+				allFailures.push({ ...failure, rowIndex: i })
+			}
+		}
+	}
+
+	if (allFailures.length > 0) {
+		throw new OrmValidationError('validation', s.name, 'insertMany', allFailures)
+	}
+
+	return validated
 }
 
 export function validateUpdate<S extends AnySchema>(s: S, data: Record<string, unknown>): SchemaUpdateOutput<S> {
@@ -58,9 +97,87 @@ export function validateUpdate<S extends AnySchema>(s: S, data: Record<string, u
 	return { ...validated, ...ops } as SchemaUpdateOutput<S>
 }
 
+export type OrmValidationErrorKind = 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible'
+
+export type OrmValidationFailure = {
+	opIndex?: number
+	rowIndex?: number
+	field?: string
+	cause: unknown
+}
+
+export class OrmValidationError extends EquippedError {
+	constructor(
+		readonly kind: OrmValidationErrorKind,
+		readonly schema: string,
+		readonly operation: string,
+		readonly failures: OrmValidationFailure[],
+	) {
+		super(`ORM validation error (${kind}) on ${schema}.${operation}`, {
+			kind,
+			schema,
+			operation,
+			failures,
+		})
+	}
+}
+
+export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[]): AnyUpdateOp[] {
+	const touched = new Map<string, number[]>()
+
+	for (let i = 0; i < ops.length; i++) {
+		for (const field of opTouchedFields(ops[i])) {
+			if (!touched.has(field)) touched.set(field, [])
+			touched.get(field)!.push(i)
+		}
+	}
+
+	const autoBumped: AnyUpdateOp[] = []
+	for (const [key, entry] of Object.entries(schema.fieldDefs)) {
+		if (entry.onUpdate && !touched.has(key)) {
+			const bumpOp = new SetOp({ [key]: entry.onUpdate() })
+			autoBumped.push(bumpOp)
+			touched.set(key, [ops.length + autoBumped.length - 1])
+		}
+	}
+
+	const allOps = [...ops, ...autoBumped]
+
+	const conflicts: OrmValidationFailure[] = []
+	for (const [field, indices] of touched) {
+		if (indices.length > 1) {
+			conflicts.push({ field, cause: `field "${field}" touched by multiple ops at indices [${indices.join(', ')}]` })
+		}
+	}
+	if (conflicts.length > 0) {
+		throw new OrmValidationError('conflicting-ops', schema.name, 'updateByPk', conflicts)
+	}
+
+	const failures: OrmValidationFailure[] = []
+	for (let i = 0; i < allOps.length; i++) {
+		const op = allOps[i]
+		if (op instanceof SetOp) {
+			for (const [key, value] of Object.entries(op.values)) {
+				const fieldDef = schema.fields[key] as AnySchemaField | undefined
+				if (!fieldDef) continue
+				try {
+					v.assert(fieldDef.pipe, value)
+				} catch (cause) {
+					failures.push({ opIndex: i, field: key, cause })
+				}
+			}
+		}
+	}
+	if (failures.length > 0) {
+		throw new OrmValidationError('validation', schema.name, 'updateByPk', failures)
+	}
+
+	return allOps
+}
+
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
-	const { inc, IncOp, mul, MulOp, unset, UnsetOp } = await import('./updates')
+	const { IncOp, MulOp, SetOp, UnsetOp } = await import('./updates')
 
 	describe('validateInsert', () => {
 		const UserSchema = defineSchema('users', (s) =>
@@ -101,12 +218,99 @@ if (import.meta.vitest) {
 			expect((result as any).admin).toBeUndefined()
 		})
 
-		test('throws on invalid field type', () => {
-			expect(() => validateInsert(UserSchema, { email: 123, name: 'Alice' })).toThrow()
+		test('throws OrmValidationError on invalid field type', () => {
+			try {
+				validateInsert(UserSchema, { email: 123, name: 'Alice' })
+				expect.unreachable()
+			} catch (e) {
+				expect(e).toBeInstanceOf(OrmValidationError)
+				const err = e as InstanceType<typeof OrmValidationError>
+				expect(err.kind).toBe('validation')
+				expect(err.schema).toBe('users')
+				expect(err.operation).toBe('insertOne')
+				expect(err.failures.length).toBeGreaterThan(0)
+				expect(err.failures[0].field).toBe('email')
+			}
 		})
 
-		test('throws when required field is missing', () => {
-			expect(() => validateInsert(UserSchema, { email: 'a@b.com' })).toThrow()
+		test('throws OrmValidationError when required field is missing', () => {
+			try {
+				validateInsert(UserSchema, { email: 'a@b.com' })
+				expect.unreachable()
+			} catch (e) {
+				expect(e).toBeInstanceOf(OrmValidationError)
+				const err = e as InstanceType<typeof OrmValidationError>
+				expect(err.kind).toBe('validation')
+				expect(err.failures.some((f) => f.field === 'name')).toBe(true)
+			}
+		})
+
+		test('collects all field failures in a single error', () => {
+			try {
+				validateInsert(UserSchema, { email: 123, name: 456 })
+				expect.unreachable()
+			} catch (e) {
+				expect(e).toBeInstanceOf(OrmValidationError)
+				const err = e as InstanceType<typeof OrmValidationError>
+				const failedFields = err.failures.map((f) => f.field)
+				expect(failedFields).toContain('email')
+				expect(failedFields).toContain('name')
+			}
+		})
+	})
+
+	describe('validateInsertMany', () => {
+		const ItemSchema = defineSchema('items', (s) =>
+			s.pk('id', v.string(), () => 'item-id')
+			 .field('title', v.string())
+			 .field('price', v.number()),
+		)
+
+		test('validates all rows and returns validated documents', () => {
+			const results = validateInsertMany(ItemSchema, [
+				{ title: 'A', price: 10 },
+				{ title: 'B', price: 20 },
+			])
+			expect(results).toHaveLength(2)
+			expect(results[0].title).toBe('A')
+			expect(results[1].title).toBe('B')
+		})
+
+		test('collects failures across rows with rowIndex populated', () => {
+			try {
+				validateInsertMany(ItemSchema, [
+					{ title: 'Good', price: 10 },
+					{ title: 123, price: 20 },
+					{ title: 'Also bad', price: 'not-a-number' },
+				])
+				expect.unreachable()
+			} catch (e) {
+				expect(e).toBeInstanceOf(OrmValidationError)
+				const err = e as InstanceType<typeof OrmValidationError>
+				expect(err.kind).toBe('validation')
+				expect(err.schema).toBe('items')
+				expect(err.operation).toBe('insertMany')
+				expect(err.failures.length).toBeGreaterThanOrEqual(2)
+				const rowIndices = err.failures.map((f) => f.rowIndex)
+				expect(rowIndices).toContain(1)
+				expect(rowIndices).toContain(2)
+				expect(rowIndices).not.toContain(0)
+			}
+		})
+
+		test('throws single error even with multiple bad rows', () => {
+			try {
+				validateInsertMany(ItemSchema, [
+					{ title: 1, price: 'bad' },
+					{ title: 2, price: 'worse' },
+				])
+				expect.unreachable()
+			} catch (e) {
+				expect(e).toBeInstanceOf(OrmValidationError)
+				const err = e as InstanceType<typeof OrmValidationError>
+				expect(err.failures.filter((f) => f.rowIndex === 0).length).toBeGreaterThan(0)
+				expect(err.failures.filter((f) => f.rowIndex === 1).length).toBeGreaterThan(0)
+			}
 		})
 	})
 
@@ -144,25 +348,147 @@ if (import.meta.vitest) {
 		})
 
 		test('passes Op instances through without validation', () => {
-			const result = validateUpdate(UserSchema, { name: inc(1) })
+			const result = validateUpdate(UserSchema, { name: new IncOp('name', 1) })
 			expect(result.name).toBeInstanceOf(IncOp)
 		})
 
 		test('Op on a field suppresses onUpdate for that field but not others', () => {
-			const result = validateUpdate(UserSchema, { updatedAt: inc(1) })
+			const result = validateUpdate(UserSchema, { updatedAt: new IncOp('updatedAt', 1) })
 			expect(result.updatedAt).toBeInstanceOf(IncOp)
 		})
 
 		test('plain value and Op can coexist in same update', () => {
-			const result = validateUpdate(UserSchema, { name: 'Bob', email: unset() })
+			const result = validateUpdate(UserSchema, { name: 'Bob', email: new UnsetOp('email') })
 			expect(result.name).toBe('Bob')
 			expect(result.email).toBeInstanceOf(UnsetOp)
 			expect(result.updatedAt).toBe(2000)
 		})
 
 		test('Op on onUpdate field suppresses its generator', () => {
-			const result = validateUpdate(UserSchema, { updatedAt: mul(2) })
+			const result = validateUpdate(UserSchema, { updatedAt: new MulOp('updatedAt', 2) })
 			expect(result.updatedAt).toBeInstanceOf(MulOp)
+		})
+	})
+
+	describe('OrmValidationError', () => {
+		test('has correct kind, schema, operation, and failures', () => {
+			const err = new OrmValidationError('conflicting-ops', 'users', 'updateByPk', [
+				{ field: 'views', cause: 'conflict' },
+			])
+			expect(err).toBeInstanceOf(EquippedError)
+			expect(err.kind).toBe('conflicting-ops')
+			expect(err.schema).toBe('users')
+			expect(err.operation).toBe('updateByPk')
+			expect(err.failures).toHaveLength(1)
+		})
+	})
+
+	describe('validateUpdateOps', () => {
+		const UpdateSchema = defineSchema('items', (s) =>
+			s
+				.pk('id', v.string(), () => 'auto')
+				.field('name', v.string())
+				.field('views', v.number())
+				.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 }),
+		)
+
+		test('passes through valid ops', () => {
+			const ops = validateUpdateOps(UpdateSchema, [new SetOp({ name: 'New Name' })])
+			expect(ops.length).toBeGreaterThanOrEqual(1)
+			expect(ops[0]).toBeInstanceOf(SetOp)
+		})
+
+		test('auto-bumps onUpdate fields not touched by user ops', () => {
+			const ops = validateUpdateOps(UpdateSchema, [new SetOp({ name: 'New Name' })])
+			const bumped = ops.find((op) => op instanceof SetOp && 'updatedAt' in op.values && op !== ops[0])
+			expect(bumped).toBeDefined()
+			expect((bumped as SetOp).values.updatedAt).toBe(2000)
+		})
+
+		test('user set({updatedAt:X}) suppresses auto-bump for that field', () => {
+			const ops = validateUpdateOps(UpdateSchema, [new SetOp({ updatedAt: 9999 })])
+			const setOps = ops.filter((op) => op instanceof SetOp) as SetOp[]
+			const allUpdatedAtValues = setOps.flatMap((op) =>
+				'updatedAt' in op.values ? [op.values.updatedAt] : [],
+			)
+			expect(allUpdatedAtValues).toEqual([9999])
+		})
+
+		test('atomic op on onUpdate field suppresses auto-bump', () => {
+			const ops = validateUpdateOps(UpdateSchema, [new IncOp('updatedAt', 1)])
+			const setOps = ops.filter((op) => op instanceof SetOp) as SetOp[]
+			const hasAutoBumpedUpdatedAt = setOps.some((op) => 'updatedAt' in op.values)
+			expect(hasAutoBumpedUpdatedAt).toBe(false)
+		})
+
+		test('set({views:0}) + inc(views, 1) throws conflicting-ops', () => {
+			expect(() =>
+				validateUpdateOps(UpdateSchema, [new SetOp({ views: 0 }), new IncOp('views', 1)]),
+			).toThrow(OrmValidationError)
+
+			try {
+				validateUpdateOps(UpdateSchema, [new SetOp({ views: 0 }), new IncOp('views', 1)])
+			} catch (e) {
+				const err = e as OrmValidationError
+				expect(err.kind).toBe('conflicting-ops')
+				expect(err.failures[0].field).toBe('views')
+			}
+		})
+
+		test('cross-kind conflict (unset + inc on same field) throws', () => {
+			const UpdateSchema2 = defineSchema('items2', (s) =>
+				s
+					.pk('id', v.string(), () => 'auto')
+					.field('score', v.optional(v.number())),
+			)
+			expect(() =>
+				validateUpdateOps(UpdateSchema2, [new UnsetOp('score'), new IncOp('score', 5)]),
+			).toThrow(OrmValidationError)
+		})
+
+		test('SetOp values are pipe-validated', () => {
+			expect(() =>
+				validateUpdateOps(UpdateSchema, [new SetOp({ name: 123 as any })]),
+			).toThrow(OrmValidationError)
+
+			try {
+				validateUpdateOps(UpdateSchema, [new SetOp({ name: 123 as any })])
+			} catch (e) {
+				const err = e as OrmValidationError
+				expect(err.kind).toBe('validation')
+				expect(err.failures[0].field).toBe('name')
+			}
+		})
+
+		test('atomic op operands are NOT pipe-validated', () => {
+			const ops = validateUpdateOps(UpdateSchema, [new IncOp('views', -999)])
+			expect(ops).toHaveLength(2)
+		})
+
+		test('auto-bumped SetOp values are pipe-validated', () => {
+			const BadSchema = defineSchema('bad', (s) =>
+				s
+					.pk('id', v.string(), () => 'auto')
+					.field('name', v.string())
+					.field('counter', v.number(), { onUpdate: () => 'not-a-number' as any }),
+			)
+			expect(() =>
+				validateUpdateOps(BadSchema, [new SetOp({ name: 'test' })]),
+			).toThrow(OrmValidationError)
+		})
+
+		test('collects all conflicts in one error', () => {
+			try {
+				validateUpdateOps(UpdateSchema, [
+					new SetOp({ views: 0, name: 'A' }),
+					new IncOp('views', 1),
+					new SetOp({ name: 'B' }),
+				])
+			} catch (e) {
+				const err = e as OrmValidationError
+				expect(err.kind).toBe('conflicting-ops')
+				expect(err.failures.length).toBe(2)
+			}
 		})
 	})
 }

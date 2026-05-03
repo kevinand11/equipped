@@ -58,6 +58,7 @@ export class Schema<
 	): Schema<N, SchemaField<K, P, true>, F> {
 		const schema = this as unknown as Schema<N, SchemaField<K, P, true>, F>
 		schema.#pkField = new SchemaField(name, pipe, { onCreate: generate })
+		Object.defineProperty(schema.#pkField, '__schema', { value: this, enumerable: false })
 		return schema
 	}
 
@@ -81,6 +82,7 @@ export class Schema<
 		}
 	> {
 		this.#fieldDefs[name] = new SchemaField(name, pipe, opts) as any
+		Object.defineProperty(this.#fieldDefs[name], '__schema', { value: this, enumerable: false })
 		return this as any
 	}
 
@@ -303,6 +305,12 @@ if (import.meta.vitest) {
 
 			type FieldS2 = NonNullable<(typeof _TestSchema.fields.email)['__schema']>
 			expectTypeOf<FieldS2>().toEqualTypeOf<typeof _TestSchema>()
+		})
+
+		test('fields carry runtime __schema reference to parent schema', () => {
+			const TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x').field('email', v.string()))
+			expect((TestSchema.fields.id as any).__schema).toBe(TestSchema)
+			expect((TestSchema.fields.email as any).__schema).toBe(TestSchema)
 		})
 	})
 }

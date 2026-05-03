@@ -5,7 +5,7 @@ import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '..
 type MongoFilter = Record<string, unknown>
 
 export function compileMongoQuery(
-	group: QueryGroup,
+	group: any,
 	options: QueryOptions | undefined,
 	primaryKey: string,
 ): {
@@ -120,14 +120,19 @@ export function compileMongoUpdate(data: Record<string, unknown>, now: Date): Re
 	const $pull: Record<string, unknown> = {}
 
 	for (const [key, value] of Object.entries(data)) {
-		if (value instanceof IncOp) $inc[key] = value.by
-		else if (value instanceof MulOp) $mul[key] = value.by
+		if (value instanceof IncOp) $inc[key] = value.value
+		else if (value instanceof MulOp) $mul[key] = value.value
 		else if (value instanceof MinOp) $min[key] = value.value
 		else if (value instanceof MaxOp) $max[key] = value.value
 		else if (value instanceof UnsetOp) $unset[key] = ''
 		else if (value instanceof PushOp) $push[key] = value.value
 		else if (value instanceof PullOp) $pull[key] = value.value
-		else if (value instanceof PatchOp) $set[`${key}.${value.path.join('.')}`] = value.value
+		else if (value instanceof PatchOp) {
+			const patchVal = value.value as Record<string, unknown>
+			for (const [subKey, subVal] of Object.entries(patchVal)) {
+				$set[`${key}.${subKey}`] = subVal
+			}
+		}
 		else $set[key] = value
 	}
 

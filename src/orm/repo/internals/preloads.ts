@@ -1,6 +1,6 @@
 import { EquippedError } from '../../../errors'
 import type { OrmUse } from '../../adapters/base'
-import { QueryGroup } from '../../query'
+import { FilterGroup } from '../../filter'
 import type { AnyPreloadDef, AnyRelDef, NestedPreloadDef } from '../../relations'
 import { ManyRelation, OneRelation } from '../../relations'
 import type { AnySchema } from '../../schema'
@@ -111,7 +111,7 @@ async function resolvePreload(
 			const fkValues = uniqueDefinedValues(entities, def.foreignKey.name)
 			if (fkValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
 
-			let related = await getUse(target).findMany(QueryGroup.from().in(refCol, fkValues))
+			let related = await getUse(target).findMany(FilterGroup.create().in(refCol, fkValues))
 			if (node.preloads.length > 0 && related.length > 0) {
 				related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 			}
@@ -123,7 +123,7 @@ async function resolvePreload(
 		const refValues = uniqueDefinedValues(entities, refCol)
 		if (refValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
 
-		let related = await getUse(target).findMany(QueryGroup.from().in(def.foreignKey, refValues))
+		let related = await getUse(target).findMany(FilterGroup.create().in(def.foreignKey, refValues))
 		if (node.preloads.length > 0 && related.length > 0) {
 			related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 		}
@@ -136,7 +136,7 @@ async function resolvePreload(
 		const refValues = uniqueDefinedValues(entities, refCol)
 		if (refValues.length === 0) return entities.map((e) => ({ ...e, [name]: [] }))
 
-		let related = await getUse(target).findMany(QueryGroup.from().in(def.foreignKey, refValues))
+		let related = await getUse(target).findMany(FilterGroup.create().in(def.foreignKey, refValues))
 		if (node.preloads.length > 0 && related.length > 0) {
 			related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 		}
@@ -157,7 +157,7 @@ if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { createInMemoryAdapter } = await import('../../adapters/in-memory')
-	const { Relations } = await import('../../relations')
+	const { defineRelations } = await import('../../relations')
 	const { defineRepo } = await import('../repo')
 	const { defineSchema } = await import('../../schema')
 
@@ -226,19 +226,22 @@ if (import.meta.vitest) {
 			 .field('fId', v.string()),
 		)
 
-		const UserRelations = Relations.of(UserSchema)
-			.hasMany('posts', PostSchema, 'userId')
-			.hasOne('profile', ProfileSchema, 'userId')
-			.belongsTo('org', OrgSchema, 'orgId')
+		const UserRels = defineRelations(UserSchema, (rel, src) => rel
+			.hasMany('posts', PostSchema.fields.userId)
+			.hasOne('profile', ProfileSchema.fields.userId)
+			.belongsTo('org', src.fields.orgId, OrgSchema),
+		)
 
-		const PostRelations = Relations.of(PostSchema).belongsTo('author', UserSchema, 'userId')
+		const PostRels = defineRelations(PostSchema, (rel, src) => rel
+			.belongsTo('author', src.fields.userId, UserSchema),
+		)
 
-		const ARelations = Relations.of(ASchema).hasMany('bs', BSchema, 'aId')
-		const BRelations = Relations.of(BSchema).hasMany('cs', CSchema, 'bId')
-		const CRelations = Relations.of(CSchema).hasMany('ds', DSchema, 'cId')
-		const DRelations = Relations.of(DSchema).hasMany('es', ESchema, 'dId')
-		const ERelations = Relations.of(ESchema).hasMany('fs', FSchema, 'eId')
-		const FRelations = Relations.of(FSchema).hasMany('gs', GSchema, 'fId')
+		const ARels = defineRelations(ASchema, (rel) => rel.hasMany('bs', BSchema.fields.aId))
+		const BRels = defineRelations(BSchema, (rel) => rel.hasMany('cs', CSchema.fields.bId))
+		const CRels = defineRelations(CSchema, (rel) => rel.hasMany('ds', DSchema.fields.cId))
+		const DRels = defineRelations(DSchema, (rel) => rel.hasMany('es', ESchema.fields.dId))
+		const ERels = defineRelations(ESchema, (rel) => rel.hasMany('fs', FSchema.fields.eId))
+		const FRels = defineRelations(FSchema, (rel) => rel.hasMany('gs', GSchema.fields.fId))
 
 		function makeRepo() {
 			const { adapter } = createInMemoryAdapter()
@@ -251,7 +254,7 @@ if (import.meta.vitest) {
 			await Repo.from(PostSchema).one().insert({ title: 'Post 1', userId: user.id })
 			await Repo.from(PostSchema).one().insert({ title: 'Post 2', userId: user.id })
 
-			const users = await Repo.from(UserSchema).all().preload([UserRelations.definitions.posts]).find()
+			const users = await Repo.from(UserSchema).all().preload([UserRels.posts]).find()
 			expect(users[0].posts).toHaveLength(2)
 		})
 
@@ -260,10 +263,10 @@ if (import.meta.vitest) {
 			const user = await Repo.from(UserSchema).one().insert({ email: 'x@test.com', name: 'X' })
 			await Repo.from(ProfileSchema).one().insert({ bio: 'Hello', userId: user.id })
 
-			const users = await Repo.from(UserSchema).all().preload([UserRelations.definitions.profile]).find()
+			const users = await Repo.from(UserSchema).all().preload([UserRels.profile]).find()
 			expect(users[0].profile?.bio).toBe('Hello')
 
-			const usersWithoutOrg = await Repo.from(UserSchema).all().preload([UserRelations.definitions.org]).find()
+			const usersWithoutOrg = await Repo.from(UserSchema).all().preload([UserRels.org]).find()
 			expect(usersWithoutOrg[0].org).toBeNull()
 		})
 
@@ -277,8 +280,8 @@ if (import.meta.vitest) {
 				.all()
 				.preload([
 					{
-						def: UserRelations.definitions.posts,
-						preloads: [{ def: PostRelations.definitions.author, preloads: [UserRelations.definitions.profile] }],
+						def: UserRels.posts,
+						preloads: [{ def: PostRels.author, preloads: [UserRels.profile] }],
 					},
 				])
 				.find()
@@ -299,8 +302,8 @@ if (import.meta.vitest) {
 					.all()
 					.preload([
 						{
-							def: UserRelations.definitions.posts,
-							preloads: [{ def: PostRelations.definitions.author, preloads: [UserRelations.definitions.posts] }],
+							def: UserRels.posts,
+							preloads: [{ def: PostRels.author, preloads: [UserRels.posts] }],
 						},
 					])
 					.find(),
@@ -322,20 +325,20 @@ if (import.meta.vitest) {
 					.all()
 					.preload([
 						{
-							def: ARelations.definitions.bs,
+							def: ARels.bs,
 							preloads: [
 								{
-									def: BRelations.definitions.cs,
+									def: BRels.cs,
 									preloads: [
 										{
-											def: CRelations.definitions.ds,
+											def: CRels.ds,
 											preloads: [
 												{
-													def: DRelations.definitions.es,
+													def: DRels.es,
 													preloads: [
 														{
-															def: ERelations.definitions.fs,
-															preloads: [FRelations.definitions.gs],
+															def: ERels.fs,
+															preloads: [FRels.gs],
 														},
 													],
 												},
@@ -367,8 +370,43 @@ if (import.meta.vitest) {
 			const user = await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' })
 			await Repo.from(PostSchema).one().insert({ title: 'Post', userId: user.id })
 
-			const found = await Repo.from(UserSchema).one().id(user.id).preload([UserRelations.definitions.posts]).find()
+			const found = await Repo.from(UserSchema).one().id(user.id).preload([UserRels.posts]).find()
 			expect(found?.posts).toHaveLength(1)
+		})
+
+		test('N+1 avoidance: N parents + children loaded in 2 queries, not N+1', async () => {
+			const { vi } = await import('vitest')
+			const { adapter } = createInMemoryAdapter()
+			let queryCount = 0
+			const origUse = adapter.use.bind(adapter)
+			;(adapter as any).use = vi.fn((schema: any, config: any) => {
+				const use = origUse(schema, config)
+				return {
+					...use,
+					findMany: async (...args: any[]) => {
+						queryCount++
+						return use.findMany(...(args as [any, any]))
+					},
+				}
+			})
+
+			const Repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
+			const u1 = await Repo.from(UserSchema).one().insert({ email: 'a@test.com', name: 'A' })
+			const u2 = await Repo.from(UserSchema).one().insert({ email: 'b@test.com', name: 'B' })
+			const u3 = await Repo.from(UserSchema).one().insert({ email: 'c@test.com', name: 'C' })
+			await Repo.from(PostSchema).one().insert({ title: 'P1', userId: u1.id })
+			await Repo.from(PostSchema).one().insert({ title: 'P2', userId: u1.id })
+			await Repo.from(PostSchema).one().insert({ title: 'P3', userId: u2.id })
+			await Repo.from(PostSchema).one().insert({ title: 'P4', userId: u3.id })
+
+			queryCount = 0
+			const users = await Repo.from(UserSchema).all().preload([UserRels.posts]).find()
+
+			expect(users).toHaveLength(3)
+			expect(users.find((u) => u.id === u1.id)!.posts).toHaveLength(2)
+			expect(users.find((u) => u.id === u2.id)!.posts).toHaveLength(1)
+			expect(users.find((u) => u.id === u3.id)!.posts).toHaveLength(1)
+			expect(queryCount).toBe(2)
 		})
 	})
 }
