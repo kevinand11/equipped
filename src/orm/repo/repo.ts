@@ -41,6 +41,12 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return this.#adapter.use(s, this.#getConfig(s))
 	}
 
+	#resolveFilter(s: AnySchema, filter: GatedFilterFactory<InferAdapterQueryableOps<A>>): FilterGroup {
+		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
+		assertNormalisedFilter(s, group)
+		return group
+	}
+
 	from<S extends AnySchema>(schema: S): SchemaRef<S> {
 		return new SchemaRef<S>(new SchemaContext(schema, (target) => this.#getUse(target)))
 	}
@@ -49,11 +55,11 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		const s = schema as unknown as AnySchema
 		const config = this.#getConfig(s)
 		const adapter = this.#adapter as any
-		if (adapter.crud?.findByPk) {
-			const result = await adapter.crud.findByPk(s, config, pk)
-			return (result as SchemaPersistedOutput<S>) ?? null
+		if (!adapter.crud?.findByPk) {
+			throw new Error('Adapter does not implement crud.findByPk')
 		}
-		throw new Error('Adapter does not implement crud.findByPk')
+		const result = await adapter.crud.findByPk(s, config, pk)
+		return (result as SchemaPersistedOutput<S>) ?? null
 	}
 
 	async findMany<S extends AnySchema>(
@@ -61,10 +67,8 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		q: GatedFilterFactory<InferAdapterQueryableOps<A>>,
 	): Promise<SchemaPersistedOutput<S>[]> {
 		const s = schema as unknown as AnySchema
-		const group = (q as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
-		const use = this.#getUse(s)
-		return (await use.findMany(group)) as SchemaPersistedOutput<S>[]
+		const group = this.#resolveFilter(s, q)
+		return (await this.#getUse(s).findMany(group)) as SchemaPersistedOutput<S>[]
 	}
 
 	async findOne<S extends AnySchema>(
@@ -72,10 +76,8 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		q: GatedFilterFactory<InferAdapterQueryableOps<A>>,
 	): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
-		const group = (q as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
-		const use = this.#getUse(s)
-		return (await use.findOne(group)) as SchemaPersistedOutput<S> | null
+		const group = this.#resolveFilter(s, q)
+		return (await this.#getUse(s).findOne(group)) as SchemaPersistedOutput<S> | null
 	}
 
 	async updateByPk<S extends AnySchema>(
@@ -103,20 +105,20 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		const s = schema as unknown as AnySchema
 		const config = this.#getConfig(s)
 		const adapter = this.#adapter as any
-		if (adapter.crud?.deleteByPk) {
-			const result = await adapter.crud.deleteByPk(s, config, pk)
-			return (result as SchemaPersistedOutput<S>) ?? null
+		if (!adapter.crud?.deleteByPk) {
+			throw new Error('Adapter does not implement crud.deleteByPk')
 		}
-		throw new Error('Adapter does not implement crud.deleteByPk')
+		const result = await adapter.crud.deleteByPk(s, config, pk)
+		return (result as SchemaPersistedOutput<S>) ?? null
 	}
 
 	async raw<T = unknown>(schema: AnySchema, command: unknown, params?: unknown[]): Promise<T> {
 		const config = this.#getConfig(schema)
 		const adapter = this.#adapter as any
-		if (adapter.crud?.raw) {
-			return adapter.crud.raw(schema, config, command, params)
+		if (!adapter.crud?.raw) {
+			throw new Error('Adapter does not implement crud.raw')
 		}
-		throw new Error('Adapter does not implement crud.raw')
+		return adapter.crud.raw(schema, config, command, params)
 	}
 
 	async updateOne<S extends AnySchema>(
@@ -126,8 +128,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
 		const validated = validateUpdate(s, data as any)
-		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
+		const group = this.#resolveFilter(s, filter)
 		const use = this.#getUse(s)
 		const match = await use.findOne(group)
 		if (!match) return null
@@ -143,8 +144,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	): Promise<SchemaPersistedOutput<S>[]> {
 		const s = schema as unknown as AnySchema
 		const validated = validateUpdate(s, data as any)
-		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
+		const group = this.#resolveFilter(s, filter)
 		const rows = await this.#getUse(s).updateMany(group, validated as any)
 		return rows as SchemaPersistedOutput<S>[]
 	}
@@ -154,8 +154,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
 	): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
-		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
+		const group = this.#resolveFilter(s, filter)
 		const row = await this.#getUse(s).deleteOne(group)
 		return (row as SchemaPersistedOutput<S>) ?? null
 	}
@@ -165,8 +164,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
 	): Promise<SchemaPersistedOutput<S>[]> {
 		const s = schema as unknown as AnySchema
-		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
+		const group = this.#resolveFilter(s, filter)
 		const rows = await this.#getUse(s).deleteMany(group)
 		return rows as SchemaPersistedOutput<S>[]
 	}
