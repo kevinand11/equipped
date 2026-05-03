@@ -90,7 +90,7 @@ if (import.meta.vitest) {
 	const { v } = await import('valleyed')
 	const { createInMemoryAdapter } = await import('../adapters/in-memory')
 	const { defineAdapter } = await import('../adapter')
-	const { Relations } = await import('../relations')
+	const { defineRelations } = await import('../relations')
 	const { defineSchema } = await import('../schema')
 
 	describe('repo/Repo core behavior', () => {
@@ -134,10 +134,11 @@ if (import.meta.vitest) {
 				.computed('fullName', ['firstName', 'lastName'], v.string(), ({ firstName, lastName }) => `${firstName} ${lastName}`),
 		)
 
-		const UserRelations = Relations.of(UserSchema)
-			.hasMany('posts', PostSchema, 'userId')
-			.hasOne('profile', ProfileSchema, 'userId')
-			.belongsTo('org', OrgSchema, 'orgId')
+		const UserRels = defineRelations(UserSchema, (rel, src) => rel
+			.hasMany('posts', PostSchema.fields.userId)
+			.hasOne('profile', ProfileSchema.fields.userId)
+			.belongsTo('org', src.fields.orgId, OrgSchema),
+		)
 
 		function makeRepo() {
 			const { adapter } = createInMemoryAdapter()
@@ -193,7 +194,7 @@ if (import.meta.vitest) {
 			const user = await repo
 				.from(UserSchema)
 				.one()
-				.preload([UserRelations.definitions.org])
+				.preload([UserRels.org])
 				.insert({ email: 'writer@test.com', name: 'Writer', orgId: org.id })
 
 			expect((user.org as any).name).toBe('Fluent Org')
@@ -336,7 +337,7 @@ if (import.meta.vitest) {
 			const user = await repo
 				.from(UserSchema)
 				.one()
-				.preload([UserRelations.definitions.org])
+				.preload([UserRels.org])
 				.insert({ email: 'u@test.com', name: 'User', orgId: org.id })
 			expect((user.org as any).name).toBe('Corp')
 
@@ -345,7 +346,7 @@ if (import.meta.vitest) {
 				.from(UserSchema)
 				.one()
 				.id(user.id)
-				.preload([UserRelations.definitions.posts])
+				.preload([UserRels.posts])
 				.update({ name: 'Updated' })
 			expect(updated?.posts).toHaveLength(1)
 		})
