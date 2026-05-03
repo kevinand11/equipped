@@ -55,7 +55,8 @@ export type QueryableBag<Config> = {
 		schema: AnySchema,
 		config: Config,
 		filter: FilterGroup,
-		data: { insert: Record<string, unknown> } | { insert: Record<string, unknown>; update: Record<string, unknown> },
+		insert: Record<string, unknown>,
+		ops: AnyUpdateOp[],
 	) => Promise<Record<string, unknown>>
 }
 
@@ -190,8 +191,8 @@ export function defineAdapter<Acc>(build: (b: AdapterBuilder) => AdapterBuilder<
 				const rows = await use.updateMany(filter, d)
 				return rows[0] ?? null
 			},
-			upsertOne: (filter, d) =>
-				queryable?.upsertOne?.(schema, config, filter, d) ?? Promise.reject(new Error('upsertOne not implemented')),
+			upsertOne: (filter, insert, ops) =>
+				queryable?.upsertOne?.(schema, config, filter, insert, ops) ?? Promise.reject(new Error('upsertOne not implemented')),
 			deleteOne: async (filter) => {
 				const row = await use.findOne(filter)
 				if (!row) return null

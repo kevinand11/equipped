@@ -251,7 +251,7 @@ export function createInMemoryAdapter() {
 			.config({} as InMemoryRepoConfig)
 			.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
 			.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
+			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch', 'upsert')
 			.crud({
 				findByPk: async (schema, config, pk) => {
 					const store = getStore(resolveConfigName(schema, config))
@@ -318,20 +318,20 @@ export function createInMemoryAdapter() {
 					for (const row of rows) store.delete(String(row[pk]))
 					return rows
 				},
-				upsertOne: async (schema, config, filter, data) => {
+				upsertOne: async (schema, config, filter, insert, ops) => {
 					const store = getStore(resolveConfigName(schema, config))
 					const pk = schema.pkField.name
 					const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter))
 					const current = rows[0]
 					if (current) {
-						const updateData = 'update' in data ? data.update : data.insert
-						const next = applyUpdateData(current, updateData)
+						const next = ops.length > 0 ? applyOps(current, ops) : clone(current)
 						store.set(String(next[pk]), next)
 						return clone(next)
 					}
-					const row = clone(data.insert)
-					store.set(String(row[pk]), row)
-					return clone(row)
+					const base = clone(insert)
+					const result = ops.length > 0 ? applyOps(base, ops) : base
+					store.set(String(result[pk]), result)
+					return clone(result)
 				},
 			})
 			.transactional({

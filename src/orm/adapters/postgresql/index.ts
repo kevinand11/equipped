@@ -137,16 +137,20 @@ export class PostgresqlOrm extends configurable(
 						)
 					}
 				},
-				upsertOne: async (_filter, data) => {
+				upsertOne: async (_filter, insert, ops) => {
 					try {
 						const client = this._getClient()
-						const insertData = data.insert
-						const updateData = 'update' in data ? data.update : data.insert
-						const columns = Object.keys(insertData)
-						const values = Object.values(insertData)
+						const columns = Object.keys(insert)
+						const values = Object.values(insert)
 						const placeholders = columns.map((_, i) => `$${i + 1}`)
+						const updateData: Record<string, unknown> = {}
+						for (const op of ops) {
+							if ('values' in op) Object.assign(updateData, op.values)
+							else updateData[op.field] = op
+						}
+						if (Object.keys(updateData).length === 0) Object.assign(updateData, insert)
 						const updateParts = Object.keys(updateData).map((key) => {
-							values.push(updateData[key])
+							values.push(updateData[key] as any)
 							return `"${key}" = $${values.length}`
 						})
 						const sql =

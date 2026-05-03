@@ -5,6 +5,7 @@ import type { OrderBy } from '../../query'
 import type { AnyPreloadDef } from '../../relations'
 import type { AnySchema } from '../../schema'
 import { validateInsert, validateUpdate, type SchemaInsertInput, type SchemaUpdateInput } from '../../schema-validations'
+import { SetOp, isUpdateOp, type AnyUpdateOp } from '../../updates'
 import type { SchemaContext } from '../builders'
 
 export async function runOneRead<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
@@ -90,8 +91,22 @@ export async function runOneUpsert<S extends AnySchema, Sel extends string, P ex
 	data: UpsertInput<S>,
 ): Promise<SelectedWithPreloads<S, Sel, P>> {
 	const insert = validateInsert(context.schema, data.insert as any)
-	const update = 'update' in data ? validateUpdate(context.schema, data.update as any) : undefined
-	const row = await context.use.upsertOne(state.where, update ? ({ insert, update } as any) : { insert })
+	const ops: AnyUpdateOp[] = []
+	if ('update' in data) {
+		const validated = validateUpdate(context.schema, data.update as any)
+		const plainValues: Record<string, unknown> = {}
+		for (const [key, value] of Object.entries(validated)) {
+			if (isUpdateOp(value)) {
+				ops.push(value)
+			} else {
+				plainValues[key] = value
+			}
+		}
+		if (Object.keys(plainValues).length > 0) {
+			ops.unshift(new SetOp(plainValues))
+		}
+	}
+	const row = await context.use.upsertOne(state.where, insert as any, ops)
 	return (await context.shapeOneRow(state.select, state.preloads, row)) as SelectedWithPreloads<S, Sel, P>
 }
 

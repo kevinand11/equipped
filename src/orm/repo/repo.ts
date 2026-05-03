@@ -4,7 +4,7 @@ import type { InferAdapterConfig, InferAdapterQueryableOps, SchemaCompatible } f
 import type { OrmAdapterLike } from '../adapters/base'
 import { assertNormalisedFilter, FilterGroup, type FilterFactory, type GatedFilterFactory } from '../filter'
 import type { AnySchema, SchemaOutput, SchemaPersistedOutput } from '../schema'
-import { validateInsert, validateInsertMany, validateUpdate, validateUpdateOps, type SchemaInsertInput, type SchemaUpdateInput } from '../schema-validations'
+import { validateInsert, validateInsertMany, validateUpdate, validateUpdateOps, validateUpsertConflicts, type SchemaInsertInput, type SchemaUpdateInput } from '../schema-validations'
 import type { AnyUpdateOp, UpdateOp } from '../updates'
 import { SchemaContext, SchemaRef } from './builders'
 
@@ -160,6 +160,25 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return rows as SchemaPersistedOutput<S>[]
 	}
 
+	async upsertOne<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
+		insert: SchemaInsertInput<S>,
+		...ops: UpdateOp<S, A>[]
+	): Promise<SchemaPersistedOutput<S>> {
+		const s = schema as unknown as AnySchema
+		const rawInsert = insert as Record<string, unknown>
+		const castOps = ops as unknown as AnyUpdateOp[]
+		validateUpsertConflicts(s, rawInsert, castOps)
+		const validatedInsert = validateInsert(s, rawInsert)
+		const validatedOps = castOps.length > 0 ? validateUpdateOps(s, castOps, 'upsertOne') : []
+		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
+		assertNormalisedFilter(s, group)
+		const use = this.#getUse(s)
+		const row = await use.upsertOne(group, validatedInsert as Record<string, unknown>, validatedOps)
+		return row as SchemaPersistedOutput<S>
+	}
+
 	async session<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
 		return this.#adapter.session(() => fn(this))
 	}
@@ -211,12 +230,17 @@ type HasMethod<A, Bag extends string, Method extends string> = A extends Record<
 	? true
 	: false
 
+type HasUpdateOp<A, Op extends string> = A extends { updateOps: readonly (infer U)[] } ? (Op extends U ? true : false) : false
+
 export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
 	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { updateOne: never; updateMany: never }) &
 	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { deleteOne: never; deleteMany: never }) &
 	(HasMethod<A, 'crud', 'updateByPk'> extends true ? {} : { updateByPk: never }) &
 	(HasMethod<A, 'crud', 'deleteByPk'> extends true ? {} : { deleteByPk: never }) &
-	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never })
+	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never }) &
+	(HasMethod<A, 'queryable', 'upsertOne'> extends true
+		? HasUpdateOp<A, 'upsert'> extends true ? {} : { upsertOne: never }
+		: { upsertOne: never })
 
 export function defineRepo<A extends OrmAdapterLike<any>, Config>(
 	build: (b: RepoBuilder) => RepoBuilder<A, Config>,
@@ -1266,6 +1290,268 @@ if (import.meta.vitest) {
 			const _repo = makeUpdateRepo()
 			// @ts-expect-error — updateByPk requires at least one op argument
 			void ((_r: typeof _repo) => _r.updateByPk(ItemSchema, 'id'))
+		})
+	})
+
+	describe('repo.upsertOne', () => {
+		let upsertCounter = 0
+
+		const UpsertSchema = defineSchema('upserts', (s) =>
+			s
+				.pk('id', v.string(), () => `up-${++upsertCounter}`)
+				.field('email', v.string())
+				.field('name', v.string())
+				.field('views', v.number())
+				.field('createdAt', v.number(), { onCreate: () => 1000 })
+				.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 9999 }),
+		)
+
+		function makeUpsertRepo() {
+			const { adapter } = createInMemoryAdapter()
+			return defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
+		}
+
+		test('insert-then-ops path: row missing → inserts and applies ops', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpsertRepo()
+
+			const result = await repo.upsertOne(
+				UpsertSchema,
+				(q) => q.eq('email', 'alice@test.com'),
+				{ email: 'alice@test.com', name: 'Alice', views: 0 },
+				set<typeof UpsertSchema>({ name: 'Alice Updated' }),
+			)
+
+			expect(result.email).toBe('alice@test.com')
+			expect(result.name).toBe('Alice Updated')
+			expect(result.createdAt).toBe(1000)
+		})
+
+		test('insert path with set op overriding insert field is allowed', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpsertRepo()
+
+			const result = await repo.upsertOne(
+				UpsertSchema,
+				(q) => q.eq('email', 'override@test.com'),
+				{ email: 'override@test.com', name: 'Original', views: 0 },
+				set<typeof UpsertSchema>({ views: 42 }),
+			)
+
+			expect(result.views).toBe(42)
+			expect(result.name).toBe('Original')
+		})
+
+		test('update-only-on-exists path: row exists → ignores insert, applies ops + auto-bump', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpsertRepo()
+
+			await repo.insertOne(UpsertSchema, { email: 'bob@test.com', name: 'Bob', views: 42 })
+
+			const result = await repo.upsertOne(
+				UpsertSchema,
+				(q) => q.eq('email', 'bob@test.com'),
+				{ email: 'bob@test.com', name: 'IGNORED', views: 0 },
+				set<typeof UpsertSchema>({ name: 'Bob Updated' }),
+			)
+
+			expect(result.name).toBe('Bob Updated')
+			expect(result.views).toBe(42)
+			expect(result.updatedAt).toBe(9999)
+		})
+
+		test('insert-vs-op conflict throws OrmValidationError with kind conflicting-ops', async () => {
+			const { inc } = await import('../updates')
+			const { OrmValidationError } = await import('../schema-validations')
+			const repo = makeUpsertRepo()
+
+			try {
+				await repo.upsertOne(
+					UpsertSchema,
+					(q) => q.eq('email', 'conflict@test.com'),
+					{ email: 'conflict@test.com', name: 'Conflict', views: 0 },
+					inc<typeof UpsertSchema>(UpsertSchema.fields.views, 1),
+				)
+				expect.unreachable()
+			} catch (e) {
+				expect(e).toBeInstanceOf(OrmValidationError)
+				const err = e as InstanceType<typeof OrmValidationError>
+				expect(err.kind).toBe('conflicting-ops')
+				expect(err.operation).toBe('upsertOne')
+				expect(err.failures[0].field).toBe('views')
+			}
+		})
+
+		test('empty-ops-allowed-on-upsert: insert with no ops is allowed', async () => {
+			const repo = makeUpsertRepo()
+
+			const result = await repo.upsertOne(
+				UpsertSchema,
+				(q) => q.eq('email', 'noops@test.com'),
+				{ email: 'noops@test.com', name: 'NoOps', views: 0 },
+			)
+
+			expect(result.email).toBe('noops@test.com')
+			expect(result.name).toBe('NoOps')
+		})
+
+		test('empty-ops-allowed-on-upsert: if exists do nothing', async () => {
+			const repo = makeUpsertRepo()
+
+			await repo.insertOne(UpsertSchema, { email: 'exists@test.com', name: 'Original', views: 5 })
+
+			const result = await repo.upsertOne(
+				UpsertSchema,
+				(q) => q.eq('email', 'exists@test.com'),
+				{ email: 'exists@test.com', name: 'IGNORED', views: 0 },
+			)
+
+			expect(result.name).toBe('Original')
+			expect(result.views).toBe(5)
+		})
+
+		test('upsert-returns-document rule: returns resulting document', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpsertRepo()
+
+			const insertResult = await repo.upsertOne(
+				UpsertSchema,
+				(q) => q.eq('email', 'doc@test.com'),
+				{ email: 'doc@test.com', name: 'Doc', views: 0 },
+			)
+			expect(insertResult.id).toBeDefined()
+			expect(insertResult.email).toBe('doc@test.com')
+
+			const updateResult = await repo.upsertOne(
+				UpsertSchema,
+				(q) => q.eq('email', 'doc@test.com'),
+				{ email: 'doc@test.com', name: 'IGNORED', views: 0 },
+				set<typeof UpsertSchema>({ name: 'DocUpdated' }),
+			)
+			expect(updateResult.id).toBe(insertResult.id)
+			expect(updateResult.name).toBe('DocUpdated')
+		})
+
+		test('validates insert payload via validateInsert (onCreate defaults injected)', async () => {
+			const repo = makeUpsertRepo()
+
+			const result = await repo.upsertOne(
+				UpsertSchema,
+				(q) => q.eq('email', 'defaults@test.com'),
+				{ email: 'defaults@test.com', name: 'Defaults', views: 0 },
+			)
+
+			expect(result.id).toBeDefined()
+			expect(result.createdAt).toBe(1000)
+		})
+
+		test('validates insert payload and throws OrmValidationError on invalid', async () => {
+			const { OrmValidationError } = await import('../schema-validations')
+			const repo = makeUpsertRepo()
+
+			await expect(
+				repo.upsertOne(
+					UpsertSchema,
+					(q) => q.eq('email', 'bad@test.com'),
+					{ email: 123 as any, name: 'Bad', views: 0 },
+				),
+			).rejects.toBeInstanceOf(OrmValidationError)
+		})
+
+		test('upsert-filter-incompatible error from adapter boundary', async () => {
+			const { OrmValidationError } = await import('../schema-validations')
+			const { defineAdapter } = await import('../adapter')
+
+			const restrictedAdapter = defineAdapter((a) =>
+				a
+					.config({} as { prefix: string })
+					.supportedFieldTypes('string', 'number', 'boolean')
+					.queryableOps('eq')
+					.updateOps('set', 'upsert')
+					.queryable({
+						findMany: async () => [],
+						upsertOne: async (_schema, _config, _filter) => {
+							throw new OrmValidationError(
+								'upsert-filter-incompatible',
+								'test',
+								'upsertOne',
+								[{ cause: 'adapter requires single eq filter on unique column, received complex filter' }],
+							)
+						},
+					}),
+			)
+
+			const repo = defineRepo((r) => r.adapter(restrictedAdapter).resolve(() => ({ prefix: 'test' })))
+
+			try {
+				await (repo as any).upsertOne(
+					UpsertSchema,
+					(q: any) => q.eq('email', 'x@test.com'),
+					{ email: 'x@test.com', name: 'X', views: 0 },
+				)
+				expect.unreachable()
+			} catch (e) {
+				expect(e).toBeInstanceOf(OrmValidationError)
+				const err = e as InstanceType<typeof OrmValidationError>
+				expect(err.kind).toBe('upsert-filter-incompatible')
+			}
+		})
+	})
+
+	describe('type-level: repo.upsertOne dual-gate', () => {
+		test('adapter with upsert in updateOps AND queryable.upsertOne enables repo.upsertOne', () => {
+			const _adapter = defineAdapter((a) =>
+				a
+					.supportedFieldTypes('string', 'number')
+					.queryableOps('eq')
+					.updateOps('set', 'upsert')
+					.queryable({
+						findMany: async () => [],
+						upsertOne: async () => ({}),
+					}),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.upsertOne).toBeFunction()
+		})
+
+		test('adapter WITHOUT upsert in updateOps collapses repo.upsertOne to never', () => {
+			const _adapter = defineAdapter((a) =>
+				a
+					.supportedFieldTypes('string', 'number')
+					.queryableOps('eq')
+					.updateOps('set')
+					.queryable({
+						findMany: async () => [],
+						upsertOne: async () => ({}),
+					}),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.upsertOne).toBeNever()
+		})
+
+		test('adapter without queryable.upsertOne collapses repo.upsertOne to never', () => {
+			const _adapter = defineAdapter((a) =>
+				a
+					.supportedFieldTypes('string', 'number')
+					.queryableOps('eq')
+					.updateOps('set', 'upsert')
+					.queryable({
+						findMany: async () => [],
+					}),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.upsertOne).toBeNever()
+		})
+
+		test('adapter without queryableOps collapses repo.upsertOne to never', () => {
+			const _adapter = defineAdapter((a) =>
+				a
+					.supportedFieldTypes('string', 'number')
+					.updateOps('set', 'upsert')
+					.crud({ findByPk: async () => null }),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.upsertOne).toBeNever()
 		})
 	})
 }

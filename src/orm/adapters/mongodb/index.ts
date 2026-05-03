@@ -157,19 +157,23 @@ export class MongoDbOrm extends configurable(
 						)
 					}
 				},
-				upsertOne: async (filter, data) => {
+				upsertOne: async (filter, insert, ops) => {
 					try {
 						const { filter: mongoFilter } = compileMongoQuery(filter, undefined, pk)
 						const now = new Date()
 
-						const updateData = 'update' in data ? data.update : {}
+						const updateData: Record<string, unknown> = {}
+						for (const op of ops) {
+							if ('values' in op) Object.assign(updateData, op.values)
+							else updateData[op.field] = op
+						}
 						const updateOp = compileMongoUpdate(updateData, now)
 
 						const doc = await collection.findOneAndUpdate(
 							mongoFilter,
 							{
 								...updateOp,
-								$setOnInsert: data.insert,
+								$setOnInsert: insert,
 							},
 							{
 								returnDocument: 'after',
