@@ -77,8 +77,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
 		const validated = validateUpdate(s, data as any)
-		const q = QueryGroup.from()
-		filter(q)
+		const q = filter(QueryGroup.from())
 		const use = this.#getUse(s)
 		const match = await use.findOne(q)
 		if (!match) return null
@@ -94,8 +93,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	): Promise<SchemaPersistedOutput<S>[]> {
 		const s = schema as unknown as AnySchema
 		const validated = validateUpdate(s, data as any)
-		const q = QueryGroup.from()
-		filter(q)
+		const q = filter(QueryGroup.from())
 		const rows = await this.#getUse(s).updateMany(q, validated as any)
 		return rows as SchemaPersistedOutput<S>[]
 	}
@@ -105,8 +103,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		filter: WhereFactory,
 	): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
-		const q = QueryGroup.from()
-		filter(q)
+		const q = filter(QueryGroup.from())
 		const row = await this.#getUse(s).deleteOne(q)
 		return (row as SchemaPersistedOutput<S>) ?? null
 	}
@@ -116,8 +113,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		filter: WhereFactory,
 	): Promise<SchemaPersistedOutput<S>[]> {
 		const s = schema as unknown as AnySchema
-		const q = QueryGroup.from()
-		filter(q)
+		const q = filter(QueryGroup.from())
 		const rows = await this.#getUse(s).deleteMany(q)
 		return rows as SchemaPersistedOutput<S>[]
 	}
