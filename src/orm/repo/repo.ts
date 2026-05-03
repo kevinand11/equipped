@@ -3,7 +3,9 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { SchemaContext, SchemaRef } from './builders'
 import type { InferAdapterConfig, SchemaCompatible } from '../adapter'
 import type { OrmAdapterLike } from '../adapters/base'
+import { QueryGroup, type WhereFactory } from '../query'
 import type { AnySchema, SchemaPersistedOutput } from '../schema'
+import { validateUpdate, type SchemaUpdateInput } from '../schema-validations'
 
 export class Repo<A extends OrmAdapterLike<any>> {
 	readonly #adapter: A
@@ -45,6 +47,81 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		throw new Error('Adapter does not implement crud.findByPk')
 	}
 
+	async deleteByPk<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		pk: unknown,
+	): Promise<SchemaPersistedOutput<S> | null> {
+		const s = schema as unknown as AnySchema
+		const config = this.#getConfig(s)
+		const adapter = this.#adapter as any
+		if (adapter.crud?.deleteByPk) {
+			const result = await adapter.crud.deleteByPk(s, config, pk)
+			return (result as SchemaPersistedOutput<S>) ?? null
+		}
+		throw new Error('Adapter does not implement crud.deleteByPk')
+	}
+
+	async raw<T = unknown>(schema: AnySchema, command: unknown, params?: unknown[]): Promise<T> {
+		const config = this.#getConfig(schema)
+		const adapter = this.#adapter as any
+		if (adapter.crud?.raw) {
+			return adapter.crud.raw(schema, config, command, params)
+		}
+		throw new Error('Adapter does not implement crud.raw')
+	}
+
+	async updateOne<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		filter: WhereFactory,
+		data: SchemaUpdateInput<S>,
+	): Promise<SchemaPersistedOutput<S> | null> {
+		const s = schema as unknown as AnySchema
+		const validated = validateUpdate(s, data as any)
+		const q = QueryGroup.from()
+		filter(q)
+		const use = this.#getUse(s)
+		const match = await use.findOne(q)
+		if (!match) return null
+		const pkQ = QueryGroup.from().eq(s.pkField.name, match[s.pkField.name])
+		const rows = await use.updateMany(pkQ, validated as any)
+		return (rows[0] as SchemaPersistedOutput<S>) ?? null
+	}
+
+	async updateMany<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		filter: WhereFactory,
+		data: SchemaUpdateInput<S>,
+	): Promise<SchemaPersistedOutput<S>[]> {
+		const s = schema as unknown as AnySchema
+		const validated = validateUpdate(s, data as any)
+		const q = QueryGroup.from()
+		filter(q)
+		const rows = await this.#getUse(s).updateMany(q, validated as any)
+		return rows as SchemaPersistedOutput<S>[]
+	}
+
+	async deleteOne<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		filter: WhereFactory,
+	): Promise<SchemaPersistedOutput<S> | null> {
+		const s = schema as unknown as AnySchema
+		const q = QueryGroup.from()
+		filter(q)
+		const row = await this.#getUse(s).deleteOne(q)
+		return (row as SchemaPersistedOutput<S>) ?? null
+	}
+
+	async deleteMany<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		filter: WhereFactory,
+	): Promise<SchemaPersistedOutput<S>[]> {
+		const s = schema as unknown as AnySchema
+		const q = QueryGroup.from()
+		filter(q)
+		const rows = await this.#getUse(s).deleteMany(q)
+		return rows as SchemaPersistedOutput<S>[]
+	}
+
 	async session<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
 		return this.#adapter.session(() => fn(this))
 	}
@@ -78,11 +155,21 @@ class RepoBuilder<A = never, Config = never> {
 	}
 }
 
+type HasMethod<A, Bag extends string, Method extends string> = A extends Record<Bag, Record<Method, (...args: any) => any>>
+	? true
+	: false
+
+export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
+	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { updateOne: never; updateMany: never }) &
+	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { deleteOne: never; deleteMany: never }) &
+	(HasMethod<A, 'crud', 'deleteByPk'> extends true ? {} : { deleteByPk: never }) &
+	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never })
+
 export function defineRepo<A extends OrmAdapterLike<any>, Config>(
 	build: (b: RepoBuilder) => RepoBuilder<A, Config>,
-): Repo<A> {
+): RepoSurface<A> {
 	const data = build(new RepoBuilder())._build()
-	return new Repo<A>({ adapter: data.adapter as A, resolve: data.resolve as any })
+	return new Repo<A>({ adapter: data.adapter as A, resolve: data.resolve as any }) as RepoSurface<A>
 }
 
 if (import.meta.vitest) {
@@ -443,6 +530,140 @@ if (import.meta.vitest) {
 			const missing = await repo.findByPk(TestSchema, 'missing')
 			expect(missing).toBeNull()
 		})
+
+		test('repo.deleteByPk removes and returns document, null for missing', async () => {
+			const repo = makeRepo()
+			const user = await repo.from(UserSchema).one().insert({ email: 'del@test.com', name: 'ToDelete' })
+
+			const deleted = await repo.deleteByPk(UserSchema, user.id)
+			expect(deleted).toEqual(expect.objectContaining({ id: user.id, name: 'ToDelete' }))
+
+			const found = await repo.findByPk(UserSchema, user.id)
+			expect(found).toBeNull()
+
+			const missing = await repo.deleteByPk(UserSchema, 'nonexistent')
+			expect(missing).toBeNull()
+		})
+
+		test('repo.raw passes through to adapter crud.raw', async () => {
+			const { EquippedError } = await import('../../errors')
+			const repo = makeRepo()
+			await expect(repo.raw(UserSchema, 'SELECT * FROM users')).rejects.toBeInstanceOf(EquippedError)
+		})
+
+		test('repo.updateOne updates first matching document via filter', async () => {
+			const repo = makeRepo()
+			await repo.from(UserSchema).all().insert([
+				{ email: 'a@test.com', name: 'Alice' },
+				{ email: 'b@test.com', name: 'Bob' },
+			])
+
+			const updated = await repo.updateOne(
+				UserSchema,
+				(q) => q.eq('name', 'Alice'),
+				{ name: 'Alicia' },
+			)
+			expect(updated?.name).toBe('Alicia')
+		})
+
+		test('repo.updateOne with non-unique filter selects first match', async () => {
+			const repo = makeRepo()
+			await repo.from(UserSchema).all().insert([
+				{ email: 'a@test.com', name: 'Same' },
+				{ email: 'b@test.com', name: 'Same' },
+			])
+
+			const updated = await repo.updateOne(
+				UserSchema,
+				(q) => q.eq('name', 'Same'),
+				{ name: 'Changed' },
+			)
+			expect(updated?.name).toBe('Changed')
+
+			const all = await repo.from(UserSchema).all().find()
+			const changedCount = all.filter((u) => u.name === 'Changed').length
+			expect(changedCount).toBe(1)
+		})
+
+		test('repo.updateMany updates all matching documents', async () => {
+			const repo = makeRepo()
+			await repo.from(UserSchema).all().insert([
+				{ email: 'a@test.com', name: 'Same' },
+				{ email: 'b@test.com', name: 'Same' },
+				{ email: 'c@test.com', name: 'Different' },
+			])
+
+			const updated = await repo.updateMany(
+				UserSchema,
+				(q) => q.eq('name', 'Same'),
+				{ name: 'Updated' },
+			)
+			expect(updated).toHaveLength(2)
+			expect(updated.every((u) => u.name === 'Updated')).toBe(true)
+		})
+
+		test('repo.updateMany applies auto-bump for onUpdate fields', async () => {
+			const AutoSchema = defineSchema('auto', (s) =>
+				s
+					.pk('id', v.string(), () => `a${++userCounter}`)
+					.field('name', v.string())
+					.field('updatedAt', v.number(), { onCreate: () => 0, onUpdate: () => 9999 }),
+			)
+			const repo = makeRepo()
+			await repo.from(AutoSchema).one().insert({ name: 'A' })
+
+			const updated = await repo.updateMany(
+				AutoSchema,
+				(q) => q.eq('name', 'A'),
+				{ name: 'B' },
+			)
+			expect(updated[0].updatedAt).toBe(9999)
+		})
+
+		test('repo.deleteOne removes first matching document', async () => {
+			const repo = makeRepo()
+			await repo.from(UserSchema).all().insert([
+				{ email: 'a@test.com', name: 'Alice' },
+				{ email: 'b@test.com', name: 'Bob' },
+			])
+
+			const deleted = await repo.deleteOne(UserSchema, (q) => q.eq('name', 'Alice'))
+			expect(deleted?.name).toBe('Alice')
+
+			const remaining = await repo.from(UserSchema).all().find()
+			expect(remaining).toHaveLength(1)
+		})
+
+		test('repo.deleteMany removes all matching and returns them', async () => {
+			const repo = makeRepo()
+			await repo.from(UserSchema).all().insert([
+				{ email: 'a@test.com', name: 'ToDelete' },
+				{ email: 'b@test.com', name: 'ToDelete' },
+				{ email: 'c@test.com', name: 'Keep' },
+			])
+
+			const deleted = await repo.deleteMany(UserSchema, (q) => q.eq('name', 'ToDelete'))
+			expect(deleted).toHaveLength(2)
+
+			const remaining = await repo.from(UserSchema).all().find()
+			expect(remaining).toHaveLength(1)
+			expect(remaining[0].name).toBe('Keep')
+		})
+
+		test('round-trip update via filter preserves data integrity', async () => {
+			const repo = makeRepo()
+			const user = await repo.from(UserSchema).one().insert({ email: 'rt@test.com', name: 'Original' })
+
+			await repo.updateOne(
+				UserSchema,
+				(q) => q.eq('id', user.id),
+				{ name: 'Modified' },
+			)
+
+			const found = await repo.findByPk(UserSchema, user.id)
+			expect(found?.name).toBe('Modified')
+			expect(found?.email).toBe('rt@test.com')
+		})
 	})
 
 	describe('type-level: defineRepo builder uniqueness', () => {
@@ -468,6 +689,81 @@ if (import.meta.vitest) {
 			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x'))
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.findByPk<typeof _TestSchema>).toBeFunction()
+		})
+	})
+
+	describe('type-level: repo method gating', () => {
+		test('missing queryable.updateMany collapses repo.updateOne and repo.updateMany to never', () => {
+			const _adapter = defineAdapter((a) =>
+				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.updateOne).toBeNever()
+			expectTypeOf(_repo.updateMany).toBeNever()
+		})
+
+		test('missing queryable.deleteMany collapses repo.deleteOne and repo.deleteMany to never', () => {
+			const _adapter = defineAdapter((a) =>
+				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.deleteOne).toBeNever()
+			expectTypeOf(_repo.deleteMany).toBeNever()
+		})
+
+		test('missing crud.raw collapses repo.raw to never', () => {
+			const _adapter = defineAdapter((a) =>
+				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.raw).toBeNever()
+		})
+
+		test('missing crud.deleteByPk collapses repo.deleteByPk to never', () => {
+			const _adapter = defineAdapter((a) =>
+				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.deleteByPk).toBeNever()
+		})
+
+		test('adapter with queryable.updateMany enables repo.updateOne and repo.updateMany', () => {
+			const _adapter = defineAdapter((a) =>
+				a
+					.supportedFieldTypes('string')
+					.queryableOps('eq')
+					.queryable({ findMany: async () => [], updateMany: async () => [] }),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.updateOne).toBeFunction()
+			expectTypeOf(_repo.updateMany).toBeFunction()
+		})
+
+		test('adapter with queryable.deleteMany enables repo.deleteOne and repo.deleteMany', () => {
+			const _adapter = defineAdapter((a) =>
+				a
+					.supportedFieldTypes('string')
+					.queryableOps('eq')
+					.queryable({ findMany: async () => [], deleteMany: async () => [] }),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.deleteOne).toBeFunction()
+			expectTypeOf(_repo.deleteMany).toBeFunction()
+		})
+
+		test('adapter with crud.deleteByPk and crud.raw enables those repo methods', () => {
+			const _adapter = defineAdapter((a) =>
+				a
+					.supportedFieldTypes('string')
+					.crud({
+						findByPk: async () => null,
+						deleteByPk: async () => null,
+						raw: async () => { throw new Error('not implemented') },
+					}),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.deleteByPk).toBeFunction()
+			expectTypeOf(_repo.raw).toBeFunction()
 		})
 	})
 }

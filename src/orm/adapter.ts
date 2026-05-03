@@ -111,14 +111,14 @@ export class AdapterBuilder<Acc = {}> {
 		return this as any
 	}
 
-	crud(bag: 'crud' extends keyof Acc ? never : CrudBag<InferConfig<Acc>>): AdapterBuilder<Acc & { crud: typeof bag }> {
+	crud<B extends CrudBag<InferConfig<Acc>>>(bag: 'crud' extends keyof Acc ? never : B): AdapterBuilder<Acc & { crud: B }> {
 		this.#data.crud = bag
 		return this as any
 	}
 
-	queryable(
-		bag: 'queryable' extends keyof Acc ? never : QueryableBag<InferConfig<Acc>>,
-	): AdapterBuilder<Acc & { queryable: typeof bag }> {
+	queryable<B extends QueryableBag<InferConfig<Acc>>>(
+		bag: 'queryable' extends keyof Acc ? never : B,
+	): AdapterBuilder<Acc & { queryable: B }> {
 		this.#data.queryable = bag
 		return this as any
 	}
