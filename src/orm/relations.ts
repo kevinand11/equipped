@@ -78,8 +78,6 @@ export type PreloadedMap<P extends readonly AnyPreloadDef[], Depth extends reado
 			[N in P[number] as NodeName<N>]: NodeValue<N, Depth>
 		}
 
-// ── Relations builder ────────────────────────────────────────────────────────
-
 class RelationsBuilder<S extends AnySchema, R extends Record<string, AnyRelDef> = Record<never, never>> {
 	readonly #source: S
 	readonly #defs: Record<string, AnyRelDef> = {}
