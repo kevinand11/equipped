@@ -7,6 +7,7 @@ import { compileMongoQuery, compileMongoUpdate } from './query'
 import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities'
 import type { AnySchema } from '../../schema'
+import { flattenOps } from '../../updates'
 import type { OrmUse } from '../base'
 
 const sessionStore = new AsyncLocalStorage<ClientSession | undefined>()
@@ -162,12 +163,7 @@ export class MongoDbOrm extends configurable(
 						const { filter: mongoFilter } = compileMongoQuery(filter, undefined, pk)
 						const now = new Date()
 
-						const updateData: Record<string, unknown> = {}
-						for (const op of ops) {
-							if ('values' in op) Object.assign(updateData, op.values)
-							else updateData[op.field] = op
-						}
-						const updateOp = compileMongoUpdate(updateData, now)
+						const updateOp = compileMongoUpdate(flattenOps(ops), now)
 
 						const doc = await collection.findOneAndUpdate(
 							mongoFilter,

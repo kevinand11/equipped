@@ -127,7 +127,7 @@ export function isUpdateOp(v: unknown): v is AnyUpdateOp {
 	)
 }
 
-type HasOp<A, Op extends string> = A extends { updateOps: readonly (infer U)[] } ? (Op extends U ? true : false) : false
+export type HasOp<A, Op extends string> = A extends { updateOps: readonly (infer U)[] } ? (Op extends U ? true : false) : false
 
 export type UpdateOp<_S extends AnySchema, A> =
 	| (HasOp<A, 'set'> extends true ? SetOp : never)
@@ -179,6 +179,15 @@ export function patch<S extends AnySchema>(field: ObjectFieldOf<S>, value: Recor
 export function opTouchedFields(op: AnyUpdateOp): string[] {
 	if (op instanceof SetOp) return Object.keys(op.values)
 	return [op.field]
+}
+
+export function flattenOps(ops: AnyUpdateOp[]): Record<string, unknown> {
+	const data: Record<string, unknown> = {}
+	for (const op of ops) {
+		if (op instanceof SetOp) Object.assign(data, op.values)
+		else data[op.field] = op
+	}
+	return data
 }
 
 if (import.meta.vitest) {

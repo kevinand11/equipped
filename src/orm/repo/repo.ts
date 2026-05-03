@@ -5,7 +5,7 @@ import type { OrmAdapterLike } from '../adapters/base'
 import { assertNormalisedFilter, FilterGroup, type FilterFactory, type GatedFilterFactory } from '../filter'
 import type { AnySchema, SchemaOutput, SchemaPersistedOutput } from '../schema'
 import { validateInsert, validateInsertMany, validateUpdate, validateUpdateOps, validateUpsertConflicts, type SchemaInsertInput, type SchemaUpdateInput } from '../schema-validations'
-import type { AnyUpdateOp, UpdateOp } from '../updates'
+import type { AnyUpdateOp, HasOp, UpdateOp } from '../updates'
 import { SchemaContext, SchemaRef } from './builders'
 
 export class Repo<A extends OrmAdapterLike<any>> {
@@ -230,17 +230,13 @@ type HasMethod<A, Bag extends string, Method extends string> = A extends Record<
 	? true
 	: false
 
-type HasUpdateOp<A, Op extends string> = A extends { updateOps: readonly (infer U)[] } ? (Op extends U ? true : false) : false
-
 export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
 	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { updateOne: never; updateMany: never }) &
 	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { deleteOne: never; deleteMany: never }) &
 	(HasMethod<A, 'crud', 'updateByPk'> extends true ? {} : { updateByPk: never }) &
 	(HasMethod<A, 'crud', 'deleteByPk'> extends true ? {} : { deleteByPk: never }) &
 	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never }) &
-	(HasMethod<A, 'queryable', 'upsertOne'> extends true
-		? HasUpdateOp<A, 'upsert'> extends true ? {} : { upsertOne: never }
-		: { upsertOne: never })
+	([HasMethod<A, 'queryable', 'upsertOne'>, HasOp<A, 'upsert'>] extends [true, true] ? {} : { upsertOne: never })
 
 export function defineRepo<A extends OrmAdapterLike<any>, Config>(
 	build: (b: RepoBuilder) => RepoBuilder<A, Config>,

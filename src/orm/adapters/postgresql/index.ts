@@ -7,6 +7,7 @@ import { buildDeleteQuery, buildInsertQuery, buildSelectQuery, buildUpdateQuery 
 import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities'
 import type { AnySchema } from '../../schema'
+import { flattenOps } from '../../updates'
 import type { OrmUse } from '../base'
 
 const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
@@ -143,14 +144,9 @@ export class PostgresqlOrm extends configurable(
 						const columns = Object.keys(insert)
 						const values = Object.values(insert)
 						const placeholders = columns.map((_, i) => `$${i + 1}`)
-						const updateData: Record<string, unknown> = {}
-						for (const op of ops) {
-							if ('values' in op) Object.assign(updateData, op.values)
-							else updateData[op.field] = op
-						}
-						if (Object.keys(updateData).length === 0) Object.assign(updateData, insert)
+						const updateData = ops.length > 0 ? flattenOps(ops) : { ...insert }
 						const updateParts = Object.keys(updateData).map((key) => {
-							values.push(updateData[key] as any)
+							values.push(updateData[key])
 							return `"${key}" = $${values.length}`
 						})
 						const sql =
