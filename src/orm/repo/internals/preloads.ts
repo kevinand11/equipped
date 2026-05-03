@@ -156,10 +156,10 @@ async function resolvePreload(
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { InMemoryOrm } = await import('../../adapters/in-memory')
-	const { Relations } = await import('../../relations')
-	const { Repo } = await import('../repo')
-	const { Schema } = await import('../../schema')
+	const { createInMemoryAdapter } = await import('../../adapters/in-memory')
+	const { defineRelations } = await import('../../relations')
+	const { defineRepo } = await import('../repo')
+	const { defineSchema } = await import('../../schema')
 
 	describe('repo preload resolution', () => {
 		let userCounter = 0
@@ -174,63 +174,78 @@ if (import.meta.vitest) {
 		let fCounter = 0
 		let gCounter = 0
 
-		const UserSchema = Schema.from('users')
-			.pk('id', v.string(), () => `u${++userCounter}`)
-			.field('email', v.string())
-			.field('name', v.string())
-			.field('orgId', v.optional(v.string()), { onCreate: () => undefined })
+		const UserSchema = defineSchema('users', (s) =>
+			s.pk('id', v.string(), () => `u${++userCounter}`)
+			 .field('email', v.string())
+			 .field('name', v.string())
+			 .field('orgId', v.optional(v.string()), { onCreate: () => undefined }),
+		)
 
-		const PostSchema = Schema.from('posts')
-			.pk('id', v.string(), () => `p${++postCounter}`)
-			.field('title', v.string())
-			.field('userId', v.string())
+		const PostSchema = defineSchema('posts', (s) =>
+			s.pk('id', v.string(), () => `p${++postCounter}`)
+			 .field('title', v.string())
+			 .field('userId', v.string()),
+		)
 
-		const ProfileSchema = Schema.from('profiles')
-			.pk('id', v.string(), () => `pr${++profileCounter}`)
-			.field('bio', v.string())
-			.field('userId', v.string())
+		const ProfileSchema = defineSchema('profiles', (s) =>
+			s.pk('id', v.string(), () => `pr${++profileCounter}`)
+			 .field('bio', v.string())
+			 .field('userId', v.string()),
+		)
 
-		const OrgSchema = Schema.from('orgs')
-			.pk('id', v.string(), () => `o${++orgCounter}`)
-			.field('name', v.string())
+		const OrgSchema = defineSchema('orgs', (s) =>
+			s.pk('id', v.string(), () => `o${++orgCounter}`)
+			 .field('name', v.string()),
+		)
 
-		const ASchema = Schema.from('as').pk('id', v.string(), () => `a${++aCounter}`)
-		const BSchema = Schema.from('bs')
-			.pk('id', v.string(), () => `b${++bCounter}`)
-			.field('aId', v.string())
-		const CSchema = Schema.from('cs')
-			.pk('id', v.string(), () => `c${++cCounter}`)
-			.field('bId', v.string())
-		const DSchema = Schema.from('ds')
-			.pk('id', v.string(), () => `d${++dCounter}`)
-			.field('cId', v.string())
-		const ESchema = Schema.from('es')
-			.pk('id', v.string(), () => `e${++eCounter}`)
-			.field('dId', v.string())
-		const FSchema = Schema.from('fs')
-			.pk('id', v.string(), () => `f${++fCounter}`)
-			.field('eId', v.string())
-		const GSchema = Schema.from('gs')
-			.pk('id', v.string(), () => `g${++gCounter}`)
-			.field('fId', v.string())
+		const ASchema = defineSchema('as', (s) =>
+			s.pk('id', v.string(), () => `a${++aCounter}`),
+		)
+		const BSchema = defineSchema('bs', (s) =>
+			s.pk('id', v.string(), () => `b${++bCounter}`)
+			 .field('aId', v.string()),
+		)
+		const CSchema = defineSchema('cs', (s) =>
+			s.pk('id', v.string(), () => `c${++cCounter}`)
+			 .field('bId', v.string()),
+		)
+		const DSchema = defineSchema('ds', (s) =>
+			s.pk('id', v.string(), () => `d${++dCounter}`)
+			 .field('cId', v.string()),
+		)
+		const ESchema = defineSchema('es', (s) =>
+			s.pk('id', v.string(), () => `e${++eCounter}`)
+			 .field('dId', v.string()),
+		)
+		const FSchema = defineSchema('fs', (s) =>
+			s.pk('id', v.string(), () => `f${++fCounter}`)
+			 .field('eId', v.string()),
+		)
+		const GSchema = defineSchema('gs', (s) =>
+			s.pk('id', v.string(), () => `g${++gCounter}`)
+			 .field('fId', v.string()),
+		)
 
-		const UserRelations = Relations.of(UserSchema)
-			.hasMany('posts', PostSchema, 'userId')
-			.hasOne('profile', ProfileSchema, 'userId')
-			.belongsTo('org', OrgSchema, 'orgId')
+		const UserRels = defineRelations(UserSchema, (rel, src) => rel
+			.hasMany('posts', PostSchema.fields.userId)
+			.hasOne('profile', ProfileSchema.fields.userId)
+			.belongsTo('org', src.fields.orgId, OrgSchema),
+		)
 
-		const PostRelations = Relations.of(PostSchema).belongsTo('author', UserSchema, 'userId')
+		const PostRels = defineRelations(PostSchema, (rel, src) => rel
+			.belongsTo('author', src.fields.userId, UserSchema),
+		)
 
-		const ARelations = Relations.of(ASchema).hasMany('bs', BSchema, 'aId')
-		const BRelations = Relations.of(BSchema).hasMany('cs', CSchema, 'bId')
-		const CRelations = Relations.of(CSchema).hasMany('ds', DSchema, 'cId')
-		const DRelations = Relations.of(DSchema).hasMany('es', ESchema, 'dId')
-		const ERelations = Relations.of(ESchema).hasMany('fs', FSchema, 'eId')
-		const FRelations = Relations.of(FSchema).hasMany('gs', GSchema, 'fId')
+		const ARels = defineRelations(ASchema, (rel) => rel.hasMany('bs', BSchema.fields.aId))
+		const BRels = defineRelations(BSchema, (rel) => rel.hasMany('cs', CSchema.fields.bId))
+		const CRels = defineRelations(CSchema, (rel) => rel.hasMany('ds', DSchema.fields.cId))
+		const DRels = defineRelations(DSchema, (rel) => rel.hasMany('es', ESchema.fields.dId))
+		const ERels = defineRelations(ESchema, (rel) => rel.hasMany('fs', FSchema.fields.eId))
+		const FRels = defineRelations(FSchema, (rel) => rel.hasMany('gs', GSchema.fields.fId))
 
 		function makeRepo() {
-			const adapter = new InMemoryOrm()
-			return Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
+			const { adapter } = createInMemoryAdapter()
+			return defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 		}
 
 		test('hasMany preload resolves related entities', async () => {
@@ -239,7 +254,7 @@ if (import.meta.vitest) {
 			await Repo.from(PostSchema).one().insert({ title: 'Post 1', userId: user.id })
 			await Repo.from(PostSchema).one().insert({ title: 'Post 2', userId: user.id })
 
-			const users = await Repo.from(UserSchema).all().preload([UserRelations.definitions.posts]).find()
+			const users = await Repo.from(UserSchema).all().preload([UserRels.posts]).find()
 			expect(users[0].posts).toHaveLength(2)
 		})
 
@@ -248,10 +263,10 @@ if (import.meta.vitest) {
 			const user = await Repo.from(UserSchema).one().insert({ email: 'x@test.com', name: 'X' })
 			await Repo.from(ProfileSchema).one().insert({ bio: 'Hello', userId: user.id })
 
-			const users = await Repo.from(UserSchema).all().preload([UserRelations.definitions.profile]).find()
+			const users = await Repo.from(UserSchema).all().preload([UserRels.profile]).find()
 			expect(users[0].profile?.bio).toBe('Hello')
 
-			const usersWithoutOrg = await Repo.from(UserSchema).all().preload([UserRelations.definitions.org]).find()
+			const usersWithoutOrg = await Repo.from(UserSchema).all().preload([UserRels.org]).find()
 			expect(usersWithoutOrg[0].org).toBeNull()
 		})
 
@@ -265,8 +280,8 @@ if (import.meta.vitest) {
 				.all()
 				.preload([
 					{
-						def: UserRelations.definitions.posts,
-						preloads: [{ def: PostRelations.definitions.author, preloads: [UserRelations.definitions.profile] }],
+						def: UserRels.posts,
+						preloads: [{ def: PostRels.author, preloads: [UserRels.profile] }],
 					},
 				])
 				.find()
@@ -287,8 +302,8 @@ if (import.meta.vitest) {
 					.all()
 					.preload([
 						{
-							def: UserRelations.definitions.posts,
-							preloads: [{ def: PostRelations.definitions.author, preloads: [UserRelations.definitions.posts] }],
+							def: UserRels.posts,
+							preloads: [{ def: PostRels.author, preloads: [UserRels.posts] }],
 						},
 					])
 					.find(),
@@ -310,20 +325,20 @@ if (import.meta.vitest) {
 					.all()
 					.preload([
 						{
-							def: ARelations.definitions.bs,
+							def: ARels.bs,
 							preloads: [
 								{
-									def: BRelations.definitions.cs,
+									def: BRels.cs,
 									preloads: [
 										{
-											def: CRelations.definitions.ds,
+											def: CRels.ds,
 											preloads: [
 												{
-													def: DRelations.definitions.es,
+													def: DRels.es,
 													preloads: [
 														{
-															def: ERelations.definitions.fs,
-															preloads: [FRelations.definitions.gs],
+															def: ERels.fs,
+															preloads: [FRels.gs],
 														},
 													],
 												},
@@ -355,8 +370,43 @@ if (import.meta.vitest) {
 			const user = await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' })
 			await Repo.from(PostSchema).one().insert({ title: 'Post', userId: user.id })
 
-			const found = await Repo.from(UserSchema).one().id(user.id).preload([UserRelations.definitions.posts]).find()
+			const found = await Repo.from(UserSchema).one().id(user.id).preload([UserRels.posts]).find()
 			expect(found?.posts).toHaveLength(1)
+		})
+
+		test('N+1 avoidance: N parents + children loaded in 2 queries, not N+1', async () => {
+			const { vi } = await import('vitest')
+			const { adapter } = createInMemoryAdapter()
+			let queryCount = 0
+			const origUse = adapter.use.bind(adapter)
+			;(adapter as any).use = vi.fn((schema: any, config: any) => {
+				const use = origUse(schema, config)
+				return {
+					...use,
+					findMany: async (...args: any[]) => {
+						queryCount++
+						return use.findMany(...(args as [any, any]))
+					},
+				}
+			})
+
+			const Repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
+			const u1 = await Repo.from(UserSchema).one().insert({ email: 'a@test.com', name: 'A' })
+			const u2 = await Repo.from(UserSchema).one().insert({ email: 'b@test.com', name: 'B' })
+			const u3 = await Repo.from(UserSchema).one().insert({ email: 'c@test.com', name: 'C' })
+			await Repo.from(PostSchema).one().insert({ title: 'P1', userId: u1.id })
+			await Repo.from(PostSchema).one().insert({ title: 'P2', userId: u1.id })
+			await Repo.from(PostSchema).one().insert({ title: 'P3', userId: u2.id })
+			await Repo.from(PostSchema).one().insert({ title: 'P4', userId: u3.id })
+
+			queryCount = 0
+			const users = await Repo.from(UserSchema).all().preload([UserRels.posts]).find()
+
+			expect(users).toHaveLength(3)
+			expect(users.find((u) => u.id === u1.id)!.posts).toHaveLength(2)
+			expect(users.find((u) => u.id === u2.id)!.posts).toHaveLength(1)
+			expect(users.find((u) => u.id === u3.id)!.posts).toHaveLength(1)
+			expect(queryCount).toBe(2)
 		})
 	})
 }

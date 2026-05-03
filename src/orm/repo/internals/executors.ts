@@ -68,8 +68,8 @@ export async function runOneUpdate<S extends AnySchema, Sel extends string, P ex
 	state: { where: QueryGroup; select: readonly Sel[] | undefined; preloads: P },
 	data: SchemaUpdateInput<S>,
 ): Promise<SelectedWithPreloads<S, Sel, P> | null> {
-	const validated = validateUpdate(context.schema, data)
-	const row = await context.use.updateOne(state.where, validated)
+	const validated = validateUpdate(context.schema, data as any)
+	const row = await context.use.updateOne(state.where, validated as any)
 	return context.shapeOneRow(state.select, state.preloads, row)
 }
 
@@ -78,8 +78,8 @@ export async function runAllUpdate<S extends AnySchema, Sel extends string, P ex
 	state: { where: QueryGroup; select: readonly Sel[] | undefined; preloads: P },
 	data: SchemaUpdateInput<S>,
 ): Promise<SelectedWithPreloads<S, Sel, P>[]> {
-	const validated = validateUpdate(context.schema, data)
-	const rows = await context.use.updateMany(state.where, validated)
+	const validated = validateUpdate(context.schema, data as any)
+	const rows = await context.use.updateMany(state.where, validated as any)
 	return context.shapeRows(state.select, state.preloads, rows)
 }
 
@@ -89,7 +89,7 @@ export async function runOneUpsert<S extends AnySchema, Sel extends string, P ex
 	data: UpsertInput<S>,
 ): Promise<SelectedWithPreloads<S, Sel, P>> {
 	const insert = validateInsert(context.schema, data.insert as any)
-	const update = 'update' in data ? validateUpdate(context.schema, data.update) : undefined
+	const update = 'update' in data ? validateUpdate(context.schema, data.update as any) : undefined
 	const row = await context.use.upsertOne(state.where, update ? ({ insert, update } as any) : { insert })
 	return (await context.shapeOneRow(state.select, state.preloads, row)) as SelectedWithPreloads<S, Sel, P>
 }

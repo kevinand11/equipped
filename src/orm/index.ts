@@ -1,5 +1,5 @@
+export * from './adapter'
 export * from './adapters/base'
-export * from './errors'
 export * from './fields'
 export * from './query'
 export * from './relations'

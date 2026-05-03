@@ -4,4 +4,4 @@ export {
 	SchemaContext,
 	SchemaRef,
 } from './builders'
-export { Repo } from './repo'
+export { Repo, defineRepo } from './repo'

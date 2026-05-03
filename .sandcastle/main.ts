@@ -7,10 +7,16 @@
 //                             done. Pipelines run concurrently.
 //                             (GitHub doesn't let PR authors request changes
 //                             on their own PR, so a label is the trigger.)
-// Phase 1 (Plan):             An opus agent analyses open issues, builds a
-//                             dependency graph, and outputs a <plan> JSON
-//                             listing unblocked issues with branch names and
-//                             their target feature branches.
+// Phase 1 (Plan):             Host fetches open `ready-for-agent` issues for
+//                             this feature, parses `Depends on #N` / `Blocked
+//                             by #N` trailers from issue bodies, and filters
+//                             out anything whose deps aren't all closed.
+//                             Bad refs and dep cycles hard-fail the run.
+//                             The surviving subset is then handed to an opus
+//                             agent that builds a heuristic dependency graph
+//                             (overlapping files, decision-shape ordering)
+//                             and outputs a <plan> JSON listing unblocked
+//                             issues with branch names and feature labels.
 // Phase 2 (Execute+Review):   For each issue, the host prepares a local issue
 //                             branch off the feature branch tip, then a
 //                             sandbox is created via createSandbox(). The
@@ -29,12 +35,12 @@
 // Usage:
 //   npx tsx .sandcastle/main.ts
 
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 
-import * as sandcastle from "@ai-hero/sandcastle"
-import { docker } from "@ai-hero/sandcastle/sandboxes/docker"
-import { Command, InvalidArgumentError } from "commander"
+import * as sandcastle from '@ai-hero/sandcastle'
+import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
+import { Command, InvalidArgumentError } from 'commander'
 
 const exec = promisify(execFile)
 
@@ -51,38 +57,27 @@ const parsePositiveInt = (raw: string): number => {
 }
 
 const parseFeature = (raw: string): string => {
-	if (!raw.startsWith("feature/") || raw === "feature/") {
-		throw new InvalidArgumentError(
-			`must start with 'feature/' and have a non-empty slug (got '${raw}')`,
-		)
+	if (!raw.startsWith('feature/') || raw === 'feature/') {
+		throw new InvalidArgumentError(`must start with 'feature/' and have a non-empty slug (got '${raw}')`)
 	}
 	return raw
 }
 
 const program = new Command()
-	.name("sandcastle")
+	.name('sandcastle')
 	.description(
-		"Run the Sandcastle parallel-planner-with-review loop scoped to a single feature. Multiple devs can run scoped loops for different features in parallel.",
+		'Run the Sandcastle parallel-planner-with-review loop scoped to a single feature. Multiple devs can run scoped loops for different features in parallel.',
 	)
-	.argument(
-		"<feature>",
-		"feature label (e.g. 'feature/orm') — must start with 'feature/' and exist as a branch on origin",
-		parseFeature,
-	)
-	.option(
-		"-m, --max-iterations <n>",
-		"maximum number of plan/execute/publish cycles per run",
-		parsePositiveInt,
-		10,
-	)
+	.argument('<feature>', "feature label (e.g. 'feature/orm') — must start with 'feature/' and exist as a branch on origin", parseFeature)
+	.option('-m, --max-iterations <n>', 'maximum number of plan/execute/publish cycles per run', parsePositiveInt, 1)
 	.parse()
 
 const FEATURE: string = program.processedArgs[0]
 const MAX_ITERATIONS: number = program.opts().maxIterations
 
-const IN_PR_LABEL = "in-pr"
-const NEEDS_REVISION_LABEL = "needs-revision"
-const SANDCASTLE_BRANCH_PREFIX = "sandcastle/issue-"
+const IN_PR_LABEL = 'in-pr'
+const NEEDS_REVISION_LABEL = 'needs-revision'
+const SANDCASTLE_BRANCH_PREFIX = 'sandcastle/issue-'
 
 // `pnpm install --prefer-offline` matches this repo's package manager and
 // reuses cached/host-copied node_modules wherever possible. The default
@@ -90,13 +85,11 @@ const SANDCASTLE_BRANCH_PREFIX = "sandcastle/issue-"
 // bump it generously. Reduce if you find runs are reliably faster.
 const hooks = {
 	sandbox: {
-		onSandboxReady: [
-			{ command: "pnpm install --prefer-offline", timeoutMs: 600_000 },
-		],
+		onSandboxReady: [{ command: 'pnpm install --prefer-offline', timeoutMs: 600_000 }],
 	},
 }
 
-const copyToWorktree = ["node_modules"]
+const copyToWorktree = ['node_modules']
 
 // ---------------------------------------------------------------------------
 // Types
@@ -123,26 +116,206 @@ type FeedbackPR = {
 	url: string
 }
 
+type CandidateIssue = {
+	number: number
+	title: string
+	body: string
+	labels: string[]
+	comments: string[]
+}
+
+type IssueState = 'OPEN' | 'CLOSED'
+
+// Matches lines that *begin* with `Depends on` / `Blocked by` (case-insensitive).
+// The line-start anchor keeps mid-paragraph mentions like "this depends on #42
+// in some way" out — only intentional declarations at the start of a line
+// count. Multiple refs and parenthetical annotations on the same line are
+// fine; we truncate at the first sentence terminator (`.` or `;`) so trailing
+// prose (e.g. "Depends on #8, #10. Parallel-safe with #11.") doesn't pull in
+// incidental refs like #11.
+const DEPS_LINE_RE = /^[\t ]*(?:Depends on|Blocked by)\b.*$/gim
+// Bare `#N` not preceded by a word char or `/` — this excludes cross-repo
+// refs (`owner/repo#42`) which we don't support.
+const ISSUE_REF_RE = /(?<![\w/])#(\d+)\b/g
+
 // ---------------------------------------------------------------------------
 // Host-side helpers
 // ---------------------------------------------------------------------------
 
 async function remoteBranchExists(branch: string): Promise<boolean> {
 	try {
-		await exec("git", ["ls-remote", "--exit-code", "--heads", "origin", branch])
+		await exec('git', ['ls-remote', '--exit-code', '--heads', 'origin', branch])
 		return true
 	} catch {
 		return false
 	}
 }
 
-async function ensureLinkedIssueBranch(
-	issueId: string,
-	issueBranch: string,
-	featureBranch: string,
-) {
+function parseDeps(body: string): number[] {
+	const out = new Set<number>()
+	for (const lineMatch of body.matchAll(DEPS_LINE_RE)) {
+		const head = lineMatch[0].split(/[.;]/, 1)[0]!
+		for (const refMatch of head.matchAll(ISSUE_REF_RE)) {
+			out.add(Number.parseInt(refMatch[1]!, 10))
+		}
+	}
+	return [...out]
+}
+
+async function fetchCandidates(feature: string): Promise<CandidateIssue[]> {
+	const { stdout } = await exec('gh', [
+		'issue', 'list',
+		'--state', 'open',
+		'--search', `label:ready-for-agent label:"${feature}" -label:in-pr`,
+		'--limit', '200',
+		'--json', 'number,title,body,labels,comments',
+	])
+	return (
+		JSON.parse(stdout) as Array<{
+			number: number
+			title: string
+			body: string
+			labels: Array<{ name: string }>
+			comments: Array<{ body: string }>
+		}>
+	).map((raw) => ({
+		number: raw.number,
+		title: raw.title,
+		body: raw.body ?? '',
+		labels: raw.labels.map((l) => l.name),
+		comments: raw.comments.map((c) => c.body),
+	}))
+}
+
+// `gh issue view` per number with a memoising cache. Issues referenced by
+// trailers may live anywhere in the repo, so we don't bound this by labels.
+// Returns `null` if the issue does not exist (gh exits non-zero).
+async function getIssueState(
+	cache: Map<number, IssueState | null>,
+	number: number,
+): Promise<IssueState | null> {
+	const cached = cache.get(number)
+	if (cached !== undefined) return cached
+	let state: IssueState | null
+	try {
+		const { stdout } = await exec('gh', ['issue', 'view', String(number), '--json', 'state'])
+		state = (JSON.parse(stdout) as { state: IssueState }).state
+	} catch {
+		state = null
+	}
+	cache.set(number, state)
+	return state
+}
+
+// Walk the dep graph reachable from the candidate set and detect cycles via
+// classic 3-colour DFS. Only follows refs whose state is OPEN — a closed dep
+// can't form a live cycle, even if it sits on the path. Returns the first
+// cycle found (as an ordered list of issue numbers, e.g. `[42, 50, 42]`) or
+// null if the graph is acyclic.
+async function findCycle(
+	candidates: CandidateIssue[],
+	depsByNumber: Map<number, number[]>,
+	stateCache: Map<number, IssueState | null>,
+): Promise<number[] | null> {
+	const colour = new Map<number, 'gray' | 'black'>()
+	const stack: number[] = []
+
+	async function visit(n: number): Promise<number[] | null> {
+		if (colour.get(n) === 'black') return null
+		if (colour.get(n) === 'gray') {
+			const start = stack.indexOf(n)
+			return [...stack.slice(start), n]
+		}
+		const state = await getIssueState(stateCache, n)
+		if (state !== 'OPEN') {
+			colour.set(n, 'black')
+			return null
+		}
+		colour.set(n, 'gray')
+		stack.push(n)
+		// Lazily fetch deps for non-candidate nodes by parsing their bodies.
+		let deps = depsByNumber.get(n)
+		if (deps === undefined) {
+			try {
+				const { stdout } = await exec('gh', ['issue', 'view', String(n), '--json', 'body'])
+				deps = parseDeps((JSON.parse(stdout) as { body: string }).body ?? '')
+			} catch {
+				deps = []
+			}
+			depsByNumber.set(n, deps)
+		}
+		for (const d of deps) {
+			const found = await visit(d)
+			if (found !== null) return found
+		}
+		stack.pop()
+		colour.set(n, 'black')
+		return null
+	}
+
+	for (const c of candidates) {
+		const found = await visit(c.number)
+		if (found !== null) return found
+	}
+	return null
+}
+
+async function filterByDeps(candidates: CandidateIssue[]): Promise<CandidateIssue[]> {
+	const stateCache = new Map<number, IssueState | null>()
+	const depsByNumber = new Map<number, number[]>()
+	for (const c of candidates) depsByNumber.set(c.number, parseDeps(c.body))
+
+	// Pass 1: resolve every directly-referenced number and batch missing-ref
+	// errors so the maintainer learns about every typo in one shot.
+	const referenced = new Set<number>()
+	for (const deps of depsByNumber.values()) for (const n of deps) referenced.add(n)
+
+	const missing: Array<{ source: number; bad: number }> = []
+	for (const c of candidates) {
+		for (const dep of depsByNumber.get(c.number)!) {
+			const state = await getIssueState(stateCache, dep)
+			if (state === null) missing.push({ source: c.number, bad: dep })
+		}
+	}
+	if (missing.length > 0) {
+		const lines = missing.map(
+			(m) => `  · Issue #${m.source} declares "Depends on #${m.bad}" but #${m.bad} does not exist in this repo`,
+		)
+		throw new Error(
+			`Dependency declarations reference missing issues:\n${lines.join('\n')}\n\nFix or remove the trailers, then re-run.`,
+		)
+	}
+
+	// Pass 2: cycle detection across the reachable open subgraph.
+	const cycle = await findCycle(candidates, depsByNumber, stateCache)
+	if (cycle !== null) {
+		throw new Error(
+			`Dependency cycle detected: ${cycle.map((n) => `#${n}`).join(' → ')}.\n` +
+				`At least one dep declaration is wrong. Edit one of the issues to break the cycle, then re-run.`,
+		)
+	}
+
+	// Pass 3: filter — an issue is unblocked iff every direct dep is CLOSED.
+	const survivors: CandidateIssue[] = []
+	for (const c of candidates) {
+		const deps = depsByNumber.get(c.number)!
+		const openDeps: number[] = []
+		for (const dep of deps) {
+			const state = await getIssueState(stateCache, dep)
+			if (state === 'OPEN') openDeps.push(dep)
+		}
+		if (openDeps.length === 0) {
+			survivors.push(c)
+		} else {
+			console.log(`  · #${c.number} blocked by ${openDeps.map((n) => `#${n}`).join(', ')} (open) — skipping`)
+		}
+	}
+	return survivors
+}
+
+async function ensureLinkedIssueBranch(issueId: string, issueBranch: string, featureBranch: string) {
 	// Make sure we have the latest feature-branch tip locally.
-	await exec("git", ["fetch", "origin", featureBranch])
+	await exec('git', ['fetch', 'origin', featureBranch])
 
 	// If the issue branch doesn't yet exist on origin, create it via
 	// `gh issue develop` — this both creates the branch on the remote off the
@@ -151,38 +324,39 @@ async function ensureLinkedIssueBranch(
 	// alone so prior progress is preserved.
 	if (!(await remoteBranchExists(issueBranch))) {
 		console.log(`  → Creating linked branch ${issueBranch} for issue #${issueId}`)
-		await exec("gh", [
-			"issue", "develop", issueId,
-			"--name", issueBranch,
-			"--base", featureBranch,
-		])
+		await exec('gh', ['issue', 'develop', issueId, '--name', issueBranch, '--base', featureBranch])
 		// Fetch the freshly-created remote ref so we can build a local branch on top.
-		await exec("git", ["fetch", "origin", issueBranch])
+		await exec('git', ['fetch', 'origin', issueBranch])
 	}
 
 	// Ensure a local branch exists tracking the remote.
 	try {
-		await exec("git", ["rev-parse", "--verify", `refs/heads/${issueBranch}`])
+		await exec('git', ['rev-parse', '--verify', `refs/heads/${issueBranch}`])
 	} catch {
-		await exec("git", ["branch", issueBranch, `origin/${issueBranch}`])
+		await exec('git', ['branch', issueBranch, `origin/${issueBranch}`])
 	}
 }
 
 async function getPRsNeedingFeedback(): Promise<FeedbackPR[]> {
 	// Fetch the latest refs so local branches the agent will check out
 	// match what humans see on GitHub.
-	await exec("git", ["fetch", "--all", "--prune"])
+	await exec('git', ['fetch', '--all', '--prune'])
 
 	// We use a label as the trigger because GitHub doesn't let PR authors
 	// request changes on their own PR. The human reviewer adds
 	// `needs-revision` after leaving comments; the addresser removes it once
 	// it pushes a fix.
-	const { stdout } = await exec("gh", [
-		"pr", "list",
-		"--state", "open",
-		"--label", NEEDS_REVISION_LABEL,
-		"--limit", "100",
-		"--json", "number,title,url,headRefName,baseRefName",
+	const { stdout } = await exec('gh', [
+		'pr',
+		'list',
+		'--state',
+		'open',
+		'--label',
+		NEEDS_REVISION_LABEL,
+		'--limit',
+		'100',
+		'--json',
+		'number,title,url,headRefName,baseRefName',
 	])
 
 	return (
@@ -206,34 +380,48 @@ async function getPRsNeedingFeedback(): Promise<FeedbackPR[]> {
 
 async function publishNewIssue(issue: Issue) {
 	console.log(`  → Pushing ${issue.branch}`)
-	await exec("git", ["push", "-u", "origin", issue.branch])
+	await exec('git', ['push', '-u', 'origin', issue.branch])
 
 	console.log(`  → Opening PR for issue #${issue.id} → ${issue.featureBranch}`)
-	const { stdout } = await exec("gh", [
-		"pr", "create",
-		"--head", issue.branch,
-		"--base", issue.featureBranch,
-		"--title", `Sandcastle: ${issue.title} (#${issue.id})`,
-		"--body", [
+	const { stdout } = await exec('gh', [
+		'pr',
+		'create',
+		'--head',
+		issue.branch,
+		'--base',
+		issue.featureBranch,
+		'--title',
+		`Sandcastle: ${issue.title} (#${issue.id})`,
+		'--body',
+		[
 			`Automated implementation by Sandcastle for issue #${issue.id}.`,
-			"",
+			'',
 			`Closes #${issue.id}`,
-			"",
+			'',
 			`_Awaiting human review and approval. This PR targets the long-lived feature branch \`${issue.featureBranch}\`._`,
-		].join("\n"),
+		].join('\n'),
 	])
 	const url = stdout.trim()
 	console.log(`  → PR opened: ${url}`)
 
-	await exec("gh", ["issue", "edit", issue.id, "--add-label", IN_PR_LABEL])
+	// Hit the REST API directly instead of `gh issue edit --add-label` because
+	// the latter goes through a GraphQL path that touches the deprecated
+	// `projectCards` field and fails on repos with Projects (classic) sunset.
+	await exec('gh', ['api', '--method', 'POST', `repos/{owner}/{repo}/issues/${issue.id}/labels`, '-f', `labels[]=${IN_PR_LABEL}`])
 }
 
 async function pushFeedbackBranch(pr: FeedbackPR) {
 	console.log(`  → Pushing ${pr.branch} (PR #${pr.number})`)
-	await exec("git", ["push", "origin", pr.branch])
+	await exec('git', ['push', 'origin', pr.branch])
 	// Hand the ball back to the human reviewer — they re-apply the label if
 	// they want another pass.
-	await exec("gh", ["pr", "edit", String(pr.number), "--remove-label", NEEDS_REVISION_LABEL])
+	//
+	// We hit `gh api` directly instead of `gh pr edit --remove-label` because
+	// `gh pr edit` issues a GraphQL query that touches the deprecated
+	// `repository.pullRequest.projectCards` field and fails outright on repos
+	// where Projects (classic) has been sunset. The REST labels endpoint takes
+	// a clean DELETE and isn't affected.
+	await exec('gh', ['api', '--method', 'DELETE', `repos/{owner}/{repo}/issues/${pr.number}/labels/${NEEDS_REVISION_LABEL}`])
 }
 
 // ---------------------------------------------------------------------------
@@ -252,8 +440,8 @@ async function addressFeedback(pr: FeedbackPR) {
 		const result = await sandbox.run({
 			name: `addresser-pr${pr.number}`,
 			maxIterations: 50,
-			agent: sandcastle.claudeCode("claude-opus-4-6"),
-			promptFile: "./.sandcastle/respond-to-feedback-prompt.md",
+			agent: sandcastle.claudeCode('claude-opus-4-6'),
+			promptFile: './.sandcastle/respond-to-feedback-prompt.md',
 			promptArgs: {
 				PR_NUMBER: String(pr.number),
 				BRANCH: pr.branch,
@@ -281,10 +469,10 @@ async function implementAndReview(issue: Issue) {
 
 	try {
 		const implement = await sandbox.run({
-			name: "implementer",
+			name: 'implementer',
 			maxIterations: 100,
-			agent: sandcastle.claudeCode("claude-opus-4-6"),
-			promptFile: "./.sandcastle/implement-prompt.md",
+			agent: sandcastle.claudeCode('claude-opus-4-6'),
+			promptFile: './.sandcastle/implement-prompt.md',
 			promptArgs: {
 				TASK_ID: issue.id,
 				ISSUE_TITLE: issue.title,
@@ -297,10 +485,10 @@ async function implementAndReview(issue: Issue) {
 		}
 
 		const review = await sandbox.run({
-			name: "reviewer",
+			name: 'reviewer',
 			maxIterations: 1,
-			agent: sandcastle.claudeCode("claude-opus-4-6"),
-			promptFile: "./.sandcastle/review-prompt.md",
+			agent: sandcastle.claudeCode('claude-opus-4-6'),
+			promptFile: './.sandcastle/review-prompt.md',
 			promptArgs: {
 				BRANCH: issue.branch,
 				FEATURE_BRANCH: issue.featureBranch,
@@ -334,7 +522,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		const settled = await Promise.allSettled(feedbackPRs.map(addressFeedback))
 		for (const [i, outcome] of settled.entries()) {
 			const pr = feedbackPRs[i]!
-			if (outcome.status === "rejected") {
+			if (outcome.status === 'rejected') {
 				console.error(`  ✗ PR #${pr.number} addresser failed: ${outcome.reason}`)
 				continue
 			}
@@ -349,23 +537,63 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 			}
 		}
 	} else {
-		console.log("No open PRs need feedback addressed.")
+		console.log('No open PRs need feedback addressed.')
 	}
 
 	// Phase 1: Plan new work (scoped to FEATURE)
+	//
+	// Step 1a — host fetches candidates and applies the deterministic dep
+	// filter. `Depends on #N` / `Blocked by #N` trailers are parsed from issue
+	// bodies; missing refs and cycles hard-fail the iteration. The surviving
+	// subset is then handed to the planner.
+	console.log('Fetching candidate issues…')
+	const candidates = await fetchCandidates(FEATURE)
+	if (candidates.length === 0) {
+		console.log('No candidate issues for this feature.')
+		if (feedbackPRs.length === 0) {
+			console.log('Queue empty. Exiting.')
+			break
+		}
+		continue
+	}
+
+	console.log(`Filtering ${candidates.length} candidate(s) by deps…`)
+	const survivors = await filterByDeps(candidates)
+	if (survivors.length === 0) {
+		console.log('All candidates blocked by deps; nothing to plan this iteration.')
+		if (feedbackPRs.length === 0) {
+			console.log('Queue empty. Exiting.')
+			break
+		}
+		continue
+	}
+	console.log(`Surviving: ${survivors.length} candidate(s)`)
+
+	// Step 1b — invoke the planner on the pre-filtered subset.
 	const plan = await sandcastle.run({
 		hooks,
 		sandbox: docker(),
-		name: "planner",
+		name: 'planner',
 		maxIterations: 1,
-		agent: sandcastle.claudeCode("claude-opus-4-6"),
-		promptFile: "./.sandcastle/plan-prompt.md",
-		promptArgs: { FEATURE },
+		agent: sandcastle.claudeCode('claude-opus-4-6'),
+		promptFile: './.sandcastle/plan-prompt.md',
+		promptArgs: {
+			FEATURE,
+			ISSUES_JSON: JSON.stringify(
+				survivors.map((s) => ({
+					number: s.number,
+					title: s.title,
+					body: s.body,
+					labels: s.labels,
+					comments: s.comments,
+				})),
+			),
+		},
 	})
 
 	const planMatch = plan.stdout.match(/<plan>([\s\S]*?)<\/plan>/)
 	if (!planMatch) {
-		throw new Error("Planning agent did not produce a <plan> tag.\n\n" + plan.stdout)
+		throw new Error('Planning agent did not produce a <plan> tag.\n\n' + plan.stdout)
 	}
 
 	const rawIssues = (JSON.parse(planMatch[1]!) as { issues: RawIssue[] }).issues
@@ -384,7 +612,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		}
 		if (raw.featureLabels.length > 1) {
 			throw new Error(
-				`Issue #${raw.id} ("${raw.title}") has multiple \`feature/*\` labels: ${raw.featureLabels.join(", ")}. ` +
+				`Issue #${raw.id} ("${raw.title}") has multiple \`feature/*\` labels: ${raw.featureLabels.join(', ')}. ` +
 					`Each issue must target exactly one feature branch. Remove the extras with \`gh issue edit\` and re-run.`,
 			)
 		}
@@ -405,10 +633,10 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 	}
 
 	if (issues.length === 0) {
-		console.log("No unblocked issues to work on.")
+		console.log('No unblocked issues to work on.')
 		// If there was also no feedback work this iteration, the queue is empty.
 		if (feedbackPRs.length === 0) {
-			console.log("Queue empty. Exiting.")
+			console.log('Queue empty. Exiting.')
 			break
 		}
 		continue
@@ -423,18 +651,18 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 	const settled = await Promise.allSettled(issues.map(implementAndReview))
 
 	for (const [i, outcome] of settled.entries()) {
-		if (outcome.status === "rejected") {
+		if (outcome.status === 'rejected') {
 			console.error(`  ✗ ${issues[i]!.id} (${issues[i]!.branch}) failed: ${outcome.reason}`)
 		}
 	}
 
 	// Phase 3: Publish — push branches and open PRs
 	const completed = settled
-		.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.value] : []))
+		.flatMap((outcome) => (outcome.status === 'fulfilled' ? [outcome.value] : []))
 		.filter((v) => v.commits.length > 0)
 
 	if (completed.length === 0) {
-		console.log("No commits produced. Nothing to publish.")
+		console.log('No commits produced. Nothing to publish.')
 		continue
 	}
 
@@ -448,4 +676,4 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 	}
 }
 
-console.log("\nAll done.")
+console.log('\nAll done.')
