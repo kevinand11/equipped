@@ -4,6 +4,8 @@ import { SchemaContext, SchemaRef } from './builders'
 import type { InferAdapterConfig, SchemaCompatible } from '../adapter'
 import type { OrmAdapterLike } from '../adapters/base'
 import type { AnySchema, SchemaPersistedOutput } from '../schema'
+import { validateUpdateOps } from '../schema-validations'
+import type { AnyUpdateOp, UpdateOp } from '../updates'
 
 export class Repo<A extends OrmAdapterLike<any>> {
 	readonly #adapter: A
@@ -43,6 +45,24 @@ export class Repo<A extends OrmAdapterLike<any>> {
 			return (result as SchemaPersistedOutput<S>) ?? null
 		}
 		throw new Error('Adapter does not implement crud.findByPk')
+	}
+
+	async updateByPk<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		pk: unknown,
+		op0: UpdateOp<S, A>,
+		...rest: UpdateOp<S, A>[]
+	): Promise<SchemaPersistedOutput<S> | null> {
+		const s = schema as unknown as AnySchema
+		const config = this.#getConfig(s)
+		const adapter = this.#adapter as any
+		if (!adapter.crud?.updateByPk) {
+			throw new Error('Adapter does not implement crud.updateByPk')
+		}
+		const ops = [op0, ...rest] as AnyUpdateOp[]
+		const normalised = validateUpdateOps(s, ops)
+		const result = await adapter.crud.updateByPk(s, config, pk, normalised)
+		return (result as SchemaPersistedOutput<S>) ?? null
 	}
 
 	async session<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
@@ -468,6 +488,117 @@ if (import.meta.vitest) {
 			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x'))
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.findByPk<typeof _TestSchema>).toBeFunction()
+		})
+	})
+
+	describe('repo.updateByPk', () => {
+		let viewCounter = 0
+		const ItemSchema = defineSchema('items', (s) =>
+			s
+				.pk('id', v.string(), () => `item-${++viewCounter}`)
+				.field('title', v.string())
+				.field('views', v.number())
+				.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => Date.now() }),
+		)
+
+		function makeUpdateRepo() {
+			const { adapter } = createInMemoryAdapter()
+			return defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
+		}
+
+		test('round-trip update via updateByPk', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpdateRepo()
+			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ title: 'Updated' }))
+			expect(updated).not.toBeNull()
+			expect(updated!.title).toBe('Updated')
+			expect(updated!.views).toBe(0)
+
+			const found = await repo.findByPk(ItemSchema, item.id)
+			expect(found!.title).toBe('Updated')
+		})
+
+		test('auto-bump injects updatedAt on un-touched onUpdate field', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpdateRepo()
+			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+			const before = item.updatedAt
+
+			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ title: 'Changed' }))
+			expect(updated!.updatedAt).not.toBe(before)
+			expect(updated!.updatedAt).toBeGreaterThanOrEqual(before)
+		})
+
+		test('user set({updatedAt:X}) suppresses auto-bump', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpdateRepo()
+			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+
+			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ updatedAt: 9999 }))
+			expect(updated!.updatedAt).toBe(9999)
+		})
+
+		test('set({views:0}) + inc(views, 1) throws collected conflict error', async () => {
+			const { set, inc } = await import('../updates')
+			const { OrmValidationError } = await import('../schema-validations')
+			const repo = makeUpdateRepo()
+			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+
+			await expect(
+				repo.updateByPk(
+					ItemSchema,
+					item.id,
+					set<typeof ItemSchema>({ views: 0 }),
+					inc<typeof ItemSchema>(ItemSchema.fields.views, 1),
+				),
+			).rejects.toThrow(OrmValidationError)
+
+			try {
+				await repo.updateByPk(
+					ItemSchema,
+					item.id,
+					set<typeof ItemSchema>({ views: 0 }),
+					inc<typeof ItemSchema>(ItemSchema.fields.views, 1),
+				)
+			} catch (e) {
+				const err = e as InstanceType<typeof OrmValidationError>
+				expect(err.kind).toBe('conflicting-ops')
+				expect(err.failures[0].field).toBe('views')
+			}
+		})
+
+		test('updateByPk with inc op', async () => {
+			const { inc } = await import('../updates')
+			const repo = makeUpdateRepo()
+			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 10 })
+
+			const updated = await repo.updateByPk(ItemSchema, item.id, inc<typeof ItemSchema>(ItemSchema.fields.views, 5))
+			expect(updated!.views).toBe(15)
+		})
+
+		test('updateByPk returns null for missing pk', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpdateRepo()
+			const result = await repo.updateByPk(ItemSchema, 'nonexistent', set<typeof ItemSchema>({ title: 'X' }))
+			expect(result).toBeNull()
+		})
+
+		test('updateByPk requires ≥1 op (type-level)', () => {
+			const _repo = makeUpdateRepo()
+			// @ts-expect-error — updateByPk requires at least one op argument
+			void ((_r: typeof _repo) => _r.updateByPk(ItemSchema, 'id'))
+		})
+	})
+
+	describe('type-level: inc on a string field is a TS error', () => {
+		test('inc rejects non-numeric fields', async () => {
+			const { inc: _inc } = await import('../updates')
+			const _TestSchema = defineSchema('test_inc', (s) =>
+				s.pk('id', v.string(), () => 'x').field('name', v.string()).field('count', v.number()),
+			)
+			// @ts-expect-error — name is a string field, not numeric
+			_inc<typeof _TestSchema>(_TestSchema.fields.name, 1)
 		})
 	})
 }
