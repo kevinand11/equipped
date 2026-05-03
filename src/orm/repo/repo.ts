@@ -1,12 +1,12 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
-import { SchemaContext, SchemaRef } from './builders'
 import type { InferAdapterConfig, InferAdapterQueryableOps, SchemaCompatible } from '../adapter'
 import type { OrmAdapterLike } from '../adapters/base'
 import { assertNormalisedFilter, FilterGroup, type FilterFactory, type GatedFilterFactory } from '../filter'
-import type { AnySchema, SchemaPersistedOutput } from '../schema'
-import { validateUpdateOps } from '../schema-validations'
+import type { AnySchema, SchemaOutput, SchemaPersistedOutput } from '../schema'
+import { validateInsert, validateInsertMany, validateUpdateOps, type SchemaInsertInput } from '../schema-validations'
 import type { AnyUpdateOp, UpdateOp } from '../updates'
+import { SchemaContext, SchemaRef } from './builders'
 
 export class Repo<A extends OrmAdapterLike<any>> {
 	readonly #adapter: A
@@ -34,10 +34,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return new SchemaRef<S>(new SchemaContext(schema, (target) => this.#getUse(target)))
 	}
 
-	async findByPk<S extends AnySchema>(
-		schema: SchemaCompatible<A, S>,
-		pk: unknown,
-	): Promise<SchemaPersistedOutput<S> | null> {
+	async findByPk<S extends AnySchema>(schema: SchemaCompatible<A, S>, pk: unknown): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
 		const config = this.#getConfig(s)
 		const adapter = this.#adapter as any
@@ -135,9 +132,7 @@ class RepoBuilder<A = never, Config = never> {
 	}
 }
 
-export function defineRepo<A extends OrmAdapterLike<any>, Config>(
-	build: (b: RepoBuilder) => RepoBuilder<A, Config>,
-): Repo<A> {
+export function defineRepo<A extends OrmAdapterLike<any>, Config>(build: (b: RepoBuilder) => RepoBuilder<A, Config>): Repo<A> {
 	const data = build(new RepoBuilder())._build()
 	return new Repo<A>({ adapter: data.adapter as A, resolve: data.resolve as any })
 }
@@ -179,9 +174,7 @@ if (import.meta.vitest) {
 				.field('userId', v.string()),
 		)
 
-		const OrgSchema = defineSchema('orgs', (s) =>
-			s.pk('id', v.string(), () => `o${++orgCounter}`).field('name', v.string()),
-		)
+		const OrgSchema = defineSchema('orgs', (s) => s.pk('id', v.string(), () => `o${++orgCounter}`).field('name', v.string()))
 
 		const PersonSchema = defineSchema('people', (s) =>
 			s
@@ -191,10 +184,11 @@ if (import.meta.vitest) {
 				.computed('fullName', ['firstName', 'lastName'], v.string(), ({ firstName, lastName }) => `${firstName} ${lastName}`),
 		)
 
-		const UserRels = defineRelations(UserSchema, (rel, src) => rel
-			.hasMany('posts', PostSchema.fields.userId)
-			.hasOne('profile', ProfileSchema.fields.userId)
-			.belongsTo('org', src.fields.orgId, OrgSchema),
+		const UserRels = defineRelations(UserSchema, (rel, src) =>
+			rel
+				.hasMany('posts', PostSchema.fields.userId)
+				.hasOne('profile', ProfileSchema.fields.userId)
+				.belongsTo('org', src.fields.orgId, OrgSchema),
 		)
 
 		function makeRepo() {
@@ -399,12 +393,7 @@ if (import.meta.vitest) {
 			expect((user.org as any).name).toBe('Corp')
 
 			await repo.from(PostSchema).one().insert({ title: 'Post', userId: user.id })
-			const updated = await repo
-				.from(UserSchema)
-				.one()
-				.id(user.id)
-				.preload([UserRels.posts])
-				.update({ name: 'Updated' })
+			const updated = await repo.from(UserSchema).one().id(user.id).preload([UserRels.posts]).update({ name: 'Updated' })
 			expect(updated?.posts).toHaveLength(1)
 		})
 
@@ -600,8 +589,13 @@ if (import.meta.vitest) {
 	describe('type-level: defineRepo builder uniqueness', () => {
 		test('duplicate .adapter() call is a TS error', () => {
 			const { adapter } = createInMemoryAdapter()
-			// @ts-expect-error — calling adapter() twice should fail
-			defineRepo((r) => r.adapter(adapter).adapter(adapter).resolve((s) => ({ prefix: s.name })))
+			defineRepo((r) =>
+				r
+					.adapter(adapter)
+					// @ts-expect-error — calling adapter() twice should fail
+					.adapter(adapter)
+					.resolve((s) => ({ prefix: s.name })),
+			)
 		})
 
 		test('duplicate .resolve() call is a TS error', () => {
@@ -614,9 +608,7 @@ if (import.meta.vitest) {
 
 	describe('type-level: SchemaCompatible on repo.findByPk', () => {
 		test('adapter with matching field types accepts schema', () => {
-			const _adapter = defineAdapter((a) =>
-				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
-			)
+			const _adapter = defineAdapter((a) => a.supportedFieldTypes('string').crud({ findByPk: async () => null }))
 			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x'))
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.findByPk<typeof _TestSchema>).toBeFunction()
@@ -641,12 +633,15 @@ if (import.meta.vitest) {
 		}
 
 		async function seedData(repo: any) {
-			await repo.from(TestSchema).all().insert([
-				{ name: 'Alice', age: 30, active: true, tags: ['admin', 'user'] },
-				{ name: 'Bob', age: 20, active: false, tags: ['user'] },
-				{ name: 'Carol', age: 40, active: true, tags: ['admin'] },
-				{ name: 'Dave', age: 25, active: true, tags: ['user', 'guest'], score: 100 },
-			])
+			await repo
+				.from(TestSchema)
+				.all()
+				.insert([
+					{ name: 'Alice', age: 30, active: true, tags: ['admin', 'user'] },
+					{ name: 'Bob', age: 20, active: false, tags: ['user'] },
+					{ name: 'Carol', age: 40, active: true, tags: ['admin'] },
+					{ name: 'Dave', age: 25, active: true, tags: ['user', 'guest'], score: 100 },
+				])
 		}
 
 		test('repo.findMany returns matching documents', async () => {
@@ -772,10 +767,7 @@ if (import.meta.vitest) {
 			const { repo } = makeE2eRepo()
 			await seedData(repo)
 			const results = await repo.findMany(TestSchema, (q) =>
-				q.and([
-					(g) => g.gt(TestSchema.fields.age, 20),
-					(g) => g.eq(TestSchema.fields.active, true),
-				]),
+				q.and([(g) => g.gt(TestSchema.fields.age, 20), (g) => g.eq(TestSchema.fields.active, true)]),
 			)
 			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol', 'Dave'])
 		})
@@ -784,10 +776,7 @@ if (import.meta.vitest) {
 			const { repo } = makeE2eRepo()
 			await seedData(repo)
 			const results = await repo.findMany(TestSchema, (q) =>
-				q.or([
-					(g) => g.eq(TestSchema.fields.name, 'Alice'),
-					(g) => g.eq(TestSchema.fields.name, 'Bob'),
-				]),
+				q.or([(g) => g.eq(TestSchema.fields.name, 'Alice'), (g) => g.eq(TestSchema.fields.name, 'Bob')]),
 			)
 			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Bob'])
 		})
@@ -803,26 +792,20 @@ if (import.meta.vitest) {
 		test('empty and([]) throws at builder time', async () => {
 			const { repo } = makeE2eRepo()
 			await seedData(repo)
-			await expect(
-				repo.findMany(TestSchema, (q) => q.and([])),
-			).rejects.toThrow()
+			await expect(repo.findMany(TestSchema, (q) => q.and([]))).rejects.toThrow()
 		})
 
 		test('empty or([]) throws at builder time', async () => {
 			const { repo } = makeE2eRepo()
 			await seedData(repo)
-			await expect(
-				repo.findMany(TestSchema, (q) => q.or([])),
-			).rejects.toThrow()
+			await expect(repo.findMany(TestSchema, (q) => q.or([]))).rejects.toThrow()
 		})
 
 		test('unknown field in filter throws OrmValidationError at boundary', async () => {
 			const { OrmValidationError: OrmValErr } = await import('../schema-validations')
 			const { repo } = makeE2eRepo()
 			await seedData(repo)
-			await expect(
-				repo.findMany(TestSchema, (q) => q.eq('nonexistentField', 42)),
-			).rejects.toBeInstanceOf(OrmValErr)
+			await expect(repo.findMany(TestSchema, (q) => q.eq('nonexistentField', 42))).rejects.toBeInstanceOf(OrmValErr)
 		})
 	})
 
@@ -868,18 +851,14 @@ if (import.meta.vitest) {
 		})
 
 		test('queryable with non-empty queryableOps compiles', () => {
-			const _adapter = defineAdapter((a) =>
-				a.queryableOps('eq').queryable({ findMany: async () => [] }),
-			)
+			const _adapter = defineAdapter((a) => a.queryableOps('eq').queryable({ findMany: async () => [] }))
 			expect(_adapter.queryableOps).toEqual(['eq'])
 		})
 	})
 
 	describe('type-level: missing queryableOps makes findMany never', () => {
 		test('adapter without queryableOps yields never findMany on repo', () => {
-			const _crudOnlyAdapter = defineAdapter((a) =>
-				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
-			)
+			const _crudOnlyAdapter = defineAdapter((a) => a.supportedFieldTypes('string').crud({ findByPk: async () => null }))
 			type Ops = import('../adapter').InferAdapterQueryableOps<typeof _crudOnlyAdapter>
 			expectTypeOf<Ops>().toEqualTypeOf<readonly []>()
 		})
@@ -983,5 +962,4 @@ if (import.meta.vitest) {
 			void ((_r: typeof _repo) => _r.updateByPk(ItemSchema, 'id'))
 		})
 	})
-
 }

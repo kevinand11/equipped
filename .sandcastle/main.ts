@@ -404,6 +404,31 @@ async function publishNewIssue(issue: Issue) {
 	const url = stdout.trim()
 	console.log(`  → PR opened: ${url}`)
 
+	// Explicitly create the issue↔PR link via the `linkPullRequest` GraphQL
+	// mutation. `gh issue develop` linked the *branch*, and `Closes #N` in the
+	// body declares intent — but neither guarantees the formal "Linked pull
+	// requests" entry on the issue. We make the link explicit so the issue UI
+	// shows the PR consistently and GitHub's native auto-close fires when the
+	// feature branch eventually lands in `main`.
+	const prNumber = url.split('/').pop()!
+	const [{ stdout: prIdRaw }, { stdout: issueIdRaw }] = await Promise.all([
+		exec('gh', ['pr', 'view', prNumber, '--json', 'id', '--jq', '.id']),
+		exec('gh', ['issue', 'view', issue.id, '--json', 'id', '--jq', '.id']),
+	])
+	try {
+		await exec('gh', [
+			'api', 'graphql',
+			'-f', 'query=mutation($issueId: ID!, $prId: ID!) { linkPullRequest(input: { issueId: $issueId, pullRequestId: $prId }) { clientMutationId } }',
+			'-f', `issueId=${issueIdRaw.trim()}`,
+			'-f', `prId=${prIdRaw.trim()}`,
+		])
+	} catch (err) {
+		// Most common cause: GitHub already auto-linked the PR off the
+		// `gh issue develop` branch, so the mutation errors with "already
+		// linked". That's fine — log and move on.
+		console.log(`  · linkPullRequest skipped: ${(err as Error).message.split('\n')[0]}`)
+	}
+
 	// Hit the REST API directly instead of `gh issue edit --add-label` because
 	// the latter goes through a GraphQL path that touches the deprecated
 	// `projectCards` field and fails on repos with Projects (classic) sunset.
