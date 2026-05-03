@@ -1,16 +1,14 @@
 # ISSUES
 
-Here are the open issues in the repo:
+The host has already fetched the open issues for `{{FEATURE}}` and filtered out anything whose explicit `Depends on #N` / `Blocked by #N` deps are not yet closed. The list below is the surviving candidate set:
 
 <issues-json>
-
-!`gh issue list --state open --search 'label:ready-for-agent label:"{{FEATURE}}" -label:in-pr' --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'`
-
+{{ISSUES_JSON}}
 </issues-json>
 
 # TASK
 
-Analyze the open issues and build a dependency graph. For each issue, determine whether it **blocks** or **is blocked by** any other open issue.
+Analyze the candidates above and build a heuristic dependency graph. For each issue, determine whether it **blocks** or **is blocked by** any other issue in the list.
 
 An issue B is **blocked by** issue A if:
 
@@ -18,13 +16,15 @@ An issue B is **blocked by** issue A if:
 - B and A modify overlapping files or modules, making concurrent work likely to produce merge conflicts
 - B's requirements depend on a decision or API shape that A will establish
 
-An issue is **unblocked** if it has zero blocking dependencies on other open issues.
+An issue is **unblocked** if it has zero blocking dependencies on other issues in the list.
 
 For each unblocked issue, assign a branch name using the format `sandcastle/issue-{id}-{slug}`.
 
+> Note: explicit `Depends on #N` trailers have already been resolved by the host before you see this list — issues whose explicit deps are still open were dropped. Your job is the *heuristic* layer (overlapping files, decision-shape ordering) on top of that.
+
 ## Feature labels
 
-The gh query above already restricts the issue list to those carrying the `{{FEATURE}}` label. For each unblocked issue, list every label on it that matches the `feature/*` pattern in a `featureLabels` array — do not default, filter, or omit issues based on this. The host script validates the array and will halt with a loud error if it does not contain exactly the `{{FEATURE}}` label.
+The host's gh query already restricts the list to those carrying the `{{FEATURE}}` label. For each unblocked issue, list every label on it that matches the `feature/*` pattern in a `featureLabels` array — do not default, filter, or omit issues based on this. The host script validates the array and will halt with a loud error if it does not contain exactly the `{{FEATURE}}` label.
 
 # OUTPUT
 

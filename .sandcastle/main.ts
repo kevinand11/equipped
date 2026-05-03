@@ -7,10 +7,16 @@
 //                             done. Pipelines run concurrently.
 //                             (GitHub doesn't let PR authors request changes
 //                             on their own PR, so a label is the trigger.)
-// Phase 1 (Plan):             An opus agent analyses open issues, builds a
-//                             dependency graph, and outputs a <plan> JSON
-//                             listing unblocked issues with branch names and
-//                             their target feature branches.
+// Phase 1 (Plan):             Host fetches open `ready-for-agent` issues for
+//                             this feature, parses `Depends on #N` / `Blocked
+//                             by #N` trailers from issue bodies, and filters
+//                             out anything whose deps aren't all closed.
+//                             Bad refs and dep cycles hard-fail the run.
+//                             The surviving subset is then handed to an opus
+//                             agent that builds a heuristic dependency graph
+//                             (overlapping files, decision-shape ordering)
+//                             and outputs a <plan> JSON listing unblocked
+//                             issues with branch names and feature labels.
 // Phase 2 (Execute+Review):   For each issue, the host prepares a local issue
 //                             branch off the feature branch tip, then a
 //                             sandbox is created via createSandbox(). The
@@ -110,6 +116,22 @@ type FeedbackPR = {
 	url: string
 }
 
+type CandidateIssue = {
+	number: number
+	title: string
+	body: string
+	labels: string[]
+	comments: string[]
+}
+
+type IssueState = 'OPEN' | 'CLOSED'
+
+// Matches `Depends on #42` and `Blocked by #42` as a whole line. The line
+// anchors deliberately exclude mid-paragraph mentions like "this depends on
+// #42 in some way" — only intentional, on-its-own-line declarations count.
+// Cross-repo refs (`owner/repo#42`) are excluded by the bare `#` requirement.
+const DEPS_TRAILER_RE = /^[\t ]*(?:Depends on|Blocked by)[\t ]+#(\d+)[\t ]*$/gim
+
 // ---------------------------------------------------------------------------
 // Host-side helpers
 // ---------------------------------------------------------------------------
@@ -121,6 +143,165 @@ async function remoteBranchExists(branch: string): Promise<boolean> {
 	} catch {
 		return false
 	}
+}
+
+function parseDeps(body: string): number[] {
+	const out = new Set<number>()
+	for (const m of body.matchAll(DEPS_TRAILER_RE)) {
+		out.add(Number.parseInt(m[1]!, 10))
+	}
+	return [...out]
+}
+
+async function fetchCandidates(feature: string): Promise<CandidateIssue[]> {
+	const { stdout } = await exec('gh', [
+		'issue', 'list',
+		'--state', 'open',
+		'--search', `label:ready-for-agent label:"${feature}" -label:in-pr`,
+		'--limit', '200',
+		'--json', 'number,title,body,labels,comments',
+	])
+	return (
+		JSON.parse(stdout) as Array<{
+			number: number
+			title: string
+			body: string
+			labels: Array<{ name: string }>
+			comments: Array<{ body: string }>
+		}>
+	).map((raw) => ({
+		number: raw.number,
+		title: raw.title,
+		body: raw.body ?? '',
+		labels: raw.labels.map((l) => l.name),
+		comments: raw.comments.map((c) => c.body),
+	}))
+}
+
+// `gh issue view` per number with a memoising cache. Issues referenced by
+// trailers may live anywhere in the repo, so we don't bound this by labels.
+// Returns `null` if the issue does not exist (gh exits non-zero).
+async function getIssueState(
+	cache: Map<number, IssueState | null>,
+	number: number,
+): Promise<IssueState | null> {
+	const cached = cache.get(number)
+	if (cached !== undefined) return cached
+	let state: IssueState | null
+	try {
+		const { stdout } = await exec('gh', ['issue', 'view', String(number), '--json', 'state'])
+		state = (JSON.parse(stdout) as { state: IssueState }).state
+	} catch {
+		state = null
+	}
+	cache.set(number, state)
+	return state
+}
+
+// Walk the dep graph reachable from the candidate set and detect cycles via
+// classic 3-colour DFS. Only follows refs whose state is OPEN — a closed dep
+// can't form a live cycle, even if it sits on the path. Returns the first
+// cycle found (as an ordered list of issue numbers, e.g. `[42, 50, 42]`) or
+// null if the graph is acyclic.
+async function findCycle(
+	candidates: CandidateIssue[],
+	depsByNumber: Map<number, number[]>,
+	stateCache: Map<number, IssueState | null>,
+): Promise<number[] | null> {
+	const colour = new Map<number, 'gray' | 'black'>()
+	const stack: number[] = []
+
+	async function visit(n: number): Promise<number[] | null> {
+		if (colour.get(n) === 'black') return null
+		if (colour.get(n) === 'gray') {
+			const start = stack.indexOf(n)
+			return [...stack.slice(start), n]
+		}
+		const state = await getIssueState(stateCache, n)
+		if (state !== 'OPEN') {
+			colour.set(n, 'black')
+			return null
+		}
+		colour.set(n, 'gray')
+		stack.push(n)
+		// Lazily fetch deps for non-candidate nodes by parsing their bodies.
+		let deps = depsByNumber.get(n)
+		if (deps === undefined) {
+			try {
+				const { stdout } = await exec('gh', ['issue', 'view', String(n), '--json', 'body'])
+				deps = parseDeps((JSON.parse(stdout) as { body: string }).body ?? '')
+			} catch {
+				deps = []
+			}
+			depsByNumber.set(n, deps)
+		}
+		for (const d of deps) {
+			const found = await visit(d)
+			if (found !== null) return found
+		}
+		stack.pop()
+		colour.set(n, 'black')
+		return null
+	}
+
+	for (const c of candidates) {
+		const found = await visit(c.number)
+		if (found !== null) return found
+	}
+	return null
+}
+
+async function filterByDeps(candidates: CandidateIssue[]): Promise<CandidateIssue[]> {
+	const stateCache = new Map<number, IssueState | null>()
+	const depsByNumber = new Map<number, number[]>()
+	for (const c of candidates) depsByNumber.set(c.number, parseDeps(c.body))
+
+	// Pass 1: resolve every directly-referenced number and batch missing-ref
+	// errors so the maintainer learns about every typo in one shot.
+	const referenced = new Set<number>()
+	for (const deps of depsByNumber.values()) for (const n of deps) referenced.add(n)
+
+	const missing: Array<{ source: number; bad: number }> = []
+	for (const c of candidates) {
+		for (const dep of depsByNumber.get(c.number)!) {
+			const state = await getIssueState(stateCache, dep)
+			if (state === null) missing.push({ source: c.number, bad: dep })
+		}
+	}
+	if (missing.length > 0) {
+		const lines = missing.map(
+			(m) => `  · Issue #${m.source} declares "Depends on #${m.bad}" but #${m.bad} does not exist in this repo`,
+		)
+		throw new Error(
+			`Dependency declarations reference missing issues:\n${lines.join('\n')}\n\nFix or remove the trailers, then re-run.`,
+		)
+	}
+
+	// Pass 2: cycle detection across the reachable open subgraph.
+	const cycle = await findCycle(candidates, depsByNumber, stateCache)
+	if (cycle !== null) {
+		throw new Error(
+			`Dependency cycle detected: ${cycle.map((n) => `#${n}`).join(' → ')}.\n` +
+				`At least one dep declaration is wrong. Edit one of the issues to break the cycle, then re-run.`,
+		)
+	}
+
+	// Pass 3: filter — an issue is unblocked iff every direct dep is CLOSED.
+	const survivors: CandidateIssue[] = []
+	for (const c of candidates) {
+		const deps = depsByNumber.get(c.number)!
+		const openDeps: number[] = []
+		for (const dep of deps) {
+			const state = await getIssueState(stateCache, dep)
+			if (state === 'OPEN') openDeps.push(dep)
+		}
+		if (openDeps.length === 0) {
+			survivors.push(c)
+		} else {
+			console.log(`  · #${c.number} blocked by ${openDeps.map((n) => `#${n}`).join(', ')} (open) — skipping`)
+		}
+	}
+	return survivors
 }
 
 async function ensureLinkedIssueBranch(issueId: string, issueBranch: string, featureBranch: string) {
@@ -351,6 +532,35 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 	}
 
 	// Phase 1: Plan new work (scoped to FEATURE)
+	//
+	// Step 1a — host fetches candidates and applies the deterministic dep
+	// filter. `Depends on #N` / `Blocked by #N` trailers are parsed from issue
+	// bodies; missing refs and cycles hard-fail the iteration. The surviving
+	// subset is then handed to the planner.
+	console.log('Fetching candidate issues…')
+	const candidates = await fetchCandidates(FEATURE)
+	if (candidates.length === 0) {
+		console.log('No candidate issues for this feature.')
+		if (feedbackPRs.length === 0) {
+			console.log('Queue empty. Exiting.')
+			break
+		}
+		continue
+	}
+
+	console.log(`Filtering ${candidates.length} candidate(s) by deps…`)
+	const survivors = await filterByDeps(candidates)
+	if (survivors.length === 0) {
+		console.log('All candidates blocked by deps; nothing to plan this iteration.')
+		if (feedbackPRs.length === 0) {
+			console.log('Queue empty. Exiting.')
+			break
+		}
+		continue
+	}
+	console.log(`Surviving: ${survivors.length} candidate(s)`)
+
+	// Step 1b — invoke the planner on the pre-filtered subset.
 	const plan = await sandcastle.run({
 		hooks,
 		sandbox: docker(),
@@ -358,7 +568,18 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		maxIterations: 1,
 		agent: sandcastle.claudeCode('claude-opus-4-6'),
 		promptFile: './.sandcastle/plan-prompt.md',
-		promptArgs: { FEATURE },
+		promptArgs: {
+			FEATURE,
+			ISSUES_JSON: JSON.stringify(
+				survivors.map((s) => ({
+					number: s.number,
+					title: s.title,
+					body: s.body,
+					labels: s.labels,
+					comments: s.comments,
+				})),
+			),
+		},
 	})
 
 	const planMatch = plan.stdout.match(/<plan>([\s\S]*?)<\/plan>/)
