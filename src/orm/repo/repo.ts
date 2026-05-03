@@ -5,6 +5,8 @@ import type { InferAdapterConfig, InferAdapterQueryableOps, SchemaCompatible } f
 import type { OrmAdapterLike } from '../adapters/base'
 import { assertNormalisedFilter, FilterGroup, type FilterFactory, type GatedFilterFactory } from '../filter'
 import type { AnySchema, SchemaPersistedOutput } from '../schema'
+import { validateUpdateOps } from '../schema-validations'
+import type { AnyUpdateOp, UpdateOp } from '../updates'
 
 export class Repo<A extends OrmAdapterLike<any>> {
 	readonly #adapter: A
@@ -68,6 +70,24 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return (await use.findOne(group)) as SchemaPersistedOutput<S> | null
 	}
 
+	async updateByPk<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		pk: unknown,
+		op0: UpdateOp<S, A>,
+		...rest: UpdateOp<S, A>[]
+	): Promise<SchemaPersistedOutput<S> | null> {
+		const s = schema as unknown as AnySchema
+		const config = this.#getConfig(s)
+		const adapter = this.#adapter as any
+		if (!adapter.crud?.updateByPk) {
+			throw new Error('Adapter does not implement crud.updateByPk')
+		}
+		const ops = [op0, ...rest] as AnyUpdateOp[]
+		const normalised = validateUpdateOps(s, ops)
+		const result = await adapter.crud.updateByPk(s, config, pk, normalised)
+		return (result as SchemaPersistedOutput<S>) ?? null
+	}
+
 	async session<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
 		return this.#adapter.session(() => fn(this))
 	}
@@ -113,7 +133,7 @@ if (import.meta.vitest) {
 	const { v } = await import('valleyed')
 	const { createInMemoryAdapter } = await import('../adapters/in-memory')
 	const { defineAdapter } = await import('../adapter')
-	const { Relations } = await import('../relations')
+	const { defineRelations } = await import('../relations')
 	const { defineSchema } = await import('../schema')
 
 	describe('repo/Repo core behavior', () => {
@@ -157,10 +177,11 @@ if (import.meta.vitest) {
 				.computed('fullName', ['firstName', 'lastName'], v.string(), ({ firstName, lastName }) => `${firstName} ${lastName}`),
 		)
 
-		const UserRelations = Relations.of(UserSchema)
-			.hasMany('posts', PostSchema, 'userId')
-			.hasOne('profile', ProfileSchema, 'userId')
-			.belongsTo('org', OrgSchema, 'orgId')
+		const UserRels = defineRelations(UserSchema, (rel, src) => rel
+			.hasMany('posts', PostSchema.fields.userId)
+			.hasOne('profile', ProfileSchema.fields.userId)
+			.belongsTo('org', src.fields.orgId, OrgSchema),
+		)
 
 		function makeRepo() {
 			const { adapter } = createInMemoryAdapter()
@@ -216,7 +237,7 @@ if (import.meta.vitest) {
 			const user = await repo
 				.from(UserSchema)
 				.one()
-				.preload([UserRelations.definitions.org])
+				.preload([UserRels.org])
 				.insert({ email: 'writer@test.com', name: 'Writer', orgId: org.id })
 
 			expect((user.org as any).name).toBe('Fluent Org')
@@ -359,7 +380,7 @@ if (import.meta.vitest) {
 			const user = await repo
 				.from(UserSchema)
 				.one()
-				.preload([UserRelations.definitions.org])
+				.preload([UserRels.org])
 				.insert({ email: 'u@test.com', name: 'User', orgId: org.id })
 			expect((user.org as any).name).toBe('Corp')
 
@@ -368,7 +389,7 @@ if (import.meta.vitest) {
 				.from(UserSchema)
 				.one()
 				.id(user.id)
-				.preload([UserRelations.definitions.posts])
+				.preload([UserRels.posts])
 				.update({ name: 'Updated' })
 			expect(updated?.posts).toHaveLength(1)
 		})
@@ -688,7 +709,7 @@ if (import.meta.vitest) {
 		})
 
 		test('unknown field in filter throws OrmValidationError at boundary', async () => {
-			const { OrmValidationError: OrmValErr } = await import('../filter')
+			const { OrmValidationError: OrmValErr } = await import('../schema-validations')
 			const { repo } = makeE2eRepo()
 			await seedData(repo)
 			await expect(
@@ -755,4 +776,104 @@ if (import.meta.vitest) {
 			expectTypeOf<Ops>().toEqualTypeOf<readonly []>()
 		})
 	})
+	describe('repo.updateByPk', () => {
+		let viewCounter = 0
+		const ItemSchema = defineSchema('items', (s) =>
+			s
+				.pk('id', v.string(), () => `item-${++viewCounter}`)
+				.field('title', v.string())
+				.field('views', v.number())
+				.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => Date.now() }),
+		)
+
+		function makeUpdateRepo() {
+			const { adapter } = createInMemoryAdapter()
+			return defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
+		}
+
+		test('round-trip update via updateByPk', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpdateRepo()
+			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ title: 'Updated' }))
+			expect(updated).not.toBeNull()
+			expect(updated!.title).toBe('Updated')
+			expect(updated!.views).toBe(0)
+
+			const found = await repo.findByPk(ItemSchema, item.id)
+			expect(found!.title).toBe('Updated')
+		})
+
+		test('auto-bump injects updatedAt on un-touched onUpdate field', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpdateRepo()
+			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+			const before = item.updatedAt
+
+			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ title: 'Changed' }))
+			expect(updated!.updatedAt).not.toBe(before)
+			expect(updated!.updatedAt).toBeGreaterThanOrEqual(before)
+		})
+
+		test('user set({updatedAt:X}) suppresses auto-bump', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpdateRepo()
+			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+
+			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ updatedAt: 9999 }))
+			expect(updated!.updatedAt).toBe(9999)
+		})
+
+		test('set({views:0}) + inc(views, 1) throws collected conflict error', async () => {
+			const { set, inc } = await import('../updates')
+			const { OrmValidationError } = await import('../schema-validations')
+			const repo = makeUpdateRepo()
+			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+
+			await expect(
+				repo.updateByPk(
+					ItemSchema,
+					item.id,
+					set<typeof ItemSchema>({ views: 0 }),
+					inc<typeof ItemSchema>(ItemSchema.fields.views, 1),
+				),
+			).rejects.toThrow(OrmValidationError)
+
+			try {
+				await repo.updateByPk(
+					ItemSchema,
+					item.id,
+					set<typeof ItemSchema>({ views: 0 }),
+					inc<typeof ItemSchema>(ItemSchema.fields.views, 1),
+				)
+			} catch (e) {
+				const err = e as InstanceType<typeof OrmValidationError>
+				expect(err.kind).toBe('conflicting-ops')
+				expect(err.failures[0].field).toBe('views')
+			}
+		})
+
+		test('updateByPk with inc op', async () => {
+			const { inc } = await import('../updates')
+			const repo = makeUpdateRepo()
+			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 10 })
+
+			const updated = await repo.updateByPk(ItemSchema, item.id, inc<typeof ItemSchema>(ItemSchema.fields.views, 5))
+			expect(updated!.views).toBe(15)
+		})
+
+		test('updateByPk returns null for missing pk', async () => {
+			const { set } = await import('../updates')
+			const repo = makeUpdateRepo()
+			const result = await repo.updateByPk(ItemSchema, 'nonexistent', set<typeof ItemSchema>({ title: 'X' }))
+			expect(result).toBeNull()
+		})
+
+		test('updateByPk requires ≥1 op (type-level)', () => {
+			const _repo = makeUpdateRepo()
+			// @ts-expect-error — updateByPk requires at least one op argument
+			void ((_r: typeof _repo) => _r.updateByPk(ItemSchema, 'id'))
+		})
+	})
+
 }

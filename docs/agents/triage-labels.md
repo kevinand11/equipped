@@ -38,3 +38,4 @@ Edit the right-hand column to match whatever vocabulary you actually use.
 - `feature/<slug>` labels must correspond to feature branches that already exist on origin. Sandcastle does not auto-create feature branches — see `.sandcastle/main.ts` for the validation check that halts the loop on missing branches.
 - An issue with two or more `feature/*` labels halts the loop. Resolve ambiguity before running.
 - Removing `in-pr` from a closed-without-merge issue causes Sandcastle to re-pick it on the next iteration. If you don't want a re-attempt, close the issue too.
+- Issue-to-issue dependencies are declared as `Depends on #N` / `Blocked by #N` trailers in the issue body. The host resolver runs before the planner each iteration: dependents whose deps aren't all closed get skipped (logged to console); missing references and cycles hard-fail the loop. See [`docs/agents/issue-tracker.md`](./issue-tracker.md#declaring-dependencies-between-issues) for the full convention.

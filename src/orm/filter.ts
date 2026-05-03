@@ -1,7 +1,8 @@
 import type { FilterOpName } from './adapter'
+import { EquippedError } from '../errors'
 import { toFieldName, type AnyField, type Field } from './fields'
 import type { AnySchema } from './schema'
-import { EquippedError } from '../errors'
+import { OrmValidationError } from './schema-validations'
 
 export class Filter {
 	readonly field: string
@@ -114,22 +115,6 @@ export class FilterGroup {
 	}
 }
 
-export class OrmValidationError extends EquippedError {
-	constructor(
-		message: string,
-		readonly kind: 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible',
-		readonly schema: string,
-		readonly operation: string,
-		readonly failures: Array<{
-			opIndex?: number
-			rowIndex?: number
-			field?: string
-			cause?: unknown
-		}> = [],
-	) {
-		super(message, { kind, schema, operation, failures })
-	}
-}
 
 export type GatedFilterGroup<DeclaredOps extends readonly FilterOpName[]> = {
 	[K in FilterOpName]: K extends DeclaredOps[number] ? FilterGroup[K] : never
@@ -158,7 +143,6 @@ export function assertNormalisedFilter(schema: AnySchema, group: FilterGroup): v
 
 	if (errors.length > 0) {
 		throw new OrmValidationError(
-			`Filter references unknown field(s) on schema "${schema.name}": ${errors.map((e) => e.field).join(', ')}`,
 			'validation',
 			schema.name,
 			'filter',

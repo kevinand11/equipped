@@ -5,6 +5,7 @@ import type { SchemaField } from './fields'
 import type { FilterGroup } from './filter'
 import type { QueryOptions } from './query'
 import type { AnySchema, SchemaFields } from './schema'
+import type { AnyUpdateOp } from './updates'
 
 export type FieldTypeName = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array' | 'date'
 export type FilterOpName =
@@ -30,7 +31,7 @@ export type CrudBag<Config> = {
 		schema: AnySchema,
 		config: Config,
 		pk: unknown,
-		data: Record<string, unknown>,
+		ops: AnyUpdateOp[],
 	) => Promise<Record<string, unknown> | null>
 	deleteByPk?: (schema: AnySchema, config: Config, pk: unknown) => Promise<Record<string, unknown> | null>
 	raw?: <T = unknown>(schema: AnySchema, config: Config, command: unknown, params?: unknown[]) => Promise<T>
