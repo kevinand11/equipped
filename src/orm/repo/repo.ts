@@ -1,24 +1,20 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { SchemaContext, SchemaRef } from './builders'
-import { EquippedError } from '../../errors'
-import type { InferAdapterConfig, OrmAdapter, OrmUse } from '../adapters/base'
-import type { AnySchema } from '../schema'
+import type { InferAdapterConfig, SchemaCompatible } from '../adapter'
+import type { OrmAdapterLike } from '../adapters/base'
+import type { AnySchema, SchemaPersistedOutput } from '../schema'
 
-export class Repo<A extends OrmAdapter<any>> {
+export class Repo<A extends OrmAdapterLike<any>> {
 	readonly #adapter: A
 	readonly #defaults: (schema: AnySchema) => InferAdapterConfig<A>
 	readonly #resolverStore = new AsyncLocalStorage<
 		((config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>) | undefined
 	>()
 
-	private constructor({ adapter, resolve }: { adapter: A; resolve: (schema: AnySchema) => InferAdapterConfig<A> }) {
+	constructor({ adapter, resolve }: { adapter: A; resolve: (schema: AnySchema) => InferAdapterConfig<A> }) {
 		this.#adapter = adapter
 		this.#defaults = resolve
-	}
-
-	static from<A extends OrmAdapter<any>>({ adapter, resolve }: { adapter: A; resolve: (schema: AnySchema) => InferAdapterConfig<A> }) {
-		return new Repo<A>({ adapter, resolve })
 	}
 
 	#getConfig(s: AnySchema): InferAdapterConfig<A> {
@@ -27,12 +23,26 @@ export class Repo<A extends OrmAdapter<any>> {
 		return resolver ? resolver(base, s) : base
 	}
 
-	#getUse(s: AnySchema): OrmUse {
+	#getUse(s: AnySchema) {
 		return this.#adapter.use(s, this.#getConfig(s))
 	}
 
 	from<S extends AnySchema>(schema: S): SchemaRef<S> {
 		return new SchemaRef<S>(new SchemaContext(schema, (target) => this.#getUse(target)))
+	}
+
+	async findByPk<S extends AnySchema>(
+		schema: SchemaCompatible<A, S>,
+		pk: unknown,
+	): Promise<SchemaPersistedOutput<S> | null> {
+		const s = schema as unknown as AnySchema
+		const config = this.#getConfig(s)
+		const adapter = this.#adapter as any
+		if (adapter.crud?.findByPk) {
+			const result = await adapter.crud.findByPk(s, config, pk)
+			return (result as SchemaPersistedOutput<S>) ?? null
+		}
+		throw new Error('Adapter does not implement crud.findByPk')
 	}
 
 	async session<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
@@ -49,12 +59,39 @@ export class Repo<A extends OrmAdapter<any>> {
 	}
 }
 
+class RepoBuilder<A = never, Config = never> {
+	#adapter: unknown
+	#resolve: unknown
+
+	adapter<NewA>(a: [A] extends [never] ? NewA : never): RepoBuilder<NewA, Config> {
+		this.#adapter = a
+		return this as unknown as RepoBuilder<NewA, Config>
+	}
+
+	resolve<NewConfig>(fn: [Config] extends [never] ? (schema: AnySchema) => NewConfig : never): RepoBuilder<A, NewConfig> {
+		this.#resolve = fn
+		return this as unknown as RepoBuilder<A, NewConfig>
+	}
+
+	_build() {
+		return { adapter: this.#adapter, resolve: this.#resolve }
+	}
+}
+
+export function defineRepo<A extends OrmAdapterLike<any>, Config>(
+	build: (b: RepoBuilder) => RepoBuilder<A, Config>,
+): Repo<A> {
+	const data = build(new RepoBuilder())._build()
+	return new Repo<A>({ adapter: data.adapter as A, resolve: data.resolve as any })
+}
+
 if (import.meta.vitest) {
-	const { describe, test, expect, vi } = import.meta.vitest
+	const { describe, test, expect, expectTypeOf, vi } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { InMemoryOrm } = await import('../adapters/in-memory')
+	const { createInMemoryAdapter } = await import('../adapters/in-memory')
+	const { defineAdapter } = await import('../adapter')
 	const { Relations } = await import('../relations')
-	const { Schema } = await import('../schema')
+	const { defineSchema } = await import('../schema')
 
 	describe('repo/Repo core behavior', () => {
 		let userCounter = 0
@@ -62,32 +99,40 @@ if (import.meta.vitest) {
 		let profileCounter = 0
 		let orgCounter = 0
 
-		const UserSchema = Schema.from('users')
-			.pk('id', v.string(), () => `u${++userCounter}`)
-			.field('email', v.string())
-			.field('name', v.string())
-			.field('orgId', v.optional(v.string()), { onCreate: () => undefined })
-			.field('createdAt', v.number(), { onCreate: () => 1000 })
+		const UserSchema = defineSchema('users', (s) =>
+			s
+				.pk('id', v.string(), () => `u${++userCounter}`)
+				.field('email', v.string())
+				.field('name', v.string())
+				.field('orgId', v.optional(v.string()), { onCreate: () => undefined })
+				.field('createdAt', v.number(), { onCreate: () => 1000 }),
+		)
 
-		const PostSchema = Schema.from('posts')
-			.pk('id', v.string(), () => `p${++postCounter}`)
-			.field('title', v.string())
-			.field('userId', v.string())
+		const PostSchema = defineSchema('posts', (s) =>
+			s
+				.pk('id', v.string(), () => `p${++postCounter}`)
+				.field('title', v.string())
+				.field('userId', v.string()),
+		)
 
-		const ProfileSchema = Schema.from('profiles')
-			.pk('id', v.string(), () => `pr${++profileCounter}`)
-			.field('bio', v.string())
-			.field('userId', v.string())
+		const ProfileSchema = defineSchema('profiles', (s) =>
+			s
+				.pk('id', v.string(), () => `pr${++profileCounter}`)
+				.field('bio', v.string())
+				.field('userId', v.string()),
+		)
 
-		const OrgSchema = Schema.from('orgs')
-			.pk('id', v.string(), () => `o${++orgCounter}`)
-			.field('name', v.string())
+		const OrgSchema = defineSchema('orgs', (s) =>
+			s.pk('id', v.string(), () => `o${++orgCounter}`).field('name', v.string()),
+		)
 
-		const PersonSchema = Schema.from('people')
-			.pk('id', v.string(), () => `person-${++userCounter}`)
-			.field('firstName', v.string())
-			.field('lastName', v.string())
-			.computed('fullName', ['firstName', 'lastName'], v.string(), ({ firstName, lastName }) => `${firstName} ${lastName}`)
+		const PersonSchema = defineSchema('people', (s) =>
+			s
+				.pk('id', v.string(), () => `person-${++userCounter}`)
+				.field('firstName', v.string())
+				.field('lastName', v.string())
+				.computed('fullName', ['firstName', 'lastName'], v.string(), ({ firstName, lastName }) => `${firstName} ${lastName}`),
+		)
 
 		const UserRelations = Relations.of(UserSchema)
 			.hasMany('posts', PostSchema, 'userId')
@@ -95,8 +140,8 @@ if (import.meta.vitest) {
 			.belongsTo('org', OrgSchema, 'orgId')
 
 		function makeRepo() {
-			const adapter = new InMemoryOrm()
-			return Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
+			const { adapter } = createInMemoryAdapter()
+			return defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 		}
 
 		test('fluent builders support one/all read chains', async () => {
@@ -248,20 +293,20 @@ if (import.meta.vitest) {
 
 		test('resolve chains adapter config transforms', async () => {
 			const seenConfigs: unknown[] = []
-			const spyAdapter = new InMemoryOrm()
-			const origUse = spyAdapter.use.bind(spyAdapter)
-			spyAdapter.use = vi.fn((s, config) => {
+			const { adapter } = createInMemoryAdapter()
+			const origUse = adapter.use.bind(adapter)
+			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)
 				return origUse(s, config)
 			})
 
-			const repo = Repo.from({ adapter: spyAdapter, resolve: (s) => ({ prefix: s.name }) })
+			const repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 
 			await repo.resolve(
-				(config) => ({ prefix: `a_${config.prefix}` }),
+				(config) => ({ prefix: `a_${(config as any).prefix}` }),
 				async () => {
 					await repo.resolve(
-						(config) => ({ prefix: `b_${config.prefix}` }),
+						(config) => ({ prefix: `b_${(config as any).prefix}` }),
 						async () => {
 							await repo.from(UserSchema).all().find()
 						},
@@ -306,6 +351,7 @@ if (import.meta.vitest) {
 		})
 
 		test('raw operations throw EquippedError on in-memory adapter', async () => {
+			const { EquippedError } = await import('../../errors')
 			const repo = makeRepo()
 			const error = await repo
 				.from(UserSchema)
@@ -323,21 +369,21 @@ if (import.meta.vitest) {
 		})
 
 		test('computed field selection auto-includes dependencies for adapter reads', async () => {
-			const adapter = new InMemoryOrm()
+			const { adapter } = createInMemoryAdapter()
 			const origUse = adapter.use.bind(adapter)
 			let seenSelect: string[] | undefined
-			adapter.use = vi.fn((schema, config) => {
+			;(adapter as any).use = vi.fn((schema: any, config: any) => {
 				const use = origUse(schema, config)
 				return {
 					...use,
-					findMany: async (filter, options) => {
+					findMany: async (filter: any, options: any) => {
 						seenSelect = options?.select as string[] | undefined
 						return use.findMany(filter, options)
 					},
 				}
 			})
 
-			const repo = Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
+			const repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 			await repo.from(PersonSchema).one().insert({ firstName: 'Grace', lastName: 'Hopper' })
 			await repo.from(PersonSchema).all().select(['id', 'fullName']).find()
 
@@ -345,6 +391,7 @@ if (import.meta.vitest) {
 		})
 
 		test('unknown selected fields fail fast', async () => {
+			const { EquippedError } = await import('../../errors')
 			const repo = makeRepo()
 			await repo.from(PersonSchema).one().insert({ firstName: 'Ada', lastName: 'Lovelace' })
 
@@ -358,15 +405,16 @@ if (import.meta.vitest) {
 		})
 
 		test('missing computed dependencies in adapter output fail fast', async () => {
-			const adapter = new InMemoryOrm()
+			const { EquippedError } = await import('../../errors')
+			const { adapter } = createInMemoryAdapter()
 			const origUse = adapter.use.bind(adapter)
-			adapter.use = vi.fn((schema, config) => {
+			;(adapter as any).use = vi.fn((schema: any, config: any) => {
 				const use = origUse(schema, config)
 				return {
 					...use,
-					findMany: async (filter, options) => {
+					findMany: async (filter: any, options: any) => {
 						const rows = await use.findMany(filter, options)
-						return rows.map((row) => {
+						return rows.map((row: any) => {
 							const next = { ...row }
 							delete (next as any).lastName
 							return next
@@ -375,10 +423,51 @@ if (import.meta.vitest) {
 				}
 			})
 
-			const repo = Repo.from({ adapter, resolve: (s) => ({ prefix: s.name }) })
+			const repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 			await repo.from(PersonSchema).one().insert({ firstName: 'Katherine', lastName: 'Johnson' })
 
 			await expect(repo.from(PersonSchema).all().select(['fullName']).find()).rejects.toBeInstanceOf(EquippedError)
+		})
+
+		test('repo.findByPk returns seeded document and null for missing', async () => {
+			const TestSchema = defineSchema('findbytest', (s) => s.pk('id', v.string(), () => 'gen'))
+			const { adapter } = createInMemoryAdapter()
+			const repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
+
+			const use = adapter.use(TestSchema, { prefix: 'findbytest' })
+			await use.insertOne({ id: 'x' })
+
+			const found = await repo.findByPk(TestSchema, 'x')
+			expect(found).toEqual({ id: 'x' })
+
+			const missing = await repo.findByPk(TestSchema, 'missing')
+			expect(missing).toBeNull()
+		})
+	})
+
+	describe('type-level: defineRepo builder uniqueness', () => {
+		test('duplicate .adapter() call is a TS error', () => {
+			const { adapter } = createInMemoryAdapter()
+			// @ts-expect-error — calling adapter() twice should fail
+			defineRepo((r) => r.adapter(adapter).adapter(adapter).resolve((s) => ({ prefix: s.name })))
+		})
+
+		test('duplicate .resolve() call is a TS error', () => {
+			const { adapter } = createInMemoryAdapter()
+			const resolve = (s: any) => ({ prefix: s.name })
+			// @ts-expect-error — calling resolve() twice should fail
+			defineRepo((r) => r.adapter(adapter).resolve(resolve).resolve(resolve))
+		})
+	})
+
+	describe('type-level: SchemaCompatible on repo.findByPk', () => {
+		test('adapter with matching field types accepts schema', () => {
+			const _adapter = defineAdapter((a) =>
+				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
+			)
+			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x'))
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.findByPk<typeof _TestSchema>).toBeFunction()
 		})
 	})
 }

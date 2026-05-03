@@ -1,7 +1,7 @@
 import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
 import type { AnySchemaField, SchemaField } from './fields'
-import { Schema, type AnySchema, type SchemaFields, type SchemaOutput } from './schema'
+import { Schema, defineSchema, type AnySchema, type SchemaFields, type SchemaOutput } from './schema'
 import { isUpdateOp, type AnyUpdateOp } from './updates'
 import type { Prettify } from './utils'
 
@@ -63,12 +63,13 @@ if (import.meta.vitest) {
 	const { inc, IncOp, mul, MulOp, unset, UnsetOp } = await import('./updates')
 
 	describe('validateInsert', () => {
-		const UserSchema = Schema.from('users')
-			.pk('id', v.string(), () => 'auto-id')
-			.field('email', v.string())
-			.field('name', v.string())
-			.field('age', v.optional(v.number()))
-			.field('createdAt', v.number(), { onCreate: () => 1000 })
+		const UserSchema = defineSchema('users', (s) =>
+			s.pk('id', v.string(), () => 'auto-id')
+			 .field('email', v.string())
+			 .field('name', v.string())
+			 .field('age', v.optional(v.number()))
+			 .field('createdAt', v.number(), { onCreate: () => 1000 }),
+		)
 
 		test('generates pk when not provided', () => {
 			const result = validateInsert(UserSchema, { email: 'a@b.com', name: 'Alice' })
@@ -110,11 +111,12 @@ if (import.meta.vitest) {
 	})
 
 	describe('validateUpdate', () => {
-		const UserSchema = Schema.from('users')
-			.pk('id', v.string(), () => 'auto-id')
-			.field('email', v.string())
-			.field('name', v.string())
-			.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 })
+		const UserSchema = defineSchema('users', (s) =>
+			s.pk('id', v.string(), () => 'auto-id')
+			 .field('email', v.string())
+			 .field('name', v.string())
+			 .field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 }),
+		)
 
 		test('validates only provided fields', () => {
 			const result = validateUpdate(UserSchema, { name: 'Bob' })

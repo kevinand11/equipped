@@ -3,10 +3,10 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { differ } from 'valleyed'
 
 import { EquippedError } from '../../../errors'
+import { defineAdapter } from '../../adapter'
 import { QueryGroup, Where, WhereGroupOp, WhereOp, type FilterOp, type QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
-import { OrmAdapter, type OrmUse } from '../base'
 
 export type InMemoryRepoConfig = {
 	table?: string
@@ -209,15 +209,12 @@ function applyUpdateData(doc: Record<string, unknown>, data: Record<string, unkn
 
 const sessionActiveStore = new AsyncLocalStorage<boolean>()
 
-export class InMemoryOrm extends OrmAdapter<InMemoryRepoConfig> {
-	readonly stores = new Map<string, Map<string, Record<string, unknown>>>()
+export function createInMemoryAdapter() {
+	const stores = new Map<string, Map<string, Record<string, unknown>>>()
 
-	async connect() {}
-	async disconnect() {}
-
-	#snapshot() {
+	function snapshot() {
 		const snap = new Map<string, Map<string, Record<string, unknown>>>()
-		for (const [name, store] of this.stores.entries()) {
+		for (const [name, store] of stores.entries()) {
 			const storeCopy = new Map<string, Record<string, unknown>>()
 			for (const [id, doc] of store.entries()) {
 				storeCopy.set(id, clone(doc))
@@ -227,116 +224,130 @@ export class InMemoryOrm extends OrmAdapter<InMemoryRepoConfig> {
 		return snap
 	}
 
-	#restore(snapshot: Map<string, Map<string, Record<string, unknown>>>) {
-		this.stores.clear()
-		for (const [name, store] of snapshot.entries()) {
-			this.stores.set(name, store)
+	function restore(snap: Map<string, Map<string, Record<string, unknown>>>) {
+		stores.clear()
+		for (const [name, store] of snap.entries()) {
+			stores.set(name, store)
 		}
 	}
 
-	#getStore(name: string) {
-		if (!this.stores.has(name)) this.stores.set(name, new Map())
-		return this.stores.get(name)!
+	function getStore(name: string) {
+		if (!stores.has(name)) stores.set(name, new Map())
+		return stores.get(name)!
 	}
 
-	use(schema: AnySchema, config: InMemoryRepoConfig): OrmUse {
-		const storeName = resolveConfigName(schema, config)
-		const getStore = () => this.#getStore(storeName)
-		const pk = schema.pkField.name
+	const adapter = defineAdapter((a) =>
+		a
+			.config({} as InMemoryRepoConfig)
+			.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
+			.crud({
+				findByPk: async (schema, config, pk) => {
+					const store = getStore(resolveConfigName(schema, config))
+					const doc = store.get(String(pk))
+					return doc ? clone(doc) : null
+				},
+				insertMany: async (schema, config, data) => {
+					const pk = schema.pkField.name
+					const store = getStore(resolveConfigName(schema, config))
+					return data.map((d) => {
+						const row = clone(d)
+						store.set(String(row[pk]), row)
+						return clone(row)
+					})
+				},
+				deleteByPk: async (schema, config, pk) => {
+					const store = getStore(resolveConfigName(schema, config))
+					const pkStr = String(pk)
+					const doc = store.get(pkStr)
+					if (!doc) return null
+					store.delete(pkStr)
+					return clone(doc)
+				},
+				raw: async () => {
+					throw new EquippedError('In-memory adapter does not support raw operations', {
+						adapter: 'in-memory',
+						operation: 'raw',
+					})
+				},
+			})
+			.queryable({
+				findMany: async (schema, config, group, options) => {
+					const store = getStore(resolveConfigName(schema, config))
+					const rows = [...store.values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc))
+					return applyOptions(rows, options)
+				},
+				updateMany: async (schema, config, group, data) => {
+					const store = getStore(resolveConfigName(schema, config))
+					const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, group)).map(([id]) => id)
 
-		const use: OrmUse = {
-			findMany: async (group, options) => {
-				const rows = [...getStore().values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc))
-				return applyOptions(rows, options)
-			},
-			findOne: async (filter) => {
-				const rows = await use.findMany(filter, { limit: 1 })
-				return rows[0] ?? null
-			},
-			insertOne: async (data) => {
-				const row = clone(data)
-				getStore().set(String(row[pk]), row)
-				return clone(row)
-			},
-			insertMany: async (data) => Promise.all(data.map((d) => use.insertOne(d))),
-			updateMany: async (group, data) => {
-				const store = getStore()
-				const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, group)).map(([id]) => id)
+					const updated: Record<string, unknown>[] = []
+					for (const id of ids) {
+						const current = store.get(id)
+						if (!current) continue
+						const next = applyUpdateData(current, data)
+						store.set(id, next)
+						updated.push(clone(next))
+					}
+					return updated
+				},
+				deleteMany: async (schema, config, filter) => {
+					const store = getStore(resolveConfigName(schema, config))
+					const pk = schema.pkField.name
+					const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter)).map((doc) => clone(doc))
+					for (const row of rows) store.delete(String(row[pk]))
+					return rows
+				},
+				upsertOne: async (schema, config, filter, data) => {
+					const store = getStore(resolveConfigName(schema, config))
+					const pk = schema.pkField.name
+					const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter))
+					const current = rows[0]
+					if (current) {
+						const updateData = 'update' in data ? data.update : data.insert
+						const next = applyUpdateData(current, updateData)
+						store.set(String(next[pk]), next)
+						return clone(next)
+					}
+					const row = clone(data.insert)
+					store.set(String(row[pk]), row)
+					return clone(row)
+				},
+			})
+			.transactional({
+				session: async <T>(fn: () => Promise<T>): Promise<T> => {
+					if (sessionActiveStore.getStore()) return fn()
+					const snap = snapshot()
+					try {
+						return await sessionActiveStore.run(true, fn)
+					} catch (error) {
+						restore(snap)
+						throw error
+					}
+				},
+			}),
+	)
 
-				const updated: Record<string, unknown>[] = []
-				for (const id of ids) {
-					const current = store.get(id)
-					if (!current) continue
-					const next = applyUpdateData(current, data)
-					store.set(id, next)
-					updated.push(clone(next))
-				}
-				return updated
-			},
-			updateOne: async (filter, data) => {
-				const rows = await use.updateMany(filter, data)
-				return rows[0] ?? null
-			},
-			upsertOne: async (filter, data) => {
-				const current = await use.findOne(filter)
-				if (current) {
-					const updateData = 'update' in data ? data.update : data.insert
-					const next = applyUpdateData(current, updateData)
-					getStore().set(String(next[pk]), next)
-					return clone(next)
-				}
-				return use.insertOne(data.insert)
-			},
-			deleteOne: async (filter) => {
-				const row = await use.findOne(filter)
-				if (!row) return null
-				getStore().delete(String(row[pk]))
-				return row
-			},
-			deleteMany: async (filter) => {
-				const rows = await use.findMany(filter)
-				for (const row of rows) {
-					getStore().delete(String(row[pk]))
-				}
-				return rows
-			},
-			raw: async () => {
-				throw new EquippedError('In-memory adapter does not support raw operations', {
-					adapter: 'in-memory',
-					operation: 'raw',
-				})
-			},
-		}
-
-		return use
-	}
-
-	async session<T>(fn: () => Promise<T>): Promise<T> {
-		if (sessionActiveStore.getStore()) return fn()
-		const snapshot = this.#snapshot()
-		try {
-			return await sessionActiveStore.run(true, fn)
-		} catch (error) {
-			this.#restore(snapshot)
-			throw error
-		}
-	}
+	return { adapter, stores }
 }
 
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { QueryGroup, OrderBy } = await import('../../query')
-	const { Schema } = await import('../../schema')
+	const { defineSchema } = await import('../../schema')
 	const { inc, patch, pull, push } = await import('../../updates')
+
+	const { v } = await import('valleyed')
 
 	describe('in-memory adapter', () => {
 		test('supports nested filters, ordering, select, offset and limit', async () => {
-			const schema = Schema.from('users')
-				.pk('id', (await import('valleyed')).v.string(), () => 'u')
-				.field('name', (await import('valleyed')).v.string())
-				.field('age', (await import('valleyed')).v.number())
-			const orm = new InMemoryOrm()
-			const use = orm.use(schema, { table: 'users' })
+			const schema = defineSchema('users', (s) =>
+				s
+					.pk('id', v.string(), () => 'u')
+					.field('name', v.string())
+					.field('age', v.number()),
+			)
+			const { adapter } = createInMemoryAdapter()
+			const use = adapter.use(schema, { table: 'users' })
 			await use.insertMany([
 				{ id: 'u1', name: 'Alice', age: 30 },
 				{ id: 'u2', name: 'Bob', age: 20 },
@@ -352,17 +363,18 @@ if (import.meta.vitest) {
 		})
 
 		test('supports update operators and rollback on failed session', async () => {
-			const v = (await import('valleyed')).v
-			const schema = Schema.from('docs')
-				.pk('id', v.string(), () => 'd1')
-				.field('count', v.number())
-				.field('tags', v.array(v.string()))
-				.field('meta', v.object({ a: v.number() }))
-			const orm = new InMemoryOrm()
-			const use = orm.use(schema, { table: 'docs' })
+			const schema = defineSchema('docs', (s) =>
+				s
+					.pk('id', v.string(), () => 'd1')
+					.field('count', v.number())
+					.field('tags', v.array(v.string()))
+					.field('meta', v.object({ a: v.number() })),
+			)
+			const { adapter } = createInMemoryAdapter()
+			const use = adapter.use(schema, { table: 'docs' })
 			await use.insertOne({ id: 'd1', count: 1, tags: ['x'], meta: { a: 1 } })
 
-			await orm.session(async () => {
+			await adapter.session(async () => {
 				await use.updateOne(QueryGroup.from().eq('id', 'd1'), {
 					count: inc(2),
 					tags: push('y'),
@@ -371,7 +383,7 @@ if (import.meta.vitest) {
 			})
 
 			await expect(
-				orm.session(async () => {
+				adapter.session(async () => {
 					await use.updateOne(QueryGroup.from().eq('id', 'd1'), { tags: pull('x') })
 					throw new Error('boom')
 				}),
@@ -379,6 +391,20 @@ if (import.meta.vitest) {
 
 			const row = await use.findOne(QueryGroup.from().eq('id', 'd1'))
 			expect(row).toEqual({ id: 'd1', count: 3, tags: ['x', 'y'], meta: { a: 9 } })
+		})
+
+		test('crud.findByPk returns seeded document and null for missing', async () => {
+			const schema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'gen'))
+			const { adapter } = createInMemoryAdapter()
+
+			const use = adapter.use(schema, { prefix: 'test' })
+			await use.insertOne({ id: 'x' })
+
+			const found = await adapter.crud.findByPk!(schema, { prefix: 'test' }, 'x')
+			expect(found).toEqual({ id: 'x' })
+
+			const missing = await adapter.crud.findByPk!(schema, { prefix: 'test' }, 'missing')
+			expect(missing).toBeNull()
 		})
 	})
 }

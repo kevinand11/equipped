@@ -159,36 +159,42 @@ export class Relations<S extends AnySchema, R extends Record<string, AnyRelDef> 
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { Schema } = await import('./schema')
+	const { defineSchema } = await import('./schema')
 
 	describe('relations', () => {
-		const UserSchema = Schema.from('users')
-			.pk('id', v.string(), () => 'user-id')
-			.field('name', v.string())
-			.field('orgId', v.string())
+		const UserSchema = defineSchema('users', (s) =>
+			s.pk('id', v.string(), () => 'user-id')
+			 .field('name', v.string())
+			 .field('orgId', v.string()),
+		)
 
-		const PostSchema = Schema.from('posts')
-			.pk('id', v.string(), () => 'post-id')
-			.field('title', v.string())
-			.field('userId', v.string())
+		const PostSchema = defineSchema('posts', (s) =>
+			s.pk('id', v.string(), () => 'post-id')
+			 .field('title', v.string())
+			 .field('userId', v.string()),
+		)
 
-		const OrgSchema = Schema.from('orgs')
-			.pk('id', v.string(), () => 'org-id')
-			.field('name', v.string())
+		const OrgSchema = defineSchema('orgs', (s) =>
+			s.pk('id', v.string(), () => 'org-id')
+			 .field('name', v.string()),
+		)
 
-		const TagSchema = Schema.from('tags')
-			.pk('id', v.string(), () => 'tag-id')
-			.field('label', v.string())
+		const TagSchema = defineSchema('tags', (s) =>
+			s.pk('id', v.string(), () => 'tag-id')
+			 .field('label', v.string()),
+		)
 
-		const PostTagSchema = Schema.from('post_tags')
-			.pk('id', v.string(), () => 'pt-id')
-			.field('postId', v.string())
-			.field('tagId', v.string())
+		const PostTagSchema = defineSchema('post_tags', (s) =>
+			s.pk('id', v.string(), () => 'pt-id')
+			 .field('postId', v.string())
+			 .field('tagId', v.string()),
+		)
 
-		const ProfileSchema = Schema.from('profiles')
-			.pk('id', v.string(), () => 'profile-id')
-			.field('bio', v.string())
-			.field('userId', v.string())
+		const ProfileSchema = defineSchema('profiles', (s) =>
+			s.pk('id', v.string(), () => 'profile-id')
+			 .field('bio', v.string())
+			 .field('userId', v.string()),
+		)
 
 		const UserRelations = Relations.of(UserSchema)
 			.hasMany('posts', PostSchema, 'userId')
