@@ -126,11 +126,17 @@ type CandidateIssue = {
 
 type IssueState = 'OPEN' | 'CLOSED'
 
-// Matches `Depends on #42` and `Blocked by #42` as a whole line. The line
-// anchors deliberately exclude mid-paragraph mentions like "this depends on
-// #42 in some way" — only intentional, on-its-own-line declarations count.
-// Cross-repo refs (`owner/repo#42`) are excluded by the bare `#` requirement.
-const DEPS_TRAILER_RE = /^[\t ]*(?:Depends on|Blocked by)[\t ]+#(\d+)[\t ]*$/gim
+// Matches lines that *begin* with `Depends on` / `Blocked by` (case-insensitive).
+// The line-start anchor keeps mid-paragraph mentions like "this depends on #42
+// in some way" out — only intentional declarations at the start of a line
+// count. Multiple refs and parenthetical annotations on the same line are
+// fine; we truncate at the first sentence terminator (`.` or `;`) so trailing
+// prose (e.g. "Depends on #8, #10. Parallel-safe with #11.") doesn't pull in
+// incidental refs like #11.
+const DEPS_LINE_RE = /^[\t ]*(?:Depends on|Blocked by)\b.*$/gim
+// Bare `#N` not preceded by a word char or `/` — this excludes cross-repo
+// refs (`owner/repo#42`) which we don't support.
+const ISSUE_REF_RE = /(?<![\w/])#(\d+)\b/g
 
 // ---------------------------------------------------------------------------
 // Host-side helpers
@@ -147,8 +153,11 @@ async function remoteBranchExists(branch: string): Promise<boolean> {
 
 function parseDeps(body: string): number[] {
 	const out = new Set<number>()
-	for (const m of body.matchAll(DEPS_TRAILER_RE)) {
-		out.add(Number.parseInt(m[1]!, 10))
+	for (const lineMatch of body.matchAll(DEPS_LINE_RE)) {
+		const head = lineMatch[0].split(/[.;]/, 1)[0]!
+		for (const refMatch of head.matchAll(ISSUE_REF_RE)) {
+			out.add(Number.parseInt(refMatch[1]!, 10))
+		}
 	}
 	return [...out]
 }
