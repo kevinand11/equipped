@@ -4,4 +4,4 @@ export {
 	SchemaContext,
 	SchemaRef,
 } from './builders'
-export { Repo, defineRepo } from './repo'
+export { Repo, defineRepo, type RepoSurface } from './repo'

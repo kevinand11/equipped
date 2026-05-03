@@ -113,20 +113,20 @@ export class AdapterBuilder<Acc = {}> {
 		return this as any
 	}
 
-	crud(bag: 'crud' extends keyof Acc ? never : CrudBag<InferConfig<Acc>>): AdapterBuilder<Acc & { crud: typeof bag }> {
+	crud<B extends CrudBag<InferConfig<Acc>>>(bag: 'crud' extends keyof Acc ? never : B): AdapterBuilder<Acc & { crud: B }> {
 		this.#data.crud = bag
 		return this as any
 	}
 
-	queryable(
+	queryable<B extends QueryableBag<InferConfig<Acc>>>(
 		bag: 'queryable' extends keyof Acc
 			? never
 			: 'queryableOps' extends keyof Acc
 				? Acc['queryableOps'] extends readonly [FilterOpName, ...FilterOpName[]]
-					? QueryableBag<InferConfig<Acc>>
+					? B
 					: never
 				: never,
-	): AdapterBuilder<Acc & { queryable: typeof bag }> {
+	): AdapterBuilder<Acc & { queryable: B }> {
 		if (!(this.#data.queryableOps as readonly FilterOpName[])?.length) {
 			throw new Error('defineAdapter: .queryable() requires .queryableOps() to be called first with a non-empty list')
 		}
