@@ -4,7 +4,8 @@ import { differ } from 'valleyed'
 
 import { EquippedError } from '../../../errors'
 import { defineAdapter } from '../../adapter'
-import { QueryGroup, Where, WhereGroupOp, WhereOp, type FilterOp, type QueryOptions } from '../../query'
+import { Filter, FilterGroup, type FilterChild } from '../../filter'
+import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
 
@@ -54,58 +55,60 @@ function resolveConfigName(schema: AnySchema, config: InMemoryRepoConfig): strin
 	return config.table ?? config.collection ?? config.col ?? config.name ?? config.prefix ?? schema.name
 }
 
-function evaluateWhere(doc: Record<string, unknown>, where: Where): boolean {
-	const fieldValue = doc[where.field]
-	const value = where.value
+function evaluateFilter(doc: Record<string, unknown>, filter: Filter): boolean {
+	const fieldValue = doc[filter.field]
+	const value = filter.value
 
-	switch (where.op) {
-		case WhereOp.eq:
+	switch (filter.op) {
+		case 'eq':
 			return differ.equal(fieldValue, value)
-		case WhereOp.ne:
+		case 'ne':
 			return !differ.equal(fieldValue, value)
-		case WhereOp.gt:
+		case 'gt':
 			return compareValues(fieldValue, value) > 0
-		case WhereOp.gte:
+		case 'gte':
 			return compareValues(fieldValue, value) >= 0
-		case WhereOp.lt:
+		case 'lt':
 			return compareValues(fieldValue, value) < 0
-		case WhereOp.lte:
+		case 'lte':
 			return compareValues(fieldValue, value) <= 0
-		case WhereOp.in: {
+		case 'in': {
 			if (!Array.isArray(value)) return false
 			return value.some((v) => differ.equal(fieldValue, v))
 		}
-		case WhereOp.nin: {
+		case 'notIn': {
 			if (!Array.isArray(value)) return true
 			return !value.some((v) => differ.equal(fieldValue, v))
 		}
-		case WhereOp.like:
+		case 'like':
 			return String(fieldValue ?? '')
 				.toLowerCase()
 				.includes(String(value ?? '').toLowerCase())
-		case WhereOp.exists:
-			return value ? fieldValue != null : fieldValue == null
-		case WhereOp.contains:
+		case 'exists':
+			return fieldValue != null
+		case 'notExists':
+			return fieldValue == null
+		case 'contains':
 			return containsSubset(fieldValue, value)
-		case WhereOp.ncontains:
+		case 'notContains':
 			return !containsSubset(fieldValue, value)
 		default:
 			return false
 	}
 }
 
-function evaluateOp(doc: Record<string, unknown>, op: FilterOp): boolean {
-	if (op instanceof Where) return evaluateWhere(doc, op)
-	if (op instanceof QueryGroup) {
-		if (op.op === WhereGroupOp.and) return op.children.every((c) => evaluateOp(doc, c))
-		if (op.op === WhereGroupOp.or) return op.children.some((c) => evaluateOp(doc, c))
+function evaluateChild(doc: Record<string, unknown>, child: FilterChild): boolean {
+	if (child instanceof Filter) return evaluateFilter(doc, child)
+	if (child instanceof FilterGroup) {
+		if (child.op === 'and') return child.children.every((c) => evaluateChild(doc, c))
+		if (child.op === 'or') return child.children.some((c) => evaluateChild(doc, c))
 	}
 	return true
 }
 
-function matchesFilter(doc: Record<string, unknown>, group: QueryGroup): boolean {
+function matchesFilter(doc: Record<string, unknown>, group: FilterGroup): boolean {
 	for (const clause of group.children) {
-		if (!evaluateOp(doc, clause)) return false
+		if (!evaluateChild(doc, clause)) return false
 	}
 	return true
 }
@@ -247,6 +250,7 @@ export function createInMemoryAdapter() {
 		a
 			.config({} as InMemoryRepoConfig)
 			.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
+			.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
 			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
 			.crud({
 				findByPk: async (schema, config, pk) => {
@@ -349,7 +353,8 @@ export function createInMemoryAdapter() {
 
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
-	const { QueryGroup, OrderBy } = await import('../../query')
+	const { FilterGroup } = await import('../../filter')
+	const { OrderBy } = await import('../../query')
 	const { defineSchema } = await import('../../schema')
 	const { IncOp, PatchOp, PullOp, PushOp } = await import('../../updates')
 
@@ -370,7 +375,7 @@ if (import.meta.vitest) {
 				{ id: 'u2', name: 'Bob', age: 20 },
 				{ id: 'u3', name: 'Carol', age: 40 },
 			])
-			const builtGroup = QueryGroup.from().and([
+			const builtGroup = FilterGroup.create().and([
 				(q) => q.gt('age', 19),
 				(q) => q.or([(g) => g.eq('name', 'Alice'), (g) => g.eq('name', 'Carol')]),
 			])
@@ -392,7 +397,7 @@ if (import.meta.vitest) {
 			await use.insertOne({ id: 'd1', count: 1, tags: ['x'], meta: { a: 1 } })
 
 			await adapter.session(async () => {
-				await use.updateOne(QueryGroup.from().eq('id', 'd1'), {
+				await use.updateOne(FilterGroup.create().eq('id', 'd1'), {
 					count: new IncOp('count', 2),
 					tags: new PushOp('tags', 'y'),
 					meta: new PatchOp('meta', { a: 9 }),
@@ -401,13 +406,48 @@ if (import.meta.vitest) {
 
 			await expect(
 				adapter.session(async () => {
-					await use.updateOne(QueryGroup.from().eq('id', 'd1'), { tags: new PullOp('tags', 'x') })
+					await use.updateOne(FilterGroup.create().eq('id', 'd1'), { tags: new PullOp('tags', 'x') })
 					throw new Error('boom')
 				}),
 			).rejects.toThrow('boom')
 
-			const row = await use.findOne(QueryGroup.from().eq('id', 'd1'))
+			const row = await use.findOne(FilterGroup.create().eq('id', 'd1'))
 			expect(row).toEqual({ id: 'd1', count: 3, tags: ['x', 'y'], meta: { a: 9 } })
+		})
+
+		test('notIn filter excludes matching values', async () => {
+			const schema = defineSchema('users', (s) =>
+				s.pk('id', v.string(), () => 'u').field('name', v.string()),
+			)
+			const { adapter } = createInMemoryAdapter()
+			const use = adapter.use(schema, { table: 'users' })
+			await use.insertMany([
+				{ id: 'u1', name: 'Alice' },
+				{ id: 'u2', name: 'Bob' },
+				{ id: 'u3', name: 'Carol' },
+			])
+			const rows = await use.findMany(FilterGroup.create().notIn('name', ['Alice', 'Carol']))
+			expect(rows).toHaveLength(1)
+			expect(rows[0].name).toBe('Bob')
+		})
+
+		test('exists / notExists filter ops work correctly', async () => {
+			const schema = defineSchema('items', (s) =>
+				s.pk('id', v.string(), () => 'i').field('val', v.optional(v.string()), { onCreate: () => undefined }),
+			)
+			const { adapter } = createInMemoryAdapter()
+			const use = adapter.use(schema, { table: 'items' })
+			await use.insertMany([
+				{ id: 'i1', val: 'present' },
+				{ id: 'i2', val: null },
+				{ id: 'i3', val: undefined },
+			])
+			const existsRows = await use.findMany(FilterGroup.create().exists('val'))
+			expect(existsRows).toHaveLength(1)
+			expect(existsRows[0].id).toBe('i1')
+
+			const notExistsRows = await use.findMany(FilterGroup.create().notExists('val'))
+			expect(notExistsRows).toHaveLength(2)
 		})
 
 		test('crud.findByPk returns seeded document and null for missing', async () => {

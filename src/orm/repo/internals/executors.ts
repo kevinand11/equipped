@@ -1,6 +1,7 @@
 import { planSelection } from './computeds'
 import type { SelectedWithPreloads } from './types'
-import type { OrderBy, QueryGroup } from '../../query'
+import type { FilterGroup } from '../../filter'
+import type { OrderBy } from '../../query'
 import type { AnyPreloadDef } from '../../relations'
 import type { AnySchema } from '../../schema'
 import { validateInsert, validateUpdate, type SchemaInsertInput, type SchemaUpdateInput } from '../../schema-validations'
@@ -9,7 +10,7 @@ import type { SchemaContext } from '../builders'
 export async function runOneRead<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
 	state: {
-		where: QueryGroup
+		where: FilterGroup
 		select: readonly Sel[] | undefined
 		preloads: P
 	},
@@ -22,7 +23,7 @@ export async function runOneRead<S extends AnySchema, Sel extends string, P exte
 export async function runAllRead<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
 	state: {
-		where: QueryGroup
+		where: FilterGroup
 		select: readonly Sel[] | undefined
 		preloads: P
 		orderBy: readonly OrderBy[]
@@ -65,7 +66,7 @@ export async function runAllInsert<S extends AnySchema, Sel extends string, P ex
 
 export async function runOneUpdate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
-	state: { where: QueryGroup; select: readonly Sel[] | undefined; preloads: P },
+	state: { where: FilterGroup; select: readonly Sel[] | undefined; preloads: P },
 	data: SchemaUpdateInput<S>,
 ): Promise<SelectedWithPreloads<S, Sel, P> | null> {
 	const validated = validateUpdate(context.schema, data as any)
@@ -75,7 +76,7 @@ export async function runOneUpdate<S extends AnySchema, Sel extends string, P ex
 
 export async function runAllUpdate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
-	state: { where: QueryGroup; select: readonly Sel[] | undefined; preloads: P },
+	state: { where: FilterGroup; select: readonly Sel[] | undefined; preloads: P },
 	data: SchemaUpdateInput<S>,
 ): Promise<SelectedWithPreloads<S, Sel, P>[]> {
 	const validated = validateUpdate(context.schema, data as any)
@@ -85,7 +86,7 @@ export async function runAllUpdate<S extends AnySchema, Sel extends string, P ex
 
 export async function runOneUpsert<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
-	state: { where: QueryGroup; select: readonly Sel[] | undefined; preloads: P },
+	state: { where: FilterGroup; select: readonly Sel[] | undefined; preloads: P },
 	data: UpsertInput<S>,
 ): Promise<SelectedWithPreloads<S, Sel, P>> {
 	const insert = validateInsert(context.schema, data.insert as any)
@@ -96,7 +97,7 @@ export async function runOneUpsert<S extends AnySchema, Sel extends string, P ex
 
 export async function runOneDelete<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
-	state: { where: QueryGroup; select: readonly Sel[] | undefined; preloads: P },
+	state: { where: FilterGroup; select: readonly Sel[] | undefined; preloads: P },
 ): Promise<SelectedWithPreloads<S, Sel, P> | null> {
 	const row = await context.use.deleteOne(state.where)
 	return context.shapeOneRow(state.select, state.preloads, row)
@@ -104,7 +105,7 @@ export async function runOneDelete<S extends AnySchema, Sel extends string, P ex
 
 export async function runAllDelete<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
-	state: { where: QueryGroup; select: readonly Sel[] | undefined; preloads: P },
+	state: { where: FilterGroup; select: readonly Sel[] | undefined; preloads: P },
 ): Promise<SelectedWithPreloads<S, Sel, P>[]> {
 	const rows = await context.use.deleteMany(state.where)
 	return context.shapeRows(state.select, state.preloads, rows)

@@ -2,7 +2,8 @@ import type { PipeOutput } from 'valleyed'
 
 import type { OrmUse } from './adapters/base'
 import type { SchemaField } from './fields'
-import type { QueryGroup, QueryOptions } from './query'
+import type { FilterGroup } from './filter'
+import type { QueryOptions } from './query'
 import type { AnySchema, SchemaFields } from './schema'
 import type { AnyUpdateOp } from './updates'
 
@@ -40,20 +41,20 @@ export type QueryableBag<Config> = {
 	findMany?: (
 		schema: AnySchema,
 		config: Config,
-		filter: QueryGroup,
+		filter: FilterGroup,
 		options?: QueryOptions,
 	) => Promise<Record<string, unknown>[]>
 	updateMany?: (
 		schema: AnySchema,
 		config: Config,
-		filter: QueryGroup,
+		filter: FilterGroup,
 		data: Record<string, unknown>,
 	) => Promise<Record<string, unknown>[]>
-	deleteMany?: (schema: AnySchema, config: Config, filter: QueryGroup) => Promise<Record<string, unknown>[]>
+	deleteMany?: (schema: AnySchema, config: Config, filter: FilterGroup) => Promise<Record<string, unknown>[]>
 	upsertOne?: (
 		schema: AnySchema,
 		config: Config,
-		filter: QueryGroup,
+		filter: FilterGroup,
 		data: { insert: Record<string, unknown> } | { insert: Record<string, unknown>; update: Record<string, unknown> },
 	) => Promise<Record<string, unknown>>
 }
@@ -118,8 +119,17 @@ export class AdapterBuilder<Acc = {}> {
 	}
 
 	queryable(
-		bag: 'queryable' extends keyof Acc ? never : QueryableBag<InferConfig<Acc>>,
+		bag: 'queryable' extends keyof Acc
+			? never
+			: 'queryableOps' extends keyof Acc
+				? Acc['queryableOps'] extends readonly [FilterOpName, ...FilterOpName[]]
+					? QueryableBag<InferConfig<Acc>>
+					: never
+				: never,
 	): AdapterBuilder<Acc & { queryable: typeof bag }> {
+		if (!(this.#data.queryableOps as readonly FilterOpName[])?.length) {
+			throw new Error('defineAdapter: .queryable() requires .queryableOps() to be called first with a non-empty list')
+		}
 		this.#data.queryable = bag
 		return this as any
 	}
@@ -149,21 +159,6 @@ export type AdapterResult<Acc> = {
 	disconnect(): Promise<void>
 	session<T>(fn: () => Promise<T>): Promise<T>
 } & ('config' extends keyof Acc ? { readonly __config: Acc['config'] } : {})
-
-export type AnyAdapterResult = {
-	readonly supportedFieldTypes: readonly FieldTypeName[]
-	readonly queryableOps: readonly FilterOpName[]
-	readonly updateOps: readonly UpdateOpName[]
-	readonly crud?: CrudBag<any>
-	readonly queryable?: QueryableBag<any>
-	readonly transactional?: TransactionalBag
-	readonly lifecycle?: LifecycleBag
-	readonly __config?: unknown
-	use(schema: AnySchema, config: any): OrmUse
-	connect(): Promise<void>
-	disconnect(): Promise<void>
-	session<T>(fn: () => Promise<T>): Promise<T>
-}
 
 export function defineAdapter<Acc>(build: (b: AdapterBuilder) => AdapterBuilder<Acc>): AdapterResult<Acc> {
 	const builder = build(new AdapterBuilder())
@@ -229,6 +224,10 @@ export type InferAdapterConfig<A> = A extends { __config: infer C }
 	: A extends { use: (schema: any, config: infer C) => any }
 		? C
 		: never
+
+export type InferAdapterQueryableOps<A> = A extends { queryableOps: infer Ops extends readonly FilterOpName[] }
+	? Ops
+	: readonly []
 
 type ToFieldTypeName<T> = T extends undefined
 	? never

@@ -1,6 +1,7 @@
 import type { OrmUse } from '../adapters/base'
 import type { AnyField } from '../fields'
-import { OrderBy, QueryGroup, type WhereFactory } from '../query'
+import { FilterGroup, type FilterFactory } from '../filter'
+import { OrderBy } from '../query'
 import type { AnyPreloadDef } from '../relations'
 import type { AnySchema, SchemaOutput } from '../schema'
 import type { SchemaInsertInput, SchemaUpdateInput } from '../schema-validations'
@@ -22,7 +23,7 @@ import type { SelectedWithPreloads } from './internals/types'
 type SchemaPrimaryKeyValue<S extends AnySchema> = SchemaOutput<S>[S['pkField']['name'] & keyof SchemaOutput<S>]
 type UpsertInput<S extends AnySchema> = { insert: SchemaInsertInput<S> } | { insert: SchemaInsertInput<S>; update: SchemaUpdateInput<S> }
 type ReadState<Sel extends string, P extends readonly AnyPreloadDef[] = readonly AnyPreloadDef[]> = {
-	where?: QueryGroup
+	where?: FilterGroup
 	select?: readonly Sel[]
 	preloads?: P
 }
@@ -69,18 +70,18 @@ export class SchemaContext<S extends AnySchema> {
 
 abstract class ReadSelectState<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]> {
 	protected readonly _context: SchemaContext<S>
-	protected _where: QueryGroup
+	protected _where: FilterGroup
 	protected _select: readonly Sel[] | undefined
 	protected _preloads: P
 
 	constructor(context: SchemaContext<S>, state?: ReadState<Sel, P>) {
 		this._context = context
-		this._where = state?.where ? state.where.clone() : QueryGroup.from()
+		this._where = state?.where ? state.where.clone() : FilterGroup.create()
 		this._select = state?.select
 		this._preloads = state?.preloads ?? ([] as unknown as P)
 	}
 
-	where(factory: WhereFactory): this {
+	where(factory: FilterFactory): this {
 		const nextGroup = this._where.clone()
 		factory(nextGroup)
 		return this._clone<Sel, P>({

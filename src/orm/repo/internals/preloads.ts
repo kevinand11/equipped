@@ -1,6 +1,6 @@
 import { EquippedError } from '../../../errors'
 import type { OrmUse } from '../../adapters/base'
-import { QueryGroup } from '../../query'
+import { FilterGroup } from '../../filter'
 import type { AnyPreloadDef, AnyRelDef, NestedPreloadDef } from '../../relations'
 import { ManyRelation, OneRelation } from '../../relations'
 import type { AnySchema } from '../../schema'
@@ -111,7 +111,7 @@ async function resolvePreload(
 			const fkValues = uniqueDefinedValues(entities, def.foreignKey.name)
 			if (fkValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
 
-			let related = await getUse(target).findMany(QueryGroup.from().in(refCol, fkValues))
+			let related = await getUse(target).findMany(FilterGroup.create().in(refCol, fkValues))
 			if (node.preloads.length > 0 && related.length > 0) {
 				related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 			}
@@ -123,7 +123,7 @@ async function resolvePreload(
 		const refValues = uniqueDefinedValues(entities, refCol)
 		if (refValues.length === 0) return entities.map((e) => ({ ...e, [name]: null }))
 
-		let related = await getUse(target).findMany(QueryGroup.from().in(def.foreignKey, refValues))
+		let related = await getUse(target).findMany(FilterGroup.create().in(def.foreignKey, refValues))
 		if (node.preloads.length > 0 && related.length > 0) {
 			related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 		}
@@ -136,7 +136,7 @@ async function resolvePreload(
 		const refValues = uniqueDefinedValues(entities, refCol)
 		if (refValues.length === 0) return entities.map((e) => ({ ...e, [name]: [] }))
 
-		let related = await getUse(target).findMany(QueryGroup.from().in(def.foreignKey, refValues))
+		let related = await getUse(target).findMany(FilterGroup.create().in(def.foreignKey, refValues))
 		if (node.preloads.length > 0 && related.length > 0) {
 			related = await resolvePreloadNodes(related, node.preloads, getUse, depth + 1, nextPath)
 		}

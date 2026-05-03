@@ -5,7 +5,7 @@ import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '..
 type MongoFilter = Record<string, unknown>
 
 export function compileMongoQuery(
-	group: QueryGroup,
+	group: any,
 	options: QueryOptions | undefined,
 	primaryKey: string,
 ): {
