@@ -59,10 +59,6 @@ export function validateUpdate<S extends AnySchema>(s: S, data: Record<string, u
 	return { ...validated, ...ops } as SchemaUpdateOutput<S>
 }
 
-// ---------------------------------------------------------------------------
-// OrmValidationError
-// ---------------------------------------------------------------------------
-
 export type OrmValidationErrorKind = 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible'
 
 export type OrmValidationFailure = {
@@ -87,10 +83,6 @@ export class OrmValidationError extends EquippedError {
 		})
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Update-validation pipeline for the new op-list path (repo.updateByPk)
-// ---------------------------------------------------------------------------
 
 export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[]): AnyUpdateOp[] {
 	const touched = new Map<string, number[]>()

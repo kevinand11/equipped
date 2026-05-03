@@ -54,7 +54,6 @@ function resolveConfigName(schema: AnySchema, config: InMemoryRepoConfig): strin
 	return config.table ?? config.collection ?? config.col ?? config.name ?? config.prefix ?? schema.name
 }
 
-
 function evaluateWhere(doc: Record<string, unknown>, where: Where): boolean {
 	const fieldValue = doc[where.field]
 	const value = where.value

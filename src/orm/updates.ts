@@ -5,10 +5,6 @@ import { toFieldName } from './fields'
 import type { AnySchema, SchemaFields } from './schema'
 import type { Prettify } from './utils'
 
-// ---------------------------------------------------------------------------
-// Field-category type helpers
-// ---------------------------------------------------------------------------
-
 export type NumericFieldOf<S extends AnySchema> = {
 	[K in keyof SchemaFields<S>]: SchemaFields<S>[K] extends SchemaField<any, infer P, any>
 		? PipeOutput<P> extends number
@@ -51,19 +47,11 @@ export type ObjectFieldOf<S extends AnySchema> = {
 		: never
 }[keyof SchemaFields<S>]
 
-// ---------------------------------------------------------------------------
-// Set-values type helper (partial document input for SetOp)
-// ---------------------------------------------------------------------------
-
 export type SetValues<S extends AnySchema> = Prettify<
 	Partial<{
 		[K in keyof SchemaFields<S>]: SchemaFields<S>[K] extends AnySchemaField ? PipeInput<SchemaFields<S>[K]['pipe']> : never
 	}>
 >
-
-// ---------------------------------------------------------------------------
-// Op classes — discriminated union with `kind` field
-// ---------------------------------------------------------------------------
 
 export class SetOp {
 	readonly kind = 'set' as const
@@ -123,10 +111,6 @@ export class PatchOp<T = unknown> {
 	) {}
 }
 
-// ---------------------------------------------------------------------------
-// Union type + type guard
-// ---------------------------------------------------------------------------
-
 export type AnyUpdateOp = SetOp | IncOp | MulOp | MinOp | MaxOp | UnsetOp | PushOp | PullOp | PatchOp
 
 export function isUpdateOp(v: unknown): v is AnyUpdateOp {
@@ -143,28 +127,18 @@ export function isUpdateOp(v: unknown): v is AnyUpdateOp {
 	)
 }
 
-// ---------------------------------------------------------------------------
-// Per-op gating: UpdateOp<S, A> resolves variants based on A['updateOps']
-// ---------------------------------------------------------------------------
-
 type HasOp<A, Op extends string> = A extends { updateOps: readonly (infer U)[] } ? (Op extends U ? true : false) : false
 
-export type UpdateOp<S extends AnySchema, A> = S extends AnySchema
-	?
-			| (HasOp<A, 'set'> extends true ? SetOp : never)
-			| (HasOp<A, 'inc'> extends true ? IncOp : never)
-			| (HasOp<A, 'mul'> extends true ? MulOp : never)
-			| (HasOp<A, 'min'> extends true ? MinOp : never)
-			| (HasOp<A, 'max'> extends true ? MaxOp : never)
-			| (HasOp<A, 'unset'> extends true ? UnsetOp : never)
-			| (HasOp<A, 'push'> extends true ? PushOp : never)
-			| (HasOp<A, 'pull'> extends true ? PullOp : never)
-			| (HasOp<A, 'patch'> extends true ? PatchOp : never)
-	: never
-
-// ---------------------------------------------------------------------------
-// Op helper functions
-// ---------------------------------------------------------------------------
+export type UpdateOp<_S extends AnySchema, A> =
+	| (HasOp<A, 'set'> extends true ? SetOp : never)
+	| (HasOp<A, 'inc'> extends true ? IncOp : never)
+	| (HasOp<A, 'mul'> extends true ? MulOp : never)
+	| (HasOp<A, 'min'> extends true ? MinOp : never)
+	| (HasOp<A, 'max'> extends true ? MaxOp : never)
+	| (HasOp<A, 'unset'> extends true ? UnsetOp : never)
+	| (HasOp<A, 'push'> extends true ? PushOp : never)
+	| (HasOp<A, 'pull'> extends true ? PullOp : never)
+	| (HasOp<A, 'patch'> extends true ? PatchOp : never)
 
 export function set<S extends AnySchema>(values: SetValues<S>): SetOp {
 	return new SetOp(values as Record<string, unknown>)
@@ -202,18 +176,10 @@ export function patch<S extends AnySchema>(field: ObjectFieldOf<S>, value: Recor
 	return new PatchOp(toFieldName(field as AnyField), value)
 }
 
-// ---------------------------------------------------------------------------
-// Helpers for extracting touched fields from an op
-// ---------------------------------------------------------------------------
-
 export function opTouchedFields(op: AnyUpdateOp): string[] {
 	if (op instanceof SetOp) return Object.keys(op.values)
 	return [op.field]
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf } = import.meta.vitest

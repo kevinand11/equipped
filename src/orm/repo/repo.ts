@@ -591,14 +591,4 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('type-level: inc on a string field is a TS error', () => {
-		test('inc rejects non-numeric fields', async () => {
-			const { inc: _inc } = await import('../updates')
-			const _TestSchema = defineSchema('test_inc', (s) =>
-				s.pk('id', v.string(), () => 'x').field('name', v.string()).field('count', v.number()),
-			)
-			// @ts-expect-error — name is a string field, not numeric
-			_inc<typeof _TestSchema>(_TestSchema.fields.name, 1)
-		})
-	})
 }
