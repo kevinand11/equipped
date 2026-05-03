@@ -92,6 +92,20 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return this.#adapter.session(() => fn(this))
 	}
 
+	async insertOne<S extends AnySchema>(schema: S, data: SchemaInsertInput<S>): Promise<SchemaOutput<S>> {
+		const validated = validateInsert(schema, data as Record<string, unknown>)
+		const use = this.#getUse(schema)
+		const row = await use.insertOne(validated as Record<string, unknown>)
+		return row as SchemaOutput<S>
+	}
+
+	async insertMany<S extends AnySchema>(schema: S, data: SchemaInsertInput<S>[]): Promise<SchemaOutput<S>[]> {
+		const validated = validateInsertMany(schema, data as Record<string, unknown>[])
+		const use = this.#getUse(schema)
+		const rows = await use.insertMany(validated as Record<string, unknown>[])
+		return rows as SchemaOutput<S>[]
+	}
+
 	async resolve<T>(
 		resolver: (config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>,
 		fn: () => Promise<T>,
@@ -486,6 +500,100 @@ if (import.meta.vitest) {
 
 			const missing = await repo.findByPk(TestSchema, 'missing')
 			expect(missing).toBeNull()
+		})
+
+		describe('schema-per-call insert path', () => {
+			test('insertOne round-trip via findByPk', async () => {
+				const repo = makeRepo()
+				const inserted = await repo.insertOne(UserSchema, { email: 'rt@test.com', name: 'RoundTrip' })
+				expect(inserted.email).toBe('rt@test.com')
+				expect(inserted.name).toBe('RoundTrip')
+				expect(inserted.id).toBeDefined()
+
+				const found = await repo.findByPk(UserSchema, inserted.id)
+				expect(found).not.toBeNull()
+				expect(found!.id).toBe(inserted.id)
+				expect(found!.email).toBe('rt@test.com')
+			})
+
+			test('insertOne injects onCreate defaults for missing fields', async () => {
+				const repo = makeRepo()
+				const inserted = await repo.insertOne(UserSchema, { email: 'defaults@test.com', name: 'Defaults' })
+				expect(inserted.createdAt).toBe(1000)
+				expect(inserted.id).toBeDefined()
+			})
+
+			test('insertOne throws OrmValidationError with kind validation and field populated', async () => {
+				const { OrmValidationError } = await import('../schema-validations')
+				const repo = makeRepo()
+				try {
+					await repo.insertOne(UserSchema, { email: 123 as any, name: 'Bad' })
+					expect.unreachable()
+				} catch (e) {
+					expect(e).toBeInstanceOf(OrmValidationError)
+					const err = e as InstanceType<typeof OrmValidationError>
+					expect(err.kind).toBe('validation')
+					expect(err.operation).toBe('insertOne')
+					expect(err.schema).toBe('users')
+					expect(err.failures.length).toBeGreaterThan(0)
+					expect(err.failures[0].field).toBe('email')
+				}
+			})
+
+			test('insertMany round-trip via findByPk', async () => {
+				const repo = makeRepo()
+				const inserted = await repo.insertMany(UserSchema, [
+					{ email: 'a@test.com', name: 'Alice' },
+					{ email: 'b@test.com', name: 'Bob' },
+				])
+				expect(inserted).toHaveLength(2)
+
+				const foundA = await repo.findByPk(UserSchema, inserted[0].id)
+				const foundB = await repo.findByPk(UserSchema, inserted[1].id)
+				expect(foundA!.email).toBe('a@test.com')
+				expect(foundB!.email).toBe('b@test.com')
+			})
+
+			test('insertMany collects all failures with rowIndex and throws single OrmValidationError', async () => {
+				const { OrmValidationError } = await import('../schema-validations')
+				const repo = makeRepo()
+				try {
+					await repo.insertMany(UserSchema, [
+						{ email: 'good@test.com', name: 'Good' },
+						{ email: 123 as any, name: 'Bad' },
+						{ email: 'also-bad' as any, name: 456 as any },
+					])
+					expect.unreachable()
+				} catch (e) {
+					expect(e).toBeInstanceOf(OrmValidationError)
+					const err = e as InstanceType<typeof OrmValidationError>
+					expect(err.kind).toBe('validation')
+					expect(err.operation).toBe('insertMany')
+					expect(err.schema).toBe('users')
+					const rowIndices = err.failures.map((f) => f.rowIndex)
+					expect(rowIndices).toContain(1)
+					expect(rowIndices).toContain(2)
+					expect(rowIndices).not.toContain(0)
+				}
+			})
+
+			test('findByPk returns null for non-existent pk', async () => {
+				const repo = makeRepo()
+				const result = await repo.findByPk(UserSchema, 'nonexistent')
+				expect(result).toBeNull()
+			})
+
+			test('insertMany with onCreate defaults applied to all rows', async () => {
+				const repo = makeRepo()
+				const inserted = await repo.insertMany(UserSchema, [
+					{ email: 'x@test.com', name: 'X' },
+					{ email: 'y@test.com', name: 'Y' },
+				])
+				expect(inserted[0].createdAt).toBe(1000)
+				expect(inserted[1].createdAt).toBe(1000)
+				expect(inserted[0].id).toBeDefined()
+				expect(inserted[1].id).toBeDefined()
+			})
 		})
 	})
 
