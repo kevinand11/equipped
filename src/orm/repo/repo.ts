@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
-
 import type { InferAdapterConfig, InferAdapterQueryableOps, SchemaCompatible } from '../adapter'
 import type { OrmAdapterLike } from '../adapters/base'
 import { assertNormalisedFilter, FilterGroup, type FilterFactory, type GatedFilterFactory } from '../filter'
@@ -8,22 +6,35 @@ import { validateInsert, validateInsertMany, validateUpdate, validateUpdateOps, 
 import type { AnyUpdateOp, UpdateOp } from '../updates'
 import { SchemaContext, SchemaRef } from './builders'
 
+export type ConfigTransform<C> = (config: C, schema: AnySchema) => C
+export type ContextSource<C> = { get: () => ConfigTransform<C> | null }
+
 export class Repo<A extends OrmAdapterLike<any>> {
 	readonly #adapter: A
 	readonly #defaults: (schema: AnySchema) => InferAdapterConfig<A>
-	readonly #resolverStore = new AsyncLocalStorage<
-		((config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>) | undefined
-	>()
+	readonly #contextSource?: ContextSource<InferAdapterConfig<A>>
+	readonly #resolverStack: ConfigTransform<InferAdapterConfig<A>>[] = []
 
-	constructor({ adapter, resolve }: { adapter: A; resolve: (schema: AnySchema) => InferAdapterConfig<A> }) {
+	constructor({ adapter, resolve, context }: {
+		adapter: A
+		resolve: (schema: AnySchema) => InferAdapterConfig<A>
+		context?: ContextSource<InferAdapterConfig<A>>
+	}) {
 		this.#adapter = adapter
 		this.#defaults = resolve
+		this.#contextSource = context
 	}
 
 	#getConfig(s: AnySchema): InferAdapterConfig<A> {
-		const resolver = this.#resolverStore.getStore()
-		const base = this.#defaults(s)
-		return resolver ? resolver(base, s) : base
+		let config = this.#defaults(s)
+		if (this.#contextSource) {
+			const transform = this.#contextSource.get()
+			if (transform) config = transform(config, s)
+		}
+		for (const resolver of this.#resolverStack) {
+			config = resolver(config, s)
+		}
+		return config
 	}
 
 	#getUse(s: AnySchema) {
@@ -160,8 +171,8 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return rows as SchemaPersistedOutput<S>[]
 	}
 
-	async session<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
-		return this.#adapter.session(() => fn(this))
+	async session<T>(fn: () => Promise<T>): Promise<T> {
+		return this.#adapter.session(fn)
 	}
 
 	async insertOne<S extends AnySchema>(schema: S, data: SchemaInsertInput<S>): Promise<SchemaOutput<S>> {
@@ -182,15 +193,19 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		resolver: (config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>,
 		fn: () => Promise<T>,
 	): Promise<T> {
-		const outerResolver = this.#resolverStore.getStore()
-		const chained = outerResolver ? (config: InferAdapterConfig<A>, s: AnySchema) => resolver(outerResolver(config, s), s) : resolver
-		return this.#resolverStore.run(chained, fn)
+		this.#resolverStack.push(resolver)
+		try {
+			return await fn()
+		} finally {
+			this.#resolverStack.pop()
+		}
 	}
 }
 
 class RepoBuilder<A = never, Config = never> {
 	#adapter: unknown
 	#resolve: unknown
+	#context: unknown
 
 	adapter<NewA>(a: [A] extends [never] ? NewA : never): RepoBuilder<NewA, Config> {
 		this.#adapter = a
@@ -202,8 +217,13 @@ class RepoBuilder<A = never, Config = never> {
 		return this as unknown as RepoBuilder<A, NewConfig>
 	}
 
+	context(source: ContextSource<Config>): RepoBuilder<A, Config> {
+		this.#context = source
+		return this
+	}
+
 	_build() {
-		return { adapter: this.#adapter, resolve: this.#resolve }
+		return { adapter: this.#adapter, resolve: this.#resolve, context: this.#context }
 	}
 }
 
@@ -216,13 +236,14 @@ export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
 	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { deleteOne: never; deleteMany: never }) &
 	(HasMethod<A, 'crud', 'updateByPk'> extends true ? {} : { updateByPk: never }) &
 	(HasMethod<A, 'crud', 'deleteByPk'> extends true ? {} : { deleteByPk: never }) &
-	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never })
+	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never }) &
+	(HasMethod<A, 'transactional', 'session'> extends true ? {} : { session: never })
 
 export function defineRepo<A extends OrmAdapterLike<any>, Config>(
 	build: (b: RepoBuilder) => RepoBuilder<A, Config>,
 ): RepoSurface<A> {
 	const data = build(new RepoBuilder())._build()
-	return new Repo<A>({ adapter: data.adapter as A, resolve: data.resolve as any }) as RepoSurface<A>
+	return new Repo<A>({ adapter: data.adapter as A, resolve: data.resolve as any, context: data.context as any }) as RepoSurface<A>
 }
 
 if (import.meta.vitest) {
@@ -349,9 +370,9 @@ if (import.meta.vitest) {
 		test('session supports multi-operation writes with fluent builders', async () => {
 			const repo = makeRepo()
 
-			const insertedId = await repo.session(async (tx) => {
-				const created = await tx.from(UserSchema).one().insert({ email: 'tx@fluent.com', name: 'Tx Fluent' })
-				await tx.from(UserSchema).one().id(created.id).update({ name: 'Tx Fluent Updated' })
+			const insertedId = await repo.session(async () => {
+				const created = await repo.from(UserSchema).one().insert({ email: 'tx@fluent.com', name: 'Tx Fluent' })
+				await repo.from(UserSchema).one().id(created.id).update({ name: 'Tx Fluent Updated' })
 				return created.id
 			})
 
@@ -460,8 +481,8 @@ if (import.meta.vitest) {
 		test('session returns callback value and persists writes', async () => {
 			const repo = makeRepo()
 			let insertedId = ''
-			const result = await repo.session(async (tx) => {
-				const inserted = await tx.from(UserSchema).one().insert({ email: 't@test.com', name: 'TxUser' })
+			const result = await repo.session(async () => {
+				const inserted = await repo.from(UserSchema).one().insert({ email: 't@test.com', name: 'TxUser' })
 				insertedId = inserted.id
 				return 42
 			})
@@ -1266,6 +1287,172 @@ if (import.meta.vitest) {
 			const _repo = makeUpdateRepo()
 			// @ts-expect-error — updateByPk requires at least one op argument
 			void ((_r: typeof _repo) => _r.updateByPk(ItemSchema, 'id'))
+		})
+	})
+
+	describe('repo.session — transactional behaviour', () => {
+		const SchemaA = defineSchema('accounts', (s) =>
+			s
+				.pk('id', v.string(), () => `a-${Math.random().toString(36).slice(2)}`)
+				.field('balance', v.number()),
+		)
+		const SchemaB = defineSchema('ledger', (s) =>
+			s
+				.pk('id', v.string(), () => `l-${Math.random().toString(36).slice(2)}`)
+				.field('amount', v.number())
+				.field('accountId', v.string()),
+		)
+
+		function makeSessionRepo() {
+			const { adapter } = createInMemoryAdapter()
+			return defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
+		}
+
+		test('throw-to-rollback: uncaught throw rolls back all writes and rejects with same error', async () => {
+			const repo = makeSessionRepo()
+			await repo.insertOne(SchemaA, { balance: 100 })
+
+			const err = new Error('boom')
+			await expect(
+				repo.session(async () => {
+					await repo.insertOne(SchemaA, { balance: 200 })
+					throw err
+				}),
+			).rejects.toBe(err)
+
+			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			expect(all).toHaveLength(1)
+			expect(all[0].balance).toBe(100)
+		})
+
+		test('return-to-commit: successful return commits and resolves with callback value', async () => {
+			const repo = makeSessionRepo()
+			const result = await repo.session(async () => {
+				await repo.insertOne(SchemaA, { balance: 500 })
+				return 'committed'
+			})
+
+			expect(result).toBe('committed')
+			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			expect(all).toHaveLength(1)
+			expect(all[0].balance).toBe(500)
+		})
+
+		test('cross-schema session: multiple schemas share one tx; on throw both roll back', async () => {
+			const repo = makeSessionRepo()
+			const account = await repo.insertOne(SchemaA, { balance: 1000 })
+
+			await expect(
+				repo.session(async () => {
+					await repo.updateMany(SchemaA, (q) => q.eq('id', account.id), { balance: 900 })
+					await repo.insertOne(SchemaB, { amount: 100, accountId: account.id })
+					throw new Error('tx failure')
+				}),
+			).rejects.toThrow('tx failure')
+
+			const acct = await repo.findByPk(SchemaA, account.id)
+			expect(acct!.balance).toBe(1000)
+
+			const entries = await repo.findMany(SchemaB, (q) => q.eq('accountId', account.id))
+			expect(entries).toHaveLength(0)
+		})
+
+		test('nested session: inner repo.session delegates to adapter (flat in in-memory)', async () => {
+			const repo = makeSessionRepo()
+
+			const result = await repo.session(async () => {
+				await repo.insertOne(SchemaA, { balance: 100 })
+				const inner = await repo.session(async () => {
+					await repo.insertOne(SchemaA, { balance: 200 })
+					return 'inner'
+				})
+				return inner
+			})
+
+			expect(result).toBe('inner')
+			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			expect(all).toHaveLength(2)
+		})
+
+		test('nested session: throw in inner rolls back entire outer tx (flat nesting)', async () => {
+			const repo = makeSessionRepo()
+			await repo.insertOne(SchemaA, { balance: 50 })
+
+			await expect(
+				repo.session(async () => {
+					await repo.insertOne(SchemaA, { balance: 100 })
+					await repo.session(async () => {
+						await repo.insertOne(SchemaA, { balance: 200 })
+						throw new Error('inner boom')
+					})
+				}),
+			).rejects.toThrow('inner boom')
+
+			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			expect(all).toHaveLength(1)
+			expect(all[0].balance).toBe(50)
+		})
+
+		test('no-tx-argument rule: session callback receives no arguments', async () => {
+			const repo = makeSessionRepo()
+			let argCount = -1
+			await repo.session(async function () {
+				argCount = arguments.length
+			})
+			expect(argCount).toBe(0)
+		})
+	})
+
+	describe('type-level: session gating', () => {
+		test('missing transactional.session collapses repo.session to never', () => {
+			const _adapter = defineAdapter((a) =>
+				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.session).toBeNever()
+		})
+
+		test('adapter with transactional.session enables repo.session', () => {
+			const _adapter = defineAdapter((a) =>
+				a
+					.supportedFieldTypes('string')
+					.crud({ findByPk: async () => null })
+					.transactional({ session: async (fn) => fn() }),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.session).toBeFunction()
+		})
+	})
+
+	describe('zero-ALS rule: library code does not import node:async_hooks', () => {
+		test('no file under src/orm (excluding adapters/) imports node:async_hooks', async () => {
+			const { readdir, readFile } = await import('node:fs/promises')
+			const { join } = await import('node:path')
+			const forbidden = ['node:', 'async_hooks'].join('')
+
+			async function* walk(dir: string): AsyncGenerator<string> {
+				const entries = await readdir(dir, { withFileTypes: true })
+				for (const entry of entries) {
+					const full = join(dir, entry.name)
+					if (entry.isDirectory()) {
+						if (entry.name === 'adapters') continue
+						yield* walk(full)
+					} else if (entry.name.endsWith('.ts')) {
+						yield full
+					}
+				}
+			}
+
+			const ormDir = join(import.meta.dirname!, '..')
+			const violations: string[] = []
+			for await (const file of walk(ormDir)) {
+				const content = await readFile(file, 'utf-8')
+				const importLine = /^\s*import\s.*from\s+['"].*async_hooks/m
+				if (content.includes(forbidden) && importLine.test(content)) {
+					violations.push(file)
+				}
+			}
+			expect(violations).toEqual([])
 		})
 	})
 }
