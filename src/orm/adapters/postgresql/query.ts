@@ -142,11 +142,11 @@ export function buildUpdateQuery(
 		const col = `"${key}"`
 
 		if (value instanceof IncOp) {
-			params.push(value.by)
+			params.push(value.value)
 			return `${col} = ${col} + $${paramIndex++}`
 		}
 		if (value instanceof MulOp) {
-			params.push(value.by)
+			params.push(value.value)
 			return `${col} = ${col} * $${paramIndex++}`
 		}
 		if (value instanceof MinOp) {
@@ -170,8 +170,7 @@ export function buildUpdateQuery(
 		}
 		if (value instanceof PatchOp) {
 			params.push(JSON.stringify(value.value))
-			const path = `'{${value.path.join(',')}}'`
-			return `${col} = jsonb_set(${col}, ${path}::text[], $${paramIndex++}::jsonb)`
+			return `${col} = ${col} || $${paramIndex++}::jsonb`
 		}
 
 		params.push(value)
