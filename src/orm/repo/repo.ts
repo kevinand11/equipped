@@ -11,7 +11,7 @@ import {
 	type SchemaInsertInput,
 	type SchemaUpdateInput,
 } from '../schema-validations'
-import type { AnyUpdateOp, HasOp, UpdateOp } from '../updates'
+import type { AnyUpdateOp, UpdateOp } from '../updates'
 import { SchemaContext, SchemaRef } from './builders'
 
 export type ConfigTransform<C> = (config: C, schema: AnySchema) => C
@@ -265,7 +265,7 @@ export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
 	(HasMethod<A, 'crud', 'updateByPk'> extends true ? {} : { updateByPk: never }) &
 	(HasMethod<A, 'crud', 'deleteByPk'> extends true ? {} : { deleteByPk: never }) &
 	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never }) &
-	([HasMethod<A, 'queryable', 'upsertOne'>, HasOp<A, 'upsert'>] extends [true, true] ? {} : { upsertOne: never }) &
+	(HasMethod<A, 'queryable', 'upsertOne'> extends true ? {} : { upsertOne: never }) &
 	(HasMethod<A, 'transactional', 'session'> extends true ? {} : { session: never })
 
 export function defineRepo<A extends OrmAdapterLike<any>, Config>(build: (b: RepoBuilder) => RepoBuilder<A, Config>): RepoSurface<A> {
@@ -1472,7 +1472,7 @@ if (import.meta.vitest) {
 					.config({} as { prefix: string })
 					.supportedFieldTypes('string', 'number', 'boolean')
 					.queryableOps('eq')
-					.updateOps('set', 'upsert')
+					.updateOps('set')
 					.queryable({
 						findMany: async () => [],
 						upsertOne: async (_schema, _config, _filter) => {
@@ -1500,23 +1500,8 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('type-level: repo.upsertOne dual-gate', () => {
-		test('adapter with upsert in updateOps AND queryable.upsertOne enables repo.upsertOne', () => {
-			const _adapter = defineAdapter((a) =>
-				a
-					.supportedFieldTypes('string', 'number')
-					.queryableOps('eq')
-					.updateOps('set', 'upsert')
-					.queryable({
-						findMany: async () => [],
-						upsertOne: async () => ({}),
-					}),
-			)
-			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
-			expectTypeOf(_repo.upsertOne).toBeFunction()
-		})
-
-		test('adapter WITHOUT upsert in updateOps collapses repo.upsertOne to never', () => {
+	describe('type-level: repo.upsertOne gate', () => {
+		test('adapter with queryable.upsertOne enables repo.upsertOne', () => {
 			const _adapter = defineAdapter((a) =>
 				a
 					.supportedFieldTypes('string', 'number')
@@ -1528,7 +1513,7 @@ if (import.meta.vitest) {
 					}),
 			)
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
-			expectTypeOf(_repo.upsertOne).toBeNever()
+			expectTypeOf(_repo.upsertOne).toBeFunction()
 		})
 
 		test('adapter without queryable.upsertOne collapses repo.upsertOne to never', () => {
@@ -1536,7 +1521,7 @@ if (import.meta.vitest) {
 				a
 					.supportedFieldTypes('string', 'number')
 					.queryableOps('eq')
-					.updateOps('set', 'upsert')
+					.updateOps('set')
 					.queryable({
 						findMany: async () => [],
 					}),
@@ -1545,11 +1530,11 @@ if (import.meta.vitest) {
 			expectTypeOf(_repo.upsertOne).toBeNever()
 		})
 
-		test('adapter without queryableOps collapses repo.upsertOne to never', () => {
+		test('adapter without queryable bag collapses repo.upsertOne to never', () => {
 			const _adapter = defineAdapter((a) =>
 				a
 					.supportedFieldTypes('string', 'number')
-					.updateOps('set', 'upsert')
+					.updateOps('set')
 					.crud({ findByPk: async () => null }),
 			)
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))

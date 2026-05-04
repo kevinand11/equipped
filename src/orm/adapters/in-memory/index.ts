@@ -251,7 +251,7 @@ export function createInMemoryAdapter() {
 			.config({} as InMemoryRepoConfig)
 			.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
 			.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch', 'upsert')
+			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
 			.crud({
 				findByPk: async (schema, config, pk) => {
 					const store = getStore(resolveConfigName(schema, config))

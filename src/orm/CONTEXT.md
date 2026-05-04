@@ -99,7 +99,7 @@ doesn't know about Repo).
 const PostgresAdapter = defineAdapter((a) => a
   .config({} as PgCfg)
   .queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-  .updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch', 'upsert')
+  .updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
   .supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
   .lifecycle({ connect, disconnect })
   .crud({ findByPk, insertMany, updateByPk, deleteByPk, raw })
@@ -279,6 +279,11 @@ ops or field types. There are exactly three:
 | `updateOps` | update ops | which update ops `update*` and `upsertOne` accept |
 | `supportedFieldTypes` | field types | which schemas can pair with the adapter |
 
+`updateOps` is a value-level union of `AnyUpdateOp` variants the adapter
+supports. It is not a capability registry — surface methods like `upsertOne`
+are gated on behaviour-method presence, not on `updateOps` membership (§5.1,
+§12.2).
+
 Each declaration's values are drawn from a closed canonical set (§4). Adapters
 **subset** the canonical set; they cannot add new members.
 
@@ -297,7 +302,7 @@ without ops to filter by.
 Other declarations are cross-cutting (no paired behaviour):
 
 - `updateOps` modifies which ops `updateByPk` (in `crud`), `updateOne` /
-  `updateMany` (in `queryable`), and `upsertOne` accept.
+  `updateMany` (in `queryable`), and `upsertOne` (in `queryable`) accept.
 - `supportedFieldTypes` gates whether *any* schema can be passed to *any* Repo
   method — schema-arg-level constraint, not behaviour-level.
 
@@ -372,18 +377,17 @@ flag.
 An **update op** is one of:
 
 ```
-set · inc · mul · min · max · unset · push · pull · patch · upsert
+set · inc · mul · min · max · unset · push · pull · patch
 ```
 
 The **lowercase-verb convention**: all update ops are lowercase, mostly
 verb-form. Future additions must respect this. `Set`, `INC`, `addToSet`,
 `arrayPush` are all rejected by the convention.
 
-`'upsert'` is a **gating-only op**: its presence in an Adapter's `updateOps`
-enables the `repo.upsertOne` Repo method, but it is not constructible via an
-op helper. There is no `upsert(...)` helper. Future canonical additions are
-permitted to be gating-only if their semantics are method-shape rather than
-in-line op-shape.
+Every member of the canonical update-op set has a corresponding op variant
+(§10.1) and an op helper (§10.2). The set is closed (§4.4) — adapters subset
+it; method-shape capabilities (e.g. `upsertOne`) are gated on behaviour
+presence, not by adding members to this set.
 
 ### 4.3 Canonical field-type set
 
@@ -415,7 +419,7 @@ requires:
 
 - (a) the canonical type literal is added to the union;
 - (b) the corresponding method or helper is added (filter ops get FilterGroup
-  methods; update ops get op helpers, unless gating-only; field types get
+  methods; update ops get op helpers; field types get
   FieldTypeOf branches);
 - (c) at minimum, the in-memory adapter is updated;
 - (d) all locked rules in §4.1–4.3 are respected (notX-prefix,
@@ -457,7 +461,7 @@ declarations:
 | `findOne` / `findMany` | `queryable.findMany` declared |
 | `updateOne` / `updateMany` | `queryable.updateMany` declared AND non-empty `updateOps` |
 | `deleteOne` / `deleteMany` | `queryable.deleteMany` declared |
-| `upsertOne` | `queryable.upsertOne` declared AND `'upsert'` in `updateOps` |
+| `upsertOne` | `queryable.upsertOne` declared |
 | `session` | `transactional.session` declared |
 
 There is no truly "always-on" method; every method is gated by something.
@@ -1121,14 +1125,12 @@ This asymmetry is the **set-only-validation rule** (§7.2).
 
 The `[op0, ...rest]` array passed to a single update call is the **op list**.
 
-### 10.6 Gating-only ops and the `equipped/orm` export rule
+### 10.6 The `equipped/orm` export rule
 
-A **gating-only op** is a canonical update-op member that gates a Repo method's
-existence but is not constructible via an op helper. `'upsert'` is the only
-gating-only op today: declaring it in `updateOps` enables `repo.upsertOne`
-(§12), but there is no `upsert(...)` helper. Future canonical update-op
-additions may be gating-only if their semantics fit method-shape rather than
-in-line op-shape.
+Every member of the canonical update-op set has a corresponding op helper
+(§10.2). There are no gating-only ops — method-shape capabilities (e.g.
+`upsertOne`) are gated on behaviour-method presence, not on `updateOps`
+membership.
 
 Op helpers are exported top-level from `equipped/orm`. Users who collide with
 JS built-in `Set` rename on import (`import { set as setOp } from 'equipped/orm'`).
@@ -1232,8 +1234,8 @@ values, so callers can safely mutate the result.
 
 ## 12. Upsert
 
-`upsertOne` is a filter-based Repo method gated by `'upsert'` in `updateOps`
-AND non-empty `queryableOps`.
+`upsertOne` is a filter-based Repo method gated by `queryable.upsertOne`
+declared on the adapter.
 
 ### 12.1 API shape
 
@@ -1254,15 +1256,17 @@ Three argument roles:
   `Partial`.
 - The **op list** (`set(...)`, `inc(...)`). See §10.
 
-### 12.2 Dual-gate rule
+### 12.2 Gate rule
 
-**Dual-gate rule.** `upsertOne` exists when:
+**Upsert gate rule.** `upsertOne` exists when `queryable.upsertOne` is
+declared on the adapter. Missing → narrowed-out. Symmetric with every other
+filter-based Repo method (§5.1) — gate is behaviour-method presence, no
+separate capability flag.
 
-- `'upsert' extends A['updateOps'][number]`, AND
-- `A['queryableOps']` is non-empty.
-
-Either missing → `upsertOne` is narrowed-out. Upsert needs ops (it's an update
-path) and needs a filter (it's query-based) — so both gates apply.
+`queryable.upsertOne` requires `queryableOps` to be non-empty (co-required
+pair, §3.3) and accepts the adapter's declared `updateOps` for its op-list
+arg. Both flow through the existing `queryable` machinery; no upsert-specific
+declaration exists.
 
 The **query-only-upsert rule**: there is no `upsertByPk` variant. Real-world
 upserts identify by natural key (email, slug, FK), not PK. PK-keyed upsert is
