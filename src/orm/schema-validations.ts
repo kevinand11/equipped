@@ -122,7 +122,7 @@ export class OrmValidationError extends EquippedError {
 	}
 }
 
-export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[]): AnyUpdateOp[] {
+export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[], operation = 'updateByPk'): AnyUpdateOp[] {
 	const touched = new Map<string, number[]>()
 
 	for (let i = 0; i < ops.length; i++) {
@@ -150,7 +150,7 @@ export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[]): AnyUpd
 		}
 	}
 	if (conflicts.length > 0) {
-		throw new OrmValidationError('conflicting-ops', schema.name, 'updateByPk', conflicts)
+		throw new OrmValidationError('conflicting-ops', schema.name, operation, conflicts)
 	}
 
 	const failures: OrmValidationFailure[] = []
@@ -169,10 +169,30 @@ export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[]): AnyUpd
 		}
 	}
 	if (failures.length > 0) {
-		throw new OrmValidationError('validation', schema.name, 'updateByPk', failures)
+		throw new OrmValidationError('validation', schema.name, operation, failures)
 	}
 
 	return allOps
+}
+
+export function validateUpsertConflicts(
+	schema: AnySchema,
+	rawInsert: Record<string, unknown>,
+	ops: AnyUpdateOp[],
+): void {
+	const insertFields = new Set(Object.keys(rawInsert))
+	const conflicts: OrmValidationFailure[] = []
+	for (const op of ops) {
+		if (op instanceof SetOp) continue
+		for (const field of opTouchedFields(op)) {
+			if (insertFields.has(field)) {
+				conflicts.push({ field, cause: `field "${field}" present in both insert payload and atomic op "${op.kind}"` })
+			}
+		}
+	}
+	if (conflicts.length > 0) {
+		throw new OrmValidationError('conflicting-ops', schema.name, 'upsertOne', conflicts)
+	}
 }
 
 if (import.meta.vitest) {

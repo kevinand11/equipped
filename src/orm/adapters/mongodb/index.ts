@@ -7,6 +7,7 @@ import { compileMongoQuery, compileMongoUpdate } from './query'
 import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities'
 import type { AnySchema } from '../../schema'
+import { flattenOps } from '../../updates'
 import type { OrmUse } from '../base'
 
 const sessionStore = new AsyncLocalStorage<ClientSession | undefined>()
@@ -157,19 +158,18 @@ export class MongoDbOrm extends configurable(
 						)
 					}
 				},
-				upsertOne: async (filter, data) => {
+				upsertOne: async (filter, insert, ops) => {
 					try {
 						const { filter: mongoFilter } = compileMongoQuery(filter, undefined, pk)
 						const now = new Date()
 
-						const updateData = 'update' in data ? data.update : {}
-						const updateOp = compileMongoUpdate(updateData, now)
+						const updateOp = compileMongoUpdate(flattenOps(ops), now)
 
 						const doc = await collection.findOneAndUpdate(
 							mongoFilter,
 							{
 								...updateOp,
-								$setOnInsert: data.insert,
+								$setOnInsert: insert,
 							},
 							{
 								returnDocument: 'after',

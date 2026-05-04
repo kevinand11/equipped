@@ -1,6 +1,7 @@
 import type { FilterGroup } from '../filter'
 import type { QueryOptions } from '../query'
 import type { AnySchema } from '../schema'
+import type { AnyUpdateOp } from '../updates'
 
 export type OrmUse = {
 	findMany: (filter: FilterGroup, options?: QueryOptions) => Promise<Record<string, unknown>[]>
@@ -11,7 +12,8 @@ export type OrmUse = {
 	updateOne: (filter: FilterGroup, data: Record<string, unknown>) => Promise<Record<string, unknown> | null>
 	upsertOne: (
 		filter: FilterGroup,
-		data: { insert: Record<string, unknown> } | { insert: Record<string, unknown>; update: Record<string, unknown> },
+		insert: Record<string, unknown>,
+		ops: AnyUpdateOp[],
 	) => Promise<Record<string, unknown>>
 	deleteOne: (filter: FilterGroup) => Promise<Record<string, unknown> | null>
 	deleteMany: (filter: FilterGroup) => Promise<Record<string, unknown>[]>
