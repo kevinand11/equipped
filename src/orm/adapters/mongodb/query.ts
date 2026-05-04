@@ -41,8 +41,8 @@ export function compileMongoQuery(
 	return {
 		filter: mongoFilter,
 		sort: sort as Record<string, 1 | -1> | undefined,
-		limit: options?.limit ?? undefined,
-		skip: options?.offset ?? undefined,
+		limit: options?.limit,
+		skip: options?.offset,
 		projection: projection as Record<string, 1> | undefined,
 	}
 }

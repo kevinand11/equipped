@@ -1,7 +1,7 @@
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import type { QueryOptions } from '../../query'
-import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
 import { OrmValidationError } from '../../schema-validations'
+import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
 
 function mapField(field: string, primaryKey: string): string {
 	if (field === 'id' && primaryKey !== 'id') return primaryKey
@@ -243,12 +243,16 @@ export function extractUpsertConflictColumn(filter: FilterGroup, schemaName: str
 		return filter.children[0].field
 	}
 
-	const description =
-		filter.children.length === 0
-			? 'empty filter'
-			: filter.children.length === 1
-				? `single non-eq filter (op: ${(filter.children[0] as Filter).op ?? 'group'})`
-				: `${filter.children.length} filter clauses`
+	let description: string
+	if (filter.children.length === 0) {
+		description = 'empty filter'
+	} else if (filter.children.length === 1) {
+		const child = filter.children[0]
+		const opDesc = child instanceof Filter ? child.op : 'group'
+		description = `single non-eq filter (op: ${opDesc})`
+	} else {
+		description = `${filter.children.length} filter clauses`
+	}
 
 	throw new OrmValidationError('upsert-filter-incompatible', schemaName, 'upsertOne', [
 		{

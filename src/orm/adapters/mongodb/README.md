@@ -30,7 +30,7 @@ await adapter.connect()
 |----------|----------|
 | `supportedFieldTypes` | `string`, `number`, `boolean`, `null`, `object`, `array`, `date` |
 | `queryableOps` | all 13 canonical ops |
-| `updateOps` | `set`, `inc`, `mul`, `min`, `max`, `unset`, `push`, `pull`, `patch`, `upsert` |
+| `updateOps` | `set`, `inc`, `mul`, `min`, `max`, `unset`, `push`, `pull`, `patch` |
 | Bags | `lifecycle`, `crud`, `queryable`, `transactional` |
 
 ## Session nesting behaviour

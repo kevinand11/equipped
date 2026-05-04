@@ -57,7 +57,7 @@ export function createPostgresAdapter(connectionConfig: PostgresqlConnectionConf
 			.config({} as PostgresqlRepoConfig)
 			.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
 			.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch', 'upsert')
+			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
 			.lifecycle({
 				connect: async () => {},
 				disconnect: async () => {
@@ -274,7 +274,7 @@ if (import.meta.vitest) {
 				'eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains',
 			])
 			expect(adapter.updateOps).toEqual([
-				'set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch', 'upsert',
+				'set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch',
 			])
 		})
 
@@ -333,7 +333,7 @@ if (import.meta.vitest) {
 			expect(use.raw).toBeTypeOf('function')
 		})
 
-		test('type-level: adapter declares upsert in updateOps', () => {
+		test('type-level: adapter declares all 9 canonical update ops', () => {
 			const { adapter: _adapter } = createPostgresAdapter({
 				host: 'localhost',
 				port: 5432,
@@ -343,7 +343,7 @@ if (import.meta.vitest) {
 			})
 			type Ops = typeof _adapter.updateOps
 			expectTypeOf<Ops>().toEqualTypeOf<
-				readonly ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch', 'upsert']
+				readonly ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch']
 			>()
 		})
 
