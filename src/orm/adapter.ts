@@ -22,7 +22,7 @@ export type FilterOpName =
 	| 'notExists'
 	| 'contains'
 	| 'notContains'
-export type UpdateOpName = 'set' | 'inc' | 'mul' | 'min' | 'max' | 'unset' | 'push' | 'pull' | 'patch'
+export type UpdateOpName = 'set' | 'inc' | 'mul' | 'min' | 'max' | 'unset' | 'push' | 'pull' | 'patch' | 'upsert'
 
 export type CrudBag<Config> = {
 	findByPk?: (schema: AnySchema, config: Config, pk: unknown) => Promise<Record<string, unknown> | null>
