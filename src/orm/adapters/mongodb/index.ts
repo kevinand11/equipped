@@ -48,7 +48,7 @@ export function createMongoAdapter(connectionConfig: MongoDbConnectionConfig) {
 			.config({} as MongoDbRepoConfig)
 			.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
 			.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch', 'upsert')
+			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
 			.lifecycle({
 				connect: async () => {
 					try {
@@ -290,7 +290,7 @@ if (import.meta.vitest) {
 				'eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains',
 			])
 			expect(adapter.updateOps).toEqual([
-				'set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch', 'upsert',
+				'set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch',
 			])
 		})
 
@@ -337,11 +337,11 @@ if (import.meta.vitest) {
 			expect(use.raw).toBeTypeOf('function')
 		})
 
-		test('type-level: adapter declares upsert in updateOps', () => {
+		test('type-level: adapter declares all 9 canonical update ops', () => {
 			const { adapter: _adapter } = createMongoAdapter({ host: 'localhost', port: 27017 })
 			type Ops = typeof _adapter.updateOps
 			expectTypeOf<Ops>().toEqualTypeOf<
-				readonly ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch', 'upsert']
+				readonly ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch']
 			>()
 		})
 

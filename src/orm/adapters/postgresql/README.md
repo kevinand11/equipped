@@ -31,8 +31,8 @@ await adapter.connect()
 |----------|----------|
 | `supportedFieldTypes` | `string`, `number`, `boolean`, `null`, `object`, `array`, `date` |
 | `queryableOps` | all 13 canonical ops |
-| `updateOps` | `set`, `inc`, `mul`, `min`, `max`, `unset`, `push`, `pull`, `patch`, `upsert` |
-| Bags | `lifecycle`, `crud`, `queryable`, `transactional` |
+| `updateOps` | `set`, `inc`, `mul`, `min`, `max`, `unset`, `push`, `pull`, `patch` |
+| Bags | `lifecycle`, `crud`, `queryable` (incl. `upsertOne`), `transactional` |
 
 ## Session nesting behaviour
 

@@ -4,7 +4,7 @@ Equipped is a comprehensive, batteries-included, and opinionated full-stack fram
 
 ## Core Features
 
--   **All-in-One**: Integrated server (Fastify/Express), database (MongoDB), caching (Redis), job queue (Bull/Redis), and event bus (Kafka/RabbitMQ).
+-   **All-in-One**: Integrated server (Fastify/Express), typed ORM (adapter-agnostic), caching (Redis), job queue (Bull/Redis), and event bus (Kafka/RabbitMQ).
 -   **Type-Safe**: End-to-end type safety from environment variables and configuration to database models and API routes.
 -   **Modular & Opinionated**: Sensible defaults and a modular design allow you to enable only the features you need, while providing a clear structure for your application.
 -   **Lifecycle Management**: Coordinated startup and shutdown hooks (`setup`, `start`, `close`) ensure graceful initialization and termination of all components.
@@ -198,45 +198,438 @@ router.post('/upload')({
 });
 ```
 
-## Database (MongoDB)
+## ORM
 
-Equipped provides a powerful abstraction layer for MongoDB, including type-safe queries, models, and change streams.
+Equipped ships a typed, capability-aware ORM built on the stack **Schema → Relations → Adapter → Repo**. The package ships no database drivers — adapters (including the in-tree MongoDB and PostgreSQL adapters) declare exactly what they support, and the Repo's TypeScript surface narrows to match. Calling a method the adapter doesn't implement is a compile error, not a runtime throw.
+
+### Defining a Schema
+
+A Schema describes a single document shape — name, primary key, data fields, and optional computed fields. Schemas are adapter-agnostic and carry `valleyed` pipes for validation.
 
 ```typescript
-// 1. Define a model and an entity class
-class UserEntity extends DataClass {
-    constructor(data: PipeOutput<typeof UserEntity.schema>) {
-        super(data);
-    }
-    static schema = v.object({
-        _id: v.string(),
-        name: v.string(),
-        email: v.string().pipe(v.email()),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-    });
+import { defineSchema } from 'equipped/orm'
+
+const UserSchema = defineSchema('users', (s) =>
+    s
+        .pk('id', v.string(), () => crypto.randomUUID())
+        .field('email', v.string())
+        .field('name', v.string())
+        .field('age', v.number())
+        .field('orgId', v.string())
+        .field('tags', v.array(v.string()))
+        .field('bio', v.optional(v.string()), { onCreate: () => undefined })
+        .field('createdAt', v.number(), { onCreate: () => Date.now() })
+        .field('updatedAt', v.number(), {
+            onCreate: () => Date.now(),
+            onUpdate: () => Date.now(),
+        })
+)
+```
+
+-   **`pk(name, pipe, generator)`** — declares the primary key. The generator runs on insert.
+-   **`field(name, pipe, opts?)`** — declares a data field. Optional `onCreate` / `onUpdate` generators auto-inject values.
+-   **`computed(name, deps, pipe, compute)`** — declares a derived field computed from persisted dependencies.
+
+Fields with `onUpdate` generators auto-bump on every update unless the update explicitly touches that field.
+
+### Defining Relations
+
+Relations live in a separate artifact from the schema. They wire `hasMany` / `hasOne` / `belongsTo` descriptors using schema-tagged Field references as foreign keys.
+
+```typescript
+import { defineRelations } from 'equipped/orm'
+
+const PostSchema = defineSchema('posts', (s) =>
+    s
+        .pk('id', v.string(), () => crypto.randomUUID())
+        .field('title', v.string())
+        .field('userId', v.string())
+)
+
+const ProfileSchema = defineSchema('profiles', (s) =>
+    s
+        .pk('id', v.string(), () => crypto.randomUUID())
+        .field('bio', v.string())
+        .field('userId', v.string())
+)
+
+const OrgSchema = defineSchema('orgs', (s) =>
+    s.pk('id', v.string(), () => crypto.randomUUID()).field('name', v.string())
+)
+
+const UserRelations = defineRelations(UserSchema, (rel, src) =>
+    rel
+        .hasMany('posts', PostSchema.fields.userId)
+        .hasOne('profile', ProfileSchema.fields.userId)
+        .belongsTo('org', src.fields.orgId, OrgSchema)
+)
+```
+
+-   **`hasMany(name, fk)`** — one-to-many. The FK lives on the target schema; target is inferred from the FK's phantom schema tag.
+-   **`hasOne(name, fk)`** — one-to-one. Same FK-driven inference as `hasMany`.
+-   **`belongsTo(name, fk, target, references?)`** — many-to-one. The FK lives on the source schema.
+-   **FK type-safety** — FKs must be `Field` instances (not raw strings), and pointing a string FK at a number PK is a compile error.
+-   **Self-referential** — works without special casing: `belongsTo('manager', src.fields.managerId, UserSchema)`.
+-   **Many-to-many** — modelled via an explicit join schema with two `belongsTo` relations.
+
+### Defining an Adapter
+
+An Adapter declares capabilities via three closed canonical sets and four optional behaviour bags, then implements the methods for each bag it declares.
+
+```typescript
+import { defineAdapter } from 'equipped/orm'
+
+const adapter = defineAdapter((a) =>
+    a
+        .config({} as { table: string })
+        .supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
+        .queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn')
+        .updateOps('set', 'inc', 'mul')
+        .lifecycle({
+            connect: async () => { /* open pool */ },
+            disconnect: async () => { /* close pool */ },
+        })
+        .crud({
+            findByPk: async (schema, config, pk) => { /* ... */ },
+            insertMany: async (schema, config, data) => { /* ... */ },
+            updateByPk: async (schema, config, pk, ops) => { /* ... */ },
+            deleteByPk: async (schema, config, pk) => { /* ... */ },
+            raw: async (schema, config, command, params) => { /* ... */ },
+        })
+        .queryable({
+            findMany: async (schema, config, filter, options) => { /* ... */ },
+            updateMany: async (schema, config, filter, data) => { /* ... */ },
+            deleteMany: async (schema, config, filter) => { /* ... */ },
+            upsertOne: async (schema, config, filter, insert, ops) => { /* ... */ },
+        })
+        .transactional({
+            session: async (fn) => { /* ... */ },
+        })
+)
+```
+
+#### Capability Declarations
+
+| Declaration | Values |
+|---|---|
+| `supportedFieldTypes` | `string`, `number`, `boolean`, `null`, `object`, `array`, `date` |
+| `queryableOps` | `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `like`, `exists`, `notExists`, `contains`, `notContains` |
+| `updateOps` | `set`, `inc`, `mul`, `min`, `max`, `unset`, `push`, `pull`, `patch` |
+
+Adapters subset these sets — they cannot extend them. Extension requires a package version bump.
+
+#### Behaviour Bags
+
+| Bag | Methods | Purpose |
+|---|---|---|
+| `lifecycle` | `connect`, `disconnect` | Connection management |
+| `crud` | `findByPk`, `insertMany`, `updateByPk`, `deleteByPk`, `raw` | PK-keyed and raw operations |
+| `queryable` | `findMany`, `updateMany`, `deleteMany`, `upsertOne` | Filter-based operations |
+| `transactional` | `session` | Transaction support |
+
+Every bag and every method within a bag is independently optional. An adapter that only declares `crud` with `findByPk` is a valid read-only, PK-only adapter.
+
+**Co-required pair**: `.queryable()` requires `.queryableOps()` to have been called with a non-empty list. Calling `.queryable()` without it is both a compile error and a runtime throw.
+
+**No-emulation rule**: the framework never silently emulates a missing op or behaviour client-side. If the adapter doesn't declare it, the Repo method doesn't exist at the type level. Adapter-specific power lives in `raw` only.
+
+The in-tree adapters live under `src/orm/adapters/` — see their individual READMEs for session nesting behaviour and upsert-compatible filter shapes:
+-   [MongoDB adapter](src/orm/adapters/mongodb/README.md)
+-   [PostgreSQL adapter](src/orm/adapters/postgresql/README.md)
+
+### Defining a Repo
+
+A Repo wraps an adapter and provides the schema-per-call surface. One Repo handles all schemas — no registry, no per-schema derivation.
+
+```typescript
+import { defineRepo } from 'equipped/orm'
+
+const repo = defineRepo((r) =>
+    r
+        .adapter(adapter)
+        .resolve((schema) => ({ table: schema.name }))
+)
+```
+
+-   **`.adapter(a)`** — binds the adapter. Called once.
+-   **`.resolve(fn)`** — maps schema → adapter config. Called once.
+-   **`.context(source)`** — optional. Wires a `ContextSource` for per-query config transforms (see [Context & Multi-tenancy](#context--multi-tenancy)).
+
+### Repository API
+
+The Repo exposes two API surfaces: a **schema-per-call** API for direct method invocation and a **fluent builder** API via `repo.from(Schema)`.
+
+#### Schema-per-call API
+
+**CRUD by primary key** (gated by `crud` bag):
+
+```typescript
+const user = await repo.findByPk(UserSchema, 'u1')
+const created = await repo.insertOne(UserSchema, { email: 'a@b.com', name: 'Alice' })
+const batch = await repo.insertMany(UserSchema, [
+    { email: 'a@b.com', name: 'Alice' },
+    { email: 'b@c.com', name: 'Bob' },
+])
+const updated = await repo.updateByPk(UserSchema, 'u1', set<typeof UserSchema>({ name: 'New' }))
+const deleted = await repo.deleteByPk(UserSchema, 'u1')
+const result = await repo.raw(UserSchema, 'SELECT * FROM users WHERE id = $1', ['u1'])
+```
+
+**Filter-based methods** (gated by `queryable` bag):
+
+```typescript
+const users = await repo.findMany(UserSchema, (q) => q.eq('name', 'Alice'))
+const user = await repo.findOne(UserSchema, (q) => q.eq('email', 'a@b.com'))
+const updated = await repo.updateOne(
+    UserSchema,
+    (q) => q.eq('name', 'Alice'),
+    { name: 'Alicia' },
+)
+const allUpdated = await repo.updateMany(
+    UserSchema,
+    (q) => q.eq('name', 'Same'),
+    { name: 'Updated' },
+)
+const deleted = await repo.deleteOne(UserSchema, (q) => q.eq('name', 'Alice'))
+const allDeleted = await repo.deleteMany(UserSchema, (q) => q.eq('name', 'ToDelete'))
+```
+
+**Upsert** (gated by `queryable.upsertOne`):
+
+```typescript
+const result = await repo.upsertOne(
+    UserSchema,
+    (q) => q.eq('email', 'a@b.com'),
+    { email: 'a@b.com', name: 'Alice', age: 30 },        // full insert payload
+    set<typeof UserSchema>({ name: 'Alice Updated' }),      // ops for update path
+)
+```
+
+Dual-path semantics: if no row matches, the insert payload is persisted and ops are applied on top. If a row exists, the insert payload is ignored and only ops + auto-bump run. The result is always the resulting document.
+
+**Transactions** (gated by `transactional.session`):
+
+```typescript
+const result = await repo.session(async () => {
+    const user = await repo.insertOne(UserSchema, { email: 'a@b.com', name: 'Alice' })
+    await repo.insertOne(PostSchema, { title: 'Hello', userId: user.id })
+    return user.id
+})
+// Throw inside the callback → automatic rollback
+```
+
+#### Fluent Builder API
+
+`repo.from(Schema)` returns a builder that branches into `.one()` (single document) or `.all()` (collection).
+
+```typescript
+// Insert
+const user = await repo.from(UserSchema).one().insert({ email: 'a@b.com', name: 'Alice' })
+const users = await repo.from(UserSchema).all().insert([
+    { email: 'a@b.com', name: 'Alice' },
+    { email: 'b@c.com', name: 'Bob' },
+])
+
+// Read by PK
+const found = await repo.from(UserSchema).one().id('u1').find()
+
+// Read with filters, ordering, pagination
+const results = await repo.from(UserSchema).all()
+    .where((q) => q.eq('name', 'Alice'))
+    .orderBy('createdAt', 'desc')
+    .limit(10)
+    .offset(20)
+    .find()
+
+// Select specific fields
+const partial = await repo.from(UserSchema).all()
+    .select(['id', 'name'])
+    .find()
+
+// Preload relations
+const withPosts = await repo.from(UserSchema).one().id('u1')
+    .preload([UserRelations.posts, UserRelations.org])
+    .find()
+
+// Update
+const updated = await repo.from(UserSchema).one().id('u1').update({ name: 'New Name' })
+const allUpdated = await repo.from(UserSchema).all()
+    .where((q) => q.eq('name', 'Old'))
+    .update({ name: 'New' })
+
+// Upsert
+const upserted = await repo.from(UserSchema).one()
+    .where((q) => q.eq('email', 'a@b.com'))
+    .upsert({ insert: { email: 'a@b.com', name: 'Alice' } })
+
+// Delete
+const deleted = await repo.from(UserSchema).one().id('u1').delete()
+const allDeleted = await repo.from(UserSchema).all()
+    .where((q) => q.eq('name', 'ToDelete'))
+    .delete()
+
+// Raw
+const raw = await repo.from(UserSchema).raw('SELECT * FROM users')
+```
+
+Builder snapshots are immutable — branching from a base builder does not mutate the original.
+
+#### Method Gating
+
+Every Repo method is gated by the adapter's capability declarations. Methods whose bag or sub-method isn't declared collapse to `never` at the type level:
+
+| Repo method | Required adapter capability |
+|---|---|
+| `findByPk` | `crud.findByPk` |
+| `insertOne` / `insertMany` | `crud.insertMany` |
+| `updateByPk` | `crud.updateByPk` |
+| `deleteByPk` | `crud.deleteByPk` |
+| `raw` | `crud.raw` |
+| `findOne` / `findMany` | `queryable.findMany` |
+| `updateOne` / `updateMany` | `queryable.updateMany` |
+| `deleteOne` / `deleteMany` | `queryable.deleteMany` |
+| `upsertOne` | `queryable.upsertOne` |
+| `session` | `transactional.session` |
+
+A schema with a field type not in `supportedFieldTypes` resolves to `never` in the schema argument position — the call won't compile.
+
+### Filters (Query API)
+
+Filter-based Repo methods accept a factory `(q) => q.op(field, value)` that builds a `FilterGroup`. Every method on `FilterGroup` maps to one of the 13 canonical filter ops:
+
+| Op | Signature | Description |
+|---|---|---|
+| `eq` | `q.eq(field, value)` | Equal |
+| `ne` | `q.ne(field, value)` | Not equal |
+| `gt` | `q.gt(field, value)` | Greater than |
+| `gte` | `q.gte(field, value)` | Greater than or equal |
+| `lt` | `q.lt(field, value)` | Less than |
+| `lte` | `q.lte(field, value)` | Less than or equal |
+| `in` | `q.in(field, values)` | In array |
+| `notIn` | `q.notIn(field, values)` | Not in array |
+| `like` | `q.like(field, pattern)` | Substring match |
+| `exists` | `q.exists(field)` | Field is non-null |
+| `notExists` | `q.notExists(field)` | Field is null/undefined (its own op, not a boolean form of `exists`) |
+| `contains` | `q.contains(field, values)` | Array contains subset |
+| `notContains` | `q.notContains(field, values)` | Array does not contain subset |
+
+Structural combinators build compound filters:
+
+```typescript
+// AND — all conditions must match
+q.and([
+    (g) => g.gt('age', 18),
+    (g) => g.eq('active', true),
+])
+
+// OR — any condition matches
+q.or([
+    (g) => g.eq('role', 'admin'),
+    (g) => g.eq('role', 'superadmin'),
+])
+```
+
+Filters can reference fields by name (string) or by schema-tagged Field reference (`UserSchema.fields.email`). Empty `and([])` / `or([])` throws at builder time. Unknown fields throw `OrmValidationError` at the Repo-entry boundary.
+
+Filter ops are gated per-adapter: the `FilterGroup` passed to a Repo method only exposes ops declared in the adapter's `queryableOps`. Undeclared ops are `never` at the type level.
+
+### Update Operations
+
+The `updateByPk` method and `upsertOne` accept typed update ops. Nine canonical op helpers are exported from `equipped/orm`:
+
+| Op | Helper | Target |
+|---|---|---|
+| `set` | `set<Schema>({ field: value })` | Any field (partial) |
+| `inc` | `inc<Schema>(field, value)` | Numeric fields |
+| `mul` | `mul<Schema>(field, value)` | Numeric fields |
+| `min` | `min<Schema>(field, value)` | Comparable fields |
+| `max` | `max<Schema>(field, value)` | Comparable fields |
+| `unset` | `unset<Schema>(field)` | Optional fields |
+| `push` | `push<Schema>(field, value)` | Array fields |
+| `pull` | `pull<Schema>(field, value)` | Array fields |
+| `patch` | `patch<Schema>(field, value)` | Object fields |
+
+```typescript
+import { set, inc, push } from 'equipped/orm'
+
+await repo.updateByPk(
+    UserSchema, 'u1',
+    set<typeof UserSchema>({ name: 'Alice' }),
+    inc<typeof UserSchema>(UserSchema.fields.age, 1),
+    push<typeof UserSchema>(UserSchema.fields.tags, 'premium'),
+)
+```
+
+-   `updateByPk` requires at least one op (enforced at the type level).
+-   Conflicting ops on the same field (e.g. `set({ views: 0 })` + `inc(views, 1)`) throw `OrmValidationError` with `kind: 'conflicting-ops'`.
+-   Only `set` values are pipe-validated; atomic op operands are not.
+-   Op availability is gated by the adapter's `updateOps` declaration — undeclared ops resolve to `never`.
+
+### Context & Multi-tenancy
+
+`defineRepo` accepts an optional `.context(source)` step that wires a `ContextSource` for per-query config transforms. The library imports zero `node:async_hooks` — you own the scope-entry mechanism.
+
+```typescript
+import { type ContextSource, type ConfigTransform, defineRepo } from 'equipped/orm'
+
+type MyConfig = { table: string; tenantPrefix?: string }
+
+// Node + AsyncLocalStorage
+import { AsyncLocalStorage } from 'node:async_hooks'
+const tenantStore = new AsyncLocalStorage<string>()
+
+const ctxSource: ContextSource<MyConfig> = {
+    get: () => {
+        const tenantId = tenantStore.getStore()
+        if (!tenantId) return null
+        return (config) => ({ ...config, tenantPrefix: tenantId })
+    },
 }
 
-// 2. Configure the database in settings
-// dbs: { types: { mongo: { type: 'mongo', uri: envs.MONGO_URI } } }
+const repo = defineRepo((r) =>
+    r
+        .adapter(adapter)
+        .resolve((schema) => ({ table: schema.name }))
+        .context(ctxSource)
+)
 
-// 3. Access the table through the instance
-const users = instance.dbs.mongo.use<PipeOutput<typeof UserEntity.schema>, UserEntity>({
-    db: 'main-db',
-    col: 'users',
-    mapper: (e) => new UserEntity(e),
-    // Optional: Listen for database changes
-    change: {
-        created: async ({ after }) => console.log(`User created: ${after.name}`),
-        updated: async ({ after }) => console.log(`User updated: ${after.name}`),
-        deleted: async ({ before }) => console.log(`User deleted: ${before.name}`),
-    }
-});
-
-// 4. Use the table methods
-const newUser = await users.insertOne({ name: 'Jane Doe', email: 'jane@example.com' });
-const foundUser = await users.findById(newUser._id);
+// Per-request scope entry (you own this)
+app.use((req, res, next) => {
+    tenantStore.run(req.headers['x-tenant-id'], next)
+})
 ```
+
+**How it works**: `ContextSource.get()` is called per-query (not cached at session or Repo level). If it returns `null`, the base config is used unmodified. If it returns a transform, the transform is applied to the base config before the adapter receives it. Transforms apply to preload sub-queries and queries inside sessions.
+
+**Alternative patterns**:
+
+-   **Hono context-storage**: use Hono's `getContext()` inside `ContextSource.get()`.
+-   **Dependency injection**: pass a DI container that provides the current tenant.
+-   **Explicit threading**: use `repo.resolve((config) => transform(config), async () => { ... })` to scope a block of queries with an explicit config override.
+
+**Footgun mitigations**: without a wired `ContextSource`, all queries run untenanted. To fail loud on missing tenant context, have your `get()` throw instead of returning `null` when a tenant is expected but absent.
+
+### Builder-chain Pattern Overview
+
+All declarative artifact construction (`defineSchema`, `defineRelations`, `defineAdapter`, `defineRepo`) uses a uniform **builder-chain** pattern:
+
+```typescript
+const artifact = defineX((builder) =>
+    builder
+        .stepA(...)
+        .stepB(...)
+        .stepC(...)
+)
+```
+
+**Rules**:
+
+-   **Once-per-step**: each builder step can be called at most once. Duplicate calls are compile errors via a uniqueness guard (`K extends keyof Acc ? never : K`).
+-   **Per-step coherence**: each step validates its own constraints at the call site. For example, `.queryable()` requires `.queryableOps()` to have been called first with a non-empty list.
+-   **Omission-equals-empty**: a step not called means the artifact doesn't declare that capability. Op-list fields default to `readonly []`; behaviours default to absent.
+-   **Name-parity convention**: builder method names match the capability names they declare (`.queryableOps()` declares `queryableOps`, `.crud()` declares `crud`, etc.).
+
+This pattern applies only to **definitions** (static artifact construction). **Operations** (Repo method calls, `repo.session()`, op helpers like `set()`) use direct function calls.
 
 ## Caching (Redis)
 
