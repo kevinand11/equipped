@@ -14,7 +14,7 @@
 	"scripts": {
 		"dev": "tsup --watch",
 		"prebuild": "tsc --noEmit",
-		"build": "tsup || echo 'Done'",
+		"build": "NODE_OPTIONS=--max-old-space-size=8192 tsup",
 		"lint": "eslint --fix src",
 		"test": "vitest run",
 		"release": "standard-version",
