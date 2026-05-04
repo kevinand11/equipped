@@ -103,7 +103,7 @@ export function createMongoAdapter(connectionConfig: MongoDbConnectionConfig) {
 						const collection = getCollection(config)
 						const update = compileMongoOps(ops)
 						if (Object.keys(update).length === 0) {
-							return collection.findOne({ [pkName]: pk }, { session: sessionStore.getStore() }) as Promise<Record<string, unknown> | null>
+							return await collection.findOne({ [pkName]: pk }, { session: sessionStore.getStore() }) as Record<string, unknown> | null
 						}
 						return await collection.findOneAndUpdate(
 							{ [pkName]: pk },
@@ -171,7 +171,7 @@ export function createMongoAdapter(connectionConfig: MongoDbConnectionConfig) {
 						if (limit) cursor = cursor.limit(limit)
 						if (skip) cursor = cursor.skip(skip)
 
-						return cursor.toArray()
+						return await cursor.toArray()
 					} catch (error) {
 						throw new EquippedError(
 							'MongoDB findMany failed',
@@ -196,7 +196,7 @@ export function createMongoAdapter(connectionConfig: MongoDbConnectionConfig) {
 							await collection.updateMany(idFilter, update, { session })
 						}
 
-						return collection.find({ [pk]: { $in: ids } }, { session }).toArray()
+						return await collection.find({ [pk]: { $in: ids } }, { session }).toArray()
 					} catch (error) {
 						throw new EquippedError(
 							'MongoDB updateMany failed',

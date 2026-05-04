@@ -1,6 +1,6 @@
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import type { QueryOptions } from '../../query'
-import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
+import { flattenOps, IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
 
 type MongoFilter = Record<string, unknown>
 
@@ -89,25 +89,15 @@ function compileFilter(f: Filter, primaryKey: string): MongoFilter {
 
 function compileChild(child: FilterChild, primaryKey: string): MongoFilter | null {
 	if (child instanceof Filter) return compileFilter(child, primaryKey)
-	if (child instanceof FilterGroup) {
-		if (child.op === 'and') return compileAndGroup(child, primaryKey)
-		if (child.op === 'or') return compileOrGroup(child, primaryKey)
-	}
+	if (child instanceof FilterGroup) return compileGroup(child, primaryKey)
 	return null
 }
 
-function compileAndGroup(group: FilterGroup, primaryKey: string): MongoFilter | null {
+function compileGroup(group: FilterGroup, primaryKey: string): MongoFilter | null {
 	const clauses = group.children.map((c) => compileChild(c, primaryKey)).filter((c): c is MongoFilter => c !== null)
 	if (clauses.length === 0) return null
 	if (clauses.length === 1) return clauses[0]
-	return { $and: clauses }
-}
-
-function compileOrGroup(group: FilterGroup, primaryKey: string): MongoFilter | null {
-	const clauses = group.children.map((c) => compileChild(c, primaryKey)).filter((c): c is MongoFilter => c !== null)
-	if (clauses.length === 0) return null
-	if (clauses.length === 1) return clauses[0]
-	return { $or: clauses }
+	return { [group.op === 'or' ? '$or' : '$and']: clauses }
 }
 
 export function compileMongoUpdate(data: Record<string, unknown>): Record<string, unknown> {
@@ -150,51 +140,7 @@ export function compileMongoUpdate(data: Record<string, unknown>): Record<string
 }
 
 export function compileMongoOps(ops: AnyUpdateOp[]): Record<string, unknown> {
-	const $set: Record<string, unknown> = {}
-	const $inc: Record<string, unknown> = {}
-	const $mul: Record<string, unknown> = {}
-	const $min: Record<string, unknown> = {}
-	const $max: Record<string, unknown> = {}
-	const $unset: Record<string, ''> = {}
-	const $push: Record<string, unknown> = {}
-	const $pull: Record<string, unknown> = {}
-
-	for (const op of ops) {
-		if (op instanceof SetOp) {
-			Object.assign($set, op.values)
-		} else if (op instanceof IncOp) {
-			$inc[op.field] = op.value
-		} else if (op instanceof MulOp) {
-			$mul[op.field] = op.value
-		} else if (op instanceof MinOp) {
-			$min[op.field] = op.value
-		} else if (op instanceof MaxOp) {
-			$max[op.field] = op.value
-		} else if (op instanceof UnsetOp) {
-			$unset[op.field] = ''
-		} else if (op instanceof PushOp) {
-			$push[op.field] = op.value
-		} else if (op instanceof PullOp) {
-			$pull[op.field] = op.value
-		} else if (op instanceof PatchOp) {
-			const patchVal = op.value as Record<string, unknown>
-			for (const [subKey, subVal] of Object.entries(patchVal)) {
-				$set[`${op.field}.${subKey}`] = subVal
-			}
-		}
-	}
-
-	const result: Record<string, unknown> = {}
-	if (Object.keys($set).length) result.$set = $set
-	if (Object.keys($inc).length) result.$inc = $inc
-	if (Object.keys($mul).length) result.$mul = $mul
-	if (Object.keys($min).length) result.$min = $min
-	if (Object.keys($max).length) result.$max = $max
-	if (Object.keys($unset).length) result.$unset = $unset
-	if (Object.keys($push).length) result.$push = $push
-	if (Object.keys($pull).length) result.$pull = $pull
-
-	return result
+	return compileMongoUpdate(flattenOps(ops))
 }
 
 if (import.meta.vitest) {
