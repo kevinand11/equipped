@@ -35,6 +35,7 @@ const commonOptions: Options = {
 	dts: false,
 	minify: false,
 	platform: 'node',
+	define: { 'import.meta.vitest': 'undefined' },
 	esbuildPlugins: [fixImportsPlugin()],
 	esbuildOptions(options) {
 		options.platform = 'node'
