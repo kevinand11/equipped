@@ -1,33 +1,62 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
-
 import type { InferAdapterConfig, InferAdapterQueryableOps, SchemaCompatible } from '../adapter'
 import type { OrmAdapterLike } from '../adapters/base'
 import { assertNormalisedFilter, FilterGroup, type FilterFactory, type GatedFilterFactory } from '../filter'
 import type { AnySchema, SchemaOutput, SchemaPersistedOutput } from '../schema'
-import { validateInsert, validateInsertMany, validateUpdate, validateUpdateOps, validateUpsertConflicts, type SchemaInsertInput, type SchemaUpdateInput } from '../schema-validations'
+import {
+	validateInsert,
+	validateInsertMany,
+	validateUpdate,
+	validateUpdateOps,
+	validateUpsertConflicts,
+	type SchemaInsertInput,
+	type SchemaUpdateInput,
+} from '../schema-validations'
 import type { AnyUpdateOp, HasOp, UpdateOp } from '../updates'
 import { SchemaContext, SchemaRef } from './builders'
+
+export type ConfigTransform<C> = (config: C, schema: AnySchema) => C
+export type ContextSource<C> = { get: () => ConfigTransform<C> | null }
 
 export class Repo<A extends OrmAdapterLike<any>> {
 	readonly #adapter: A
 	readonly #defaults: (schema: AnySchema) => InferAdapterConfig<A>
-	readonly #resolverStore = new AsyncLocalStorage<
-		((config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>) | undefined
-	>()
+	readonly #contextSource?: ContextSource<InferAdapterConfig<A>>
+	readonly #resolverStack: ConfigTransform<InferAdapterConfig<A>>[] = []
 
-	constructor({ adapter, resolve }: { adapter: A; resolve: (schema: AnySchema) => InferAdapterConfig<A> }) {
+	constructor({
+		adapter,
+		resolve,
+		context,
+	}: {
+		adapter: A
+		resolve: (schema: AnySchema) => InferAdapterConfig<A>
+		context?: ContextSource<InferAdapterConfig<A>>
+	}) {
 		this.#adapter = adapter
 		this.#defaults = resolve
+		this.#contextSource = context
 	}
 
 	#getConfig(s: AnySchema): InferAdapterConfig<A> {
-		const resolver = this.#resolverStore.getStore()
-		const base = this.#defaults(s)
-		return resolver ? resolver(base, s) : base
+		let config = this.#defaults(s)
+		if (this.#contextSource) {
+			const transform = this.#contextSource.get()
+			if (transform) config = transform(config, s)
+		}
+		for (const resolver of this.#resolverStack) {
+			config = resolver(config, s)
+		}
+		return config
 	}
 
 	#getUse(s: AnySchema) {
 		return this.#adapter.use(s, this.#getConfig(s))
+	}
+
+	#resolveFilter(s: AnySchema, filter: GatedFilterFactory<InferAdapterQueryableOps<A>>): FilterGroup {
+		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
+		assertNormalisedFilter(s, group)
+		return group
 	}
 
 	from<S extends AnySchema>(schema: S): SchemaRef<S> {
@@ -38,11 +67,11 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		const s = schema as unknown as AnySchema
 		const config = this.#getConfig(s)
 		const adapter = this.#adapter as any
-		if (adapter.crud?.findByPk) {
-			const result = await adapter.crud.findByPk(s, config, pk)
-			return (result as SchemaPersistedOutput<S>) ?? null
+		if (!adapter.crud?.findByPk) {
+			throw new Error('Adapter does not implement crud.findByPk')
 		}
-		throw new Error('Adapter does not implement crud.findByPk')
+		const result = await adapter.crud.findByPk(s, config, pk)
+		return (result as SchemaPersistedOutput<S>) ?? null
 	}
 
 	async findMany<S extends AnySchema>(
@@ -50,10 +79,8 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		q: GatedFilterFactory<InferAdapterQueryableOps<A>>,
 	): Promise<SchemaPersistedOutput<S>[]> {
 		const s = schema as unknown as AnySchema
-		const group = (q as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
-		const use = this.#getUse(s)
-		return (await use.findMany(group)) as SchemaPersistedOutput<S>[]
+		const group = this.#resolveFilter(s, q)
+		return (await this.#getUse(s).findMany(group)) as SchemaPersistedOutput<S>[]
 	}
 
 	async findOne<S extends AnySchema>(
@@ -61,10 +88,8 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		q: GatedFilterFactory<InferAdapterQueryableOps<A>>,
 	): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
-		const group = (q as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
-		const use = this.#getUse(s)
-		return (await use.findOne(group)) as SchemaPersistedOutput<S> | null
+		const group = this.#resolveFilter(s, q)
+		return (await this.#getUse(s).findOne(group)) as SchemaPersistedOutput<S> | null
 	}
 
 	async updateByPk<S extends AnySchema>(
@@ -85,27 +110,24 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return (result as SchemaPersistedOutput<S>) ?? null
 	}
 
-	async deleteByPk<S extends AnySchema>(
-		schema: SchemaCompatible<A, S>,
-		pk: unknown,
-	): Promise<SchemaPersistedOutput<S> | null> {
+	async deleteByPk<S extends AnySchema>(schema: SchemaCompatible<A, S>, pk: unknown): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
 		const config = this.#getConfig(s)
 		const adapter = this.#adapter as any
-		if (adapter.crud?.deleteByPk) {
-			const result = await adapter.crud.deleteByPk(s, config, pk)
-			return (result as SchemaPersistedOutput<S>) ?? null
+		if (!adapter.crud?.deleteByPk) {
+			throw new Error('Adapter does not implement crud.deleteByPk')
 		}
-		throw new Error('Adapter does not implement crud.deleteByPk')
+		const result = await adapter.crud.deleteByPk(s, config, pk)
+		return (result as SchemaPersistedOutput<S>) ?? null
 	}
 
 	async raw<T = unknown>(schema: AnySchema, command: unknown, params?: unknown[]): Promise<T> {
 		const config = this.#getConfig(schema)
 		const adapter = this.#adapter as any
-		if (adapter.crud?.raw) {
-			return adapter.crud.raw(schema, config, command, params)
+		if (!adapter.crud?.raw) {
+			throw new Error('Adapter does not implement crud.raw')
 		}
-		throw new Error('Adapter does not implement crud.raw')
+		return adapter.crud.raw(schema, config, command, params)
 	}
 
 	async updateOne<S extends AnySchema>(
@@ -115,8 +137,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
 		const validated = validateUpdate(s, data as any)
-		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
+		const group = this.#resolveFilter(s, filter)
 		const use = this.#getUse(s)
 		const match = await use.findOne(group)
 		if (!match) return null
@@ -132,8 +153,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	): Promise<SchemaPersistedOutput<S>[]> {
 		const s = schema as unknown as AnySchema
 		const validated = validateUpdate(s, data as any)
-		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
+		const group = this.#resolveFilter(s, filter)
 		const rows = await this.#getUse(s).updateMany(group, validated as any)
 		return rows as SchemaPersistedOutput<S>[]
 	}
@@ -143,8 +163,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
 	): Promise<SchemaPersistedOutput<S> | null> {
 		const s = schema as unknown as AnySchema
-		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
+		const group = this.#resolveFilter(s, filter)
 		const row = await this.#getUse(s).deleteOne(group)
 		return (row as SchemaPersistedOutput<S>) ?? null
 	}
@@ -154,8 +173,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
 	): Promise<SchemaPersistedOutput<S>[]> {
 		const s = schema as unknown as AnySchema
-		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
+		const group = this.#resolveFilter(s, filter)
 		const rows = await this.#getUse(s).deleteMany(group)
 		return rows as SchemaPersistedOutput<S>[]
 	}
@@ -179,8 +197,12 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return row as SchemaPersistedOutput<S>
 	}
 
-	async session<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
+	async sesssion<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
 		return this.#adapter.session(() => fn(this))
+	}
+
+	async session<T>(fn: () => Promise<T>): Promise<T> {
+		return this.#adapter.session(fn)
 	}
 
 	async insertOne<S extends AnySchema>(schema: S, data: SchemaInsertInput<S>): Promise<SchemaOutput<S>> {
@@ -201,15 +223,19 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		resolver: (config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>,
 		fn: () => Promise<T>,
 	): Promise<T> {
-		const outerResolver = this.#resolverStore.getStore()
-		const chained = outerResolver ? (config: InferAdapterConfig<A>, s: AnySchema) => resolver(outerResolver(config, s), s) : resolver
-		return this.#resolverStore.run(chained, fn)
+		this.#resolverStack.push(resolver)
+		try {
+			return await fn()
+		} finally {
+			this.#resolverStack.pop()
+		}
 	}
 }
 
 class RepoBuilder<A = never, Config = never> {
 	#adapter: unknown
 	#resolve: unknown
+	#context: unknown
 
 	adapter<NewA>(a: [A] extends [never] ? NewA : never): RepoBuilder<NewA, Config> {
 		this.#adapter = a
@@ -221,14 +247,17 @@ class RepoBuilder<A = never, Config = never> {
 		return this as unknown as RepoBuilder<A, NewConfig>
 	}
 
+	context(source: ContextSource<Config>): RepoBuilder<A, Config> {
+		this.#context = source
+		return this
+	}
+
 	_build() {
-		return { adapter: this.#adapter, resolve: this.#resolve }
+		return { adapter: this.#adapter, resolve: this.#resolve, context: this.#context }
 	}
 }
 
-type HasMethod<A, Bag extends string, Method extends string> = A extends Record<Bag, Record<Method, (...args: any) => any>>
-	? true
-	: false
+type HasMethod<A, Bag extends string, Method extends string> = A extends Record<Bag, Record<Method, (...args: any) => any>> ? true : false
 
 export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
 	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { updateOne: never; updateMany: never }) &
@@ -236,13 +265,12 @@ export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
 	(HasMethod<A, 'crud', 'updateByPk'> extends true ? {} : { updateByPk: never }) &
 	(HasMethod<A, 'crud', 'deleteByPk'> extends true ? {} : { deleteByPk: never }) &
 	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never }) &
-	([HasMethod<A, 'queryable', 'upsertOne'>, HasOp<A, 'upsert'>] extends [true, true] ? {} : { upsertOne: never })
+	([HasMethod<A, 'queryable', 'upsertOne'>, HasOp<A, 'upsert'>] extends [true, true] ? {} : { upsertOne: never }) &
+	(HasMethod<A, 'transactional', 'session'> extends true ? {} : { session: never })
 
-export function defineRepo<A extends OrmAdapterLike<any>, Config>(
-	build: (b: RepoBuilder) => RepoBuilder<A, Config>,
-): RepoSurface<A> {
+export function defineRepo<A extends OrmAdapterLike<any>, Config>(build: (b: RepoBuilder) => RepoBuilder<A, Config>): RepoSurface<A> {
 	const data = build(new RepoBuilder())._build()
-	return new Repo<A>({ adapter: data.adapter as A, resolve: data.resolve as any }) as RepoSurface<A>
+	return new Repo<A>({ adapter: data.adapter as A, resolve: data.resolve as any, context: data.context as any }) as RepoSurface<A>
 }
 
 if (import.meta.vitest) {
@@ -369,9 +397,9 @@ if (import.meta.vitest) {
 		test('session supports multi-operation writes with fluent builders', async () => {
 			const repo = makeRepo()
 
-			const insertedId = await repo.session(async (tx) => {
-				const created = await tx.from(UserSchema).one().insert({ email: 'tx@fluent.com', name: 'Tx Fluent' })
-				await tx.from(UserSchema).one().id(created.id).update({ name: 'Tx Fluent Updated' })
+			const insertedId = await repo.session(async () => {
+				const created = await repo.from(UserSchema).one().insert({ email: 'tx@fluent.com', name: 'Tx Fluent' })
+				await repo.from(UserSchema).one().id(created.id).update({ name: 'Tx Fluent Updated' })
 				return created.id
 			})
 
@@ -480,8 +508,8 @@ if (import.meta.vitest) {
 		test('session returns callback value and persists writes', async () => {
 			const repo = makeRepo()
 			let insertedId = ''
-			const result = await repo.session(async (tx) => {
-				const inserted = await tx.from(UserSchema).one().insert({ email: 't@test.com', name: 'TxUser' })
+			const result = await repo.session(async () => {
+				const inserted = await repo.from(UserSchema).one().insert({ email: 't@test.com', name: 'TxUser' })
 				insertedId = inserted.id
 				return 42
 			})
@@ -715,31 +743,29 @@ if (import.meta.vitest) {
 
 		test('repo.updateOne updates first matching document via filter', async () => {
 			const repo = makeRepo()
-			await repo.from(UserSchema).all().insert([
-				{ email: 'a@test.com', name: 'Alice' },
-				{ email: 'b@test.com', name: 'Bob' },
-			])
+			await repo
+				.from(UserSchema)
+				.all()
+				.insert([
+					{ email: 'a@test.com', name: 'Alice' },
+					{ email: 'b@test.com', name: 'Bob' },
+				])
 
-			const updated = await repo.updateOne(
-				UserSchema,
-				(q) => q.eq('name', 'Alice'),
-				{ name: 'Alicia' },
-			)
+			const updated = await repo.updateOne(UserSchema, (q) => q.eq('name', 'Alice'), { name: 'Alicia' })
 			expect(updated?.name).toBe('Alicia')
 		})
 
 		test('repo.updateOne with non-unique filter selects first match', async () => {
 			const repo = makeRepo()
-			await repo.from(UserSchema).all().insert([
-				{ email: 'a@test.com', name: 'Same' },
-				{ email: 'b@test.com', name: 'Same' },
-			])
+			await repo
+				.from(UserSchema)
+				.all()
+				.insert([
+					{ email: 'a@test.com', name: 'Same' },
+					{ email: 'b@test.com', name: 'Same' },
+				])
 
-			const updated = await repo.updateOne(
-				UserSchema,
-				(q) => q.eq('name', 'Same'),
-				{ name: 'Changed' },
-			)
+			const updated = await repo.updateOne(UserSchema, (q) => q.eq('name', 'Same'), { name: 'Changed' })
 			expect(updated?.name).toBe('Changed')
 
 			const all = await repo.from(UserSchema).all().find()
@@ -749,17 +775,16 @@ if (import.meta.vitest) {
 
 		test('repo.updateMany updates all matching documents', async () => {
 			const repo = makeRepo()
-			await repo.from(UserSchema).all().insert([
-				{ email: 'a@test.com', name: 'Same' },
-				{ email: 'b@test.com', name: 'Same' },
-				{ email: 'c@test.com', name: 'Different' },
-			])
+			await repo
+				.from(UserSchema)
+				.all()
+				.insert([
+					{ email: 'a@test.com', name: 'Same' },
+					{ email: 'b@test.com', name: 'Same' },
+					{ email: 'c@test.com', name: 'Different' },
+				])
 
-			const updated = await repo.updateMany(
-				UserSchema,
-				(q) => q.eq('name', 'Same'),
-				{ name: 'Updated' },
-			)
+			const updated = await repo.updateMany(UserSchema, (q) => q.eq('name', 'Same'), { name: 'Updated' })
 			expect(updated).toHaveLength(2)
 			expect(updated.every((u) => u.name === 'Updated')).toBe(true)
 		})
@@ -774,20 +799,19 @@ if (import.meta.vitest) {
 			const repo = makeRepo()
 			await repo.from(AutoSchema).one().insert({ name: 'A' })
 
-			const updated = await repo.updateMany(
-				AutoSchema,
-				(q) => q.eq('name', 'A'),
-				{ name: 'B' },
-			)
+			const updated = await repo.updateMany(AutoSchema, (q) => q.eq('name', 'A'), { name: 'B' })
 			expect(updated[0].updatedAt).toBe(9999)
 		})
 
 		test('repo.deleteOne removes first matching document', async () => {
 			const repo = makeRepo()
-			await repo.from(UserSchema).all().insert([
-				{ email: 'a@test.com', name: 'Alice' },
-				{ email: 'b@test.com', name: 'Bob' },
-			])
+			await repo
+				.from(UserSchema)
+				.all()
+				.insert([
+					{ email: 'a@test.com', name: 'Alice' },
+					{ email: 'b@test.com', name: 'Bob' },
+				])
 
 			const deleted = await repo.deleteOne(UserSchema, (q) => q.eq('name', 'Alice'))
 			expect(deleted?.name).toBe('Alice')
@@ -798,11 +822,14 @@ if (import.meta.vitest) {
 
 		test('repo.deleteMany removes all matching and returns them', async () => {
 			const repo = makeRepo()
-			await repo.from(UserSchema).all().insert([
-				{ email: 'a@test.com', name: 'ToDelete' },
-				{ email: 'b@test.com', name: 'ToDelete' },
-				{ email: 'c@test.com', name: 'Keep' },
-			])
+			await repo
+				.from(UserSchema)
+				.all()
+				.insert([
+					{ email: 'a@test.com', name: 'ToDelete' },
+					{ email: 'b@test.com', name: 'ToDelete' },
+					{ email: 'c@test.com', name: 'Keep' },
+				])
 
 			const deleted = await repo.deleteMany(UserSchema, (q) => q.eq('name', 'ToDelete'))
 			expect(deleted).toHaveLength(2)
@@ -816,11 +843,7 @@ if (import.meta.vitest) {
 			const repo = makeRepo()
 			const user = await repo.from(UserSchema).one().insert({ email: 'rt@test.com', name: 'Original' })
 
-			await repo.updateOne(
-				UserSchema,
-				(q) => q.eq('id', user.id),
-				{ name: 'Modified' },
-			)
+			await repo.updateOne(UserSchema, (q) => q.eq('id', user.id), { name: 'Modified' })
 
 			const found = await repo.findByPk(UserSchema, user.id)
 			expect(found?.name).toBe('Modified')
@@ -1108,43 +1131,33 @@ if (import.meta.vitest) {
 
 	describe('type-level: repo method gating', () => {
 		test('missing queryable.updateMany collapses repo.updateOne and repo.updateMany to never', () => {
-			const _adapter = defineAdapter((a) =>
-				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
-			)
+			const _adapter = defineAdapter((a) => a.supportedFieldTypes('string').crud({ findByPk: async () => null }))
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.updateOne).toBeNever()
 			expectTypeOf(_repo.updateMany).toBeNever()
 		})
 
 		test('missing queryable.deleteMany collapses repo.deleteOne and repo.deleteMany to never', () => {
-			const _adapter = defineAdapter((a) =>
-				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
-			)
+			const _adapter = defineAdapter((a) => a.supportedFieldTypes('string').crud({ findByPk: async () => null }))
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.deleteOne).toBeNever()
 			expectTypeOf(_repo.deleteMany).toBeNever()
 		})
 
 		test('missing crud.raw collapses repo.raw to never', () => {
-			const _adapter = defineAdapter((a) =>
-				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
-			)
+			const _adapter = defineAdapter((a) => a.supportedFieldTypes('string').crud({ findByPk: async () => null }))
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.raw).toBeNever()
 		})
 
 		test('missing crud.deleteByPk collapses repo.deleteByPk to never', () => {
-			const _adapter = defineAdapter((a) =>
-				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
-			)
+			const _adapter = defineAdapter((a) => a.supportedFieldTypes('string').crud({ findByPk: async () => null }))
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.deleteByPk).toBeNever()
 		})
 
 		test('missing crud.updateByPk collapses repo.updateByPk to never', () => {
-			const _adapter = defineAdapter((a) =>
-				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
-			)
+			const _adapter = defineAdapter((a) => a.supportedFieldTypes('string').crud({ findByPk: async () => null }))
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.updateByPk).toBeNever()
 		})
@@ -1175,13 +1188,13 @@ if (import.meta.vitest) {
 
 		test('adapter with crud.deleteByPk and crud.raw enables those repo methods', () => {
 			const _adapter = defineAdapter((a) =>
-				a
-					.supportedFieldTypes('string')
-					.crud({
-						findByPk: async () => null,
-						deleteByPk: async () => null,
-						raw: async () => { throw new Error('not implemented') },
-					}),
+				a.supportedFieldTypes('string').crud({
+					findByPk: async () => null,
+					deleteByPk: async () => null,
+					raw: async () => {
+						throw new Error('not implemented')
+					},
+				}),
 			)
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.deleteByPk).toBeFunction()
@@ -1381,11 +1394,11 @@ if (import.meta.vitest) {
 		test('empty-ops-allowed-on-upsert: insert with no ops is allowed', async () => {
 			const repo = makeUpsertRepo()
 
-			const result = await repo.upsertOne(
-				UpsertSchema,
-				(q) => q.eq('email', 'noops@test.com'),
-				{ email: 'noops@test.com', name: 'NoOps', views: 0 },
-			)
+			const result = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'noops@test.com'), {
+				email: 'noops@test.com',
+				name: 'NoOps',
+				views: 0,
+			})
 
 			expect(result.email).toBe('noops@test.com')
 			expect(result.name).toBe('NoOps')
@@ -1396,11 +1409,11 @@ if (import.meta.vitest) {
 
 			await repo.insertOne(UpsertSchema, { email: 'exists@test.com', name: 'Original', views: 5 })
 
-			const result = await repo.upsertOne(
-				UpsertSchema,
-				(q) => q.eq('email', 'exists@test.com'),
-				{ email: 'exists@test.com', name: 'IGNORED', views: 0 },
-			)
+			const result = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'exists@test.com'), {
+				email: 'exists@test.com',
+				name: 'IGNORED',
+				views: 0,
+			})
 
 			expect(result.name).toBe('Original')
 			expect(result.views).toBe(5)
@@ -1410,11 +1423,11 @@ if (import.meta.vitest) {
 			const { set } = await import('../updates')
 			const repo = makeUpsertRepo()
 
-			const insertResult = await repo.upsertOne(
-				UpsertSchema,
-				(q) => q.eq('email', 'doc@test.com'),
-				{ email: 'doc@test.com', name: 'Doc', views: 0 },
-			)
+			const insertResult = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'doc@test.com'), {
+				email: 'doc@test.com',
+				name: 'Doc',
+				views: 0,
+			})
 			expect(insertResult.id).toBeDefined()
 			expect(insertResult.email).toBe('doc@test.com')
 
@@ -1431,11 +1444,11 @@ if (import.meta.vitest) {
 		test('validates insert payload via validateInsert (onCreate defaults injected)', async () => {
 			const repo = makeUpsertRepo()
 
-			const result = await repo.upsertOne(
-				UpsertSchema,
-				(q) => q.eq('email', 'defaults@test.com'),
-				{ email: 'defaults@test.com', name: 'Defaults', views: 0 },
-			)
+			const result = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'defaults@test.com'), {
+				email: 'defaults@test.com',
+				name: 'Defaults',
+				views: 0,
+			})
 
 			expect(result.id).toBeDefined()
 			expect(result.createdAt).toBe(1000)
@@ -1446,11 +1459,7 @@ if (import.meta.vitest) {
 			const repo = makeUpsertRepo()
 
 			await expect(
-				repo.upsertOne(
-					UpsertSchema,
-					(q) => q.eq('email', 'bad@test.com'),
-					{ email: 123 as any, name: 'Bad', views: 0 },
-				),
+				repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'bad@test.com'), { email: 123 as any, name: 'Bad', views: 0 }),
 			).rejects.toBeInstanceOf(OrmValidationError)
 		})
 
@@ -1467,12 +1476,9 @@ if (import.meta.vitest) {
 					.queryable({
 						findMany: async () => [],
 						upsertOne: async (_schema, _config, _filter) => {
-							throw new OrmValidationError(
-								'upsert-filter-incompatible',
-								'test',
-								'upsertOne',
-								[{ cause: 'adapter requires single eq filter on unique column, received complex filter' }],
-							)
+							throw new OrmValidationError('upsert-filter-incompatible', 'test', 'upsertOne', [
+								{ cause: 'adapter requires single eq filter on unique column, received complex filter' },
+							])
 						},
 					}),
 			)
@@ -1480,11 +1486,11 @@ if (import.meta.vitest) {
 			const repo = defineRepo((r) => r.adapter(restrictedAdapter).resolve(() => ({ prefix: 'test' })))
 
 			try {
-				await (repo as any).upsertOne(
-					UpsertSchema,
-					(q: any) => q.eq('email', 'x@test.com'),
-					{ email: 'x@test.com', name: 'X', views: 0 },
-				)
+				await (repo as any).upsertOne(UpsertSchema, (q: any) => q.eq('email', 'x@test.com'), {
+					email: 'x@test.com',
+					name: 'X',
+					views: 0,
+				})
 				expect.unreachable()
 			} catch (e) {
 				expect(e).toBeInstanceOf(OrmValidationError)
@@ -1548,6 +1554,168 @@ if (import.meta.vitest) {
 			)
 			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
 			expectTypeOf(_repo.upsertOne).toBeNever()
+		})
+	})
+
+	describe('repo.session — transactional behaviour', () => {
+		const SchemaA = defineSchema('accounts', (s) =>
+			s.pk('id', v.string(), () => `a-${Math.random().toString(36).slice(2)}`).field('balance', v.number()),
+		)
+		const SchemaB = defineSchema('ledger', (s) =>
+			s
+				.pk('id', v.string(), () => `l-${Math.random().toString(36).slice(2)}`)
+				.field('amount', v.number())
+				.field('accountId', v.string()),
+		)
+
+		function makeSessionRepo() {
+			const { adapter } = createInMemoryAdapter()
+			return defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
+		}
+
+		test('throw-to-rollback: uncaught throw rolls back all writes and rejects with same error', async () => {
+			const repo = makeSessionRepo()
+			await repo.insertOne(SchemaA, { balance: 100 })
+
+			const err = new Error('boom')
+			await expect(
+				repo.session(async () => {
+					await repo.insertOne(SchemaA, { balance: 200 })
+					throw err
+				}),
+			).rejects.toBe(err)
+
+			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			expect(all).toHaveLength(1)
+			expect(all[0].balance).toBe(100)
+		})
+
+		test('return-to-commit: successful return commits and resolves with callback value', async () => {
+			const repo = makeSessionRepo()
+			const result = await repo.session(async () => {
+				await repo.insertOne(SchemaA, { balance: 500 })
+				return 'committed'
+			})
+
+			expect(result).toBe('committed')
+			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			expect(all).toHaveLength(1)
+			expect(all[0].balance).toBe(500)
+		})
+
+		test('cross-schema session: multiple schemas share one tx; on throw both roll back', async () => {
+			const repo = makeSessionRepo()
+			const account = await repo.insertOne(SchemaA, { balance: 1000 })
+
+			await expect(
+				repo.session(async () => {
+					await repo.updateMany(SchemaA, (q) => q.eq('id', account.id), { balance: 900 })
+					await repo.insertOne(SchemaB, { amount: 100, accountId: account.id })
+					throw new Error('tx failure')
+				}),
+			).rejects.toThrow('tx failure')
+
+			const acct = await repo.findByPk(SchemaA, account.id)
+			expect(acct!.balance).toBe(1000)
+
+			const entries = await repo.findMany(SchemaB, (q) => q.eq('accountId', account.id))
+			expect(entries).toHaveLength(0)
+		})
+
+		test('nested session: inner repo.session delegates to adapter (flat in in-memory)', async () => {
+			const repo = makeSessionRepo()
+
+			const result = await repo.session(async () => {
+				await repo.insertOne(SchemaA, { balance: 100 })
+				const inner = await repo.session(async () => {
+					await repo.insertOne(SchemaA, { balance: 200 })
+					return 'inner'
+				})
+				return inner
+			})
+
+			expect(result).toBe('inner')
+			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			expect(all).toHaveLength(2)
+		})
+
+		test('nested session: throw in inner rolls back entire outer tx (flat nesting)', async () => {
+			const repo = makeSessionRepo()
+			await repo.insertOne(SchemaA, { balance: 50 })
+
+			await expect(
+				repo.session(async () => {
+					await repo.insertOne(SchemaA, { balance: 100 })
+					await repo.session(async () => {
+						await repo.insertOne(SchemaA, { balance: 200 })
+						throw new Error('inner boom')
+					})
+				}),
+			).rejects.toThrow('inner boom')
+
+			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			expect(all).toHaveLength(1)
+			expect(all[0].balance).toBe(50)
+		})
+
+		test('no-tx-argument rule: session callback receives no arguments', async () => {
+			const repo = makeSessionRepo()
+			let argCount = -1
+			await repo.session(async function () {
+				argCount = arguments.length
+			})
+			expect(argCount).toBe(0)
+		})
+	})
+
+	describe('type-level: session gating', () => {
+		test('missing transactional.session collapses repo.session to never', () => {
+			const _adapter = defineAdapter((a) => a.supportedFieldTypes('string').crud({ findByPk: async () => null }))
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.session).toBeNever()
+		})
+
+		test('adapter with transactional.session enables repo.session', () => {
+			const _adapter = defineAdapter((a) =>
+				a
+					.supportedFieldTypes('string')
+					.crud({ findByPk: async () => null })
+					.transactional({ session: async (fn) => fn() }),
+			)
+			const _repo = defineRepo((r) => r.adapter(_adapter).resolve(() => ({})))
+			expectTypeOf(_repo.session).toBeFunction()
+		})
+	})
+
+	describe('zero-ALS rule: library code does not import node:async_hooks', () => {
+		test('no file under src/orm (excluding adapters/) imports node:async_hooks', async () => {
+			const { readdir, readFile } = await import('node:fs/promises')
+			const { join } = await import('node:path')
+			const forbidden = ['node:', 'async_hooks'].join('')
+
+			async function* walk(dir: string): AsyncGenerator<string> {
+				const entries = await readdir(dir, { withFileTypes: true })
+				for (const entry of entries) {
+					const full = join(dir, entry.name)
+					if (entry.isDirectory()) {
+						if (entry.name === 'adapters') continue
+						yield* walk(full)
+					} else if (entry.name.endsWith('.ts')) {
+						yield full
+					}
+				}
+			}
+
+			const ormDir = join(import.meta.dirname!, '..')
+			const violations: string[] = []
+			for await (const file of walk(ormDir)) {
+				const content = await readFile(file, 'utf-8')
+				const importLine = /^\s*import\s.*from\s+['"].*async_hooks/m
+				if (content.includes(forbidden) && importLine.test(content)) {
+					violations.push(file)
+				}
+			}
+			expect(violations).toEqual([])
 		})
 	})
 }

@@ -135,9 +135,9 @@ export class AdapterBuilder<Acc = {}> {
 		return this as any
 	}
 
-	transactional(
-		bag: 'transactional' extends keyof Acc ? never : TransactionalBag,
-	): AdapterBuilder<Acc & { transactional: typeof bag }> {
+	transactional<B extends TransactionalBag>(
+		bag: 'transactional' extends keyof Acc ? never : B,
+	): AdapterBuilder<Acc & { transactional: B }> {
 		this.#data.transactional = bag
 		return this as any
 	}
