@@ -4,14 +4,16 @@ This document is the long-lived reference for the ORM in `equipped`. It defines
 the canonical vocabulary used across the ORM, the rules that govern every layer,
 and the items that are explicitly out of scope.
 
-The ORM is a typed, capability-aware Repo over user-supplied adapters. The
-package ships **no** database-specific implementations — adapters are always
-third-party, including the in-memory adapter used in tests. The conceptual stack
-is **Schema → Relations → Adapter → Repo**, with Repo construction taking a
-ContextSource for per-query config transforms. The TypeScript type system
-narrows the Repo's surface to exactly what the adapter declares it can do; any
-mismatch is a compile error, not a runtime throw. Validation runs once, in the
-package, at the Repo-entry boundary; the adapter is handed validated input.
+The ORM is a typed, capability-aware Repo over adapters. The package ships a
+small set of in-tree reference adapters (in-memory, json, postgresql,
+mongodb); production targets it doesn't cover are user-supplied. The
+conceptual stack is **Schema → Relations → Adapter → Repo**, with Repo
+construction taking a base resolver and an optional runtime override stack
+for per-query config transforms (`repo.resolve(transform, fn)`). The
+TypeScript type system narrows the Repo's surface to exactly what the adapter
+declares it can do; any mismatch is a compile error, not a runtime throw.
+Validation runs once, in the package, at the Repo-entry boundary; the adapter
+is handed validated input.
 
 Each section below is the canonical reference for one layer or cross-cutting
 concern. Sections 13 and 14 cover principles and explicit non-goals.
@@ -21,7 +23,8 @@ concern. Sections 13 and 14 cover principles and explicit non-goals.
 ## 1. Definitions (the four artifact kinds)
 
 The ORM has exactly four top-level **definitions**. Each is constructed by a
-`defineX(callback)` factory function (the **builder-chain rule** — see §2).
+static factory method `X.from(args)` that returns a builder, terminated by
+`.build()` (the **builder-chain rule** — see §2).
 
 ### 1.1 Schema
 
@@ -35,13 +38,13 @@ instance. It is not bound to a database. It is not aware of relations. It is
 not aware of adapters.
 
 ```ts
-const UserSchema = defineSchema('users', (s) => s
+const UserSchema = Schema.from('users')
   .pk('id', v.string(), () => crypto.randomUUID())
   .field('email', v.string())
   .field('age', v.number())
   .field('createdAt', v.number(), { onCreate: () => Date.now() })
   .field('updatedAt', v.number(), { onUpdate: () => Date.now() })
-)
+  .build()
 ```
 
 Vocabulary:
@@ -60,52 +63,56 @@ Vocabulary:
 A **Relations** is a typed description of how one schema connects to others.
 Relations are stored in a separate artifact from the schema and wire `hasMany`
 / `hasOne` / `belongsTo` descriptors keyed by name. The plural form is
-intentional: a single `defineRelations` call declares multiple relations, so
-the artifact is *a Relations* (singular noun, plural form).
+intentional: a single `Relations.from(...)` call declares multiple relations,
+so the artifact is *a Relations* (singular noun, plural form).
 
 Relations are **not** part of the schema, **not** enforced by the database (no
 DDL), and **not** automatically bidirectional. A `User → posts` `hasMany` does
 not imply `Post → user` `belongsTo`; both must be declared if both are wanted.
 
 ```ts
-const UserRels = defineRelations(UserSchema, (rel, src) => rel
+const UserRels = Relations.from(UserSchema)
   .hasMany('posts', PostSchema.fields.userId)
-  .belongsTo('org', src.fields.orgId, OrgSchema)
+  .belongsTo('org', UserSchema.fields.orgId, OrgSchema)
   .hasOne('profile', ProfileSchema.fields.userId)
-)
+  .build()
 ```
 
 Vocabulary:
 
 - A **relation** is one entry inside a Relations (e.g. `UserRels.posts`).
 - The three **relation kinds** are `hasMany`, `hasOne`, `belongsTo`.
-- The **source schema** is the schema passed first to `defineRelations`; the
-  **target schema** is the schema being related to.
+- The **source schema** is the schema passed first to `Relations.from(...)`;
+  the **target schema** is the schema being related to.
 - See §9 for full Relations vocabulary.
 
 ### 1.3 Adapter
 
 An **Adapter** is a capability declaration plus a set of method-bag
-implementations that the framework calls to talk to a specific database. An
-Adapter is always third-party (the package ships none) and bound to a specific
-database driver/SDK.
+implementations that the framework calls to talk to a specific database.
+Adapters are typically bound to a specific database driver/SDK. The package
+ships a small set of in-tree reference adapters (in-memory, json, postgresql,
+mongodb); production targets the package doesn't cover are user-supplied.
 
 An Adapter is **not** a connection. It is **not** stateful per-database — one
 Adapter object can serve many connections; connection pooling is the adapter's
 internal concern. It is **not** a Repo (Repo wraps an Adapter; an Adapter
 doesn't know about Repo).
 
+The Adapter's per-schema config type is declared as a generic on the static
+factory: `Adapter.from<Config>()`. The framework threads `Config` into every
+bag method's `config` parameter so adapter authors get typed access.
+
 ```ts
-const PostgresAdapter = defineAdapter((a) => a
-  .config({} as PgCfg)
+const PostgresAdapter = Adapter.from<PgCfg>()
   .queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
   .updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
   .supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
   .lifecycle({ connect, disconnect })
-  .crud({ findByPk, insertMany, updateByPk, deleteByPk, raw })
+  .crud({ findByPk, createMany, updateByPk, deleteByPk, raw })
   .queryable({ findMany, updateMany, deleteMany, upsertOne })
   .transactional({ session })
-)
+  .build()
 ```
 
 Vocabulary:
@@ -120,70 +127,87 @@ Vocabulary:
 
 ### 1.4 Repo
 
-A **Repo** is the user-facing object with `findByPk`, `findMany`, `insertOne`,
-`session`, and other methods. A Repo wraps an Adapter and a config-resolution
-path. A single Repo handles all schemas (see **schema-per-call**, §5.2).
+A **Repo** is the user-facing object built around an adapter and a base
+resolver. A single Repo handles all schemas via the **schema-bound chain**
+`repo.on(Schema)...` (see **schema-per-call**, §5.2).
 
 A Repo is **not** per-schema (no `userRepo` / `postRepo` split). It is **not** a
 connection. It is **not** a database client. It is **not** aware of
-multi-tenancy directly — tenant context flows through `ContextSource` (§6).
+multi-tenancy directly — tenant context flows through `repo.resolve(transform,
+fn)` (§6).
 
 ```ts
-const repo = defineRepo((r) => r
-  .adapter(PostgresAdapter)
+const repo = Repo.from(PostgresAdapter)
   .resolve((schema) => ({ table: schema.name }))
-  .context(myContextSource)
-)
+  .build()
 
-await repo.findByPk(UserSchema, 'u1')
-await repo.findMany(UserSchema, q => q.gt(UserSchema.fields.age, 18))
+await repo.on(UserSchema).one().id('u1').find()
+await repo.on(UserSchema).all().where(q => q.gt(UserSchema.fields.age, 18)).find()
 await repo.session(async () => {
-  await repo.insertOne(UserSchema, { ... })
-  await repo.updateOne(OrderSchema, q => q.eq(OrderSchema.fields.id, 'o1'), set({...}))
+  await repo.on(UserSchema).one().create({ ... })
+  await repo.on(OrderSchema).one()
+    .where(q => q.eq(OrderSchema.fields.id, 'o1'))
+    .update({ ... })
 })
 ```
 
 Vocabulary:
 
-- The **Repo surface** is the typed shape of all Repo methods.
-- **Repo methods** is the prose term for `findByPk` / `findMany` / etc.
-- **schema-per-call** is the calling pattern (`repo.findByPk(UserSchema, 'u1')`
-  rather than `userRepo.findByPk('u1')`).
+- The **Repo surface** is the typed shape of `repo.on(Schema)`'s chain plus
+  Repo-level methods (`session`, `resolve`).
+- **schema-per-call** is the calling pattern (`repo.on(UserSchema).one().id('u1').find()`
+  rather than `userRepo.one().id('u1').find()`).
+- **`repo.on(schema)`** is the **schema-bound entry**: returns a `SchemaRef`
+  that exposes per-schema chains (`one()`, `all()`, `raw(...)`).
 - See §5 for the full Repo surface vocabulary.
 
 ### 1.5 Cross-artifact conventions
 
-- Every artifact construction factory uses the form `defineX(callback)`. The
-  package does not export class constructors (no `Schema.from(...)`).
+- Every artifact is constructed via `X.from(args).step()...build()`. The four
+  artifact classes (`Schema`, `Adapter`, `Relations`, `Repo`) export static
+  `.from(...)` factories that return a builder; `.build()` is the explicit
+  terminal step that returns the artifact instance.
+- Each `.from(...)` takes only its **constructor-essential** input(s):
+  - `Schema.from(name)` — name positional
+  - `Relations.from(source)` — source schema positional
+  - `Adapter.from<Config>()` — Config as type-only generic
+  - `Repo.from(adapter)` — adapter positional
+  Everything else (fields, FK descriptors, bag implementations, resolver,
+  capability declarations) goes into builder steps.
 - Pluralisation uses natural English plurals (`schemas`, `adapters`, `repos`).
   `Relations` is a singular noun in plural form; capitalise when ambiguous.
-- The collective term for "things produced by `defineX`" is **definition**.
+- The collective term for "things produced by `.from(...).build()`" is
+  **definition**.
 
 ---
 
 ## 2. Builder-chain factory pattern
 
-The pattern `defineX((b) => b.step1().step2())` is the canonical shape for all
-artifact construction in the package. This section locks the vocabulary and
-rules of the pattern.
+The pattern `X.from(args).step1().step2().build()` is the canonical shape for
+all artifact construction in the package. This section locks the vocabulary
+and rules of the pattern.
 
 ### 2.1 Vocabulary
 
-- A **factory** is the outer function (`defineSchema`, `defineRelations`,
-  `defineAdapter`, `defineRepo`).
-- The **build callback** is the argument to the factory (`(b) => b.step1()...`).
-- The **builder** is the object the build callback receives.
+- A **factory** is the static factory method (`Schema.from`, `Relations.from`,
+  `Adapter.from`, `Repo.from`). Calling it returns a **builder**.
+- The **builder** is the object returned by `.from(...)`. Each builder method
+  returns a new builder whose accumulator type includes the declarations from
+  prior steps.
 - A **builder step** is a method on the builder (`.field()`, `.queryableOps()`,
   `.crud()`).
+- The **terminal step** is `.build()` — the only step that returns the
+  artifact instance. `.build()`'s availability is gated on the accumulator
+  satisfying the artifact's prerequisites (§2.6).
 - The **accumulator type** is the generic on the builder that grows as steps
-  are called. Each step returns a new builder whose accumulator includes the
-  declarations from prior steps.
+  are called. Used to gate later steps and `.build()`.
 
 ### 2.2 Rules
 
-- **Builder-chain rule.** Builder-chain factories are the default for all
-  declarative artifact construction in the package. New `defineX` follows this
-  shape; flat-object factories deferred unless a concrete reason to deviate.
+- **Builder-chain rule.** Static-factory builder chains are the canonical
+  shape for all declarative artifact construction in the package. New
+  artifacts follow `X.from(args).step1().step2().build()`; flat-object
+  factories deferred unless a concrete reason to deviate.
 - **Once-per-step rule.** Each builder step is callable at most once. Calling
   the same step twice is a compile error via the **uniqueness guard**
   (see §2.3).
@@ -200,6 +224,9 @@ rules of the pattern.
 - **Omission-equals-empty rule.** A builder step not called means the artifact
   doesn't declare that capability. Op-list fields default to `readonly []`;
   behaviours default to absent.
+- **Build-gated materialisation rule.** The artifact instance only exists
+  after `.build()`. The builder is *not* the artifact; reading runtime methods
+  off a non-built builder is a type error.
 
 ### 2.3 Uniqueness guard
 
@@ -224,22 +251,46 @@ safety throughout the package.
 Builder-chain is only for *declarative artifact construction*. The following
 are **non-construction calls** and use direct function/method calls:
 
-- **Repo invocation methods** (schema-per-call): `repo.findByPk(schema, pk)`,
-  `repo.findMany(...)`, etc.
+- **Schema-bound entry** (schema-per-call): `repo.on(schema)` — returns a
+  `SchemaRef`, the entry point to the per-call query chain.
 - **Session entry**: `repo.session(fn)`.
-- **Op helpers** and **descriptor helpers**: `set(...)`, `inc(...)`,
-  `hasMany(...)`, `belongsTo(...)`. These construct operation values used as
-  arguments to other calls; they are single-shot and a chain would add ceremony
-  for no benefit.
+- **Runtime resolver override**: `repo.resolve(transform, fn)` — pushes a
+  config transform for the duration of `fn` (§6).
+- **Op helpers**: `set(...)`, `inc(...)`, etc. These construct operation
+  values used as arguments to other calls; they are single-shot and a chain
+  would add ceremony for no benefit.
 
-### 2.5 Query builder (the FilterFactory exception)
+The query chain itself (`repo.on(Schema).one().id(pk).find()`) is a
+sub-pattern of the builder-chain rule — see §2.5.
 
-The `FilterFactory` callback `q => q.eq(...).and(...)` (see §11) is itself a
-builder chain on `FilterGroup`. It is the **query builder** — a builder-chain
-sub-pattern distinct from artifact `defineX` builders, used for filter trees.
-The same vocabulary applies (steps, rest-args, etc.); the difference is what's
-being constructed (filter trees, not artifacts) and the recursive nesting via
-`and([(g) => ...])` / `or([(g) => ...])`.
+### 2.5 Query builder and FilterFactory
+
+The query chain `repo.on(Schema).one().id(pk).find()` (and its `.all()`
+variant) is itself a builder chain — the **query builder** — terminated by
+`.find()` / `.create()` / `.update()` / `.delete()` / `.upsert()` instead of
+`.build()`. Steps like `.where()`, `.select()`, `.preload()`, `.orderBy()`,
+`.limit()`, `.offset()` accumulate state; the terminal verb executes against
+the adapter.
+
+The `FilterFactory` callback `q => q.eq(...).and(...)` (see §11) is a
+**filter sub-builder** on `FilterGroup`, used inside `.where(...)`. Same
+vocabulary applies (steps, rest-args, etc.); the difference is what's being
+constructed (filter trees) and the recursive nesting via `and([(g) => ...])`
+/ `or([(g) => ...])`.
+
+### 2.6 `.build()` prerequisites
+
+Each artifact's `.build()` enforces accumulator prerequisites at the type
+level. `.build()` is gated as `build(this: { _acc: SatisfiedAcc }): X` — if
+the accumulator doesn't satisfy, `this` doesn't bind and TS errors at the
+`.build()` call site.
+
+| Artifact | `.build()` requires |
+|---|---|
+| `Schema` | `.pk(...)` was called (PK-less schemas have no meaning) |
+| `Adapter` | nothing enforced — runtime errors via `RepoSurface` narrowing if no behaviours declared |
+| `Relations` | nothing enforced — empty Relations is a valid no-op |
+| `Repo` | `.resolve(...)` was called (the only thing that produces a config) |
 
 ---
 
@@ -256,7 +307,7 @@ four:
 | Behaviour | Methods (each independently optional) |
 |---|---|
 | `lifecycle` | `connect`, `disconnect` |
-| `crud` | `findByPk`, `insertMany`, `updateByPk`, `deleteByPk`, `raw` |
+| `crud` | `findByPk`, `createMany`, `updateByPk`, `deleteByPk`, `raw` |
 | `queryable` | `findMany`, `updateMany`, `deleteMany`, `upsertOne` |
 | `transactional` | `session` |
 
@@ -286,6 +337,12 @@ are gated on behaviour-method presence, not on `updateOps` membership (§5.1,
 
 Each declaration's values are drawn from a closed canonical set (§4). Adapters
 **subset** the canonical set; they cannot add new members.
+
+The Adapter's per-schema **config type** is *not* a capability declaration —
+it is a type-only generic on the static factory (`Adapter.from<Config>()`).
+The framework threads `Config` into every bag method's `config` parameter so
+adapter authors get typed access. The Repo's `.resolve(fn)` step (§6) is
+constrained to return the same `Config` type.
 
 ### 3.3 Co-required pair
 
@@ -445,248 +502,266 @@ inventory.
 
 ## 5. Repo surface & schema-per-call
 
-### 5.1 Repo surface and gated methods
+### 5.1 Repo surface and gated chain verbs
 
-The **Repo surface** is the typed shape of all Repo methods. Every Repo method
-is a **gated method** — its presence on the surface depends on the Adapter's
-declarations:
+The **Repo surface** is the typed shape of `repo.on(Schema)`'s chain plus
+Repo-level methods (`session`, `resolve`).
 
-| Method | Gate |
+Each query-chain verb is a **gated verb** — its presence depends on the
+Adapter's declarations:
+
+| Chain verb | Gate |
 |---|---|
-| `findByPk` | `crud.findByPk` declared |
-| `insertOne` / `insertMany` | `crud.insertMany` declared |
-| `updateByPk` | `crud.updateByPk` declared AND non-empty `updateOps` |
-| `deleteByPk` | `crud.deleteByPk` declared |
-| `raw` | `crud.raw` declared |
-| `findOne` / `findMany` | `queryable.findMany` declared |
-| `updateOne` / `updateMany` | `queryable.updateMany` declared AND non-empty `updateOps` |
-| `deleteOne` / `deleteMany` | `queryable.deleteMany` declared |
-| `upsertOne` | `queryable.upsertOne` declared |
-| `session` | `transactional.session` declared |
+| `repo.on(S).one().id(pk).find()` | `crud.findByPk` declared |
+| `repo.on(S).one().create(d)` / `repo.on(S).all().create(d[])` | `crud.createMany` declared |
+| `repo.on(S).one().id(pk).update(d)` | `crud.updateByPk` declared AND non-empty `updateOps` |
+| `repo.on(S).one().id(pk).delete()` | `crud.deleteByPk` declared |
+| `repo.on(S).raw(...args)` | `crud.raw` declared |
+| `repo.on(S).one().where(q).find()` / `.all().where(q).find()` | `queryable.findMany` declared |
+| `repo.on(S).one().where(q).update(d)` / `.all().where(q).update(d)` | `queryable.updateMany` declared AND non-empty `updateOps` |
+| `repo.on(S).one().where(q).delete()` / `.all().where(q).delete()` | `queryable.deleteMany` declared |
+| `repo.on(S).one().where(q).upsert(d)` | `queryable.upsertOne` declared |
+| `repo.session(fn)` | `transactional.session` declared |
 
-There is no truly "always-on" method; every method is gated by something.
-Methods whose gates aren't satisfied are narrowed-out (§3.4) — their type
-resolves to `never` and calling them is a compile error.
+There is no truly "always-on" verb; every verb is gated by something. Verbs
+whose gates aren't satisfied are narrowed-out (§3.4) — their type resolves to
+`never` and calling them is a compile error.
 
 ### 5.2 Schema-per-call
 
-**Schema-per-call** is the calling pattern: the schema is the first argument to
-every Repo invocation method, instead of being baked into a per-schema Repo:
+**Schema-per-call** is the calling pattern: every per-schema operation enters
+through `repo.on(Schema)`, instead of being baked into a per-schema Repo:
 
 ```ts
-await repo.findByPk(UserSchema, 'u1')
-await repo.findOne(UserSchema, q => q.eq(UserSchema.fields.email, 'a@b.com'))
-await repo.insertOne(UserSchema, { name: 'Alice', email: 'a@b.com' })
-await repo.updateOne(UserSchema, q, set({ name: 'Alicia' }))
+await repo.on(UserSchema).one().id('u1').find()
+await repo.on(UserSchema).one().where(q => q.eq(UserSchema.fields.email, 'a@b.com')).find()
+await repo.on(UserSchema).one().create({ name: 'Alice', email: 'a@b.com' })
+await repo.on(UserSchema).one().where(q).update({ name: 'Alicia' })
 ```
 
-The argument being passed in is the **schema arg**.
+The schema passed to `repo.on(...)` is the **schema arg**. `repo.on(...)`
+returns a `SchemaRef<S>` carrying the schema's type forward through the chain.
 
-**Per-call type narrowing**: each Repo method's return type narrows to
-`SchemaOutput<S>` (or `SchemaOutput<S> | null`, etc.) based on the schema arg.
-The Repo is parameterised by Adapter only (`Repo<A>`); per-call return types
-flow through the `S` generic on each method.
+**Per-call type narrowing**: each terminal verb's return type narrows to
+`SchemaOutput<S>` (or `SchemaOutput<S> | null`, `SchemaOutput<S>[]`) based on
+the schema arg captured at `repo.on(Schema)`. The Repo is parameterised by
+Adapter only (`Repo<A>`); per-call return types flow through the `S` generic
+threaded through `SchemaRef<S>`.
 
 ### 5.3 SchemaCompatible
 
-`SchemaCompatible<A, S>` is the TypeScript guard that wraps every schema-arg
-position. It resolves to `S` if every field type in the schema is in
+`SchemaCompatible<A, S>` is the TypeScript guard that wraps the schema arg at
+`repo.on(Schema)`. It resolves to `S` if every field type in the schema is in
 `A['supportedFieldTypes'][number]`, and to `never` otherwise.
 
 ```ts
-findMany<S extends AnySchema>(
-  schema: SchemaCompatible<A, S>,
-  q: FilterFactory,
-  opts?: QueryOptions,
-): Promise<SchemaOutput<S>[]>
+on<S extends AnySchema>(schema: SchemaCompatible<A, S>): SchemaRef<S>
 ```
 
-Pairing an Adapter with a schema using a field type the Adapter doesn't declare
-produces a **schema-incompatibility error** — TS error 2345 at the schema-arg
-position of every Repo method call.
+Pairing an Adapter with a schema using a field type the Adapter doesn't
+declare produces a **schema-incompatibility error** — TS error 2345 at the
+`repo.on(...)` call site, blocking the entire chain that follows.
 
-### 5.4 PK-keyed methods vs filter-based methods
+### 5.4 PK-keyed chains vs filter-based chains
 
-Repo methods split into two families:
+Query chains split into two families based on which intermediate verb is
+chosen:
 
-- **PK-keyed methods** live in the `crud` behaviour: `findByPk`, `insertOne`,
-  `insertMany`, `updateByPk`, `deleteByPk`, `raw`. They identify documents
-  directly by primary key.
-- **Filter-based methods** live in the `queryable` behaviour: `findOne`,
-  `findMany`, `updateOne`, `updateMany`, `deleteOne`, `deleteMany`,
-  `upsertOne`. They identify documents via a `FilterGroup` filter (§11).
+- **PK-keyed chains** start with `.one().id(pk)` — they identify a document
+  directly by primary key. Backed by the adapter's `crud` behaviour.
+- **Filter-based chains** use `.one().where(q)` / `.all().where(q)` — they
+  identify documents via a `FilterGroup` filter (§11). Backed by the
+  adapter's `queryable` behaviour.
 
-The split mirrors the adapter behaviour split. PK-keyed and filter-based Repo
-methods can be declared independently — an adapter can be PK-only (no
+The split mirrors the adapter behaviour split. PK-keyed and filter-based
+chains can be declared independently — an adapter can be PK-only (no
 `queryable` behaviour) or query-only (only `queryable`).
 
 ### 5.5 The `raw` escape hatch
 
-The `raw` method on the Repo is the **escape hatch** for adapter-specific
-power. Its signature is adapter-defined; its parameters and return type pass
-through from the adapter's `crud.raw` method. All adapter-specific filter
-shapes, server-side joins, aggregates, and out-of-scope features go through
-`raw`.
+`repo.on(Schema).raw(...args)` is the **escape hatch** for adapter-specific
+power. There is exactly one entry point — `raw` on the schema-bound chain;
+there is no Repo-level `repo.raw(...)`.
 
-The escape hatch is intentionally untyped at the Repo level — it is the
-adapter author's responsibility to type and document `raw` per-adapter.
+The adapter declares `raw`'s arg-tuple and default result type via its
+function signature; the framework infers both. The Repo's chain propagates
+the inferred shape and exposes a per-call `<T>` override on the result type:
+
+```ts
+// Adapter-side: function signature declares args + result
+const pgAdapter = Adapter.from<PgCfg>()
+  .crud({
+    raw: async (schema, config, command: string, params: unknown[]) => {
+      const r = await getClient().query(command, params)
+      return r.rows                              // adapter-default result: unknown[]
+    },
+  }).build()
+
+// Call site: args spread, optional <T> override on result
+const orgs = await pgRepo.on(OrgSchema).raw<Org[]>('SELECT * FROM orgs WHERE id = $1', ['o1'])
+```
+
+Different adapters declare different arg-tuples — Postgres has
+`[command: string, params: unknown[]]`, Mongo has
+`[pipeline: Record<string, unknown>[]]`, a hypothetical ping adapter has
+`[]`. The framework reads the adapter's `raw` signature, drops the
+framework-supplied `(schema, config, ...)` prefix, and uses the rest as the
+chain's call-site args.
+
+All adapter-specific filter shapes, server-side joins, aggregates, and
+out-of-scope features go through `raw`.
 
 ### 5.6 Session method
 
 The **session method** is `repo.session(fn)`. It is the only transaction
-surface in the package. Inside a **session**, every `repo.<method>(schema, ...)`
-call routes through the same adapter and joins the active tx connection
+surface in the package. Inside a **session**, every `repo.on(Schema)...` chain
+routes through the same adapter and joins the active tx connection
 automatically. The function passed to `session(fn)` is the **session callback**.
 
 See §8 for the full session vocabulary.
 
 ---
 
-## 6. Configuration resolution & ContextSource
+## 6. Configuration resolution
 
-The Repo holds two pieces of config-machinery: a base resolver that maps a
-schema to a config, and an optional context source that returns a per-query
-transform on top of that base config.
+The Repo holds two pieces of config-machinery: a **base resolver** that maps
+a schema to a config (build-time, required), and a **runtime override stack**
+that lets callers temporarily transform the base config (call-time, optional).
 
 ### 6.1 Base resolver and base config
 
-The **base resolver** is the function passed to `defineRepo(.resolve(schema =>
-Cfg))`. It produces a **base config** per schema. The C in `OrmAdapter<C>` is
-the base config type — it's the type the adapter declares it consumes.
+The **base resolver** is the function passed to `Repo.from(adapter).resolve(...)`
+at build time. It produces a **base config** per schema. The Config type the
+adapter declared via `Adapter.from<Config>()` is the type the resolver must
+return — the framework enforces `(schema: AnySchema) => Config`.
 
 ```ts
-const repo = defineRepo((r) => r
-  .adapter(PostgresAdapter)
-  .resolve((schema) => ({ table: schema.name }))
-)
+const repo = Repo.from(PostgresAdapter)
+  .resolve((schema) => ({ table: schema.name }))   // return type constrained to PgCfg
+  .build()
 ```
 
-### 6.2 ConfigTransform, ContextSource, context lookup
+The base resolver is the only thing that *produces* a config from a schema.
+Without `.resolve(...)`, `.build()` is unavailable (§2.6).
+
+### 6.2 Runtime override: `repo.resolve(transform, fn)`
 
 A `ConfigTransform<C>` is a function `(cfg: C, schema: AnySchema) => C` that
-transforms a base config per query. The transform receives the base config and
-the schema being queried, and returns a (potentially modified) config.
+transforms a base config per query.
 
-A `ContextSource<C>` is a hook object with a single method:
-
-```ts
-type ContextSource<C> = {
-  get: () => ConfigTransform<C> | null
-}
-```
-
-The framework calls `contextSource.get()` per query — a **context lookup** — to
-get the active transform. If the lookup returns `null`, no transform is
-applied.
+`repo.resolve(transform, fn)` is the **runtime override mechanism**. It pushes
+`transform` onto an internal stack for the duration of `fn`; every query made
+inside `fn` (including async children and nested `repo.resolve` calls) picks
+up the transform automatically. The stack is popped on `fn`'s settlement
+(success or throw).
 
 ```ts
-const repo = defineRepo((r) => r
-  .adapter(PgAdapter)
-  .resolve((s) => ({ table: s.name }))
-  .context(myContextSource)
+await repo.resolve(
+  (cfg, schema) => ({ ...cfg, table: `t_${tenantId}_${cfg.table}` }),
+  async () => {
+    await repo.on(UserSchema).all().find()       // sees transformed config
+  },
 )
 ```
+
+The stack is backed by `AsyncLocalStorage` so concurrent async chains see
+their own scopes — `Promise.all([repo.resolve(t1, ...), repo.resolve(t2, ...)])`
+works correctly without leakage.
+
+`repo.resolve(transform, fn)` is the **only** runtime config-transform
+mechanism. There is no separate `ContextSource` builder step; users wanting
+DI- or middleware-driven scope-entry call `repo.resolve(transform, fn)` from
+their own scope-entry layer (§6.5).
 
 ### 6.3 Config resolution pipeline
 
 The **config resolution pipeline** is the per-query process that produces the
 **effective config** — the config actually handed to the adapter:
 
-1. **Base resolve.** `defineRepo(.resolve(...))` runs against the schema.
-2. **Context lookup.** `contextSource.get()` runs.
-3. **Transform application.** If the lookup returned a non-null transform, it
-   is applied on top of the base config.
-
-The **base-then-transform rule** locks this ordering. The **no-context
-fallthrough**: when the context lookup returns `null` (or no `ContextSource` is
-configured), the effective config equals the base config.
+1. **Base resolve.** `.resolve(...)` runs against the schema → base config.
+2. **Stack apply.** Every transform currently active on the runtime stack
+   (pushed via `repo.resolve(transform, fn)`) is applied in push order on top
+   of the base.
 
 The **per-query resolution rule**: this pipeline runs for every query —
-top-level Repo calls, preload sub-queries (§9.8), and queries inside a session.
+top-level chains, preload sub-queries (§9.8), and queries inside a session.
 There is no session-level or Repo-level config caching that bypasses the
 pipeline.
 
-### 6.4 Scope-entry mechanism and the zero-ALS rule
+### 6.4 Library-owned ALS scope (config only)
 
-A **scope-entry mechanism** is the user-owned thing that decides what
-`ContextSource.get()` returns at any moment. Examples: Node `AsyncLocalStorage`
-with `tenantStore.run(...)`, Hono context-storage middleware, NestJS
-request-scoped DI, explicit threading.
+The library uses `AsyncLocalStorage` internally to back the
+`repo.resolve(transform, fn)` stack. This is **scoped to config resolution
+only** — adapters still own their own tx-context propagation (§8.2,
+principle #13.8 in the cross-cutting principles table), and the framework
+does not enter or run ALS scopes for any purpose other than `repo.resolve`.
 
-The **zero-ALS rule** is the invariant that the library imports zero
-`node:async_hooks` and never enters or runs ALS scopes itself. The user owns
-scope-entry. The library only consumes the result via `ContextSource.get()`.
-
-This keeps the library runtime-portable (Node, Bun, Deno, Cloudflare Workers,
-Vercel Edge, etc.) and lets users plug in non-ALS strategies (DI, explicit
-threading, future TC39 AsyncContext) without library changes.
+Adapters are free to use any mechanism for tx-context propagation: ALS on
+Node/Bun/Deno/Workers, runtime equivalents on edge platforms, or explicit
+threading. The framework's use of ALS for `repo.resolve` does not constrain
+adapter implementations.
 
 ### 6.5 Tenant scoping
 
-**Tenant scoping** is the canonical use case for `ContextSource`. Pattern:
-wrap requests in a scope-entry mechanism whose `ContextSource` returns a
-tenant-prefix transform.
+**Tenant scoping** is the canonical use case for `repo.resolve`. Pattern:
+middleware wraps the request handler in `repo.resolve(transform, fn)` so every
+chain inside the handler picks up the transform automatically.
 
 ```ts
-import { AsyncLocalStorage } from 'node:async_hooks'
-
-const tenantStore = new AsyncLocalStorage<{ id: string }>()
-
-const tenantContext = {
-  get: () => {
-    const t = tenantStore.getStore()
-    if (!t) return null
-    return (cfg) => ({ ...cfg, table: `t_${t.id}_${cfg.table}` })
-  },
-}
-
-export const runInTenant = <T>(id: string, fn: () => Promise<T>) =>
-  tenantStore.run({ id }, fn)
-
-const repo = defineRepo((r) => r
-  .adapter(PgAdapter)
+const repo = Repo.from(PgAdapter)
   .resolve((s) => ({ table: s.name }))
-  .context(tenantContext)
-)
+  .build()
 
-// Middleware
-app.use((req, _res, next) => runInTenant(req.header('x-tenant')!, () => next()))
+// Middleware: wrap each request in repo.resolve
+app.use(async (req, _res, next) => {
+  const tenantId = req.header('x-tenant')!
+  await repo.resolve(
+    (cfg) => ({ ...cfg, table: `t_${tenantId}_${cfg.table}` }),
+    async () => next(),
+  )
+})
+
+// Handler — uses the module-imported `repo` directly
+async function getUser(req, res) {
+  const u = await repo.on(UserSchema).one().id(req.params.id).find()
+  // tenant transform applied automatically via the active repo.resolve scope
+}
 ```
 
-The **untenanted-query footgun**: if the user forgets to enter a scope on a
-route, `ContextSource.get()` returns `null` and queries silently hit the
-unprefixed base table. Two documented mitigations:
+The **untenanted-query footgun**: if the user forgets to wrap a route in
+`repo.resolve(...)`, queries silently hit the base config (unprefixed table).
+Two documented mitigations:
 
-- **Fail-loud pattern.** Throw inside `ContextSource.get()` when no tenant is
-  active: `if (!t) throw new Error('untenanted query')`. Fail loud for any
-  query outside a tenant scope.
+- **Fail-loud pattern.** Define a base resolver that throws when no scope is
+  active (track a sentinel in the transform stack and check for it at the
+  base).
 - **Sentinel scope pattern.** Wrap legitimate non-tenant code (admin routes,
-  migrations) in `tenantStore.run({ id: '__untenanted__' }, ...)` so
-  missing-tenant is impossible by construction.
+  migrations) in `repo.resolve(noOpTransform, fn)` so missing-tenant is
+  impossible by construction.
 
-The library doesn't enforce either; admin and migration routes have legitimate
-non-tenant uses.
+The library doesn't enforce either; admin and migration routes have
+legitimate non-tenant uses.
 
 ### 6.6 Cross-schema sessions and scope-session composition
 
-**Scope-session composition**: when a tenant scope wraps a session, every query
-inside picks up both the tenant transform (user-owned via `ContextSource`) and
-the tx connection (adapter-internal via tx-context propagation, see §8). The
-two layers compose without interaction — the tenant transform runs in the
-config resolution pipeline; the tx connection routing happens inside the
-adapter.
+**Scope-session composition**: when a tenant `repo.resolve(...)` scope wraps
+a `repo.session(...)`, every query inside picks up both the tenant transform
+(framework-owned via the ALS-backed stack) and the tx connection
+(adapter-internal via tx-context propagation, see §8). The two layers
+compose without interaction — the tenant transform runs in the config
+resolution pipeline; the tx connection routing happens inside the adapter.
 
 ### 6.7 What's not in the model
 
-- **Single-Repo rule.** A Repo is built once with a single base resolver and
-  ContextSource. Per-tenant or per-context derivation is achieved via the
-  ContextSource hook, not by deriving sub-Repos. There is no
-  `repo.withConfig(transform)` chain.
+- **Single-Repo rule.** A Repo is built once around a single adapter with a
+  single base resolver. Per-tenant or per-context derivation is achieved via
+  `repo.resolve(transform, fn)`, not by deriving sub-Repos. There is no
+  `repo.withConfig(transform)` chain that returns a new Repo.
 - **No-registry rule.** There is no global registry mapping schemas to Repos.
   A Repo handles all schemas it can compatibility-narrow against.
 - **Adapter-only-typed-Repo rule.** A Repo is parameterised by Adapter only
   (`Repo<A>`), not `Repo<S, A>`. Per-call return types narrow via the schema
-  arg's `S` generic.
+  arg's `S` generic threaded through `SchemaRef<S>`.
 
 ---
 
@@ -702,13 +777,13 @@ entry of every Repo method, before any adapter call. The **validate-once rule**:
 validation runs exactly once, at the Repo-entry boundary; the adapter receives
 **validated input** and is not expected to re-validate.
 
-### 7.2 Insert, update, and filter validation
+### 7.2 Create, update, and filter validation
 
 Three families of validation, each named by its function:
 
-- **`validateInsert(schema, document)`** runs on `insertOne` / `insertMany`
+- **`validateCreate(schema, document)`** runs on `createOne` / `createMany`
   inputs. Validates the full document against schema pipes; injects `onCreate`
-  defaults for missing fields. Rule: **insert-validates-full-document**.
+  defaults for missing fields. Rule: **create-validates-full-document**.
 - **Op-list walk** runs on `updateOne` / `updateMany` / `updateByPk` /
   `upsertOne` ops. Each `SetOp.values` is pipe-validated per-field; atomic op
   operands are not validated. The **set-only-validation rule**: only set-shape
@@ -751,7 +826,7 @@ number in production. Users wanting sequential semantics use two calls inside
 ### 7.5 Collect-all rule and OrmValidationError
 
 The **collect-all rule**: when validation finds errors, the framework
-accumulates them across the input (multiple rows in `insertMany`, multiple ops
+accumulates them across the input (multiple rows in `createMany`, multiple ops
 in update calls) and throws a single error at the end — never fail-fast on the
 first.
 
@@ -763,7 +838,7 @@ classification:
 class OrmValidationError extends EquippedError {
   kind: 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible'
   schema: string
-  operation: 'insertOne' | 'insertMany' | 'updateOne' | 'updateMany' | 'updateByPk' | 'upsertOne'
+  operation: 'createOne' | 'createMany' | 'updateOne' | 'updateMany' | 'updateByPk' | 'upsertOne'
   failures: Array<{
     opIndex?: number
     rowIndex?: number
@@ -791,7 +866,7 @@ The **update-validation pipeline** runs in order on every update call:
 Errors are collected throughout; one `OrmValidationError` is thrown at the end
 if any failures were collected.
 
-The **insert-validation pipeline** runs `validateInsert` per document, collects
+The **create-validation pipeline** runs `validateCreate` per document, collects
 all failures across documents, and throws one `OrmValidationError` if any.
 
 ---
@@ -819,14 +894,19 @@ The **session contract**:
 **Tx-context propagation** is the adapter's mechanism for routing methods to
 the active tx connection during a session. The **adapter-owned tx propagation
 rule**: tx-context propagation lives entirely inside the adapter, not in the
-framework. The library never imports `node:async_hooks` (see also the zero-ALS
-rule, §6.4).
+framework. Tx semantics genuinely differ per adapter (PG savepoints, Mongo
+subtransactions, Firebase no-ops, edge runtimes' per-request tx model); the
+framework has no business dictating the mechanism.
 
 A **tx-aware adapter method** is one that, on entry, checks for an active
 session context and routes through the tx connection if one exists; otherwise
 it grabs from the pool. **Every adapter method must be tx-aware.** The adapter
 is free to use Node ALS, runtime equivalents on edge platforms (Workers'
 tx-per-request, Deno's runtime, etc.), or any other mechanism.
+
+(The framework itself uses ALS internally for `repo.resolve(...)` config
+scoping, §6.4 — but that scope is config-only and does not interact with
+adapter tx-context propagation.)
 
 ### 8.3 Cross-schema session rule
 
@@ -890,7 +970,7 @@ preload runtime.
 
 ### 9.1 Source schema, target schema, FK ownership rule
 
-The **source schema** is the schema passed first to `defineRelations(SourceSchema, ...)`.
+The **source schema** is the schema passed first to `Relations.from(SourceSchema)`.
 The **target schema** is the schema being related to.
 
 The **FK ownership rule**: `hasMany` and `hasOne` have the FK on the target
@@ -916,26 +996,31 @@ A Field returned by a schema's `fields` accessor is a **schema-tagged Field** �
 its `S` parameter is the parent schema. The schema is "tagged" onto the Field
 at the type level via the phantom parameter.
 
-The **Field-only-FK rule**: FK refs in `defineRelations` must be `Field<T, N, S>`
-refs from the relevant schema's `fields` accessor — not raw string keys. A
-string FK pointing at a number PK is now a compile error; the **FK-PK type-match
-guarantee** flows from this rule.
+The **Field-only-FK rule**: FK refs in `Relations.from(...)` must be
+`Field<T, N, S>` refs from the relevant schema's `fields` accessor — not raw
+string keys. A string FK pointing at a number PK is now a compile error; the
+**FK-PK type-match guarantee** flows from this rule.
 
-### 9.3 Source-bound build callback
+### 9.3 Source-positional construction
 
-The build callback for `defineRelations` has the shape `(rel, src) => ...` —
-a **source-bound build callback**. The `src` parameter is the **source binding**
-— a binding to the source schema for callback-local reference, so the source
-schema is named only once (at the `defineRelations` call):
+`Relations.from(source)` takes the source schema as its positional first arg.
+The source variable is a const in the outer lexical scope, so FK refs that
+point at the source (`belongsTo`'s FK) reference it directly:
 
 ```ts
-const UserRels = defineRelations(UserSchema, (rel, src) => rel
+const UserSchema = Schema.from('users')
+  .pk('id', v.string())
+  .field('orgId', v.string())
+  .build()
+
+const UserRels = Relations.from(UserSchema)
   .hasMany('posts', PostSchema.fields.userId)
-  .belongsTo('org', src.fields.orgId, OrgSchema)
-)
+  .belongsTo('org', UserSchema.fields.orgId, OrgSchema)
+  .build()
 ```
 
-The `rel` parameter is the (Relations) builder.
+There is no "source binding" alias — the source is the same variable users
+already declared, so reference it by name.
 
 ### 9.4 Per-kind builder shapes
 
@@ -975,9 +1060,9 @@ A **self-referential relation** is a relation to the same schema as the source
 schema as both source and target:
 
 ```ts
-const UserRels = defineRelations(UserSchema, (rel, src) => rel
-  .belongsTo('mgr', src.fields.managerId, UserSchema)
-)
+const UserRels = Relations.from(UserSchema)
+  .belongsTo('mgr', UserSchema.fields.managerId, UserSchema)
+  .build()
 ```
 
 ### 9.6 Schema relations-agnosticism rule
@@ -995,20 +1080,20 @@ declarations would force in JS without macros.
 `hasManyThrough` sugar.
 
 ```ts
-const PostTagSchema = defineSchema('post_tags', (s) => s
+const PostTagSchema = Schema.from('post_tags')
   .pk('id', v.string(), () => 'pt-id')
   .field('postId', v.string())
   .field('tagId', v.string())
-)
+  .build()
 
-const PostRels = defineRelations(PostSchema, (rel, src) => rel
+const PostRels = Relations.from(PostSchema)
   .hasMany('postTags', PostTagSchema.fields.postId)
-)
+  .build()
 
-const PostTagRels = defineRelations(PostTagSchema, (rel, src) => rel
-  .belongsTo('post', src.fields.postId, PostSchema)
-  .belongsTo('tag', src.fields.tagId, TagSchema)
-)
+const PostTagRels = Relations.from(PostTagSchema)
+  .belongsTo('post', PostTagSchema.fields.postId, PostSchema)
+  .belongsTo('tag', PostTagSchema.fields.tagId, TagSchema)
+  .build()
 ```
 
 Users access tags from a post via a **two-step preload** (`post.postTags[].tag`).
@@ -1019,7 +1104,7 @@ obscures this; the explicit form keeps the join as a first-class entity.
 ### 9.8 Preloads
 
 **Preload** is the framework-side mechanism for loading related documents:
-`findMany(schema, q, { preload: [UserRels.posts, ...] })`.
+`repo.on(UserSchema).all().preload([UserRels.posts, ...]).find()`.
 
 **Package-side preload.** Preloads run package-side via `findMany` against any
 queryable adapter. Cycle detection, max depth, and N+1 dispatch all live in the
@@ -1032,7 +1117,7 @@ Vocabulary:
 - **Max preload depth** is the per-request limit on preload chain depth.
 - **Batched dispatch** is the framework batching N child queries into one
   `findMany(schema, q.in(fk, parentIds))` call (avoids N+1).
-- **Preload context-flow rule.** Preloads honour `ContextSource` transforms
+- **Preload context-flow rule.** Preloads honour `repo.resolve(...)` transforms
   (§6) — every preload sub-query goes through the same per-query config
   resolution pipeline as the top-level query. Tenant prefixes etc. flow
   through preloads automatically.
@@ -1234,25 +1319,26 @@ values, so callers can safely mutate the result.
 
 ## 12. Upsert
 
-`upsertOne` is a filter-based Repo method gated by `queryable.upsertOne`
-declared on the adapter.
+`upsert` is a filter-based chain verb gated by `queryable.upsertOne` declared
+on the adapter, reached via the schema-bound chain.
 
 ### 12.1 API shape
 
 ```ts
-await repo.upsertOne(UserSchema,
-  q => q.eq(UserSchema.fields.email, 'a@b.com'),
-  { name: 'Alice', email: 'a@b.com' },
-  set({ lastSeen: Date.now() }),
-  inc(UserSchema.fields.loginCount, 1),
-)
+await repo.on(UserSchema)
+  .one()
+  .where(q => q.eq(UserSchema.fields.email, 'a@b.com'))
+  .upsert({
+    create: { name: 'Alice', email: 'a@b.com' },
+    ops: [set({ lastSeen: Date.now() }), inc(UserSchema.fields.loginCount, 1)],
+  })
 ```
 
 Three argument roles:
 
-- The **filter callback** (the `q => ...` arg). See §11.
-- The **insert payload** (`{ name, email }`). The **full-insert-payload rule**
-  locks this as `SchemaInput<S>` (full document, same as `insertOne`), not
+- The **filter callback** (the `q => ...` arg passed to `.where(...)`). See §11.
+- The **create payload** (`{ name, email }`). The **full-create-payload rule**
+  locks this as `SchemaInput<S>` (full document, same as `create`), not
   `Partial`.
 - The **op list** (`set(...)`, `inc(...)`). See §10.
 
@@ -1279,12 +1365,12 @@ behaviour, not `crud`. Important for adapter authors.
 
 `upsertOne` has two execution paths depending on whether the row exists:
 
-- **Insert-then-ops semantics.** Row missing: validate the insert payload via
-  `insertOne` rules (`onCreate` defaults injected), insert it, then apply
-  atomic ops on top. SetOp values override inserted fields; atomic ops apply
-  to the inserted values (e.g. `inc(views, 1)` on insert with `views: 0` →
+- **Create-then-ops semantics.** Row missing: validate the create payload via
+  `createOne` rules (`onCreate` defaults injected), create it, then apply
+  atomic ops on top. SetOp values override created fields; atomic ops apply
+  to the created values (e.g. `inc(views, 1)` on create with `views: 0` →
   `views: 1`).
-- **Update-only-on-exists semantics.** Row exists: ignore the insert payload
+- **Update-only-on-exists semantics.** Row exists: ignore the create payload
   entirely; apply ops to the existing row. The Q7.α auto-bump rule applies on
   this path — fields with `onUpdate` not touched by user ops get implicit
   `set` ops.
@@ -1295,8 +1381,8 @@ The **upsert auto-bump rule**: auto-bump (§7.3) applies on the update path of
 upsert. Fields with `onUpdate` not in the touched-fields set get implicit
 `set({ <field>: <onUpdate()> })` ops.
 
-The **upsert insert-vs-op conflict rule**: an extension of the field-conflict
-rejection rule (§7.4). If the insert payload sets `views: 0` AND an op
+The **upsert create-vs-op conflict rule**: an extension of the field-conflict
+rejection rule (§7.4). If the create payload sets `views: 0` AND an op
 `inc(views, 1)` is also passed, the framework throws (because in the
 row-missing case both touch `views`).
 
@@ -1342,10 +1428,10 @@ from the return value.
 
 - **No-creation-discriminator rule.** The return value is just the document.
   There is no `{ document, created: boolean }` shape.
-- **Empty-ops-allowed-on-upsert rule.** `upsertOne(schema, q, insert)` with no
-  ops is allowed — it's "upsert this; if it exists do nothing." This is
-  distinct from the non-empty op-list rule (§10.5) for `update*`, where the
-  ops are the only thing the call does.
+- **Empty-ops-allowed-on-upsert rule.** `.upsert({ create })` with no ops is
+  allowed — it's "upsert this; if it exists do nothing." This is distinct
+  from the non-empty op-list rule (§10.5) for `.update(...)`, where the ops
+  are the only thing the call does.
 
 ---
 
@@ -1358,17 +1444,16 @@ criterion: a rule earns a place here if it crosses three or more sections.
 
 | # | Principle | Statement |
 |---|---|---|
-| 1 | **Builder-chain rule** | Builder-chain factories are the default for all artifact construction; direct calls for invocation/operations. (§2.2) |
+| 1 | **Builder-chain rule** | Static-factory builder chains (`X.from(args).step()...build()`) are the canonical shape for all artifact construction; direct calls for invocation/operations. (§2.2) |
 | 2 | **No-emulation rule** | The framework never emulates a missing op or behaviour client-side. Adapter-specific power lives in the adapter's `raw` method only. (§3.5) |
 | 3 | **Closed-set rule** | Adapters subset the canonical sets (filter ops, update ops, field types, relation kinds); they cannot extend them. Extension requires a package version bump. (§4.4) |
 | 4 | **Type-system-is-the-contract rule** | Capability mismatches are compile errors wherever feasible, not runtime throws. The TypeScript surface is the load-bearing contract. |
 | 5 | **Validate-once rule** | Validation runs exactly once, at the Repo-entry boundary; adapters receive validated input and never re-validate. (§7.1) |
 | 6 | **Always-throw-never-silently-drop rule** | Empty filter groups, missing fields, unknown ops, conflicting ops fail loudly. No silent short-circuits, no "match-all" / "match-none" fallbacks at boundaries. |
 | 7 | **No-runtime-value-coercion rule** | Filter values are a TS-only contract. The framework does not run pipes on filter values. (§11.6 invariant C) |
-| 8 | **Zero-ALS rule** | The library imports zero `node:async_hooks` and never enters or runs ALS scopes. User-owned scope-entry only. (§6.4) |
-| 9 | **Adapter-owned tx propagation rule** | Tx-context propagation lives entirely inside the adapter, not in the framework. (§8.2) |
-| 10 | **Schema relations-agnosticism rule** | Schemas contain no relational information. All relational concerns live in the Relations artifact. (§9.6) |
-| 11 | **Single-Repo rule** | A Repo handles all schemas it can compatibility-narrow against. No registry, no per-Repo derivation, no per-schema typed Repos. (§6.7) |
+| 8 | **Adapter-owned tx propagation rule** | Tx-context propagation lives entirely inside the adapter, not in the framework. (§8.2) |
+| 9 | **Schema relations-agnosticism rule** | Schemas contain no relational information. All relational concerns live in the Relations artifact. (§9.6) |
+| 10 | **Single-Repo rule** | A Repo handles all schemas it can compatibility-narrow against. No registry, no per-Repo derivation, no per-schema typed Repos. (§6.7) |
 
 ---
 

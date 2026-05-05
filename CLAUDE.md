@@ -12,4 +12,4 @@ Default canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `read
 
 ### Domain docs
 
-Multi-context: `CONTEXT-MAP.md` at root points at per-module `CONTEXT.md` files (e.g. `src/orm/CONTEXT.md`). See `docs/agents/domain.md`.
+Multi-context: `docs/CONTEXT-MAP.md` points at per-module `CONTEXT.md` files under `docs/<context>/CONTEXT.md` (e.g. `docs/orm/CONTEXT.md`). All ADRs live at `docs/adr/`. See `docs/agents/domain.md`.

@@ -197,10 +197,6 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return row as SchemaPersistedOutput<S>
 	}
 
-	async sesssion<T>(fn: (tx: Repo<A>) => Promise<T>): Promise<T> {
-		return this.#adapter.session(() => fn(this))
-	}
-
 	async session<T>(fn: () => Promise<T>): Promise<T> {
 		return this.#adapter.session(fn)
 	}
