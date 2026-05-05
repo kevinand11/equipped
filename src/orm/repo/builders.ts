@@ -309,39 +309,39 @@ if (import.meta.vitest) {
 	const { describe, test, expect, beforeEach } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { createInMemoryAdapter } = await import('../adapters/in-memory')
-	const { defineRepo } = await import('./repo')
-	const { defineSchema } = await import('../schema')
+	const { Repo } = await import('./repo')
+	const { Schema } = await import('../schema')
 
 	describe('builders', () => {
 		let repo: any
 		beforeEach(() => {
 			const { adapter } = createInMemoryAdapter()
-			repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
+			repo = Repo.from(adapter).resolve((s) => ({ prefix: s.name })).build()
 		})
 
 		test('update() executes and returns updated row', async () => {
-			const UserSchema = defineSchema('users', (s) =>
-				s.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
-				 .field('email', v.string())
-				 .field('name', v.string()),
-			)
+			const UserSchema = Schema.from('users')
+				.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
+				.field('email', v.string())
+				.field('name', v.string())
+				.build()
 
-			const created = await repo.from(UserSchema).one().create({ email: 'up@test.com', name: 'Before' })
-			const updated = await repo.from(UserSchema).one().id(created.id).update({ name: 'After' })
+			const created = await repo.on(UserSchema).one().create({ email: 'up@test.com', name: 'Before' })
+			const updated = await repo.on(UserSchema).one().id(created.id).update({ name: 'After' })
 			expect(updated?.name).toBe('After')
-			const found = await repo.from(UserSchema).one().id(created.id).find()
+			const found = await repo.on(UserSchema).one().id(created.id).find()
 			expect(found?.name).toBe('After')
 		})
 
 		test('find() returns rows', async () => {
-			const UserSchema = defineSchema('users', (s) =>
-				s.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
-				 .field('email', v.string())
-				 .field('name', v.string()),
-			)
+			const UserSchema = Schema.from('users')
+				.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
+				.field('email', v.string())
+				.field('name', v.string())
+				.build()
 
 			await repo
-				.from(UserSchema)
+				.on(UserSchema)
 				.all()
 				.create([
 					{ email: 'a@x.com', name: 'Alice' },
@@ -349,7 +349,7 @@ if (import.meta.vitest) {
 				])
 
 			const rows = await repo
-				.from(UserSchema)
+				.on(UserSchema)
 				.all()
 				.where((q) => q.or([(g) => g.eq('name', 'Alice'), (g) => g.eq('name', 'Bob')]))
 				.find()
@@ -357,25 +357,25 @@ if (import.meta.vitest) {
 		})
 
 		test('write branches do not leak filters', async () => {
-			const UserSchema = defineSchema('users', (s) =>
-				s.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
-				 .field('email', v.string())
-				 .field('name', v.string()),
-			)
+			const UserSchema = Schema.from('users')
+				.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
+				.field('email', v.string())
+				.field('name', v.string())
+				.build()
 
 			await repo
-				.from(UserSchema)
+				.on(UserSchema)
 				.all()
 				.create([
 					{ email: 'alice@x.com', name: 'Alice' },
 					{ email: 'bob@x.com', name: 'Bob' },
 				])
 
-			const base = repo.from(UserSchema).all()
+			const base = repo.on(UserSchema).all()
 			await base.where((q) => q.eq('name', 'Alice')).update({ name: 'A Updated' })
 			await base.where((q) => q.eq('name', 'Bob')).update({ name: 'B Updated' })
 
-			const all = await repo.from(UserSchema).all().orderBy('name', 'asc').find()
+			const all = await repo.on(UserSchema).all().orderBy('name', 'asc').find()
 			expect(all.map((r) => r.name)).toEqual(['A Updated', 'B Updated'])
 		})
 	})

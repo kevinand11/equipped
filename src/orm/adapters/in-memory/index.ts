@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { differ } from 'valleyed'
 
 import { EquippedError } from '../../../errors'
-import { defineAdapter } from '../../adapter'
+import { Adapter } from '../../adapter'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
@@ -246,107 +246,105 @@ export function createInMemoryAdapter() {
 		return stores.get(name)!
 	}
 
-	const adapter = defineAdapter((a) =>
-		a
-			.config({} as InMemoryRepoConfig)
-			.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
-			.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
-			.crud({
-				findByPk: async (schema, config, pk) => {
-					const store = getStore(resolveConfigName(schema, config))
-					const doc = store.get(String(pk))
-					return doc ? clone(doc) : null
-				},
-				createMany: async (schema, config, data) => {
-					const pk = schema.pkField.name
-					const store = getStore(resolveConfigName(schema, config))
-					return data.map((d) => {
-						const row = clone(d)
-						store.set(String(row[pk]), row)
-						return clone(row)
-					})
-				},
-				deleteByPk: async (schema, config, pk) => {
-					const store = getStore(resolveConfigName(schema, config))
-					const pkStr = String(pk)
-					const doc = store.get(pkStr)
-					if (!doc) return null
-					store.delete(pkStr)
-					return clone(doc)
-				},
-				updateByPk: async (schema, config, pk, ops) => {
-					const store = getStore(resolveConfigName(schema, config))
-					const pkStr = String(pk)
-					const doc = store.get(pkStr)
-					if (!doc) return null
-					const updated = applyOps(doc, ops)
-					store.set(pkStr, updated)
-					return clone(updated)
-				},
-				raw: async () => {
-					throw new EquippedError('In-memory adapter does not support raw operations', {
-						adapter: 'in-memory',
-						operation: 'raw',
-					})
-				},
-			})
-			.queryable({
-				findMany: async (schema, config, group, options) => {
-					const store = getStore(resolveConfigName(schema, config))
-					const rows = [...store.values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc))
-					return applyOptions(rows, options)
-				},
-				updateMany: async (schema, config, group, data) => {
-					const store = getStore(resolveConfigName(schema, config))
-					const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, group)).map(([id]) => id)
+	const adapter = Adapter.from<InMemoryRepoConfig>()
+		.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
+		.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
+		.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
+		.crud({
+			findByPk: async (schema, config, pk) => {
+				const store = getStore(resolveConfigName(schema, config))
+				const doc = store.get(String(pk))
+				return doc ? clone(doc) : null
+			},
+			createMany: async (schema, config, data) => {
+				const pk = schema.pkField.name
+				const store = getStore(resolveConfigName(schema, config))
+				return data.map((d) => {
+					const row = clone(d)
+					store.set(String(row[pk]), row)
+					return clone(row)
+				})
+			},
+			deleteByPk: async (schema, config, pk) => {
+				const store = getStore(resolveConfigName(schema, config))
+				const pkStr = String(pk)
+				const doc = store.get(pkStr)
+				if (!doc) return null
+				store.delete(pkStr)
+				return clone(doc)
+			},
+			updateByPk: async (schema, config, pk, ops) => {
+				const store = getStore(resolveConfigName(schema, config))
+				const pkStr = String(pk)
+				const doc = store.get(pkStr)
+				if (!doc) return null
+				const updated = applyOps(doc, ops)
+				store.set(pkStr, updated)
+				return clone(updated)
+			},
+			raw: async () => {
+				throw new EquippedError('In-memory adapter does not support raw operations', {
+					adapter: 'in-memory',
+					operation: 'raw',
+				})
+			},
+		})
+		.queryable({
+			findMany: async (schema, config, group, options) => {
+				const store = getStore(resolveConfigName(schema, config))
+				const rows = [...store.values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc))
+				return applyOptions(rows, options)
+			},
+			updateMany: async (schema, config, group, data) => {
+				const store = getStore(resolveConfigName(schema, config))
+				const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, group)).map(([id]) => id)
 
-					const updated: Record<string, unknown>[] = []
-					for (const id of ids) {
-						const current = store.get(id)
-						if (!current) continue
-						const next = applyUpdateData(current, data)
-						store.set(id, next)
-						updated.push(clone(next))
-					}
-					return updated
-				},
-				deleteMany: async (schema, config, filter) => {
-					const store = getStore(resolveConfigName(schema, config))
-					const pk = schema.pkField.name
-					const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter)).map((doc) => clone(doc))
-					for (const row of rows) store.delete(String(row[pk]))
-					return rows
-				},
-				upsertOne: async (schema, config, filter, create, ops) => {
-					const store = getStore(resolveConfigName(schema, config))
-					const pk = schema.pkField.name
-					const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter))
-					const current = rows[0]
-					if (current) {
-						const next = ops.length > 0 ? applyOps(current, ops) : clone(current)
-						store.set(String(next[pk]), next)
-						return clone(next)
-					}
-					const base = clone(create)
-					const result = ops.length > 0 ? applyOps(base, ops) : base
-					store.set(String(result[pk]), result)
-					return clone(result)
-				},
-			})
-			.transactional({
-				session: async <T>(fn: () => Promise<T>): Promise<T> => {
-					if (sessionActiveStore.getStore()) return fn()
-					const snap = snapshot()
-					try {
-						return await sessionActiveStore.run(true, fn)
-					} catch (error) {
-						restore(snap)
-						throw error
-					}
-				},
-			}),
-	)
+				const updated: Record<string, unknown>[] = []
+				for (const id of ids) {
+					const current = store.get(id)
+					if (!current) continue
+					const next = applyUpdateData(current, data)
+					store.set(id, next)
+					updated.push(clone(next))
+				}
+				return updated
+			},
+			deleteMany: async (schema, config, filter) => {
+				const store = getStore(resolveConfigName(schema, config))
+				const pk = schema.pkField.name
+				const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter)).map((doc) => clone(doc))
+				for (const row of rows) store.delete(String(row[pk]))
+				return rows
+			},
+			upsertOne: async (schema, config, filter, create, ops) => {
+				const store = getStore(resolveConfigName(schema, config))
+				const pk = schema.pkField.name
+				const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter))
+				const current = rows[0]
+				if (current) {
+					const next = ops.length > 0 ? applyOps(current, ops) : clone(current)
+					store.set(String(next[pk]), next)
+					return clone(next)
+				}
+				const base = clone(create)
+				const result = ops.length > 0 ? applyOps(base, ops) : base
+				store.set(String(result[pk]), result)
+				return clone(result)
+			},
+		})
+		.transactional({
+			session: async <T>(fn: () => Promise<T>): Promise<T> => {
+				if (sessionActiveStore.getStore()) return fn()
+				const snap = snapshot()
+				try {
+					return await sessionActiveStore.run(true, fn)
+				} catch (error) {
+					restore(snap)
+					throw error
+				}
+			},
+		})
+		.build()
 
 	return { adapter, stores }
 }
@@ -355,19 +353,18 @@ if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { FilterGroup } = await import('../../filter')
 	const { OrderBy } = await import('../../query')
-	const { defineSchema } = await import('../../schema')
+	const { Schema } = await import('../../schema')
 	const { IncOp, PatchOp, PullOp, PushOp } = await import('../../updates')
 
 	const { v } = await import('valleyed')
 
 	describe('in-memory adapter', () => {
 		test('supports nested filters, ordering, select, offset and limit', async () => {
-			const schema = defineSchema('users', (s) =>
-				s
-					.pk('id', v.string(), () => 'u')
-					.field('name', v.string())
-					.field('age', v.number()),
-			)
+			const schema = Schema.from('users')
+				.pk('id', v.string(), () => 'u')
+				.field('name', v.string())
+				.field('age', v.number())
+				.build()
 			const { adapter } = createInMemoryAdapter()
 			const use = adapter.use(schema, { table: 'users' })
 			await use.createMany([
@@ -385,13 +382,12 @@ if (import.meta.vitest) {
 		})
 
 		test('supports update operators and rollback on failed session', async () => {
-			const schema = defineSchema('docs', (s) =>
-				s
-					.pk('id', v.string(), () => 'd1')
-					.field('count', v.number())
-					.field('tags', v.array(v.string()))
-					.field('meta', v.object({ a: v.number() })),
-			)
+			const schema = Schema.from('docs')
+				.pk('id', v.string(), () => 'd1')
+				.field('count', v.number())
+				.field('tags', v.array(v.string()))
+				.field('meta', v.object({ a: v.number() }))
+				.build()
 			const { adapter } = createInMemoryAdapter()
 			const use = adapter.use(schema, { table: 'docs' })
 			await use.createOne({ id: 'd1', count: 1, tags: ['x'], meta: { a: 1 } })
@@ -416,9 +412,10 @@ if (import.meta.vitest) {
 		})
 
 		test('notIn filter excludes matching values', async () => {
-			const schema = defineSchema('users', (s) =>
-				s.pk('id', v.string(), () => 'u').field('name', v.string()),
-			)
+			const schema = Schema.from('users')
+				.pk('id', v.string(), () => 'u')
+				.field('name', v.string())
+				.build()
 			const { adapter } = createInMemoryAdapter()
 			const use = adapter.use(schema, { table: 'users' })
 			await use.createMany([
@@ -432,9 +429,10 @@ if (import.meta.vitest) {
 		})
 
 		test('exists / notExists filter ops work correctly', async () => {
-			const schema = defineSchema('items', (s) =>
-				s.pk('id', v.string(), () => 'i').field('val', v.optional(v.string()), { onCreate: () => undefined }),
-			)
+			const schema = Schema.from('items')
+				.pk('id', v.string(), () => 'i')
+				.field('val', v.optional(v.string()), { onCreate: () => undefined })
+				.build()
 			const { adapter } = createInMemoryAdapter()
 			const use = adapter.use(schema, { table: 'items' })
 			await use.createMany([
@@ -451,7 +449,7 @@ if (import.meta.vitest) {
 		})
 
 		test('crud.findByPk returns seeded document and null for missing', async () => {
-			const schema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'gen'))
+			const schema = Schema.from('test').pk('id', v.string(), () => 'gen').build()
 			const { adapter } = createInMemoryAdapter()
 
 			const use = adapter.use(schema, { prefix: 'test' })

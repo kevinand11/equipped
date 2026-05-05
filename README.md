@@ -207,23 +207,22 @@ Equipped ships a typed, capability-aware ORM built on the stack **Schema → Rel
 A Schema describes a single document shape — name, primary key, data fields, and optional computed fields. Schemas are adapter-agnostic and carry `valleyed` pipes for validation.
 
 ```typescript
-import { defineSchema } from 'equipped/orm'
+import { Schema } from 'equipped/orm'
 
-const UserSchema = defineSchema('users', (s) =>
-    s
-        .pk('id', v.string(), () => crypto.randomUUID())
-        .field('email', v.string())
-        .field('name', v.string())
-        .field('age', v.number())
-        .field('orgId', v.string())
-        .field('tags', v.array(v.string()))
-        .field('bio', v.optional(v.string()), { onCreate: () => undefined })
-        .field('createdAt', v.number(), { onCreate: () => Date.now() })
-        .field('updatedAt', v.number(), {
-            onCreate: () => Date.now(),
-            onUpdate: () => Date.now(),
-        })
-)
+const UserSchema = Schema.from('users')
+    .pk('id', v.string(), () => crypto.randomUUID())
+    .field('email', v.string())
+    .field('name', v.string())
+    .field('age', v.number())
+    .field('orgId', v.string())
+    .field('tags', v.array(v.string()))
+    .field('bio', v.optional(v.string()), { onCreate: () => undefined })
+    .field('createdAt', v.number(), { onCreate: () => Date.now() })
+    .field('updatedAt', v.number(), {
+        onCreate: () => Date.now(),
+        onUpdate: () => Date.now(),
+    })
+    .build()
 ```
 
 -   **`pk(name, pipe, generator)`** — declares the primary key. The generator runs on insert.
@@ -237,32 +236,30 @@ Fields with `onUpdate` generators auto-bump on every update unless the update ex
 Relations live in a separate artifact from the schema. They wire `hasMany` / `hasOne` / `belongsTo` descriptors using schema-tagged Field references as foreign keys.
 
 ```typescript
-import { defineRelations } from 'equipped/orm'
+import { Relations, Schema } from 'equipped/orm'
 
-const PostSchema = defineSchema('posts', (s) =>
-    s
-        .pk('id', v.string(), () => crypto.randomUUID())
-        .field('title', v.string())
-        .field('userId', v.string())
-)
+const PostSchema = Schema.from('posts')
+    .pk('id', v.string(), () => crypto.randomUUID())
+    .field('title', v.string())
+    .field('userId', v.string())
+    .build()
 
-const ProfileSchema = defineSchema('profiles', (s) =>
-    s
-        .pk('id', v.string(), () => crypto.randomUUID())
-        .field('bio', v.string())
-        .field('userId', v.string())
-)
+const ProfileSchema = Schema.from('profiles')
+    .pk('id', v.string(), () => crypto.randomUUID())
+    .field('bio', v.string())
+    .field('userId', v.string())
+    .build()
 
-const OrgSchema = defineSchema('orgs', (s) =>
-    s.pk('id', v.string(), () => crypto.randomUUID()).field('name', v.string())
-)
+const OrgSchema = Schema.from('orgs')
+    .pk('id', v.string(), () => crypto.randomUUID())
+    .field('name', v.string())
+    .build()
 
-const UserRelations = defineRelations(UserSchema, (rel, src) =>
-    rel
-        .hasMany('posts', PostSchema.fields.userId)
-        .hasOne('profile', ProfileSchema.fields.userId)
-        .belongsTo('org', src.fields.orgId, OrgSchema)
-)
+const UserRelations = Relations.from(UserSchema)
+    .hasMany('posts', PostSchema.fields.userId)
+    .hasOne('profile', ProfileSchema.fields.userId)
+    .belongsTo('org', UserSchema.fields.orgId, OrgSchema)
+    .build()
 ```
 
 -   **`hasMany(name, fk)`** — one-to-many. The FK lives on the target schema; target is inferred from the FK's phantom schema tag.
@@ -277,35 +274,33 @@ const UserRelations = defineRelations(UserSchema, (rel, src) =>
 An Adapter declares capabilities via three closed canonical sets and four optional behaviour bags, then implements the methods for each bag it declares.
 
 ```typescript
-import { defineAdapter } from 'equipped/orm'
+import { Adapter } from 'equipped/orm'
 
-const adapter = defineAdapter((a) =>
-    a
-        .config({} as { table: string })
-        .supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
-        .queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn')
-        .updateOps('set', 'inc', 'mul')
-        .lifecycle({
-            connect: async () => { /* open pool */ },
-            disconnect: async () => { /* close pool */ },
-        })
-        .crud({
-            findByPk: async (schema, config, pk) => { /* ... */ },
-            insertMany: async (schema, config, data) => { /* ... */ },
-            updateByPk: async (schema, config, pk, ops) => { /* ... */ },
-            deleteByPk: async (schema, config, pk) => { /* ... */ },
-            raw: async (schema, config, command, params) => { /* ... */ },
-        })
-        .queryable({
-            findMany: async (schema, config, filter, options) => { /* ... */ },
-            updateMany: async (schema, config, filter, data) => { /* ... */ },
-            deleteMany: async (schema, config, filter) => { /* ... */ },
-            upsertOne: async (schema, config, filter, insert, ops) => { /* ... */ },
-        })
-        .transactional({
-            session: async (fn) => { /* ... */ },
-        })
-)
+const adapter = Adapter.from<{ table: string }>()
+    .supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
+    .queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn')
+    .updateOps('set', 'inc', 'mul')
+    .lifecycle({
+        connect: async () => { /* open pool */ },
+        disconnect: async () => { /* close pool */ },
+    })
+    .crud({
+        findByPk: async (schema, config, pk) => { /* ... */ },
+        insertMany: async (schema, config, data) => { /* ... */ },
+        updateByPk: async (schema, config, pk, ops) => { /* ... */ },
+        deleteByPk: async (schema, config, pk) => { /* ... */ },
+        raw: async (schema, config, command, params) => { /* ... */ },
+    })
+    .queryable({
+        findMany: async (schema, config, filter, options) => { /* ... */ },
+        updateMany: async (schema, config, filter, data) => { /* ... */ },
+        deleteMany: async (schema, config, filter) => { /* ... */ },
+        upsertOne: async (schema, config, filter, insert, ops) => { /* ... */ },
+    })
+    .transactional({
+        session: async (fn) => { /* ... */ },
+    })
+    .build()
 ```
 
 #### Capability Declarations
@@ -342,16 +337,14 @@ The in-tree adapters live under `src/orm/adapters/` — see their individual REA
 A Repo wraps an adapter and provides the schema-per-call surface. One Repo handles all schemas — no registry, no per-schema derivation.
 
 ```typescript
-import { defineRepo } from 'equipped/orm'
+import { Repo } from 'equipped/orm'
 
-const repo = defineRepo((r) =>
-    r
-        .adapter(adapter)
-        .resolve((schema) => ({ table: schema.name }))
-)
+const repo = Repo.from(adapter)
+    .resolve((schema) => ({ table: schema.name }))
+    .build()
 ```
 
--   **`.adapter(a)`** — binds the adapter. Called once.
+-   **`Repo.from(adapter)`** — starts the builder, binding the adapter.
 -   **`.resolve(fn)`** — maps schema → adapter config. Called once.
 -   **`.context(source)`** — optional. Wires a `ContextSource` for per-query config transforms (see [Context & Multi-tenancy](#context--multi-tenancy)).
 
@@ -420,21 +413,21 @@ const result = await repo.session(async () => {
 
 #### Fluent Builder API
 
-`repo.from(Schema)` returns a builder that branches into `.one()` (single document) or `.all()` (collection).
+`repo.on(Schema)` returns a builder that branches into `.one()` (single document) or `.all()` (collection).
 
 ```typescript
 // Insert
-const user = await repo.from(UserSchema).one().insert({ email: 'a@b.com', name: 'Alice' })
-const users = await repo.from(UserSchema).all().insert([
+const user = await repo.on(UserSchema).one().insert({ email: 'a@b.com', name: 'Alice' })
+const users = await repo.on(UserSchema).all().insert([
     { email: 'a@b.com', name: 'Alice' },
     { email: 'b@c.com', name: 'Bob' },
 ])
 
 // Read by PK
-const found = await repo.from(UserSchema).one().id('u1').find()
+const found = await repo.on(UserSchema).one().id('u1').find()
 
 // Read with filters, ordering, pagination
-const results = await repo.from(UserSchema).all()
+const results = await repo.on(UserSchema).all()
     .where((q) => q.eq('name', 'Alice'))
     .orderBy('createdAt', 'desc')
     .limit(10)
@@ -442,34 +435,34 @@ const results = await repo.from(UserSchema).all()
     .find()
 
 // Select specific fields
-const partial = await repo.from(UserSchema).all()
+const partial = await repo.on(UserSchema).all()
     .select(['id', 'name'])
     .find()
 
 // Preload relations
-const withPosts = await repo.from(UserSchema).one().id('u1')
+const withPosts = await repo.on(UserSchema).one().id('u1')
     .preload([UserRelations.posts, UserRelations.org])
     .find()
 
 // Update
-const updated = await repo.from(UserSchema).one().id('u1').update({ name: 'New Name' })
-const allUpdated = await repo.from(UserSchema).all()
+const updated = await repo.on(UserSchema).one().id('u1').update({ name: 'New Name' })
+const allUpdated = await repo.on(UserSchema).all()
     .where((q) => q.eq('name', 'Old'))
     .update({ name: 'New' })
 
 // Upsert
-const upserted = await repo.from(UserSchema).one()
+const upserted = await repo.on(UserSchema).one()
     .where((q) => q.eq('email', 'a@b.com'))
     .upsert({ insert: { email: 'a@b.com', name: 'Alice' } })
 
 // Delete
-const deleted = await repo.from(UserSchema).one().id('u1').delete()
-const allDeleted = await repo.from(UserSchema).all()
+const deleted = await repo.on(UserSchema).one().id('u1').delete()
+const allDeleted = await repo.on(UserSchema).all()
     .where((q) => q.eq('name', 'ToDelete'))
     .delete()
 
 // Raw
-const raw = await repo.from(UserSchema).raw('SELECT * FROM users')
+const raw = await repo.on(UserSchema).raw('SELECT * FROM users')
 ```
 
 Builder snapshots are immutable — branching from a base builder does not mutate the original.
@@ -567,10 +560,10 @@ await repo.updateByPk(
 
 ### Context & Multi-tenancy
 
-`defineRepo` accepts an optional `.context(source)` step that wires a `ContextSource` for per-query config transforms. The library imports zero `node:async_hooks` — you own the scope-entry mechanism.
+`Repo.from(adapter)` accepts an optional `.context(source)` step that wires a `ContextSource` for per-query config transforms. The library imports zero `node:async_hooks` — you own the scope-entry mechanism.
 
 ```typescript
-import { type ContextSource, type ConfigTransform, defineRepo } from 'equipped/orm'
+import { type ContextSource, type ConfigTransform, Repo } from 'equipped/orm'
 
 type MyConfig = { table: string; tenantPrefix?: string }
 
@@ -586,12 +579,10 @@ const ctxSource: ContextSource<MyConfig> = {
     },
 }
 
-const repo = defineRepo((r) =>
-    r
-        .adapter(adapter)
-        .resolve((schema) => ({ table: schema.name }))
-        .context(ctxSource)
-)
+const repo = Repo.from(adapter)
+    .resolve((schema) => ({ table: schema.name }))
+    .context(ctxSource)
+    .build()
 
 // Per-request scope entry (you own this)
 app.use((req, res, next) => {
@@ -611,15 +602,14 @@ app.use((req, res, next) => {
 
 ### Builder-chain Pattern Overview
 
-All declarative artifact construction (`defineSchema`, `defineRelations`, `defineAdapter`, `defineRepo`) uses a uniform **builder-chain** pattern:
+All declarative artifact construction (`Schema.from()`, `Relations.from()`, `Adapter.from()`, `Repo.from()`) uses a uniform **static-factory builder-chain** pattern:
 
 ```typescript
-const artifact = defineX((builder) =>
-    builder
-        .stepA(...)
-        .stepB(...)
-        .stepC(...)
-)
+const artifact = X.from(args)
+    .stepA(...)
+    .stepB(...)
+    .stepC(...)
+    .build()
 ```
 
 **Rules**:
