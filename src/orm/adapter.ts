@@ -138,12 +138,8 @@ export class AdapterBuilder<Acc = {}> {
 		return this as any
 	}
 
-	_build() {
-		return this.#data
-	}
-
 	build(): AdapterResult<Acc> {
-		const data = this._build() as AdapterResult<Acc>
+		const data = this.#data as unknown as AdapterResult<Acc>
 
 		const result: Record<string, unknown> = { ...data }
 

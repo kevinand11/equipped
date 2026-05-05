@@ -140,7 +140,6 @@ export class Schema<
 	}
 }
 
-
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf } = import.meta.vitest
 

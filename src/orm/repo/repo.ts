@@ -64,9 +64,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	}
 
 	static from<NewA extends OrmAdapterLike<any>>(adapter: NewA): RepoBuilder<NewA, never> {
-		const builder = new RepoBuilder<NewA, never>()
-		builder._setAdapter(adapter)
-		return builder
+		return new RepoBuilder<NewA, never>(adapter)
 	}
 
 	async findByPk<S extends AnySchema>(schema: SchemaCompatible<A, S>, pk: unknown): Promise<SchemaPersistedOutput<S> | null> {
@@ -239,8 +237,8 @@ class RepoBuilder<A = never, Config = never> {
 	#resolve: unknown
 	#context: unknown
 
-	_setAdapter<NewA>(a: NewA) {
-		this.#adapter = a
+	constructor(adapter?: unknown) {
+		this.#adapter = adapter
 	}
 
 	resolve<NewConfig>(fn: [Config] extends [never] ? (schema: AnySchema) => NewConfig : never): RepoBuilder<A, NewConfig> {
@@ -253,16 +251,11 @@ class RepoBuilder<A = never, Config = never> {
 		return this
 	}
 
-	_build() {
-		return { adapter: this.#adapter, resolve: this.#resolve, context: this.#context }
-	}
-
 	build(this: RepoBuilder<A extends OrmAdapterLike<any> ? A : never, Config>): RepoSurface<A extends OrmAdapterLike<any> ? A : never> {
-		const data = this._build()
 		return new Repo<A extends OrmAdapterLike<any> ? A : never>({
-			adapter: data.adapter as any,
-			resolve: data.resolve as any,
-			context: data.context as any,
+			adapter: this.#adapter as any,
+			resolve: this.#resolve as any,
+			context: this.#context as any,
 		}) as RepoSurface<A extends OrmAdapterLike<any> ? A : never>
 	}
 }

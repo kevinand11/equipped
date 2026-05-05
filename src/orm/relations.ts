@@ -142,10 +142,6 @@ class RelationsBuilder<S extends AnySchema, R extends Record<string, AnyRelDef> 
 		return this as any
 	}
 
-	get definitions(): R {
-		return this.#defs as R
-	}
-
 	build(): R {
 		return this.#defs as R
 	}
