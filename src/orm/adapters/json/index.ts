@@ -33,7 +33,7 @@ export function createJsonAdapter(options: { filePath: string }) {
 	}
 
 	function persistToDisk(): Promise<void> {
-		const next = writeQueue.then(() => atomicWrite(), () => atomicWrite())
+		const next = writeQueue.then(() => atomicWrite())
 		writeQueue = next.catch(() => {})
 		return next
 	}

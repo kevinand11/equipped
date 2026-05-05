@@ -225,7 +225,7 @@ const UserSchema = Schema.from('users')
     .build()
 ```
 
--   **`pk(name, pipe, generator)`** — declares the primary key. The generator runs on insert.
+-   **`pk(name, pipe, generator)`** — declares the primary key. The generator runs on create.
 -   **`field(name, pipe, opts?)`** — declares a data field. Optional `onCreate` / `onUpdate` generators auto-inject values.
 -   **`computed(name, deps, pipe, compute)`** — declares a derived field computed from persisted dependencies.
 
@@ -286,7 +286,7 @@ const adapter = Adapter.from<{ table: string }>()
     })
     .crud({
         findByPk: async (schema, config, pk) => { /* ... */ },
-        insertMany: async (schema, config, data) => { /* ... */ },
+        createMany: async (schema, config, data) => { /* ... */ },
         updateByPk: async (schema, config, pk, ops) => { /* ... */ },
         deleteByPk: async (schema, config, pk) => { /* ... */ },
         raw: async (schema, config, command, params) => { /* ... */ },
@@ -295,7 +295,7 @@ const adapter = Adapter.from<{ table: string }>()
         findMany: async (schema, config, filter, options) => { /* ... */ },
         updateMany: async (schema, config, filter, data) => { /* ... */ },
         deleteMany: async (schema, config, filter) => { /* ... */ },
-        upsertOne: async (schema, config, filter, insert, ops) => { /* ... */ },
+        upsertOne: async (schema, config, filter, create, ops) => { /* ... */ },
     })
     .transactional({
         session: async (fn) => { /* ... */ },
@@ -318,7 +318,7 @@ Adapters subset these sets — they cannot extend them. Extension requires a pac
 | Bag | Methods | Purpose |
 |---|---|---|
 | `lifecycle` | `connect`, `disconnect` | Connection management |
-| `crud` | `findByPk`, `insertMany`, `updateByPk`, `deleteByPk`, `raw` | PK-keyed and raw operations |
+| `crud` | `findByPk`, `createMany`, `updateByPk`, `deleteByPk`, `raw` | PK-keyed and raw operations |
 | `queryable` | `findMany`, `updateMany`, `deleteMany`, `upsertOne` | Filter-based operations |
 | `transactional` | `session` | Transaction support |
 
@@ -350,7 +350,7 @@ const repo = Repo.from(adapter)
 
 ### Repository API
 
-The Repo exposes two API surfaces: a **schema-per-call** API for direct method invocation and a **fluent builder** API via `repo.from(Schema)`.
+The Repo exposes two API surfaces: a **schema-per-call** API for direct method invocation and a **fluent builder** API via `repo.on(Schema)`.
 
 #### Schema-per-call API
 
@@ -358,8 +358,8 @@ The Repo exposes two API surfaces: a **schema-per-call** API for direct method i
 
 ```typescript
 const user = await repo.findByPk(UserSchema, 'u1')
-const created = await repo.insertOne(UserSchema, { email: 'a@b.com', name: 'Alice' })
-const batch = await repo.insertMany(UserSchema, [
+const created = await repo.createOne(UserSchema, { email: 'a@b.com', name: 'Alice' })
+const batch = await repo.createMany(UserSchema, [
     { email: 'a@b.com', name: 'Alice' },
     { email: 'b@c.com', name: 'Bob' },
 ])
@@ -393,19 +393,19 @@ const allDeleted = await repo.deleteMany(UserSchema, (q) => q.eq('name', 'ToDele
 const result = await repo.upsertOne(
     UserSchema,
     (q) => q.eq('email', 'a@b.com'),
-    { email: 'a@b.com', name: 'Alice', age: 30 },        // full insert payload
+    { email: 'a@b.com', name: 'Alice', age: 30 },        // full create payload
     set<typeof UserSchema>({ name: 'Alice Updated' }),      // ops for update path
 )
 ```
 
-Dual-path semantics: if no row matches, the insert payload is persisted and ops are applied on top. If a row exists, the insert payload is ignored and only ops + auto-bump run. The result is always the resulting document.
+Dual-path semantics: if no row matches, the create payload is persisted and ops are applied on top. If a row exists, the create payload is ignored and only ops + auto-bump run. The result is always the resulting document.
 
 **Transactions** (gated by `transactional.session`):
 
 ```typescript
 const result = await repo.session(async () => {
-    const user = await repo.insertOne(UserSchema, { email: 'a@b.com', name: 'Alice' })
-    await repo.insertOne(PostSchema, { title: 'Hello', userId: user.id })
+    const user = await repo.createOne(UserSchema, { email: 'a@b.com', name: 'Alice' })
+    await repo.createOne(PostSchema, { title: 'Hello', userId: user.id })
     return user.id
 })
 // Throw inside the callback → automatic rollback
@@ -416,9 +416,9 @@ const result = await repo.session(async () => {
 `repo.on(Schema)` returns a builder that branches into `.one()` (single document) or `.all()` (collection).
 
 ```typescript
-// Insert
-const user = await repo.on(UserSchema).one().insert({ email: 'a@b.com', name: 'Alice' })
-const users = await repo.on(UserSchema).all().insert([
+// Create
+const user = await repo.on(UserSchema).one().create({ email: 'a@b.com', name: 'Alice' })
+const users = await repo.on(UserSchema).all().create([
     { email: 'a@b.com', name: 'Alice' },
     { email: 'b@c.com', name: 'Bob' },
 ])
@@ -453,7 +453,7 @@ const allUpdated = await repo.on(UserSchema).all()
 // Upsert
 const upserted = await repo.on(UserSchema).one()
     .where((q) => q.eq('email', 'a@b.com'))
-    .upsert({ insert: { email: 'a@b.com', name: 'Alice' } })
+    .upsert({ create: { email: 'a@b.com', name: 'Alice' } })
 
 // Delete
 const deleted = await repo.on(UserSchema).one().id('u1').delete()
@@ -474,7 +474,7 @@ Every Repo method is gated by the adapter's capability declarations. Methods who
 | Repo method | Required adapter capability |
 |---|---|
 | `findByPk` | `crud.findByPk` |
-| `insertOne` / `insertMany` | `crud.insertMany` |
+| `createOne` / `createMany` | `crud.createMany` |
 | `updateByPk` | `crud.updateByPk` |
 | `deleteByPk` | `crud.deleteByPk` |
 | `raw` | `crud.raw` |
