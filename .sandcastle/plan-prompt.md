@@ -1,6 +1,6 @@
 # ISSUES
 
-The host has already fetched the open issues for `{{FEATURE}}` and filtered out anything whose explicit `Depends on #N` / `Blocked by #N` deps are not yet closed. The list below is the surviving candidate set:
+The host has already walked the sub-issues of PRD #{{PRD_NUMBER}}, kept the open ones labeled `ready-for-agent` and not `in-pr`, and filtered out anything whose explicit `Depends on #N` / `Blocked by #N` deps are not yet closed. The list below is the surviving candidate set:
 
 <issues-json>
 {{ISSUES_JSON}}
@@ -22,18 +22,14 @@ For each unblocked issue, assign a branch name using the format `sandcastle/issu
 
 > Note: explicit `Depends on #N` trailers have already been resolved by the host before you see this list — issues whose explicit deps are still open were dropped. Your job is the *heuristic* layer (overlapping files, decision-shape ordering) on top of that.
 
-## Feature labels
-
-The host's gh query already restricts the list to those carrying the `{{FEATURE}}` label. For each unblocked issue, list every label on it that matches the `feature/*` pattern in a `featureLabels` array — do not default, filter, or omit issues based on this. The host script validates the array and will halt with a loud error if it does not contain exactly the `{{FEATURE}}` label.
-
 # OUTPUT
 
-Output your plan as a JSON object wrapped in `<plan>` tags. Each issue must have `id`, `title`, `branch`, and `featureLabels`:
+Output your plan as a JSON object wrapped in `<plan>` tags. Each issue must have `id`, `title`, and `branch`:
 
 <plan>
 {"issues": [
-  {"id": "42", "title": "Fix auth bug", "branch": "sandcastle/issue-42-fix-auth-bug", "featureLabels": ["feature/auth-rewrite"]},
-  {"id": "43", "title": "Add OAuth provider", "branch": "sandcastle/issue-43-add-oauth-provider", "featureLabels": ["feature/auth-rewrite"]}
+  {"id": "42", "title": "Fix auth bug", "branch": "sandcastle/issue-42-fix-auth-bug"},
+  {"id": "43", "title": "Add OAuth provider", "branch": "sandcastle/issue-43-add-oauth-provider"}
 ]}
 </plan>
 

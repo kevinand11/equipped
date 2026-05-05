@@ -21,6 +21,35 @@ Create a GitHub issue.
 
 Run `gh issue view <number> --comments`.
 
+## PRDs and slice issues
+
+A PRD is a long-form parent issue describing a whole feature. Slice issues are the narrow vertical slices that implement it. The relationship is **structural**, expressed via GitHub's native sub-issues feature — not via textual `## Parent #N` references.
+
+When a skill publishes slice issues for a PRD:
+
+1. Create each slice issue normally with `gh issue create`.
+2. Link each slice as a sub-issue of the PRD via the REST API (no `gh` subcommand exists for this yet):
+
+   ```bash
+   parent_id=$(gh api repos/<owner>/<repo>/issues/<prd-number> --jq .id)
+   for n in <slice-numbers>; do
+     child_id=$(gh api repos/<owner>/<repo>/issues/$n --jq .id)
+     gh api -X POST repos/<owner>/<repo>/issues/<prd-number>/sub_issues -F sub_issue_id="$child_id"
+   done
+   ```
+
+   `sub_issue_id` is the issue's *internal numeric ID* (the `id` field), not the issue `number`.
+
+3. Omit the `## Parent` section from the slice's body — the parent/child relationship is now structural and visible in the GitHub UI's sub-issues panel.
+
+Limits: each parent supports up to 100 direct sub-issues, nested up to 8 levels deep.
+
+## Feature branches for PRDs
+
+By convention, each PRD has an integration branch named `feature/issue-<prd-number>` (e.g. PRD #27 → `feature/issue-27`). Slice PRs target this branch, not `main`. The whole feature merges into `main` as one squash when every slice has landed.
+
+The branch must exist on `origin` before Sandcastle can run against the PRD; create it once with `git push origin main:feature/issue-<prd-number>`.
+
 ## Declaring dependencies between issues
 
 When an issue cannot be worked on until another issue is resolved, declare the dependency in the issue body using either form below.

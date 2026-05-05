@@ -7,26 +7,26 @@
 //                             done. Pipelines run concurrently.
 //                             (GitHub doesn't let PR authors request changes
 //                             on their own PR, so a label is the trigger.)
-// Phase 1 (Plan):             Host fetches open `ready-for-agent` issues for
-//                             this feature, parses `Depends on #N` / `Blocked
-//                             by #N` trailers from issue bodies, and filters
-//                             out anything whose deps aren't all closed.
-//                             Bad refs and dep cycles hard-fail the run.
-//                             The surviving subset is then handed to an opus
-//                             agent that builds a heuristic dependency graph
-//                             (overlapping files, decision-shape ordering)
-//                             and outputs a <plan> JSON listing unblocked
-//                             issues with branch names and feature labels.
+// Phase 1 (Plan):             Host walks the PRD's sub-issues, keeps the open
+//                             ones labeled `ready-for-agent` and not `in-pr`,
+//                             parses `Depends on #N` / `Blocked by #N` trailers
+//                             from issue bodies, and filters out anything whose
+//                             deps aren't all closed. Bad refs and dep cycles
+//                             hard-fail the run. The surviving subset is then
+//                             handed to an opus agent that builds a heuristic
+//                             dependency graph (overlapping files, decision-
+//                             shape ordering) and outputs a <plan> JSON listing
+//                             unblocked issues with branch names.
 // Phase 2 (Execute+Review):   For each issue, the host prepares a local issue
-//                             branch off the feature branch tip, then a
+//                             branch off the integration branch tip, then a
 //                             sandbox is created via createSandbox(). The
 //                             implementer runs first (100 iterations). If it
 //                             produces commits, a reviewer runs in the same
 //                             sandbox on the same branch (1 iteration).
 //                             Pipelines run concurrently via Promise.allSettled().
 // Phase 3 (Publish):          For each branch with commits, push the branch
-//                             to origin and open a PR targeting its feature
-//                             branch (or `main` if no feature branch was set).
+//                             to origin and open a PR targeting the PRD's
+//                             integration branch (`feature/issue-<prd>`).
 //                             Label the issue 'in-pr' so subsequent iterations
 //                             skip it. No auto-merge — humans review and merge.
 //
@@ -56,23 +56,17 @@ const parsePositiveInt = (raw: string): number => {
 	return n
 }
 
-const parseFeature = (raw: string): string => {
-	if (!raw.startsWith('feature/') || raw === 'feature/') {
-		throw new InvalidArgumentError(`must start with 'feature/' and have a non-empty slug (got '${raw}')`)
-	}
-	return raw
-}
-
 const program = new Command()
 	.name('sandcastle')
 	.description(
-		'Run the Sandcastle parallel-planner-with-review loop scoped to a single feature. Multiple devs can run scoped loops for different features in parallel.',
+		'Run the Sandcastle parallel-planner-with-review loop scoped to a single PRD (parent issue). Multiple devs can run scoped loops for different PRDs in parallel.',
 	)
-	.argument('<feature>', "feature label (e.g. 'feature/orm') — must start with 'feature/' and exist as a branch on origin", parseFeature)
+	.argument('<prd-issue-number>', "PRD parent issue number (e.g. '27'). Discovery walks its sub-issues; the integration branch is `feature/issue-<n>`.", parsePositiveInt)
 	.option('-m, --max-iterations <n>', 'maximum number of plan/execute/publish cycles per run', parsePositiveInt, 1)
 	.parse()
 
-const FEATURE: string = program.processedArgs[0]
+const PRD_NUMBER: number = program.processedArgs[0]
+const FEATURE_BRANCH = `feature/issue-${PRD_NUMBER}`
 const MAX_ITERATIONS: number = program.opts().maxIterations
 
 const IN_PR_LABEL = 'in-pr'
@@ -99,7 +93,6 @@ type RawIssue = {
 	id: string
 	title: string
 	branch: string
-	featureLabels: string[]
 }
 
 type Issue = {
@@ -185,29 +178,51 @@ function parseDeps(body: string): number[] {
 	return [...out]
 }
 
-async function fetchCandidates(feature: string): Promise<CandidateIssue[]> {
-	const { stdout } = await exec('gh', [
-		'issue', 'list',
-		'--state', 'open',
-		'--search', `label:ready-for-agent label:"${feature}" -label:in-pr`,
-		'--limit', '200',
-		'--json', 'number,title,body,labels,comments',
+async function fetchCandidates(prdNumber: number): Promise<CandidateIssue[]> {
+	// Walk the PRD's sub-issues via the REST API (no `gh` subcommand exists for
+	// this yet). Then `gh issue view` each one to get the full body+labels we
+	// need for downstream filtering.
+	const { stdout: subIssuesJson } = await exec('gh', [
+		'api',
+		'--paginate',
+		`repos/{owner}/{repo}/issues/${prdNumber}/sub_issues`,
+		'--jq', '[.[] | {number, state, labels: [.labels[].name]}]',
 	])
-	return (
-		JSON.parse(stdout) as Array<{
+	const subIssues = JSON.parse(subIssuesJson) as Array<{
+		number: number
+		state: string
+		labels: string[]
+	}>
+
+	const eligible = subIssues.filter(
+		(s) =>
+			s.state.toUpperCase() === 'OPEN' &&
+			s.labels.includes('ready-for-agent') &&
+			!s.labels.includes('in-pr'),
+	)
+
+	const candidates: CandidateIssue[] = []
+	for (const sub of eligible) {
+		const { stdout } = await exec('gh', [
+			'issue', 'view', String(sub.number),
+			'--json', 'number,title,body,labels,comments',
+		])
+		const raw = JSON.parse(stdout) as {
 			number: number
 			title: string
 			body: string
 			labels: Array<{ name: string }>
 			comments: Array<{ body: string }>
-		}>
-	).map((raw) => ({
-		number: raw.number,
-		title: raw.title,
-		body: raw.body ?? '',
-		labels: raw.labels.map((l) => l.name),
-		comments: raw.comments.map((c) => c.body),
-	}))
+		}
+		candidates.push({
+			number: raw.number,
+			title: raw.title,
+			body: raw.body ?? '',
+			labels: raw.labels.map((l) => l.name),
+			comments: raw.comments.map((c) => c.body),
+		})
+	}
+	return candidates
 }
 
 // `gh issue view` per number with a memoising cache. Issues referenced by
@@ -392,7 +407,7 @@ async function getPRsNeedingFeedback(): Promise<FeedbackPR[]> {
 		}>
 	)
 		.filter((pr) => pr.headRefName.startsWith(SANDCASTLE_BRANCH_PREFIX))
-		.filter((pr) => pr.baseRefName === FEATURE)
+		.filter((pr) => pr.baseRefName === FEATURE_BRANCH)
 		.map((pr) => ({
 			number: pr.number,
 			title: pr.title,
@@ -556,10 +571,17 @@ async function implementAndReview(issue: Issue) {
 // Main loop
 // ---------------------------------------------------------------------------
 
-console.log(`Sandcastle scoped to feature: ${FEATURE}`)
+console.log(`Sandcastle scoped to PRD #${PRD_NUMBER} (integration branch: ${FEATURE_BRANCH})`)
+
+if (!(await remoteBranchExists(FEATURE_BRANCH))) {
+	throw new Error(
+		`Integration branch '${FEATURE_BRANCH}' does not exist on origin. ` +
+			`Create it before running Sandcastle — e.g. \`git push origin main:${FEATURE_BRANCH}\`.`,
+	)
+}
 
 for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
-	console.log(`\n=== Iteration ${iteration}/${MAX_ITERATIONS} (${FEATURE}) ===\n`)
+	console.log(`\n=== Iteration ${iteration}/${MAX_ITERATIONS} (PRD #${PRD_NUMBER}) ===\n`)
 
 	// Phase 0: Address feedback on open Sandcastle PRs
 	const feedbackPRs = await getPRsNeedingFeedback()
@@ -588,16 +610,16 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		console.log('No open PRs need feedback addressed.')
 	}
 
-	// Phase 1: Plan new work (scoped to FEATURE)
+	// Phase 1: Plan new work (scoped to PRD's sub-issues)
 	//
 	// Step 1a — host fetches candidates and applies the deterministic dep
 	// filter. `Depends on #N` / `Blocked by #N` trailers are parsed from issue
 	// bodies; missing refs and cycles hard-fail the iteration. The surviving
 	// subset is then handed to the planner.
 	console.log('Fetching candidate issues…')
-	const candidates = await fetchCandidates(FEATURE)
+	const candidates = await fetchCandidates(PRD_NUMBER)
 	if (candidates.length === 0) {
-		console.log('No candidate issues for this feature.')
+		console.log('No candidate sub-issues for this PRD.')
 		if (feedbackPRs.length === 0) {
 			console.log('Queue empty. Exiting.')
 			break
@@ -626,7 +648,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		agent: sandcastle.claudeCode('claude-opus-4-6'),
 		promptFile: './.sandcastle/plan-prompt.md',
 		promptArgs: {
-			FEATURE,
+			PRD_NUMBER: String(PRD_NUMBER),
 			ISSUES_JSON: JSON.stringify(
 				survivors.map((s) => ({
 					number: s.number,
@@ -646,39 +668,14 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 
 	const rawIssues = (JSON.parse(planMatch[1]!) as { issues: RawIssue[] }).issues
 
-	// Validate that every issue declares exactly one `feature/*` label, and
-	// that the named feature branch exists on origin. Any violation halts the
-	// run loudly — there is no fallback to `main`.
-	const issues: Issue[] = []
-	for (const raw of rawIssues) {
-		if (raw.featureLabels.length === 0) {
-			throw new Error(
-				`Issue #${raw.id} ("${raw.title}") has no \`feature/*\` label. ` +
-					`Every Sandcastle issue must declare its target feature branch via a \`feature/*\` label. ` +
-					`Add one (e.g. \`gh issue edit ${raw.id} --add-label "feature/<slug>"\`) and re-run.`,
-			)
-		}
-		if (raw.featureLabels.length > 1) {
-			throw new Error(
-				`Issue #${raw.id} ("${raw.title}") has multiple \`feature/*\` labels: ${raw.featureLabels.join(', ')}. ` +
-					`Each issue must target exactly one feature branch. Remove the extras with \`gh issue edit\` and re-run.`,
-			)
-		}
-		const featureBranch = raw.featureLabels[0]!
-		if (featureBranch !== FEATURE) {
-			throw new Error(
-				`Issue #${raw.id} ("${raw.title}") declares feature '${featureBranch}', but this loop is scoped to '${FEATURE}'. ` +
-					`The planner should only return issues matching the scope; this is a planner bug or a stale label cache.`,
-			)
-		}
-		if (!(await remoteBranchExists(featureBranch))) {
-			throw new Error(
-				`Feature branch '${featureBranch}' (declared by issue #${raw.id}) does not exist on origin. ` +
-					`Create it before labelling issues — e.g. \`git checkout -b ${featureBranch} main && git push -u origin ${featureBranch}\`.`,
-			)
-		}
-		issues.push({ id: raw.id, title: raw.title, branch: raw.branch, featureBranch })
-	}
+	// All issues in this run target the PRD's integration branch (verified to
+	// exist on origin at startup).
+	const issues: Issue[] = rawIssues.map((raw) => ({
+		id: raw.id,
+		title: raw.title,
+		branch: raw.branch,
+		featureBranch: FEATURE_BRANCH,
+	}))
 
 	if (issues.length === 0) {
 		console.log('No unblocked issues to work on.')
