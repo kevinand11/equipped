@@ -560,45 +560,35 @@ await repo.updateByPk(
 
 ### Context & Multi-tenancy
 
-`Repo.from(adapter)` accepts an optional `.context(source)` step that wires a `ContextSource` for per-query config transforms. The library imports zero `node:async_hooks` — you own the scope-entry mechanism.
+`repo.resolve(transform, fn)` scopes a block of queries with an explicit config override. It uses `AsyncLocalStorage` internally — transforms are visible to all queries within `fn`, including preload sub-queries and queries inside sessions. Parallel calls do not bleed into each other.
 
 ```typescript
-import { type ContextSource, type ConfigTransform, Repo } from 'equipped/orm'
+import { type ConfigTransform, Repo } from 'equipped/orm'
 
 type MyConfig = { table: string; tenantPrefix?: string }
 
-// Node + AsyncLocalStorage
-import { AsyncLocalStorage } from 'node:async_hooks'
-const tenantStore = new AsyncLocalStorage<string>()
-
-const ctxSource: ContextSource<MyConfig> = {
-    get: () => {
-        const tenantId = tenantStore.getStore()
-        if (!tenantId) return null
-        return (config) => ({ ...config, tenantPrefix: tenantId })
-    },
-}
-
 const repo = Repo.from(adapter)
     .resolve((schema) => ({ table: schema.name }))
-    .context(ctxSource)
     .build()
 
-// Per-request scope entry (you own this)
+// Per-request scope entry
 app.use((req, res, next) => {
-    tenantStore.run(req.headers['x-tenant-id'], next)
+    const tenantId = req.headers['x-tenant-id']
+    repo.resolve(
+        (config) => ({ ...config, tenantPrefix: tenantId }),
+        next,
+    )
 })
 ```
 
-**How it works**: `ContextSource.get()` is called per-query (not cached at session or Repo level). If it returns `null`, the base config is used unmodified. If it returns a transform, the transform is applied to the base config before the adapter receives it. Transforms apply to preload sub-queries and queries inside sessions.
+**How it works**: `repo.resolve(transform, fn)` pushes a `ConfigTransform` onto the ALS context for the duration of `fn`. The transform is applied to the base config (from the builder's `.resolve()`) before the adapter receives it. Nested `repo.resolve()` calls compose — inner transforms see the outer-transformed config.
 
-**Alternative patterns**:
+**Patterns**:
 
--   **Hono context-storage**: use Hono's `getContext()` inside `ContextSource.get()`.
--   **Dependency injection**: pass a DI container that provides the current tenant.
--   **Explicit threading**: use `repo.resolve((config) => transform(config), async () => { ... })` to scope a block of queries with an explicit config override.
+-   **Hono / Express middleware**: call `repo.resolve(transform, next)` in middleware to scope all downstream queries.
+-   **Explicit per-operation**: wrap a single operation for ad-hoc config overrides.
 
-**Footgun mitigations**: without a wired `ContextSource`, all queries run untenanted. To fail loud on missing tenant context, have your `get()` throw instead of returning `null` when a tenant is expected but absent.
+**Footgun mitigations**: without a `repo.resolve()` scope, all queries run with the base config. To fail loud on missing tenant context, have your transform throw when the expected value is absent.
 
 ### Builder-chain Pattern Overview
 

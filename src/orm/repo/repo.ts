@@ -179,8 +179,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		validateUpsertConflicts(s, rawCreate, castOps)
 		const validatedCreate = validateCreate(s, rawCreate)
 		const validatedOps = castOps.length > 0 ? validateUpdateOps(s, castOps, 'upsertOne') : []
-		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
+		const group = this.#resolveFilter(s, filter)
 		const use = this.#getUse(s)
 		const row = await use.upsertOne(group, validatedCreate as Record<string, unknown>, validatedOps)
 		return row as SchemaPersistedOutput<S>
