@@ -193,19 +193,18 @@ export function flattenOps(ops: AnyUpdateOp[]): Record<string, unknown> {
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { defineSchema } = await import('./schema')
+	const { Schema } = await import('./schema')
 
-	const TestSchema = defineSchema('test', (s) =>
-		s
-			.pk('id', v.string(), () => 'x')
-			.field('name', v.string())
-			.field('age', v.number())
-			.field('score', v.optional(v.number()))
-			.field('tags', v.array(v.string()))
-			.field('meta', v.object({ a: v.number() }))
-			.field('createdAt', v.number(), { onCreate: () => 1000 })
-			.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 }),
-	)
+	const TestSchema = Schema.from('test')
+		.pk('id', v.string(), () => 'x')
+		.field('name', v.string())
+		.field('age', v.number())
+		.field('score', v.optional(v.number()))
+		.field('tags', v.array(v.string()))
+		.field('meta', v.object({ a: v.number() }))
+		.field('createdAt', v.number(), { onCreate: () => 1000 })
+		.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 })
+		.build()
 
 	describe('op classes', () => {
 		test('SetOp has kind "set" and stores values', () => {
@@ -369,33 +368,35 @@ if (import.meta.vitest) {
 
 	describe('type-level: per-op gating via UpdateOp<S, A>', () => {
 		test('undeclared ops resolve to never', async () => {
-			const { defineAdapter } = await import('./adapter')
-			const _limitedAdapter = defineAdapter((a) =>
-				a.supportedFieldTypes('string', 'number').updateOps('set', 'inc').crud({ findByPk: async () => null }),
-			)
+			const { Adapter } = await import('./adapter')
+			const _limitedAdapter = Adapter.from<unknown>()
+				.supportedFieldTypes('string', 'number')
+				.updateOps('set', 'inc')
+				.crud({ findByPk: async () => null })
+				.build()
 
 			type Limited = UpdateOp<typeof TestSchema, typeof _limitedAdapter>
 			expectTypeOf<Limited>().toEqualTypeOf<SetOp | IncOp>()
 		})
 
 		test('adapter with no updateOps resolves all variants to never', async () => {
-			const { defineAdapter } = await import('./adapter')
-			const _noOpsAdapter = defineAdapter((a) =>
-				a.supportedFieldTypes('string').crud({ findByPk: async () => null }),
-			)
+			const { Adapter } = await import('./adapter')
+			const _noOpsAdapter = Adapter.from<unknown>()
+				.supportedFieldTypes('string')
+				.crud({ findByPk: async () => null })
+				.build()
 
 			type NoOps = UpdateOp<typeof TestSchema, typeof _noOpsAdapter>
 			expectTypeOf<NoOps>().toBeNever()
 		})
 
 		test('adapter with all updateOps includes all variants', async () => {
-			const { defineAdapter } = await import('./adapter')
-			const _fullAdapter = defineAdapter((a) =>
-				a
-					.supportedFieldTypes('string', 'number')
-					.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
-					.crud({ findByPk: async () => null }),
-			)
+			const { Adapter } = await import('./adapter')
+			const _fullAdapter = Adapter.from<unknown>()
+				.supportedFieldTypes('string', 'number')
+				.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
+				.crud({ findByPk: async () => null })
+				.build()
 
 			type Full = UpdateOp<typeof TestSchema, typeof _fullAdapter>
 			type Expected =
