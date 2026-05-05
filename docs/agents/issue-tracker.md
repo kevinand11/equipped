@@ -48,7 +48,7 @@ Limits: each parent supports up to 100 direct sub-issues, nested up to 8 levels 
 
 By convention, each PRD has an integration branch named `feature/issue-<prd-number>` (e.g. PRD #27 → `feature/issue-27`). Slice PRs target this branch, not `main`. The whole feature merges into `main` as one squash when every slice has landed.
 
-The branch must exist on `origin` before Sandcastle can run against the PRD; create it once with `git push origin main:feature/issue-<prd-number>`.
+Sandcastle creates the branch automatically on first run if it doesn't exist on `origin`, and links it to the PRD's Development sidebar via `gh issue develop`. No manual setup needed.
 
 ## Declaring dependencies between issues
 

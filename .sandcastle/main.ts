@@ -439,33 +439,16 @@ async function publishNewIssue(issue: Issue) {
 			`_Awaiting human review and approval. This PR targets the long-lived feature branch \`${issue.featureBranch}\`._`,
 		].join('\n'),
 	])
-	const url = stdout.trim()
-	console.log(`  → PR opened: ${url}`)
+	console.log(`  → PR opened: ${stdout.trim()}`)
 
-	// Explicitly create the issue↔PR link via the `linkPullRequest` GraphQL
-	// mutation. `gh issue develop` linked the *branch*, and `Closes #N` in the
-	// body declares intent — but neither guarantees the formal "Linked pull
-	// requests" entry on the issue. We make the link explicit so the issue UI
-	// shows the PR consistently and GitHub's native auto-close fires when the
-	// feature branch eventually lands in `main`.
-	const prNumber = url.split('/').pop()!
-	const [{ stdout: prIdRaw }, { stdout: issueIdRaw }] = await Promise.all([
-		exec('gh', ['pr', 'view', prNumber, '--json', 'id', '--jq', '.id']),
-		exec('gh', ['issue', 'view', issue.id, '--json', 'id', '--jq', '.id']),
-	])
-	try {
-		await exec('gh', [
-			'api', 'graphql',
-			'-f', 'query=mutation($issueId: ID!, $prId: ID!) { linkPullRequest(input: { issueId: $issueId, pullRequestId: $prId }) { clientMutationId } }',
-			'-f', `issueId=${issueIdRaw.trim()}`,
-			'-f', `prId=${prIdRaw.trim()}`,
-		])
-	} catch (err) {
-		// Most common cause: GitHub already auto-linked the PR off the
-		// `gh issue develop` branch, so the mutation errors with "already
-		// linked". That's fine — log and move on.
-		console.log(`  · linkPullRequest skipped: ${(err as Error).message.split('\n')[0]}`)
-	}
+	// No explicit issue↔PR link call. The link is established by
+	// `ensureLinkedIssueBranch`'s `gh issue develop` (which links the branch
+	// to the issue at branch-creation time); when the PR opens off that
+	// branch, GitHub populates the "Linked pull requests" sidebar
+	// automatically. The `Closes #N` keyword in the PR body would also link,
+	// but only when the PR targets the repo's default branch — slice PRs
+	// target the integration branch, so the keyword is ignored per
+	// https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue.
 
 	// Hit the REST API directly instead of `gh issue edit --add-label` because
 	// the latter goes through a GraphQL path that touches the deprecated
@@ -574,10 +557,11 @@ async function implementAndReview(issue: Issue) {
 console.log(`Sandcastle scoped to PRD #${PRD_NUMBER} (integration branch: ${FEATURE_BRANCH})`)
 
 if (!(await remoteBranchExists(FEATURE_BRANCH))) {
-	throw new Error(
-		`Integration branch '${FEATURE_BRANCH}' does not exist on origin. ` +
-			`Create it before running Sandcastle — e.g. \`git push origin main:${FEATURE_BRANCH}\`.`,
-	)
+	console.log(`Integration branch ${FEATURE_BRANCH} missing — creating off main and linking to PRD #${PRD_NUMBER}`)
+	// `gh issue develop` both creates the branch on origin AND links it to the
+	// issue's Development sidebar in one shot.
+	await exec('gh', ['issue', 'develop', String(PRD_NUMBER), '--name', FEATURE_BRANCH, '--base', 'main'])
+	await exec('git', ['fetch', 'origin', FEATURE_BRANCH])
 }
 
 for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
