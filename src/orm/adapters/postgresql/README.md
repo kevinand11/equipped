@@ -1,12 +1,12 @@
 # PostgreSQL Adapter
 
-In-tree PostgreSQL adapter using the `defineAdapter` builder-chain shape.
+In-tree PostgreSQL adapter using the `Adapter.from()` builder-chain shape.
 
 ## Usage
 
 ```ts
 import { createPostgresAdapter, type PostgresqlRepoConfig } from 'equipped/orm/adapters/postgresql'
-import { defineRepo } from 'equipped/orm'
+import { Repo } from 'equipped/orm'
 
 const { adapter } = createPostgresAdapter({
   host: 'localhost',
@@ -16,11 +16,9 @@ const { adapter } = createPostgresAdapter({
   database: 'myapp',
 })
 
-const repo = defineRepo((r) =>
-  r
-    .adapter(adapter)
-    .resolve((schema) => ({ table: schema.name }))
-)
+const repo = Repo.from(adapter)
+  .resolve((schema) => ({ table: schema.name }))
+  .build()
 
 await adapter.connect()
 ```

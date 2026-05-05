@@ -154,16 +154,15 @@ export function assertNormalisedFilter(schema: AnySchema, group: FilterGroup): v
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { defineSchema } = await import('./schema')
+	const { Schema } = await import('./schema')
 
-	const UserSchema = defineSchema('users', (s) =>
-		s
-			.pk('id', v.string(), () => 'u1')
-			.field('email', v.string())
-			.field('age', v.number())
-			.field('name', v.string())
-			.field('tags', v.array(v.string())),
-	)
+	const UserSchema = Schema.from('users')
+		.pk('id', v.string(), () => 'u1')
+		.field('email', v.string())
+		.field('age', v.number())
+		.field('name', v.string())
+		.field('tags', v.array(v.string()))
+		.build()
 
 	describe('FilterGroup', () => {
 		describe('filter-op methods', () => {

@@ -2,7 +2,7 @@ import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
 import { EquippedError } from '../errors'
 import type { AnySchemaField, SchemaField } from './fields'
-import { Schema, defineSchema, type AnySchema, type SchemaFields, type SchemaOutput } from './schema'
+import { Schema, type AnySchema, type SchemaFields, type SchemaOutput } from './schema'
 import { SetOp, isUpdateOp, opTouchedFields, type AnyUpdateOp } from './updates'
 import type { Prettify } from './utils'
 
@@ -200,13 +200,13 @@ if (import.meta.vitest) {
 	const { IncOp, MulOp, SetOp, UnsetOp } = await import('./updates')
 
 	describe('validateInsert', () => {
-		const UserSchema = defineSchema('users', (s) =>
-			s.pk('id', v.string(), () => 'auto-id')
-			 .field('email', v.string())
-			 .field('name', v.string())
-			 .field('age', v.optional(v.number()))
-			 .field('createdAt', v.number(), { onCreate: () => 1000 }),
-		)
+		const UserSchema = Schema.from('users')
+			.pk('id', v.string(), () => 'auto-id')
+			.field('email', v.string())
+			.field('name', v.string())
+			.field('age', v.optional(v.number()))
+			.field('createdAt', v.number(), { onCreate: () => 1000 })
+			.build()
 
 		test('generates pk when not provided', () => {
 			const result = validateInsert(UserSchema, { email: 'a@b.com', name: 'Alice' })
@@ -280,11 +280,11 @@ if (import.meta.vitest) {
 	})
 
 	describe('validateInsertMany', () => {
-		const ItemSchema = defineSchema('items', (s) =>
-			s.pk('id', v.string(), () => 'item-id')
-			 .field('title', v.string())
-			 .field('price', v.number()),
-		)
+		const ItemSchema = Schema.from('items')
+			.pk('id', v.string(), () => 'item-id')
+			.field('title', v.string())
+			.field('price', v.number())
+			.build()
 
 		test('validates all rows and returns validated documents', () => {
 			const results = validateInsertMany(ItemSchema, [
@@ -335,12 +335,12 @@ if (import.meta.vitest) {
 	})
 
 	describe('validateUpdate', () => {
-		const UserSchema = defineSchema('users', (s) =>
-			s.pk('id', v.string(), () => 'auto-id')
-			 .field('email', v.string())
-			 .field('name', v.string())
-			 .field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 }),
-		)
+		const UserSchema = Schema.from('users')
+			.pk('id', v.string(), () => 'auto-id')
+			.field('email', v.string())
+			.field('name', v.string())
+			.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 })
+			.build()
 
 		test('validates only provided fields', () => {
 			const result = validateUpdate(UserSchema, { name: 'Bob' })
@@ -404,13 +404,12 @@ if (import.meta.vitest) {
 	})
 
 	describe('validateUpdateOps', () => {
-		const UpdateSchema = defineSchema('items', (s) =>
-			s
-				.pk('id', v.string(), () => 'auto')
-				.field('name', v.string())
-				.field('views', v.number())
-				.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 }),
-		)
+		const UpdateSchema = Schema.from('items')
+			.pk('id', v.string(), () => 'auto')
+			.field('name', v.string())
+			.field('views', v.number())
+			.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 })
+			.build()
 
 		test('passes through valid ops', () => {
 			const ops = validateUpdateOps(UpdateSchema, [new SetOp({ name: 'New Name' })])
@@ -456,11 +455,10 @@ if (import.meta.vitest) {
 		})
 
 		test('cross-kind conflict (unset + inc on same field) throws', () => {
-			const UpdateSchema2 = defineSchema('items2', (s) =>
-				s
-					.pk('id', v.string(), () => 'auto')
-					.field('score', v.optional(v.number())),
-			)
+			const UpdateSchema2 = Schema.from('items2')
+				.pk('id', v.string(), () => 'auto')
+				.field('score', v.optional(v.number()))
+				.build()
 			expect(() =>
 				validateUpdateOps(UpdateSchema2, [new UnsetOp('score'), new IncOp('score', 5)]),
 			).toThrow(OrmValidationError)
@@ -486,12 +484,11 @@ if (import.meta.vitest) {
 		})
 
 		test('auto-bumped SetOp values are pipe-validated', () => {
-			const BadSchema = defineSchema('bad', (s) =>
-				s
-					.pk('id', v.string(), () => 'auto')
-					.field('name', v.string())
-					.field('counter', v.number(), { onUpdate: () => 'not-a-number' as any }),
-			)
+			const BadSchema = Schema.from('bad')
+				.pk('id', v.string(), () => 'auto')
+				.field('name', v.string())
+				.field('counter', v.number(), { onUpdate: () => 'not-a-number' as any })
+				.build()
 			expect(() =>
 				validateUpdateOps(BadSchema, [new SetOp({ name: 'test' })]),
 			).toThrow(OrmValidationError)

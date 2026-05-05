@@ -130,33 +130,63 @@ export class Schema<
 			...this.#fieldDefs,
 		} as unknown as SchemaTaggedFields<this>
 	}
-}
 
-export function defineSchema<N extends string, S>(name: N, build: (s: Schema<N>) => S): S {
-	return build(new Schema(name))
+	build(this: [PKField] extends [never] ? never : Schema<N, PKField, F, C>): Schema<N, PKField, F, C> {
+		return this as unknown as Schema<N, PKField, F, C>
+	}
+
+	static from<N extends string>(name: N): Schema<N> {
+		return new Schema(name)
+	}
 }
 
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf } = import.meta.vitest
 
 	describe('SchemaBuilder', () => {
-		const UserSchema = defineSchema('users', (s) =>
-			s
-				.pk('id', v.string(), () => 'generated-id')
-				.field('email', v.string())
-				.field('name', v.string())
-				.field('age', v.optional(v.number()))
-				.field('createdAt', v.number(), { onCreate: () => 1000 })
-				.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 }),
-		)
+		const UserSchema = Schema.from('users')
+			.pk('id', v.string(), () => 'generated-id')
+			.field('email', v.string())
+			.field('name', v.string())
+			.field('age', v.optional(v.number()))
+			.field('createdAt', v.number(), { onCreate: () => 1000 })
+			.field('updatedAt', v.number(), { onCreate: () => 1000, onUpdate: () => 2000 })
+			.build()
 
-		describe('defineSchema()', () => {
-			test('returns a Schema instance', () => {
-				expect(defineSchema('test', (s) => s)).toBeInstanceOf(Schema)
+		describe('Schema.from()', () => {
+			test('returns a Schema instance after build', () => {
+				const s = Schema.from('test').pk('id', v.string(), () => 'x').build()
+				expect(s).toBeInstanceOf(Schema)
 			})
 
 			test('stores the schema name', () => {
-				expect(defineSchema('orders', (s) => s).name).toBe('orders')
+				expect(Schema.from('orders').pk('id', v.string(), () => 'x').build().name).toBe('orders')
+			})
+
+			test('full builder chain works', () => {
+				const s = Schema.from('users')
+					.pk('id', v.string(), () => 'gen')
+					.field('email', v.string())
+					.field('age', v.number())
+					.build()
+				expect(s.name).toBe('users')
+				expect(s.pkField.name).toBe('id')
+				expect(Object.keys(s.fields)).toEqual(['id', 'email', 'age'])
+			})
+
+			test('.build() is unavailable without .pk() at the type level', () => {
+				// @ts-expect-error — .build() requires .pk() to have been called
+				Schema.from('test').field('name', v.string()).build()
+			})
+		})
+
+		describe('Schema.from() basics', () => {
+			test('returns a Schema instance', () => {
+				expect(Schema.from('test')).toBeInstanceOf(Schema)
+			})
+
+			test('stores the schema name', () => {
+				expect(Schema.from('orders').name).toBe('orders')
 			})
 		})
 
@@ -189,7 +219,7 @@ if (import.meta.vitest) {
 			})
 
 			test('pkField throws when no pk defined', () => {
-				expect(() => defineSchema('nopk', (s) => s.field('name', v.string())).pkField).toThrow()
+				expect(() => Schema.from('nopk').field('name', v.string()).pkField).toThrow()
 			})
 		})
 
@@ -231,13 +261,12 @@ if (import.meta.vitest) {
 
 		describe('.computed()', () => {
 			test('registers computed fields and dependencies', () => {
-				const WithComputed = defineSchema('users', (s) =>
-					s
-						.pk('id', v.string(), () => 'u1')
-						.field('name', v.string())
-						.field('email', v.string())
-						.computed('display', ['name', 'email'], v.string(), ({ name, email }) => `${name} <${email}>`),
-				)
+				const WithComputed = Schema.from('users')
+					.pk('id', v.string(), () => 'u1')
+					.field('name', v.string())
+					.field('email', v.string())
+					.computed('display', ['name', 'email'], v.string(), ({ name, email }) => `${name} <${email}>`)
+					.build()
 
 				expect(Object.keys(WithComputed.computedDefs)).toEqual(['display'])
 				expect(WithComputed.computedDefs.display.deps).toEqual(['name', 'email'])
@@ -245,12 +274,11 @@ if (import.meta.vitest) {
 			})
 
 			test('computed field names are included in schema output type', () => {
-				const WithComputed = defineSchema('users', (s) =>
-					s
-						.pk('id', v.string(), () => 'u1')
-						.field('name', v.string())
-						.computed('nameUpper', ['name'], v.string(), ({ name }) => name.toUpperCase()),
-				)
+				const WithComputed = Schema.from('users')
+					.pk('id', v.string(), () => 'u1')
+					.field('name', v.string())
+					.computed('nameUpper', ['name'], v.string(), ({ name }) => name.toUpperCase())
+					.build()
 
 				type Out = SchemaOutput<typeof WithComputed>
 				const value: Out = { id: 'u1', name: 'Alice', nameUpper: 'ALICE' }
@@ -269,7 +297,7 @@ if (import.meta.vitest) {
 			})
 
 			test('schema with no fields has only pk in fields', () => {
-				const PkOnly = defineSchema('minimal', (s) => s.pk('id', v.string(), () => 'x'))
+				const PkOnly = Schema.from('minimal').pk('id', v.string(), () => 'x').build()
 				expect(Object.keys(PkOnly.fields)).toEqual(['id'])
 			})
 		})
@@ -284,22 +312,22 @@ if (import.meta.vitest) {
 			})
 
 			test('schema with no fields has empty fieldDefs', () => {
-				const PkOnly = defineSchema('minimal', (s) => s.pk('id', v.string(), () => 'x'))
+				const PkOnly = Schema.from('minimal').pk('id', v.string(), () => 'x').build()
 				expect(Object.keys(PkOnly.fieldDefs)).toHaveLength(0)
 			})
 		})
 	})
 
-	describe('type-level: defineSchema uniqueness guard', () => {
+	describe('type-level: Schema.from uniqueness guard', () => {
 		test('duplicate .field() name is a TS error', () => {
 			// @ts-expect-error — duplicate field name 'email' should fail
-			defineSchema('test', (s) => s.pk('id', v.string(), () => 'x').field('email', v.string()).field('email', v.string()))
+			Schema.from('test').pk('id', v.string(), () => 'x').field('email', v.string()).field('email', v.string()).build()
 		})
 	})
 
 	describe('type-level: schema-tagged Fields', () => {
 		test('fields accessor returns schema-tagged Field instances', () => {
-			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x').field('email', v.string()))
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').field('email', v.string()).build()
 			type FieldS = NonNullable<(typeof _TestSchema.fields.id)['__schema']>
 			expectTypeOf<FieldS>().toEqualTypeOf<typeof _TestSchema>()
 
@@ -308,7 +336,7 @@ if (import.meta.vitest) {
 		})
 
 		test('fields carry runtime __schema reference to parent schema', () => {
-			const TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x').field('email', v.string()))
+			const TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').field('email', v.string()).build()
 			expect((TestSchema.fields.id as any).__schema).toBe(TestSchema)
 			expect((TestSchema.fields.email as any).__schema).toBe(TestSchema)
 		})

@@ -142,79 +142,123 @@ class RelationsBuilder<S extends AnySchema, R extends Record<string, AnyRelDef> 
 		return this as any
 	}
 
-	get definitions(): R {
+	build(): R {
 		return this.#defs as R
 	}
 }
 
-export function defineRelations<S extends AnySchema, R extends Record<string, AnyRelDef>>(
-	source: S,
-	build: (rel: RelationsBuilder<S>, src: S) => RelationsBuilder<S, R>,
-): R {
-	const builder = new RelationsBuilder(source)
-	return build(builder, source).definitions
+export class Relations {
+	static from<S extends AnySchema>(source: S) {
+		return new RelationsBuilder(source)
+	}
 }
 
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { defineSchema } = await import('./schema')
+	const { Schema } = await import('./schema')
 
-	describe('defineRelations', () => {
-		const UserSchema = defineSchema('users', (s) =>
-			s.pk('id', v.string(), () => 'user-id')
-			 .field('name', v.string())
-			 .field('orgId', v.string())
-			 .field('managerId', v.optional(v.string()), { onCreate: () => undefined }),
-		)
+	describe('Relations.from()', () => {
+		const UserSchema = Schema.from('users')
+			.pk('id', v.string(), () => 'user-id')
+			.field('name', v.string())
+			.field('orgId', v.string())
+			.build()
 
-		const PostSchema = defineSchema('posts', (s) =>
-			s.pk('id', v.string(), () => 'post-id')
-			 .field('title', v.string())
-			 .field('userId', v.string()),
-		)
+		const PostSchema = Schema.from('posts')
+			.pk('id', v.string(), () => 'post-id')
+			.field('title', v.string())
+			.field('userId', v.string())
+			.build()
 
-		const OrgSchema = defineSchema('orgs', (s) =>
-			s.pk('id', v.string(), () => 'org-id')
-			 .field('name', v.string()),
-		)
+		const OrgSchema = Schema.from('orgs')
+			.pk('id', v.string(), () => 'org-id')
+			.field('name', v.string())
+			.build()
 
-		const TagSchema = defineSchema('tags', (s) =>
-			s.pk('id', v.string(), () => 'tag-id')
-			 .field('label', v.string()),
-		)
+		const ProfileSchema = Schema.from('profiles')
+			.pk('id', v.string(), () => 'profile-id')
+			.field('bio', v.string())
+			.field('userId', v.string())
+			.build()
 
-		const PostTagSchema = defineSchema('post_tags', (s) =>
-			s.pk('id', v.string(), () => 'pt-id')
-			 .field('postId', v.string())
-			 .field('tagId', v.string()),
-		)
+		test('builds relations with hasMany, belongsTo, hasOne', () => {
+			const rels = Relations.from(UserSchema)
+				.hasMany('posts', PostSchema.fields.userId)
+				.belongsTo('org', UserSchema.fields.orgId, OrgSchema)
+				.hasOne('profile', ProfileSchema.fields.userId)
+				.build()
 
-		const ProfileSchema = defineSchema('profiles', (s) =>
-			s.pk('id', v.string(), () => 'profile-id')
-			 .field('bio', v.string())
-			 .field('userId', v.string()),
-		)
+			expect(rels.posts).toBeInstanceOf(ManyRelation)
+			expect(rels.org).toBeInstanceOf(OneRelation)
+			expect(rels.profile).toBeInstanceOf(OneRelation)
+		})
 
-		const UserRels = defineRelations(UserSchema, (rel, src) => rel
+		test('source references use outer-scope const (no src param)', () => {
+			const rels = Relations.from(UserSchema)
+				.belongsTo('org', UserSchema.fields.orgId, OrgSchema)
+				.build()
+
+			expect(rels.org.foreignKey).toBe(UserSchema.fields.orgId)
+			expect(rels.org.target).toBe(OrgSchema)
+		})
+	})
+
+	describe('Relations.from() behavior', () => {
+		const UserSchema = Schema.from('users')
+			.pk('id', v.string(), () => 'user-id')
+			.field('name', v.string())
+			.field('orgId', v.string())
+			.field('managerId', v.optional(v.string()), { onCreate: () => undefined })
+			.build()
+
+		const PostSchema = Schema.from('posts')
+			.pk('id', v.string(), () => 'post-id')
+			.field('title', v.string())
+			.field('userId', v.string())
+			.build()
+
+		const OrgSchema = Schema.from('orgs')
+			.pk('id', v.string(), () => 'org-id')
+			.field('name', v.string())
+			.build()
+
+		const TagSchema = Schema.from('tags')
+			.pk('id', v.string(), () => 'tag-id')
+			.field('label', v.string())
+			.build()
+
+		const PostTagSchema = Schema.from('post_tags')
+			.pk('id', v.string(), () => 'pt-id')
+			.field('postId', v.string())
+			.field('tagId', v.string())
+			.build()
+
+		const ProfileSchema = Schema.from('profiles')
+			.pk('id', v.string(), () => 'profile-id')
+			.field('bio', v.string())
+			.field('userId', v.string())
+			.build()
+
+		const UserRels = Relations.from(UserSchema)
 			.hasMany('posts', PostSchema.fields.userId)
-			.belongsTo('org', src.fields.orgId, OrgSchema)
-			.hasOne('profile', ProfileSchema.fields.userId),
-		)
+			.belongsTo('org', UserSchema.fields.orgId, OrgSchema)
+			.hasOne('profile', ProfileSchema.fields.userId)
+			.build()
 
-		const PostRels = defineRelations(PostSchema, (rel, src) => rel
-			.belongsTo('author', src.fields.userId, UserSchema)
-			.hasMany('postTags', PostTagSchema.fields.postId),
-		)
+		const PostRels = Relations.from(PostSchema)
+			.belongsTo('author', PostSchema.fields.userId, UserSchema)
+			.hasMany('postTags', PostTagSchema.fields.postId)
+			.build()
 
-		const TagRels = defineRelations(TagSchema, (rel) => rel
-			.hasMany('postTags', PostTagSchema.fields.tagId),
-		)
+		const TagRels = Relations.from(TagSchema)
+			.hasMany('postTags', PostTagSchema.fields.tagId)
+			.build()
 
-		const PostTagRels = defineRelations(PostTagSchema, (rel, src) => rel
-			.belongsTo('post', src.fields.postId, PostSchema)
-			.belongsTo('tag', src.fields.tagId, TagSchema),
-		)
+		const PostTagRels = Relations.from(PostTagSchema)
+			.belongsTo('post', PostTagSchema.fields.postId, PostSchema)
+			.belongsTo('tag', PostTagSchema.fields.tagId, TagSchema)
+			.build()
 
 		test('hasMany returns ManyRelation instances', () => {
 			expect(UserRels.posts).toBeInstanceOf(ManyRelation)
@@ -279,9 +323,9 @@ if (import.meta.vitest) {
 		})
 
 		test('self-referential relation works without special casing', () => {
-			const SelfRels = defineRelations(UserSchema, (rel, src) => rel
-				.belongsTo('manager', src.fields.managerId!, UserSchema),
-			)
+			const SelfRels = Relations.from(UserSchema)
+				.belongsTo('manager', UserSchema.fields.managerId!, UserSchema)
+				.build()
 
 			expect(SelfRels.manager).toBeInstanceOf(OneRelation)
 			expect(SelfRels.manager.source).toBe(UserSchema)
@@ -298,69 +342,69 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('type-level: defineRelations uniqueness guard', () => {
+	describe('type-level: Relations.from uniqueness guard', () => {
 		test('duplicate relation name is a TS error', () => {
-			const S = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x'))
-			const T = defineSchema('targets', (s) =>
-				s.pk('id', v.string(), () => 'x')
-				 .field('sId', v.string()),
-			)
+			const S = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const T = Schema.from('targets')
+				.pk('id', v.string(), () => 'x')
+				.field('sId', v.string())
+				.build()
 			// @ts-expect-error — duplicate name 'items' should fail
-			defineRelations(S, (rel) => rel.hasMany('items', T.fields.sId).hasMany('items', T.fields.sId))
+			Relations.from(S).hasMany('items', T.fields.sId).hasMany('items', T.fields.sId)
 		})
 	})
 
 	describe('type-level: FK-PK type-match guarantee', () => {
 		test('string FK pointing at number PK is a TS error', () => {
-			const NumPkSchema = defineSchema('nums', (s) =>
-				s.pk('id', v.number(), () => 0)
-				 .field('name', v.string()),
-			)
+			const NumPkSchema = Schema.from('nums')
+				.pk('id', v.number(), () => 0)
+				.field('name', v.string())
+				.build()
 
-			const StringFkSchema = defineSchema('strings', (s) =>
-				s.pk('id', v.string(), () => 'x')
-				 .field('numRef', v.string()),
-			)
+			const StringFkSchema = Schema.from('strings')
+				.pk('id', v.string(), () => 'x')
+				.field('numRef', v.string())
+				.build()
 
 			// @ts-expect-error — string FK does not match number PK
-			defineRelations(NumPkSchema, (rel) => rel.hasMany('items', StringFkSchema.fields.numRef))
+			Relations.from(NumPkSchema).hasMany('items', StringFkSchema.fields.numRef)
 		})
 
 		test('matching FK-PK types compile correctly', () => {
-			const S = defineSchema('source', (s) => s.pk('id', v.string(), () => 'x'))
-			const T = defineSchema('target', (s) =>
-				s.pk('id', v.string(), () => 'x')
-				 .field('sourceId', v.string()),
-			)
-			const rels = defineRelations(S, (rel) => rel.hasMany('items', T.fields.sourceId))
+			const S = Schema.from('source').pk('id', v.string(), () => 'x').build()
+			const T = Schema.from('target')
+				.pk('id', v.string(), () => 'x')
+				.field('sourceId', v.string())
+				.build()
+			const rels = Relations.from(S).hasMany('items', T.fields.sourceId).build()
 			expect(rels.items).toBeInstanceOf(ManyRelation)
 		})
 	})
 
 	describe('type-level: Field-only-FK rule', () => {
 		test('raw string FK is a TS error for hasMany', () => {
-			const S = defineSchema('s', (s) => s.pk('id', v.string(), () => 'x'))
+			const S = Schema.from('s').pk('id', v.string(), () => 'x').build()
 			// @ts-expect-error — raw string not allowed, must be a Field instance
-			defineRelations(S, (rel) => rel.hasMany('items', 'someKey'))
+			Relations.from(S).hasMany('items', 'someKey')
 		})
 
 		test('raw string FK is a TS error for belongsTo', () => {
-			const S = defineSchema('s', (s) =>
-				s.pk('id', v.string(), () => 'x')
-				 .field('ref', v.string()),
-			)
-			const T = defineSchema('t', (s) => s.pk('id', v.string(), () => 'x'))
+			const S = Schema.from('s')
+				.pk('id', v.string(), () => 'x')
+				.field('ref', v.string())
+				.build()
+			const T = Schema.from('t').pk('id', v.string(), () => 'x').build()
 			// @ts-expect-error — raw string not allowed, must be a Field instance
-			defineRelations(S, (rel) => rel.belongsTo('parent', 'ref', T))
+			Relations.from(S).belongsTo('parent', 'ref', T)
 		})
 	})
 
 	describe('type-level: schema relations-agnosticism', () => {
 		test('schema artifact contains no relational information', () => {
-			const _S = defineSchema('users', (s) =>
-				s.pk('id', v.string(), () => 'x')
-				 .field('name', v.string()),
-			)
+			const _S = Schema.from('users')
+				.pk('id', v.string(), () => 'x')
+				.field('name', v.string())
+				.build()
 			type SKeys = keyof typeof _S
 			expectTypeOf<'relations' extends SKeys ? true : false>().toEqualTypeOf<false>()
 		})

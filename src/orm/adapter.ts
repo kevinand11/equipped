@@ -84,10 +84,6 @@ export class AdapterBuilder<Acc = {}> {
 		updateOps: [] as readonly UpdateOpName[],
 	}
 
-	config<C>(_witness: 'config' extends keyof Acc ? never : C): AdapterBuilder<Acc & { config: C }> {
-		return this as any
-	}
-
 	supportedFieldTypes<const T extends readonly FieldTypeName[]>(
 		...types: 'supportedFieldTypes' extends keyof Acc ? [never] : T & UniqueArray<T>
 	): AdapterBuilder<Acc & { supportedFieldTypes: T }> {
@@ -129,7 +125,7 @@ export class AdapterBuilder<Acc = {}> {
 				: never,
 	): AdapterBuilder<Acc & { queryable: B }> {
 		if (!(this.#data.queryableOps as readonly FilterOpName[])?.length) {
-			throw new Error('defineAdapter: .queryable() requires .queryableOps() to be called first with a non-empty list')
+			throw new Error('Adapter: .queryable() requires .queryableOps() to be called first with a non-empty list')
 		}
 		this.#data.queryable = bag
 		return this as any
@@ -142,8 +138,62 @@ export class AdapterBuilder<Acc = {}> {
 		return this as any
 	}
 
-	_build() {
-		return this.#data
+	build(): AdapterResult<Acc> {
+		const data = this.#data as unknown as AdapterResult<Acc>
+
+		const result: Record<string, unknown> = { ...data }
+
+		const crud = data.crud as CrudBag<any> | undefined
+		const queryable = data.queryable as QueryableBag<any> | undefined
+		const transactional = data.transactional as TransactionalBag | undefined
+		const lifecycle = data.lifecycle as LifecycleBag | undefined
+
+		result.use = function (schema: AnySchema, config: any): OrmUse {
+			const use: OrmUse = {
+				findMany: (filter, opts) =>
+					queryable?.findMany?.(schema, config, filter, opts) ?? Promise.resolve([]),
+				findOne: async (filter) => {
+					const rows = await use.findMany(filter, { limit: 1 })
+					return rows[0] ?? null
+				},
+				insertOne: async (d) => {
+					const rows = await use.insertMany([d])
+					return rows[0]
+				},
+				insertMany: (d) => crud?.insertMany?.(schema, config, d) ?? Promise.resolve([]),
+				updateMany: (filter, d) =>
+					queryable?.updateMany?.(schema, config, filter, d) ?? Promise.resolve([]),
+				updateOne: async (filter, d) => {
+					const rows = await use.updateMany(filter, d)
+					return rows[0] ?? null
+				},
+				upsertOne: (filter, insert, ops) =>
+					queryable?.upsertOne?.(schema, config, filter, insert, ops) ?? Promise.reject(new Error('upsertOne not implemented')),
+				deleteOne: async (filter) => {
+					const row = await use.findOne(filter)
+					if (!row) return null
+					const pk = schema.pkField.name
+					if (crud?.deleteByPk) {
+						await crud.deleteByPk(schema, config, row[pk])
+					} else if (queryable?.deleteMany) {
+						await queryable.deleteMany(schema, config, filter)
+					}
+					return row
+				},
+				deleteMany: (filter) =>
+					queryable?.deleteMany?.(schema, config, filter) ?? Promise.resolve([]),
+				raw: <T = unknown>(command: unknown, params?: unknown[]) =>
+					(crud?.raw?.(schema, config, command, params) ?? Promise.reject(new Error('raw not implemented'))) as Promise<T>,
+			}
+			return use
+		}
+
+		result.connect = async () => lifecycle?.connect?.()
+		result.disconnect = async () => lifecycle?.disconnect?.()
+		result.session = <T>(fn: () => Promise<T>): Promise<T> =>
+			transactional?.session?.(fn) ?? fn()
+
+		return result as AdapterResult<Acc>
 	}
 }
 
@@ -161,63 +211,10 @@ export type AdapterResult<Acc> = {
 	session<T>(fn: () => Promise<T>): Promise<T>
 } & ('config' extends keyof Acc ? { readonly __config: Acc['config'] } : {})
 
-export function defineAdapter<Acc>(build: (b: AdapterBuilder) => AdapterBuilder<Acc>): AdapterResult<Acc> {
-	const builder = build(new AdapterBuilder())
-	const data = builder._build() as AdapterResult<Acc>
-
-	const result: Record<string, unknown> = { ...data }
-
-	const crud = data.crud as CrudBag<any> | undefined
-	const queryable = data.queryable as QueryableBag<any> | undefined
-	const transactional = data.transactional as TransactionalBag | undefined
-	const lifecycle = data.lifecycle as LifecycleBag | undefined
-
-	result.use = function (schema: AnySchema, config: any): OrmUse {
-		const use: OrmUse = {
-			findMany: (filter, opts) =>
-				queryable?.findMany?.(schema, config, filter, opts) ?? Promise.resolve([]),
-			findOne: async (filter) => {
-				const rows = await use.findMany(filter, { limit: 1 })
-				return rows[0] ?? null
-			},
-			insertOne: async (d) => {
-				const rows = await use.insertMany([d])
-				return rows[0]
-			},
-			insertMany: (d) => crud?.insertMany?.(schema, config, d) ?? Promise.resolve([]),
-			updateMany: (filter, d) =>
-				queryable?.updateMany?.(schema, config, filter, d) ?? Promise.resolve([]),
-			updateOne: async (filter, d) => {
-				const rows = await use.updateMany(filter, d)
-				return rows[0] ?? null
-			},
-			upsertOne: (filter, insert, ops) =>
-				queryable?.upsertOne?.(schema, config, filter, insert, ops) ?? Promise.reject(new Error('upsertOne not implemented')),
-			deleteOne: async (filter) => {
-				const row = await use.findOne(filter)
-				if (!row) return null
-				const pk = schema.pkField.name
-				if (crud?.deleteByPk) {
-					await crud.deleteByPk(schema, config, row[pk])
-				} else if (queryable?.deleteMany) {
-					await queryable.deleteMany(schema, config, filter)
-				}
-				return row
-			},
-			deleteMany: (filter) =>
-				queryable?.deleteMany?.(schema, config, filter) ?? Promise.resolve([]),
-			raw: <T = unknown>(command: unknown, params?: unknown[]) =>
-				(crud?.raw?.(schema, config, command, params) ?? Promise.reject(new Error('raw not implemented'))) as Promise<T>,
-		}
-		return use
+export class Adapter {
+	static from<Config>(): AdapterBuilder<{ config: Config }> {
+		return new AdapterBuilder<{ config: Config }>()
 	}
-
-	result.connect = async () => lifecycle?.connect?.()
-	result.disconnect = async () => lifecycle?.disconnect?.()
-	result.session = <T>(fn: () => Promise<T>): Promise<T> =>
-		transactional?.session?.(fn) ?? fn()
-
-	return result as AdapterResult<Acc>
 }
 
 export type InferAdapterConfig<A> = A extends { __config: infer C }
@@ -261,47 +258,70 @@ export type SchemaCompatible<A, S extends AnySchema> = A extends { supportedFiel
 if (import.meta.vitest) {
 	const { describe, test, expectTypeOf } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { defineSchema } = await import('./schema')
+	const { Schema } = await import('./schema')
 
-	describe('type-level: defineAdapter builder uniqueness', () => {
+	describe('Adapter.from()', () => {
+		test('creates adapter with Config as generic (no .config() step)', () => {
+			const adapter = Adapter.from<{ prefix: string }>()
+				.supportedFieldTypes('string')
+				.crud({ findByPk: async () => null })
+				.build()
+
+			expectTypeOf(adapter.supportedFieldTypes).toEqualTypeOf<readonly ['string']>()
+		})
+
+		test('queryableOps and queryable work together', () => {
+			const adapter = Adapter.from<{ prefix: string }>()
+				.supportedFieldTypes('string', 'number')
+				.queryableOps('eq', 'ne')
+				.queryable({ findMany: async () => [] })
+				.build()
+
+			expectTypeOf(adapter.queryableOps).toEqualTypeOf<readonly ['eq', 'ne']>()
+		})
+	})
+
+	describe('type-level: Adapter.from builder uniqueness', () => {
 		test('duplicate .queryableOps values is a TS error', () => {
-			const validAdapter = defineAdapter((a) => a.config({} as { prefix: string }).queryableOps('eq', 'ne'))
+			const validAdapter = Adapter.from<{ prefix: string }>().queryableOps('eq', 'ne').build()
 			expectTypeOf(validAdapter.queryableOps).toEqualTypeOf<readonly ['eq', 'ne']>()
 
 			// @ts-expect-error — duplicate 'eq' in queryableOps should fail
-			defineAdapter((a) => a.queryableOps('eq', 'eq'))
+			Adapter.from<unknown>().queryableOps('eq', 'eq')
 		})
 
 		test('duplicate .supportedFieldTypes values is a TS error', () => {
 			// @ts-expect-error — duplicate 'string' should fail
-			defineAdapter((a) => a.supportedFieldTypes('string', 'string'))
+			Adapter.from<unknown>().supportedFieldTypes('string', 'string')
 		})
 	})
 
 	describe('type-level: SchemaCompatible', () => {
 		test('adapter with empty supportedFieldTypes rejects any schema', () => {
-			const _emptyAdapter = defineAdapter((a) => a.config({} as { prefix: string }).crud({ findByPk: async () => null }))
-			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x'))
+			const _emptyAdapter = Adapter.from<{ prefix: string }>().crud({ findByPk: async () => null }).build()
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
 
 			type Result = SchemaCompatible<typeof _emptyAdapter, typeof _TestSchema>
 			expectTypeOf<Result>().toBeNever()
 		})
 
 		test('adapter with matching supportedFieldTypes accepts schema', () => {
-			const _adapter = defineAdapter((a) =>
-				a.config({} as { prefix: string }).supportedFieldTypes('string').crud({ findByPk: async () => null }),
-			)
-			const _TestSchema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x'))
+			const _adapter = Adapter.from<{ prefix: string }>()
+				.supportedFieldTypes('string')
+				.crud({ findByPk: async () => null })
+				.build()
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
 
 			type Result = SchemaCompatible<typeof _adapter, typeof _TestSchema>
 			expectTypeOf<Result>().toEqualTypeOf<typeof _TestSchema>()
 		})
 
 		test('adapter missing required field type rejects schema', () => {
-			const _stringOnlyAdapter = defineAdapter((a) =>
-				a.config({} as { prefix: string }).supportedFieldTypes('string').crud({ findByPk: async () => null }),
-			)
-			const _SchemaWithNumber = defineSchema('nums', (s) => s.pk('id', v.string(), () => 'x').field('age', v.number()))
+			const _stringOnlyAdapter = Adapter.from<{ prefix: string }>()
+				.supportedFieldTypes('string')
+				.crud({ findByPk: async () => null })
+				.build()
+			const _SchemaWithNumber = Schema.from('nums').pk('id', v.string(), () => 'x').field('age', v.number()).build()
 
 			type Result = SchemaCompatible<typeof _stringOnlyAdapter, typeof _SchemaWithNumber>
 			expectTypeOf<Result>().toBeNever()

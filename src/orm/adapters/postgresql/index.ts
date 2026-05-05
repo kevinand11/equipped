@@ -12,7 +12,7 @@ import {
 	extractUpsertConflictColumn,
 } from './query'
 import { EquippedError } from '../../../errors'
-import { defineAdapter } from '../../adapter'
+import { Adapter } from '../../adapter'
 import type { FilterGroup } from '../../filter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
@@ -52,204 +52,202 @@ export function createPostgresAdapter(connectionConfig: PostgresqlConnectionConf
 		return config.schema && config.schema !== 'public' ? `${config.schema}.${config.table}` : config.table
 	}
 
-	const adapter = defineAdapter((a) =>
-		a
-			.config({} as PostgresqlRepoConfig)
-			.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
-			.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-			.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
-			.lifecycle({
-				connect: async () => {},
-				disconnect: async () => {
-					try {
-						await pool.end()
-					} catch (error) {
-						throw new EquippedError('Failed to disconnect PostgreSQL pool', { adapter: 'postgresql' }, error)
+	const adapter = Adapter.from<PostgresqlRepoConfig>()
+		.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
+		.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
+		.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
+		.lifecycle({
+			connect: async () => {},
+			disconnect: async () => {
+				try {
+					await pool.end()
+				} catch (error) {
+					throw new EquippedError('Failed to disconnect PostgreSQL pool', { adapter: 'postgresql' }, error)
+				}
+			},
+		})
+		.crud({
+			findByPk: async (schema, config, pk) => {
+				try {
+					const tableName = resolveTableName(config)
+					const pkName = schema.pkField.name
+					const result = await getClient().query(`SELECT * FROM "${tableName}" WHERE "${pkName}" = $1`, [pk])
+					return result.rows[0] ?? null
+				} catch (error) {
+					throw new EquippedError(
+						'PostgreSQL findByPk failed',
+						{ adapter: 'postgresql', operation: 'findByPk', table: config.table },
+						error,
+					)
+				}
+			},
+			insertMany: async (_schema, config, data) => {
+				try {
+					const tableName = resolveTableName(config)
+					const client = getClient()
+					const results: Record<string, unknown>[] = []
+					for (const doc of data) {
+						const { sql, params } = buildInsertQuery(tableName, doc)
+						const result = await client.query(sql, params)
+						results.push(result.rows[0])
 					}
-				},
-			})
-			.crud({
-				findByPk: async (schema, config, pk) => {
-					try {
-						const tableName = resolveTableName(config)
-						const pkName = schema.pkField.name
+					return results
+				} catch (error) {
+					throw new EquippedError(
+						'PostgreSQL insertMany failed',
+						{ adapter: 'postgresql', operation: 'insertMany', table: config.table },
+						error,
+					)
+				}
+			},
+			updateByPk: async (schema, config, pk, ops) => {
+				try {
+					const tableName = resolveTableName(config)
+					const pkName = schema.pkField.name
+					const data = flattenOps(ops)
+					if (Object.keys(data).length === 0) {
 						const result = await getClient().query(`SELECT * FROM "${tableName}" WHERE "${pkName}" = $1`, [pk])
 						return result.rows[0] ?? null
-					} catch (error) {
-						throw new EquippedError(
-							'PostgreSQL findByPk failed',
-							{ adapter: 'postgresql', operation: 'findByPk', table: config.table },
-							error,
-						)
 					}
-				},
-				insertMany: async (_schema, config, data) => {
-					try {
-						const tableName = resolveTableName(config)
-						const client = getClient()
-						const results: Record<string, unknown>[] = []
-						for (const doc of data) {
-							const { sql, params } = buildInsertQuery(tableName, doc)
-							const result = await client.query(sql, params)
-							results.push(result.rows[0])
+					const { sql, params } = buildPkUpdateQuery(tableName, pkName, pk, data)
+					const result = await getClient().query(sql, params)
+					return result.rows[0] ?? null
+				} catch (error) {
+					throw new EquippedError(
+						'PostgreSQL updateByPk failed',
+						{ adapter: 'postgresql', operation: 'updateByPk', table: config.table },
+						error,
+					)
+				}
+			},
+			deleteByPk: async (schema, config, pk) => {
+				try {
+					const tableName = resolveTableName(config)
+					const pkName = schema.pkField.name
+					const result = await getClient().query(`DELETE FROM "${tableName}" WHERE "${pkName}" = $1 RETURNING *`, [pk])
+					return result.rows[0] ?? null
+				} catch (error) {
+					throw new EquippedError(
+						'PostgreSQL deleteByPk failed',
+						{ adapter: 'postgresql', operation: 'deleteByPk', table: config.table },
+						error,
+					)
+				}
+			},
+			raw: async <T = unknown>(_schema: AnySchema, config: PostgresqlRepoConfig, command: unknown, params: unknown[] = []) => {
+				try {
+					if (typeof command !== 'string') {
+						throw new EquippedError('PostgreSQL raw requires a SQL string command', {
+							adapter: 'postgresql',
+							operation: 'raw',
+							table: config.table,
+						})
+					}
+					const result = await getClient().query(command, params)
+					return result as T
+				} catch (error) {
+					if (error instanceof EquippedError) throw error
+					throw new EquippedError(
+						'PostgreSQL raw failed',
+						{ adapter: 'postgresql', operation: 'raw', table: config.table },
+						error,
+					)
+				}
+			},
+		})
+		.queryable({
+			findMany: async (schema: AnySchema, config: PostgresqlRepoConfig, filter: FilterGroup, options?: QueryOptions) => {
+				try {
+					const tableName = resolveTableName(config)
+					const { sql, params } = buildSelectQuery(filter, options, tableName, schema.pkField.name)
+					const result = await getClient().query(sql, params)
+					return result.rows
+				} catch (error) {
+					throw new EquippedError(
+						'PostgreSQL findMany failed',
+						{ adapter: 'postgresql', operation: 'findMany', table: config.table },
+						error,
+					)
+				}
+			},
+			updateMany: async (schema: AnySchema, config: PostgresqlRepoConfig, filter: FilterGroup, data: Record<string, unknown>) => {
+				try {
+					const tableName = resolveTableName(config)
+					const { sql, params } = buildUpdateQuery(filter, tableName, schema.pkField.name, data)
+					const result = await getClient().query(sql, params)
+					return result.rows
+				} catch (error) {
+					throw new EquippedError(
+						'PostgreSQL updateMany failed',
+						{ adapter: 'postgresql', operation: 'updateMany', table: config.table },
+						error,
+					)
+				}
+			},
+			deleteMany: async (schema: AnySchema, config: PostgresqlRepoConfig, filter: FilterGroup) => {
+				try {
+					const tableName = resolveTableName(config)
+					const { sql, params } = buildDeleteQuery(filter, tableName, schema.pkField.name)
+					const result = await getClient().query(sql, params)
+					return result.rows
+				} catch (error) {
+					throw new EquippedError(
+						'PostgreSQL deleteMany failed',
+						{ adapter: 'postgresql', operation: 'deleteMany', table: config.table },
+						error,
+					)
+				}
+			},
+			upsertOne: async (
+				schema: AnySchema,
+				config: PostgresqlRepoConfig,
+				filter: FilterGroup,
+				insert: Record<string, unknown>,
+				ops: AnyUpdateOp[],
+			) => {
+				try {
+					const tableName = resolveTableName(config)
+					const conflictColumn = extractUpsertConflictColumn(filter, schema.name)
+					const data = ops.length > 0 ? flattenOps(ops) : {}
+					const { sql, params } = buildUpsertQuery(tableName, conflictColumn, schema.pkField.name, insert, data)
+					const result = await getClient().query(sql, params)
+					return result.rows[0]
+				} catch (error) {
+					if (error instanceof EquippedError) throw error
+					throw new EquippedError(
+						'PostgreSQL upsertOne failed',
+						{ adapter: 'postgresql', operation: 'upsertOne', table: config.table },
+						error,
+					)
+				}
+			},
+		})
+		.transactional({
+			session: async <T>(fn: () => Promise<T>): Promise<T> => {
+				if (sessionStore.getStore()) return fn()
+				let client: PoolClient | undefined
+				try {
+					client = await pool.connect()
+					await client.query('BEGIN')
+					const result = await sessionStore.run(client, fn)
+					await client.query('COMMIT')
+					return result
+				} catch (error) {
+					if (client) {
+						try {
+							await client.query('ROLLBACK')
+						} catch {
+							// ignore rollback errors and report original failure
 						}
-						return results
-					} catch (error) {
-						throw new EquippedError(
-							'PostgreSQL insertMany failed',
-							{ adapter: 'postgresql', operation: 'insertMany', table: config.table },
-							error,
-						)
 					}
-				},
-				updateByPk: async (schema, config, pk, ops) => {
-					try {
-						const tableName = resolveTableName(config)
-						const pkName = schema.pkField.name
-						const data = flattenOps(ops)
-						if (Object.keys(data).length === 0) {
-							const result = await getClient().query(`SELECT * FROM "${tableName}" WHERE "${pkName}" = $1`, [pk])
-							return result.rows[0] ?? null
-						}
-						const { sql, params } = buildPkUpdateQuery(tableName, pkName, pk, data)
-						const result = await getClient().query(sql, params)
-						return result.rows[0] ?? null
-					} catch (error) {
-						throw new EquippedError(
-							'PostgreSQL updateByPk failed',
-							{ adapter: 'postgresql', operation: 'updateByPk', table: config.table },
-							error,
-						)
-					}
-				},
-				deleteByPk: async (schema, config, pk) => {
-					try {
-						const tableName = resolveTableName(config)
-						const pkName = schema.pkField.name
-						const result = await getClient().query(`DELETE FROM "${tableName}" WHERE "${pkName}" = $1 RETURNING *`, [pk])
-						return result.rows[0] ?? null
-					} catch (error) {
-						throw new EquippedError(
-							'PostgreSQL deleteByPk failed',
-							{ adapter: 'postgresql', operation: 'deleteByPk', table: config.table },
-							error,
-						)
-					}
-				},
-				raw: async <T = unknown>(_schema: AnySchema, config: PostgresqlRepoConfig, command: unknown, params: unknown[] = []) => {
-					try {
-						if (typeof command !== 'string') {
-							throw new EquippedError('PostgreSQL raw requires a SQL string command', {
-								adapter: 'postgresql',
-								operation: 'raw',
-								table: config.table,
-							})
-						}
-						const result = await getClient().query(command, params)
-						return result as T
-					} catch (error) {
-						if (error instanceof EquippedError) throw error
-						throw new EquippedError(
-							'PostgreSQL raw failed',
-							{ adapter: 'postgresql', operation: 'raw', table: config.table },
-							error,
-						)
-					}
-				},
-			})
-			.queryable({
-				findMany: async (schema: AnySchema, config: PostgresqlRepoConfig, filter: FilterGroup, options?: QueryOptions) => {
-					try {
-						const tableName = resolveTableName(config)
-						const { sql, params } = buildSelectQuery(filter, options, tableName, schema.pkField.name)
-						const result = await getClient().query(sql, params)
-						return result.rows
-					} catch (error) {
-						throw new EquippedError(
-							'PostgreSQL findMany failed',
-							{ adapter: 'postgresql', operation: 'findMany', table: config.table },
-							error,
-						)
-					}
-				},
-				updateMany: async (schema: AnySchema, config: PostgresqlRepoConfig, filter: FilterGroup, data: Record<string, unknown>) => {
-					try {
-						const tableName = resolveTableName(config)
-						const { sql, params } = buildUpdateQuery(filter, tableName, schema.pkField.name, data)
-						const result = await getClient().query(sql, params)
-						return result.rows
-					} catch (error) {
-						throw new EquippedError(
-							'PostgreSQL updateMany failed',
-							{ adapter: 'postgresql', operation: 'updateMany', table: config.table },
-							error,
-						)
-					}
-				},
-				deleteMany: async (schema: AnySchema, config: PostgresqlRepoConfig, filter: FilterGroup) => {
-					try {
-						const tableName = resolveTableName(config)
-						const { sql, params } = buildDeleteQuery(filter, tableName, schema.pkField.name)
-						const result = await getClient().query(sql, params)
-						return result.rows
-					} catch (error) {
-						throw new EquippedError(
-							'PostgreSQL deleteMany failed',
-							{ adapter: 'postgresql', operation: 'deleteMany', table: config.table },
-							error,
-						)
-					}
-				},
-				upsertOne: async (
-					schema: AnySchema,
-					config: PostgresqlRepoConfig,
-					filter: FilterGroup,
-					insert: Record<string, unknown>,
-					ops: AnyUpdateOp[],
-				) => {
-					try {
-						const tableName = resolveTableName(config)
-						const conflictColumn = extractUpsertConflictColumn(filter, schema.name)
-						const data = ops.length > 0 ? flattenOps(ops) : {}
-						const { sql, params } = buildUpsertQuery(tableName, conflictColumn, schema.pkField.name, insert, data)
-						const result = await getClient().query(sql, params)
-						return result.rows[0]
-					} catch (error) {
-						if (error instanceof EquippedError) throw error
-						throw new EquippedError(
-							'PostgreSQL upsertOne failed',
-							{ adapter: 'postgresql', operation: 'upsertOne', table: config.table },
-							error,
-						)
-					}
-				},
-			})
-			.transactional({
-				session: async <T>(fn: () => Promise<T>): Promise<T> => {
-					if (sessionStore.getStore()) return fn()
-					let client: PoolClient | undefined
-					try {
-						client = await pool.connect()
-						await client.query('BEGIN')
-						const result = await sessionStore.run(client, fn)
-						await client.query('COMMIT')
-						return result
-					} catch (error) {
-						if (client) {
-							try {
-								await client.query('ROLLBACK')
-							} catch {
-								// ignore rollback errors and report original failure
-							}
-						}
-						if (error instanceof EquippedError) throw error
-						throw new EquippedError('PostgreSQL session failed', { adapter: 'postgresql', operation: 'session' }, error)
-					} finally {
-						client?.release()
-					}
-				},
-			}),
-	)
+					if (error instanceof EquippedError) throw error
+					throw new EquippedError('PostgreSQL session failed', { adapter: 'postgresql', operation: 'session' }, error)
+				} finally {
+					client?.release()
+				}
+			},
+		})
+		.build()
 
 	return { adapter, pool }
 }
@@ -257,7 +255,7 @@ export function createPostgresAdapter(connectionConfig: PostgresqlConnectionConf
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf } = import.meta.vitest
 
-	describe('postgresql adapter: defineAdapter shape', () => {
+	describe('postgresql adapter: Adapter.from shape', () => {
 		test('createPostgresAdapter returns adapter with correct capability declarations', () => {
 			const { adapter } = createPostgresAdapter({
 				host: 'localhost',
@@ -309,9 +307,9 @@ if (import.meta.vitest) {
 		})
 
 		test('adapter.use returns OrmUse-shaped object', async () => {
-			const { defineSchema } = await import('../../schema')
+			const { Schema } = await import('../../schema')
 			const { v } = await import('valleyed')
-			const schema = defineSchema('test', (s) => s.pk('id', v.string(), () => 'x'))
+			const schema = Schema.from('test').pk('id', v.string(), () => 'x').build()
 			const { adapter } = createPostgresAdapter({
 				host: 'localhost',
 				port: 5432,
@@ -375,8 +373,8 @@ if (import.meta.vitest) {
 			>()
 		})
 
-		test('type-level: defineRepo with postgres adapter enables all methods', async () => {
-			const { defineRepo } = await import('../../repo/repo')
+		test('type-level: Repo.from with postgres adapter enables all methods', async () => {
+			const { Repo } = await import('../../repo/repo')
 			const { adapter } = createPostgresAdapter({
 				host: 'localhost',
 				port: 5432,
@@ -384,7 +382,7 @@ if (import.meta.vitest) {
 				password: 'test',
 				database: 'testdb',
 			})
-			const repo = defineRepo((r) => r.adapter(adapter).resolve(() => ({ table: 'test' })))
+			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
 
 			expectTypeOf(repo.findByPk).toBeFunction()
 			expectTypeOf(repo.findMany).toBeFunction()

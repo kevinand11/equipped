@@ -143,7 +143,7 @@ export class QueryGroup {
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { defineSchema } = await import('./schema')
+	const { Schema } = await import('./schema')
 
 	describe('query', () => {
 		test('stores clauses and nested groups', () => {
@@ -158,11 +158,11 @@ if (import.meta.vitest) {
 		})
 
 		test('accepts typed field refs from schema', () => {
-			const UserSchema = defineSchema('users', (s) =>
-				s.pk('id', v.string(), () => 'u1')
-				 .field('age', v.number())
-				 .field('email', v.string()),
-			)
+			const UserSchema = Schema.from('users')
+				.pk('id', v.string(), () => 'u1')
+				.field('age', v.number())
+				.field('email', v.string())
+				.build()
 			const clauses = QueryGroup.from().eq(UserSchema.fields.age, 18).like(UserSchema.fields.email, 'alice').children
 			expect((clauses[0] as Where).field).toBe('age')
 			expect((clauses[1] as Where).field).toBe('email')

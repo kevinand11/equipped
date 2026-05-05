@@ -1,12 +1,12 @@
 # MongoDB Adapter
 
-In-tree MongoDB adapter using the `defineAdapter` builder-chain shape.
+In-tree MongoDB adapter using the `Adapter.from()` builder-chain shape.
 
 ## Usage
 
 ```ts
 import { createMongoAdapter, type MongoDbRepoConfig } from 'equipped/orm/adapters/mongodb'
-import { defineRepo } from 'equipped/orm'
+import { Repo } from 'equipped/orm'
 
 const { adapter } = createMongoAdapter({
   host: 'localhost',
@@ -15,11 +15,9 @@ const { adapter } = createMongoAdapter({
   password: 'secret',
 })
 
-const repo = defineRepo((r) =>
-  r
-    .adapter(adapter)
-    .resolve((schema) => ({ db: 'myapp', col: schema.name }))
-)
+const repo = Repo.from(adapter)
+  .resolve((schema) => ({ db: 'myapp', col: schema.name }))
+  .build()
 
 await adapter.connect()
 ```
