@@ -256,7 +256,7 @@ export function createInMemoryAdapter() {
 				const doc = store.get(String(pk))
 				return doc ? clone(doc) : null
 			},
-			insertMany: async (schema, config, data) => {
+			createMany: async (schema, config, data) => {
 				const pk = schema.pkField.name
 				const store = getStore(resolveConfigName(schema, config))
 				return data.map((d) => {
@@ -316,7 +316,7 @@ export function createInMemoryAdapter() {
 				for (const row of rows) store.delete(String(row[pk]))
 				return rows
 			},
-			upsertOne: async (schema, config, filter, insert, ops) => {
+			upsertOne: async (schema, config, filter, create, ops) => {
 				const store = getStore(resolveConfigName(schema, config))
 				const pk = schema.pkField.name
 				const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter))
@@ -326,7 +326,7 @@ export function createInMemoryAdapter() {
 					store.set(String(next[pk]), next)
 					return clone(next)
 				}
-				const base = clone(insert)
+				const base = clone(create)
 				const result = ops.length > 0 ? applyOps(base, ops) : base
 				store.set(String(result[pk]), result)
 				return clone(result)
@@ -367,7 +367,7 @@ if (import.meta.vitest) {
 				.build()
 			const { adapter } = createInMemoryAdapter()
 			const use = adapter.use(schema, { table: 'users' })
-			await use.insertMany([
+			await use.createMany([
 				{ id: 'u1', name: 'Alice', age: 30 },
 				{ id: 'u2', name: 'Bob', age: 20 },
 				{ id: 'u3', name: 'Carol', age: 40 },
@@ -390,7 +390,7 @@ if (import.meta.vitest) {
 				.build()
 			const { adapter } = createInMemoryAdapter()
 			const use = adapter.use(schema, { table: 'docs' })
-			await use.insertOne({ id: 'd1', count: 1, tags: ['x'], meta: { a: 1 } })
+			await use.createOne({ id: 'd1', count: 1, tags: ['x'], meta: { a: 1 } })
 
 			await adapter.session(async () => {
 				await use.updateOne(FilterGroup.create().eq('id', 'd1'), {
@@ -418,7 +418,7 @@ if (import.meta.vitest) {
 				.build()
 			const { adapter } = createInMemoryAdapter()
 			const use = adapter.use(schema, { table: 'users' })
-			await use.insertMany([
+			await use.createMany([
 				{ id: 'u1', name: 'Alice' },
 				{ id: 'u2', name: 'Bob' },
 				{ id: 'u3', name: 'Carol' },
@@ -435,7 +435,7 @@ if (import.meta.vitest) {
 				.build()
 			const { adapter } = createInMemoryAdapter()
 			const use = adapter.use(schema, { table: 'items' })
-			await use.insertMany([
+			await use.createMany([
 				{ id: 'i1', val: 'present' },
 				{ id: 'i2', val: null },
 				{ id: 'i3', val: undefined },
@@ -453,7 +453,7 @@ if (import.meta.vitest) {
 			const { adapter } = createInMemoryAdapter()
 
 			const use = adapter.use(schema, { prefix: 'test' })
-			await use.insertOne({ id: 'x' })
+			await use.createOne({ id: 'x' })
 
 			const found = await adapter.crud.findByPk!(schema, { prefix: 'test' }, 'x')
 			expect(found).toEqual({ id: 'x' })

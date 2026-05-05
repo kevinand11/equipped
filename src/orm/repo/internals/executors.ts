@@ -4,7 +4,7 @@ import type { FilterGroup } from '../../filter'
 import type { OrderBy } from '../../query'
 import type { AnyPreloadDef } from '../../relations'
 import type { AnySchema } from '../../schema'
-import { validateInsert, validateUpdate, type SchemaInsertInput, type SchemaUpdateInput } from '../../schema-validations'
+import { validateCreate, validateUpdate, type SchemaCreateInput, type SchemaUpdateInput } from '../../schema-validations'
 import { SetOp, isUpdateOp, type AnyUpdateOp } from '../../updates'
 import type { SchemaContext } from '../builders'
 
@@ -42,26 +42,26 @@ export async function runAllRead<S extends AnySchema, Sel extends string, P exte
 	return context.shapeRows(state.select, state.preloads, rows)
 }
 
-type UpsertInput<S extends AnySchema> = { insert: SchemaInsertInput<S> } | { insert: SchemaInsertInput<S>; update: SchemaUpdateInput<S> }
+type UpsertInput<S extends AnySchema> = { create: SchemaCreateInput<S> } | { create: SchemaCreateInput<S>; update: SchemaUpdateInput<S> }
 
-export async function runOneInsert<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
+export async function runOneCreate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
 	state: { select: readonly Sel[] | undefined; preloads: P },
-	data: SchemaInsertInput<S>,
+	data: SchemaCreateInput<S>,
 ): Promise<SelectedWithPreloads<S, Sel, P>> {
-	const validated = validateInsert(context.schema, data as any)
-	const row = await context.use.insertOne(validated as any)
+	const validated = validateCreate(context.schema, data as any)
+	const row = await context.use.createOne(validated as any)
 	const [resolved] = await context.shapeRows(state.select, state.preloads, [row])
 	return resolved
 }
 
-export async function runAllInsert<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
+export async function runAllCreate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
 	state: { select: readonly Sel[] | undefined; preloads: P },
-	data: SchemaInsertInput<S>[],
+	data: SchemaCreateInput<S>[],
 ): Promise<SelectedWithPreloads<S, Sel, P>[]> {
-	const validated = data.map((entry) => validateInsert(context.schema, entry as any))
-	const rows = await context.use.insertMany(validated as any)
+	const validated = data.map((entry) => validateCreate(context.schema, entry as any))
+	const rows = await context.use.createMany(validated as any)
 	return context.shapeRows(state.select, state.preloads, rows)
 }
 
@@ -90,7 +90,7 @@ export async function runOneUpsert<S extends AnySchema, Sel extends string, P ex
 	state: { where: FilterGroup; select: readonly Sel[] | undefined; preloads: P },
 	data: UpsertInput<S>,
 ): Promise<SelectedWithPreloads<S, Sel, P>> {
-	const insert = validateInsert(context.schema, data.insert as any)
+	const create = validateCreate(context.schema, data.create as any)
 	const ops: AnyUpdateOp[] = []
 	if ('update' in data) {
 		const validated = validateUpdate(context.schema, data.update as any)
@@ -106,7 +106,7 @@ export async function runOneUpsert<S extends AnySchema, Sel extends string, P ex
 			ops.unshift(new SetOp(plainValues))
 		}
 	}
-	const row = await context.use.upsertOne(state.where, insert as any, ops)
+	const row = await context.use.upsertOne(state.where, create as any, ops)
 	return (await context.shapeOneRow(state.select, state.preloads, row)) as SelectedWithPreloads<S, Sel, P>
 }
 

@@ -4,7 +4,7 @@ import { Pool, type PoolClient } from 'pg'
 
 import {
 	buildDeleteQuery,
-	buildInsertQuery,
+	buildCreateQuery,
 	buildPkUpdateQuery,
 	buildSelectQuery,
 	buildUpdateQuery,
@@ -81,21 +81,21 @@ export function createPostgresAdapter(connectionConfig: PostgresqlConnectionConf
 					)
 				}
 			},
-			insertMany: async (_schema, config, data) => {
+			createMany: async (_schema, config, data) => {
 				try {
 					const tableName = resolveTableName(config)
 					const client = getClient()
 					const results: Record<string, unknown>[] = []
 					for (const doc of data) {
-						const { sql, params } = buildInsertQuery(tableName, doc)
+						const { sql, params } = buildCreateQuery(tableName, doc)
 						const result = await client.query(sql, params)
 						results.push(result.rows[0])
 					}
 					return results
 				} catch (error) {
 					throw new EquippedError(
-						'PostgreSQL insertMany failed',
-						{ adapter: 'postgresql', operation: 'insertMany', table: config.table },
+						'PostgreSQL createMany failed',
+						{ adapter: 'postgresql', operation: 'createMany', table: config.table },
 						error,
 					)
 				}
@@ -202,14 +202,14 @@ export function createPostgresAdapter(connectionConfig: PostgresqlConnectionConf
 				schema: AnySchema,
 				config: PostgresqlRepoConfig,
 				filter: FilterGroup,
-				insert: Record<string, unknown>,
+				create: Record<string, unknown>,
 				ops: AnyUpdateOp[],
 			) => {
 				try {
 					const tableName = resolveTableName(config)
 					const conflictColumn = extractUpsertConflictColumn(filter, schema.name)
 					const data = ops.length > 0 ? flattenOps(ops) : {}
-					const { sql, params } = buildUpsertQuery(tableName, conflictColumn, schema.pkField.name, insert, data)
+					const { sql, params } = buildUpsertQuery(tableName, conflictColumn, schema.pkField.name, create, data)
 					const result = await getClient().query(sql, params)
 					return result.rows[0]
 				} catch (error) {
@@ -291,7 +291,7 @@ if (import.meta.vitest) {
 
 			expect(adapter.crud).toBeDefined()
 			expect(adapter.crud!.findByPk).toBeTypeOf('function')
-			expect(adapter.crud!.insertMany).toBeTypeOf('function')
+			expect(adapter.crud!.createMany).toBeTypeOf('function')
 			expect(adapter.crud!.updateByPk).toBeTypeOf('function')
 			expect(adapter.crud!.deleteByPk).toBeTypeOf('function')
 			expect(adapter.crud!.raw).toBeTypeOf('function')
@@ -321,8 +321,8 @@ if (import.meta.vitest) {
 
 			expect(use.findMany).toBeTypeOf('function')
 			expect(use.findOne).toBeTypeOf('function')
-			expect(use.insertOne).toBeTypeOf('function')
-			expect(use.insertMany).toBeTypeOf('function')
+			expect(use.createOne).toBeTypeOf('function')
+			expect(use.createMany).toBeTypeOf('function')
 			expect(use.updateMany).toBeTypeOf('function')
 			expect(use.updateOne).toBeTypeOf('function')
 			expect(use.upsertOne).toBeTypeOf('function')
@@ -387,8 +387,8 @@ if (import.meta.vitest) {
 			expectTypeOf(repo.findByPk).toBeFunction()
 			expectTypeOf(repo.findMany).toBeFunction()
 			expectTypeOf(repo.findOne).toBeFunction()
-			expectTypeOf(repo.insertOne).toBeFunction()
-			expectTypeOf(repo.insertMany).toBeFunction()
+			expectTypeOf(repo.createOne).toBeFunction()
+			expectTypeOf(repo.createMany).toBeFunction()
 			expectTypeOf(repo.updateByPk).toBeFunction()
 			expectTypeOf(repo.updateOne).toBeFunction()
 			expectTypeOf(repo.updateMany).toBeFunction()

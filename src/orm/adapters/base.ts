@@ -6,13 +6,13 @@ import type { AnyUpdateOp } from '../updates'
 export type OrmUse = {
 	findMany: (filter: FilterGroup, options?: QueryOptions) => Promise<Record<string, unknown>[]>
 	findOne: (filter: FilterGroup) => Promise<Record<string, unknown> | null>
-	insertOne: (data: Record<string, unknown>) => Promise<Record<string, unknown>>
-	insertMany: (data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>
+	createOne: (data: Record<string, unknown>) => Promise<Record<string, unknown>>
+	createMany: (data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>
 	updateMany: (filter: FilterGroup, data: Record<string, unknown>) => Promise<Record<string, unknown>[]>
 	updateOne: (filter: FilterGroup, data: Record<string, unknown>) => Promise<Record<string, unknown> | null>
 	upsertOne: (
 		filter: FilterGroup,
-		insert: Record<string, unknown>,
+		create: Record<string, unknown>,
 		ops: AnyUpdateOp[],
 	) => Promise<Record<string, unknown>>
 	deleteOne: (filter: FilterGroup) => Promise<Record<string, unknown> | null>

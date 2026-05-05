@@ -164,7 +164,7 @@ export function buildCountQuery(group: FilterGroup, tableName: string, primaryKe
 	return { sql, params }
 }
 
-export function buildInsertQuery(tableName: string, data: Record<string, unknown>): { sql: string; params: unknown[] } {
+export function buildCreateQuery(tableName: string, data: Record<string, unknown>): { sql: string; params: unknown[] } {
 	const keys = Object.keys(data)
 	const params = Object.values(data)
 	const placeholders = keys.map((_, i) => `$${i + 1}`)
@@ -211,16 +211,16 @@ export function buildUpsertQuery(
 	tableName: string,
 	conflictColumn: string,
 	primaryKey: string,
-	insert: Record<string, unknown>,
+	create: Record<string, unknown>,
 	data: Record<string, unknown>,
 ): { sql: string; params: unknown[] } {
-	const columns = Object.keys(insert)
-	const insertParams = Object.values(insert)
+	const columns = Object.keys(create)
+	const createParams = Object.values(create)
 	const placeholders = columns.map((_, i) => `$${i + 1}`)
 	const pgConflictCol = mapField(conflictColumn, primaryKey)
 
 	let setClause: string
-	const allParams = [...insertParams]
+	const allParams = [...createParams]
 
 	if (Object.keys(data).length > 0) {
 		const { setParts, params: setParams } = buildSetParts(data, columns.length + 1)
@@ -403,9 +403,9 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('buildInsertQuery', () => {
+	describe('buildCreateQuery', () => {
 		test('produces INSERT with RETURNING *', () => {
-			const { sql, params } = buildInsertQuery('users', { name: 'Alice', age: 30 })
+			const { sql, params } = buildCreateQuery('users', { name: 'Alice', age: 30 })
 			expect(sql).toBe('INSERT INTO "users" ("name", "age") VALUES ($1, $2) RETURNING *')
 			expect(params).toEqual(['Alice', 30])
 		})

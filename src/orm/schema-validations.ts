@@ -6,7 +6,7 @@ import { Schema, type AnySchema, type SchemaFields, type SchemaOutput } from './
 import { SetOp, isUpdateOp, opTouchedFields, type AnyUpdateOp } from './updates'
 import type { Prettify } from './utils'
 
-export type SchemaInsertInput<S extends AnySchema> = Prettify<
+export type SchemaCreateInput<S extends AnySchema> = Prettify<
 	{
 		[K in keyof SchemaFields<S> as SchemaFields<S>[K] extends SchemaField<any, any, true>
 			? never
@@ -28,7 +28,7 @@ export type SchemaUpdateOutput<S extends AnySchema> =
 		? { [K in keyof F]?: F[K] extends AnySchemaField ? PipeOutput<F[K]['pipe']> | AnyUpdateOp : never }
 		: Record<string, unknown>
 
-export function tryValidateInsertRow<S extends AnySchema>(
+export function tryValidateCreateRow<S extends AnySchema>(
 	s: S,
 	data: Record<string, unknown>,
 ): { ok: true; value: SchemaOutput<S> } | { ok: false; failures: OrmValidationFailure[] } {
@@ -50,20 +50,20 @@ export function tryValidateInsertRow<S extends AnySchema>(
 	return { ok: true, value: result as SchemaOutput<S> }
 }
 
-export function validateInsert<S extends AnySchema>(s: S, data: Record<string, unknown>): SchemaOutput<S> {
-	const result = tryValidateInsertRow(s, data)
+export function validateCreate<S extends AnySchema>(s: S, data: Record<string, unknown>): SchemaOutput<S> {
+	const result = tryValidateCreateRow(s, data)
 	if (!result.ok) {
-		throw new OrmValidationError('validation', s.name, 'insertOne', result.failures)
+		throw new OrmValidationError('validation', s.name, 'createOne', result.failures)
 	}
 	return result.value
 }
 
-export function validateInsertMany<S extends AnySchema>(s: S, rows: Record<string, unknown>[]): SchemaOutput<S>[] {
+export function validateCreateMany<S extends AnySchema>(s: S, rows: Record<string, unknown>[]): SchemaOutput<S>[] {
 	const allFailures: OrmValidationFailure[] = []
 	const validated: SchemaOutput<S>[] = []
 
 	for (let i = 0; i < rows.length; i++) {
-		const result = tryValidateInsertRow(s, rows[i])
+		const result = tryValidateCreateRow(s, rows[i])
 		if (result.ok) {
 			validated.push(result.value)
 		} else {
@@ -74,7 +74,7 @@ export function validateInsertMany<S extends AnySchema>(s: S, rows: Record<strin
 	}
 
 	if (allFailures.length > 0) {
-		throw new OrmValidationError('validation', s.name, 'insertMany', allFailures)
+		throw new OrmValidationError('validation', s.name, 'createMany', allFailures)
 	}
 
 	return validated
@@ -177,16 +177,16 @@ export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[], operati
 
 export function validateUpsertConflicts(
 	schema: AnySchema,
-	rawInsert: Record<string, unknown>,
+	rawCreate: Record<string, unknown>,
 	ops: AnyUpdateOp[],
 ): void {
-	const insertFields = new Set(Object.keys(rawInsert))
+	const createFields = new Set(Object.keys(rawCreate))
 	const conflicts: OrmValidationFailure[] = []
 	for (const op of ops) {
 		if (op instanceof SetOp) continue
 		for (const field of opTouchedFields(op)) {
-			if (insertFields.has(field)) {
-				conflicts.push({ field, cause: `field "${field}" present in both insert payload and atomic op "${op.kind}"` })
+			if (createFields.has(field)) {
+				conflicts.push({ field, cause: `field "${field}" present in both create payload and atomic op "${op.kind}"` })
 			}
 		}
 	}
@@ -199,7 +199,7 @@ if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { IncOp, MulOp, SetOp, UnsetOp } = await import('./updates')
 
-	describe('validateInsert', () => {
+	describe('validateCreate', () => {
 		const UserSchema = Schema.from('users')
 			.pk('id', v.string(), () => 'auto-id')
 			.field('email', v.string())
@@ -209,45 +209,45 @@ if (import.meta.vitest) {
 			.build()
 
 		test('generates pk when not provided', () => {
-			const result = validateInsert(UserSchema, { email: 'a@b.com', name: 'Alice' })
+			const result = validateCreate(UserSchema, { email: 'a@b.com', name: 'Alice' })
 			expect(result.id).toBe('auto-id')
 		})
 
 		test('uses provided pk when given', () => {
-			const result = validateInsert(UserSchema, { id: 'custom-id', email: 'a@b.com', name: 'Alice' })
+			const result = validateCreate(UserSchema, { id: 'custom-id', email: 'a@b.com', name: 'Alice' })
 			expect(result.id).toBe('custom-id')
 		})
 
 		test('applies onCreate generator for generated fields', () => {
-			const result = validateInsert(UserSchema, { email: 'a@b.com', name: 'Alice' })
+			const result = validateCreate(UserSchema, { email: 'a@b.com', name: 'Alice' })
 			expect(result.createdAt).toBe(1000)
 		})
 
 		test('allows overriding generated field values', () => {
-			const result = validateInsert(UserSchema, { email: 'a@b.com', name: 'Alice', createdAt: 9999 })
+			const result = validateCreate(UserSchema, { email: 'a@b.com', name: 'Alice', createdAt: 9999 })
 			expect(result.createdAt).toBe(9999)
 		})
 
 		test('optional fields default to undefined when not provided', () => {
-			const result = validateInsert(UserSchema, { email: 'a@b.com', name: 'Alice' })
+			const result = validateCreate(UserSchema, { email: 'a@b.com', name: 'Alice' })
 			expect(result.age).toBeUndefined()
 		})
 
 		test('strips unknown fields', () => {
-			const result = validateInsert(UserSchema, { email: 'a@b.com', name: 'Alice', admin: true })
+			const result = validateCreate(UserSchema, { email: 'a@b.com', name: 'Alice', admin: true })
 			expect((result as any).admin).toBeUndefined()
 		})
 
 		test('throws OrmValidationError on invalid field type', () => {
 			try {
-				validateInsert(UserSchema, { email: 123, name: 'Alice' })
+				validateCreate(UserSchema, { email: 123, name: 'Alice' })
 				expect.unreachable()
 			} catch (e) {
 				expect(e).toBeInstanceOf(OrmValidationError)
 				const err = e as InstanceType<typeof OrmValidationError>
 				expect(err.kind).toBe('validation')
 				expect(err.schema).toBe('users')
-				expect(err.operation).toBe('insertOne')
+				expect(err.operation).toBe('createOne')
 				expect(err.failures.length).toBeGreaterThan(0)
 				expect(err.failures[0].field).toBe('email')
 			}
@@ -255,7 +255,7 @@ if (import.meta.vitest) {
 
 		test('throws OrmValidationError when required field is missing', () => {
 			try {
-				validateInsert(UserSchema, { email: 'a@b.com' })
+				validateCreate(UserSchema, { email: 'a@b.com' })
 				expect.unreachable()
 			} catch (e) {
 				expect(e).toBeInstanceOf(OrmValidationError)
@@ -267,7 +267,7 @@ if (import.meta.vitest) {
 
 		test('collects all field failures in a single error', () => {
 			try {
-				validateInsert(UserSchema, { email: 123, name: 456 })
+				validateCreate(UserSchema, { email: 123, name: 456 })
 				expect.unreachable()
 			} catch (e) {
 				expect(e).toBeInstanceOf(OrmValidationError)
@@ -279,7 +279,7 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('validateInsertMany', () => {
+	describe('validateCreateMany', () => {
 		const ItemSchema = Schema.from('items')
 			.pk('id', v.string(), () => 'item-id')
 			.field('title', v.string())
@@ -287,7 +287,7 @@ if (import.meta.vitest) {
 			.build()
 
 		test('validates all rows and returns validated documents', () => {
-			const results = validateInsertMany(ItemSchema, [
+			const results = validateCreateMany(ItemSchema, [
 				{ title: 'A', price: 10 },
 				{ title: 'B', price: 20 },
 			])
@@ -298,7 +298,7 @@ if (import.meta.vitest) {
 
 		test('collects failures across rows with rowIndex populated', () => {
 			try {
-				validateInsertMany(ItemSchema, [
+				validateCreateMany(ItemSchema, [
 					{ title: 'Good', price: 10 },
 					{ title: 123, price: 20 },
 					{ title: 'Also bad', price: 'not-a-number' },
@@ -309,7 +309,7 @@ if (import.meta.vitest) {
 				const err = e as InstanceType<typeof OrmValidationError>
 				expect(err.kind).toBe('validation')
 				expect(err.schema).toBe('items')
-				expect(err.operation).toBe('insertMany')
+				expect(err.operation).toBe('createMany')
 				expect(err.failures.length).toBeGreaterThanOrEqual(2)
 				const rowIndices = err.failures.map((f) => f.rowIndex)
 				expect(rowIndices).toContain(1)
@@ -320,7 +320,7 @@ if (import.meta.vitest) {
 
 		test('throws single error even with multiple bad rows', () => {
 			try {
-				validateInsertMany(ItemSchema, [
+				validateCreateMany(ItemSchema, [
 					{ title: 1, price: 'bad' },
 					{ title: 2, price: 'worse' },
 				])

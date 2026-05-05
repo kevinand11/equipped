@@ -81,7 +81,7 @@ export function createMongoAdapter(connectionConfig: MongoDbConnectionConfig) {
 					)
 				}
 			},
-			insertMany: async (_schema, config, data) => {
+			createMany: async (_schema, config, data) => {
 				try {
 					const collection = getCollection(config)
 					const docs = data.map((d) => d as OptionalUnlessRequiredId<any>)
@@ -89,8 +89,8 @@ export function createMongoAdapter(connectionConfig: MongoDbConnectionConfig) {
 					return data
 				} catch (error) {
 					throw new EquippedError(
-						'MongoDB insertMany failed',
-						{ adapter: 'mongodb', operation: 'insertMany', collection: config.col },
+						'MongoDB createMany failed',
+						{ adapter: 'mongodb', operation: 'createMany', collection: config.col },
 						error,
 					)
 				}
@@ -223,7 +223,7 @@ export function createMongoAdapter(connectionConfig: MongoDbConnectionConfig) {
 					)
 				}
 			},
-			upsertOne: async (schema: AnySchema, config: MongoDbRepoConfig, filter: FilterGroup, insert: Record<string, unknown>, ops: AnyUpdateOp[]) => {
+			upsertOne: async (schema: AnySchema, config: MongoDbRepoConfig, filter: FilterGroup, create: Record<string, unknown>, ops: AnyUpdateOp[]) => {
 				try {
 					const pk = schema.pkField.name
 					const collection = getCollection(config)
@@ -234,7 +234,7 @@ export function createMongoAdapter(connectionConfig: MongoDbConnectionConfig) {
 						mongoFilter,
 						{
 							...updateDoc,
-							$setOnInsert: insert,
+							$setOnInsert: create,
 						},
 						{
 							returnDocument: 'after',
@@ -301,7 +301,7 @@ if (import.meta.vitest) {
 
 			expect(adapter.crud).toBeDefined()
 			expect(adapter.crud!.findByPk).toBeTypeOf('function')
-			expect(adapter.crud!.insertMany).toBeTypeOf('function')
+			expect(adapter.crud!.createMany).toBeTypeOf('function')
 			expect(adapter.crud!.updateByPk).toBeTypeOf('function')
 			expect(adapter.crud!.deleteByPk).toBeTypeOf('function')
 			expect(adapter.crud!.raw).toBeTypeOf('function')
@@ -325,8 +325,8 @@ if (import.meta.vitest) {
 
 			expect(use.findMany).toBeTypeOf('function')
 			expect(use.findOne).toBeTypeOf('function')
-			expect(use.insertOne).toBeTypeOf('function')
-			expect(use.insertMany).toBeTypeOf('function')
+			expect(use.createOne).toBeTypeOf('function')
+			expect(use.createMany).toBeTypeOf('function')
 			expect(use.updateMany).toBeTypeOf('function')
 			expect(use.updateOne).toBeTypeOf('function')
 			expect(use.upsertOne).toBeTypeOf('function')
@@ -367,8 +367,8 @@ if (import.meta.vitest) {
 			expectTypeOf(repo.findByPk).toBeFunction()
 			expectTypeOf(repo.findMany).toBeFunction()
 			expectTypeOf(repo.findOne).toBeFunction()
-			expectTypeOf(repo.insertOne).toBeFunction()
-			expectTypeOf(repo.insertMany).toBeFunction()
+			expectTypeOf(repo.createOne).toBeFunction()
+			expectTypeOf(repo.createMany).toBeFunction()
 			expectTypeOf(repo.updateByPk).toBeFunction()
 			expectTypeOf(repo.updateOne).toBeFunction()
 			expectTypeOf(repo.updateMany).toBeFunction()
