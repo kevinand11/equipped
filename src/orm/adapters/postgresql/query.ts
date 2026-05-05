@@ -164,7 +164,7 @@ export function buildCountQuery(group: FilterGroup, tableName: string, primaryKe
 	return { sql, params }
 }
 
-export function buildInsertQuery(tableName: string, data: Record<string, unknown>): { sql: string; params: unknown[] } {
+export function buildCreateQuery(tableName: string, data: Record<string, unknown>): { sql: string; params: unknown[] } {
 	const keys = Object.keys(data)
 	const params = Object.values(data)
 	const placeholders = keys.map((_, i) => `$${i + 1}`)
@@ -403,9 +403,9 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('buildInsertQuery', () => {
+	describe('buildCreateQuery', () => {
 		test('produces INSERT with RETURNING *', () => {
-			const { sql, params } = buildInsertQuery('users', { name: 'Alice', age: 30 })
+			const { sql, params } = buildCreateQuery('users', { name: 'Alice', age: 30 })
 			expect(sql).toBe('INSERT INTO "users" ("name", "age") VALUES ($1, $2) RETURNING *')
 			expect(params).toEqual(['Alice', 30])
 		})

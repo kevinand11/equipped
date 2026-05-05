@@ -4,7 +4,7 @@ import { Pool, type PoolClient } from 'pg'
 
 import {
 	buildDeleteQuery,
-	buildInsertQuery,
+	buildCreateQuery,
 	buildPkUpdateQuery,
 	buildSelectQuery,
 	buildUpdateQuery,
@@ -89,7 +89,7 @@ export function createPostgresAdapter(connectionConfig: PostgresqlConnectionConf
 						const client = getClient()
 						const results: Record<string, unknown>[] = []
 						for (const doc of data) {
-							const { sql, params } = buildInsertQuery(tableName, doc)
+							const { sql, params } = buildCreateQuery(tableName, doc)
 							const result = await client.query(sql, params)
 							results.push(result.rows[0])
 						}
