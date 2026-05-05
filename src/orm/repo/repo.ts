@@ -12,39 +12,24 @@ import {
 	type SchemaUpdateInput,
 } from '../schema-validations'
 import type { AnyUpdateOp, UpdateOp } from '../updates'
+import { currentTransforms, run } from './als'
 import { SchemaContext, SchemaRef } from './builders'
 
-export type ConfigTransform<C> = (config: C, schema: AnySchema) => C
-export type ContextSource<C> = { get: () => ConfigTransform<C> | null }
+export type { ConfigTransform } from './als'
 
 export class Repo<A extends OrmAdapterLike<any>> {
 	readonly #adapter: A
 	readonly #defaults: (schema: AnySchema) => InferAdapterConfig<A>
-	readonly #contextSource?: ContextSource<InferAdapterConfig<A>>
-	readonly #resolverStack: ConfigTransform<InferAdapterConfig<A>>[] = []
 
-	constructor({
-		adapter,
-		resolve,
-		context,
-	}: {
-		adapter: A
-		resolve: (schema: AnySchema) => InferAdapterConfig<A>
-		context?: ContextSource<InferAdapterConfig<A>>
-	}) {
+	constructor({ adapter, resolve }: { adapter: A; resolve: (schema: AnySchema) => InferAdapterConfig<A> }) {
 		this.#adapter = adapter
 		this.#defaults = resolve
-		this.#contextSource = context
 	}
 
 	#getConfig(s: AnySchema): InferAdapterConfig<A> {
 		let config = this.#defaults(s)
-		if (this.#contextSource) {
-			const transform = this.#contextSource.get()
-			if (transform) config = transform(config, s)
-		}
-		for (const resolver of this.#resolverStack) {
-			config = resolver(config, s)
+		for (const transform of currentTransforms<InferAdapterConfig<A>>()) {
+			config = transform(config, s)
 		}
 		return config
 	}
@@ -219,23 +204,17 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return rows as SchemaOutput<S>[]
 	}
 
-	async resolve<T>(
+	resolve<T>(
 		resolver: (config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>,
-		fn: () => Promise<T>,
-	): Promise<T> {
-		this.#resolverStack.push(resolver)
-		try {
-			return await fn()
-		} finally {
-			this.#resolverStack.pop()
-		}
+		fn: () => T,
+	): T {
+		return run<InferAdapterConfig<A>, T>(resolver, fn)
 	}
 }
 
 class RepoBuilder<A = never, Config = never> {
 	#adapter: unknown
 	#resolve: unknown
-	#context: unknown
 
 	constructor(adapter?: unknown) {
 		this.#adapter = adapter
@@ -246,16 +225,10 @@ class RepoBuilder<A = never, Config = never> {
 		return this as unknown as RepoBuilder<A, NewConfig>
 	}
 
-	context(source: ContextSource<Config>): RepoBuilder<A, Config> {
-		this.#context = source
-		return this
-	}
-
 	build(this: RepoBuilder<A extends OrmAdapterLike<any> ? A : never, Config>): RepoSurface<A extends OrmAdapterLike<any> ? A : never> {
 		return new Repo<A extends OrmAdapterLike<any> ? A : never>({
 			adapter: this.#adapter as any,
 			resolve: this.#resolve as any,
-			context: this.#context as any,
 		}) as RepoSurface<A extends OrmAdapterLike<any> ? A : never>
 	}
 }
@@ -1663,35 +1636,109 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('zero-ALS rule: library code does not import node:async_hooks', () => {
-		test('no file under src/orm (excluding adapters/) imports node:async_hooks', async () => {
-			const { readdir, readFile } = await import('node:fs/promises')
-			const { join } = await import('node:path')
-			const forbidden = ['node:', 'async_hooks'].join('')
+	describe('ALS-backed resolve', () => {
+		test('reads inside repo.resolve see the override', async () => {
+			const seenConfigs: unknown[] = []
+			const { adapter } = createInMemoryAdapter()
+			const origUse = adapter.use.bind(adapter)
+			;(adapter as any).use = vi.fn((s: any, config: any) => {
+				seenConfigs.push(config)
+				return origUse(s, config)
+			})
 
-			async function* walk(dir: string): AsyncGenerator<string> {
-				const entries = await readdir(dir, { withFileTypes: true })
-				for (const entry of entries) {
-					const full = join(dir, entry.name)
-					if (entry.isDirectory()) {
-						if (entry.name === 'adapters') continue
-						yield* walk(full)
-					} else if (entry.name.endsWith('.ts')) {
-						yield full
-					}
-				}
-			}
+			const TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').field('name', v.string()).build()
+			const repo = Repo.from(adapter).resolve((s) => ({ prefix: s.name })).build()
 
-			const ormDir = join(import.meta.dirname!, '..')
-			const violations: string[] = []
-			for await (const file of walk(ormDir)) {
-				const content = await readFile(file, 'utf-8')
-				const importLine = /^\s*import\s.*from\s+['"].*async_hooks/m
-				if (content.includes(forbidden) && importLine.test(content)) {
-					violations.push(file)
-				}
-			}
-			expect(violations).toEqual([])
+			await repo.resolve(
+				(config) => ({ prefix: `override_${(config as any).prefix}` }),
+				async () => {
+					await repo.on(TestSchema).all().find()
+				},
+			)
+
+			expect(seenConfigs[0]).toEqual({ prefix: 'override_test' })
+		})
+
+		test('reads outside repo.resolve see the default config', async () => {
+			const seenConfigs: unknown[] = []
+			const { adapter } = createInMemoryAdapter()
+			const origUse = adapter.use.bind(adapter)
+			;(adapter as any).use = vi.fn((s: any, config: any) => {
+				seenConfigs.push(config)
+				return origUse(s, config)
+			})
+
+			const TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').field('name', v.string()).build()
+			const repo = Repo.from(adapter).resolve((s) => ({ prefix: s.name })).build()
+
+			await repo.resolve(
+				(config) => ({ prefix: `scoped_${(config as any).prefix}` }),
+				async () => {},
+			)
+
+			await repo.on(TestSchema).all().find()
+			expect(seenConfigs[0]).toEqual({ prefix: 'test' })
+		})
+
+		test('two parallel repo.resolve calls do not bleed into each other', async () => {
+			const seenConfigs: unknown[] = []
+			const { adapter } = createInMemoryAdapter()
+			const origUse = adapter.use.bind(adapter)
+			;(adapter as any).use = vi.fn((s: any, config: any) => {
+				seenConfigs.push(config)
+				return origUse(s, config)
+			})
+
+			const TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').field('name', v.string()).build()
+			const repo = Repo.from(adapter).resolve((s) => ({ prefix: s.name })).build()
+
+			await Promise.all([
+				repo.resolve(
+					(config) => ({ prefix: `tenant1_${(config as any).prefix}` }),
+					async () => {
+						await new Promise((r) => setTimeout(r, 10))
+						await repo.on(TestSchema).all().find()
+					},
+				),
+				repo.resolve(
+					(config) => ({ prefix: `tenant2_${(config as any).prefix}` }),
+					async () => {
+						await new Promise((r) => setTimeout(r, 10))
+						await repo.on(TestSchema).all().find()
+					},
+				),
+			])
+
+			expect(seenConfigs).toContainEqual({ prefix: 'tenant1_test' })
+			expect(seenConfigs).toContainEqual({ prefix: 'tenant2_test' })
+			expect(seenConfigs).not.toContainEqual({ prefix: 'tenant2_tenant1_test' })
+			expect(seenConfigs).not.toContainEqual({ prefix: 'tenant1_tenant2_test' })
+		})
+
+		test('overrides survive across awaits inside fn', async () => {
+			const seenConfigs: unknown[] = []
+			const { adapter } = createInMemoryAdapter()
+			const origUse = adapter.use.bind(adapter)
+			;(adapter as any).use = vi.fn((s: any, config: any) => {
+				seenConfigs.push(config)
+				return origUse(s, config)
+			})
+
+			const TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').field('name', v.string()).build()
+			const repo = Repo.from(adapter).resolve((s) => ({ prefix: s.name })).build()
+
+			await repo.resolve(
+				(config) => ({ prefix: `async_${(config as any).prefix}` }),
+				async () => {
+					await repo.on(TestSchema).all().find()
+					await new Promise((r) => setTimeout(r, 10))
+					await repo.on(TestSchema).all().find()
+				},
+			)
+
+			expect(seenConfigs).toHaveLength(2)
+			expect(seenConfigs[0]).toEqual({ prefix: 'async_test' })
+			expect(seenConfigs[1]).toEqual({ prefix: 'async_test' })
 		})
 	})
 }
