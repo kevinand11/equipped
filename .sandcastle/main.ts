@@ -26,7 +26,7 @@
 //                             Pipelines run concurrently via Promise.allSettled().
 // Phase 3 (Publish):          For each branch with commits, push the branch
 //                             to origin and open a PR targeting the PRD's
-//                             integration branch (`feature/issue-<prd>`).
+//                             integration branch (`prds-issue-<prd>` by default).
 //                             Label the issue 'in-pr' so subsequent iterations
 //                             skip it. No auto-merge — humans review and merge.
 //
@@ -61,12 +61,13 @@ const program = new Command()
 	.description(
 		'Run the Sandcastle parallel-planner-with-review loop scoped to a single PRD (parent issue). Multiple devs can run scoped loops for different PRDs in parallel.',
 	)
-	.argument('<prd-issue-number>', "PRD parent issue number (e.g. '27'). Discovery walks its sub-issues; the integration branch is `feature/issue-<n>`.", parsePositiveInt)
+	.argument('<prd-issue-number>', "PRD parent issue number (e.g. '27'). Discovery walks its sub-issues.", parsePositiveInt)
+	.option('-b, --integration-branch <branch>', 'integration branch to target with slice PRs (defaults to `prds-issue-<prd-number>`)')
 	.option('-m, --max-iterations <n>', 'maximum number of plan/execute/publish cycles per run', parsePositiveInt, 1)
 	.parse()
 
 const PRD_NUMBER: number = program.processedArgs[0]
-const FEATURE_BRANCH = `feature/issue-${PRD_NUMBER}`
+const FEATURE_BRANCH: string = program.opts().integrationBranch ?? `prds-issue-${PRD_NUMBER}`
 const MAX_ITERATIONS: number = program.opts().maxIterations
 
 const IN_PR_LABEL = 'in-pr'

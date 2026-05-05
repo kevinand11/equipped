@@ -44,11 +44,13 @@ When a skill publishes slice issues for a PRD:
 
 Limits: each parent supports up to 100 direct sub-issues, nested up to 8 levels deep.
 
-## Feature branches for PRDs
+## Integration branches for PRDs
 
-By convention, each PRD has an integration branch named `feature/issue-<prd-number>` (e.g. PRD #27 → `feature/issue-27`). Slice PRs target this branch, not `main`. The whole feature merges into `main` as one squash when every slice has landed.
+By convention, each PRD has an integration branch named `prds-issue-<prd-number>` (e.g. PRD #27 → `prds-issue-27`). Slice PRs target this branch, not `main`. The whole feature merges into `main` as one squash when every slice has landed.
 
 Sandcastle creates the branch automatically on first run if it doesn't exist on `origin`, and links it to the PRD's Development sidebar via `gh issue develop`. No manual setup needed.
+
+To target a different integration branch (e.g. when the PRD ships into an existing long-lived feature branch), pass `--integration-branch <branch>` to Sandcastle.
 
 ## Declaring dependencies between issues
 

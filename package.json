@@ -18,7 +18,7 @@
 		"lint": "eslint --fix src",
 		"test": "vitest run",
 		"release": "standard-version",
-		"sandcastle": "npx tsx .sandcastle/main.ts",
+		"sandcastle": "tsx .sandcastle/main.ts",
 		"prepare": "husky"
 	},
 	"exports": {
@@ -302,6 +302,7 @@
 		"husky": "^9.1.7",
 		"standard-version": "^9.5.0",
 		"tsup": "^8.5.1",
+		"tsx": "^4.21.0",
 		"typescript": "^5.9.3",
 		"vitest": "^4.0.18"
 	},
