@@ -3,12 +3,12 @@ import type { OrmAdapterLike } from '../adapters/base'
 import { assertNormalisedFilter, FilterGroup, type FilterFactory, type GatedFilterFactory } from '../filter'
 import type { AnySchema, SchemaOutput, SchemaPersistedOutput } from '../schema'
 import {
-	validateInsert,
-	validateInsertMany,
+	validateCreate,
+	validateCreateMany,
 	validateUpdate,
 	validateUpdateOps,
 	validateUpsertConflicts,
-	type SchemaInsertInput,
+	type SchemaCreateInput,
 	type SchemaUpdateInput,
 } from '../schema-validations'
 import type { AnyUpdateOp, UpdateOp } from '../updates'
@@ -181,19 +181,19 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	async upsertOne<S extends AnySchema>(
 		schema: SchemaCompatible<A, S>,
 		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
-		insert: SchemaInsertInput<S>,
+		create: SchemaCreateInput<S>,
 		...ops: UpdateOp<S, A>[]
 	): Promise<SchemaPersistedOutput<S>> {
 		const s = schema as unknown as AnySchema
-		const rawInsert = insert as Record<string, unknown>
+		const rawCreate = create as Record<string, unknown>
 		const castOps = ops as unknown as AnyUpdateOp[]
-		validateUpsertConflicts(s, rawInsert, castOps)
-		const validatedInsert = validateInsert(s, rawInsert)
+		validateUpsertConflicts(s, rawCreate, castOps)
+		const validatedCreate = validateCreate(s, rawCreate)
 		const validatedOps = castOps.length > 0 ? validateUpdateOps(s, castOps, 'upsertOne') : []
 		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
 		assertNormalisedFilter(s, group)
 		const use = this.#getUse(s)
-		const row = await use.upsertOne(group, validatedInsert as Record<string, unknown>, validatedOps)
+		const row = await use.upsertOne(group, validatedCreate as Record<string, unknown>, validatedOps)
 		return row as SchemaPersistedOutput<S>
 	}
 
@@ -201,17 +201,17 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return this.#adapter.session(fn)
 	}
 
-	async insertOne<S extends AnySchema>(schema: S, data: SchemaInsertInput<S>): Promise<SchemaOutput<S>> {
-		const validated = validateInsert(schema, data as Record<string, unknown>)
+	async createOne<S extends AnySchema>(schema: S, data: SchemaCreateInput<S>): Promise<SchemaOutput<S>> {
+		const validated = validateCreate(schema, data as Record<string, unknown>)
 		const use = this.#getUse(schema)
-		const row = await use.insertOne(validated as Record<string, unknown>)
+		const row = await use.createOne(validated as Record<string, unknown>)
 		return row as SchemaOutput<S>
 	}
 
-	async insertMany<S extends AnySchema>(schema: S, data: SchemaInsertInput<S>[]): Promise<SchemaOutput<S>[]> {
-		const validated = validateInsertMany(schema, data as Record<string, unknown>[])
+	async createMany<S extends AnySchema>(schema: S, data: SchemaCreateInput<S>[]): Promise<SchemaOutput<S>[]> {
+		const validated = validateCreateMany(schema, data as Record<string, unknown>[])
 		const use = this.#getUse(schema)
-		const rows = await use.insertMany(validated as Record<string, unknown>[])
+		const rows = await use.createMany(validated as Record<string, unknown>[])
 		return rows as SchemaOutput<S>[]
 	}
 
@@ -330,7 +330,7 @@ if (import.meta.vitest) {
 
 		test('fluent builders support one/all read chains', async () => {
 			const repo = makeRepo()
-			const created = await repo.from(UserSchema).one().insert({ email: 'fluent@test.com', name: 'Fluent User' })
+			const created = await repo.from(UserSchema).one().create({ email: 'fluent@test.com', name: 'Fluent User' })
 
 			const one = await repo.from(UserSchema).one().id(created.id).select(['id', 'name']).find()
 			expect(one).toEqual({ id: created.id, name: 'Fluent User' })
@@ -352,7 +352,7 @@ if (import.meta.vitest) {
 			await repo
 				.from(UserSchema)
 				.all()
-				.insert([
+				.create([
 					{ email: 'alice@branch.com', name: 'Alice' },
 					{ email: 'bob@branch.com', name: 'Bob' },
 				])
@@ -372,13 +372,13 @@ if (import.meta.vitest) {
 
 		test('fluent builders support write chains with preloads', async () => {
 			const repo = makeRepo()
-			const org = await repo.from(OrgSchema).one().insert({ name: 'Fluent Org' })
+			const org = await repo.from(OrgSchema).one().create({ name: 'Fluent Org' })
 
 			const user = await repo
 				.from(UserSchema)
 				.one()
 				.preload([UserRels.org])
-				.insert({ email: 'writer@test.com', name: 'Writer', orgId: org.id })
+				.create({ email: 'writer@test.com', name: 'Writer', orgId: org.id })
 
 			expect((user.org as any).name).toBe('Fluent Org')
 
@@ -394,7 +394,7 @@ if (import.meta.vitest) {
 			const repo = makeRepo()
 
 			const insertedId = await repo.session(async () => {
-				const created = await repo.from(UserSchema).one().insert({ email: 'tx@fluent.com', name: 'Tx Fluent' })
+				const created = await repo.from(UserSchema).one().create({ email: 'tx@fluent.com', name: 'Tx Fluent' })
 				await repo.from(UserSchema).one().id(created.id).update({ name: 'Tx Fluent Updated' })
 				return created.id
 			})
@@ -403,9 +403,9 @@ if (import.meta.vitest) {
 			expect(persisted).toEqual({ name: 'Tx Fluent Updated' })
 		})
 
-		test('insert/find/update/delete flows work', async () => {
+		test('create/find/update/delete flows work', async () => {
 			const repo = makeRepo()
-			const user = await repo.from(UserSchema).one().insert({ email: 'a@b.com', name: 'Alice' })
+			const user = await repo.from(UserSchema).one().create({ email: 'a@b.com', name: 'Alice' })
 			expect(user.id).toMatch(/^u\d+$/)
 			expect(user.createdAt).toBe(1000)
 
@@ -421,7 +421,7 @@ if (import.meta.vitest) {
 
 		test('findById, updateById, and deleteById target the schema primary key', async () => {
 			const repo = makeRepo()
-			const user = await repo.from(UserSchema).one().insert({ email: 'id@test.com', name: 'ById' })
+			const user = await repo.from(UserSchema).one().create({ email: 'id@test.com', name: 'ById' })
 
 			const found = await repo.from(UserSchema).one().id(user.id).find()
 			expect(found?.id).toBe(user.id)
@@ -434,12 +434,12 @@ if (import.meta.vitest) {
 			expect(await repo.from(UserSchema).one().id(user.id).find()).toBeNull()
 		})
 
-		test('insertMany, findMany and upsertOne work', async () => {
+		test('createMany, findMany and upsertOne work', async () => {
 			const repo = makeRepo()
 			await repo
 				.from(UserSchema)
 				.all()
-				.insert([
+				.create([
 					{ email: 'a@b.com', name: 'Alice' },
 					{ email: 'b@c.com', name: 'Bob' },
 				])
@@ -449,7 +449,7 @@ if (import.meta.vitest) {
 				.from(UserSchema)
 				.one()
 				.where((q) => q.eq('id', 'u-fixed'))
-				.upsert({ insert: { email: 'new@test.com', name: 'New' } })
+				.upsert({ create: { email: 'new@test.com', name: 'New' } })
 			expect(inserted.name).toBe('New')
 		})
 
@@ -458,7 +458,7 @@ if (import.meta.vitest) {
 			await repo
 				.from(UserSchema)
 				.all()
-				.insert([
+				.create([
 					{ email: 'a@b.com', name: 'Alice' },
 					{ email: 'b@c.com', name: 'Bob' },
 				])
@@ -505,7 +505,7 @@ if (import.meta.vitest) {
 			const repo = makeRepo()
 			let insertedId = ''
 			const result = await repo.session(async () => {
-				const inserted = await repo.from(UserSchema).one().insert({ email: 't@test.com', name: 'TxUser' })
+				const inserted = await repo.from(UserSchema).one().create({ email: 't@test.com', name: 'TxUser' })
 				insertedId = inserted.id
 				return 42
 			})
@@ -516,15 +516,15 @@ if (import.meta.vitest) {
 
 		test('preloads can be resolved on mutation methods', async () => {
 			const repo = makeRepo()
-			const org = await repo.from(OrgSchema).one().insert({ name: 'Corp' })
+			const org = await repo.from(OrgSchema).one().create({ name: 'Corp' })
 			const user = await repo
 				.from(UserSchema)
 				.one()
 				.preload([UserRels.org])
-				.insert({ email: 'u@test.com', name: 'User', orgId: org.id })
+				.create({ email: 'u@test.com', name: 'User', orgId: org.id })
 			expect((user.org as any).name).toBe('Corp')
 
-			await repo.from(PostSchema).one().insert({ title: 'Post', userId: user.id })
+			await repo.from(PostSchema).one().create({ title: 'Post', userId: user.id })
 			const updated = await repo.from(UserSchema).one().id(user.id).preload([UserRels.posts]).update({ name: 'Updated' })
 			expect(updated?.posts).toHaveLength(1)
 		})
@@ -541,7 +541,7 @@ if (import.meta.vitest) {
 
 		test('computed fields are derived and shaped correctly when selected', async () => {
 			const repo = makeRepo()
-			const created = await repo.from(PersonSchema).one().insert({ firstName: 'Ada', lastName: 'Lovelace' })
+			const created = await repo.from(PersonSchema).one().create({ firstName: 'Ada', lastName: 'Lovelace' })
 			const rows = await repo.from(PersonSchema).all().select(['id', 'fullName']).find()
 
 			expect(rows).toEqual([{ id: created.id, fullName: 'Ada Lovelace' }])
@@ -563,7 +563,7 @@ if (import.meta.vitest) {
 			})
 
 			const repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
-			await repo.from(PersonSchema).one().insert({ firstName: 'Grace', lastName: 'Hopper' })
+			await repo.from(PersonSchema).one().create({ firstName: 'Grace', lastName: 'Hopper' })
 			await repo.from(PersonSchema).all().select(['id', 'fullName']).find()
 
 			expect(seenSelect).toEqual(expect.arrayContaining(['id', 'firstName', 'lastName']))
@@ -572,7 +572,7 @@ if (import.meta.vitest) {
 		test('unknown selected fields fail fast', async () => {
 			const { EquippedError } = await import('../../errors')
 			const repo = makeRepo()
-			await repo.from(PersonSchema).one().insert({ firstName: 'Ada', lastName: 'Lovelace' })
+			await repo.from(PersonSchema).one().create({ firstName: 'Ada', lastName: 'Lovelace' })
 
 			await expect(
 				repo
@@ -603,7 +603,7 @@ if (import.meta.vitest) {
 			})
 
 			const repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
-			await repo.from(PersonSchema).one().insert({ firstName: 'Katherine', lastName: 'Johnson' })
+			await repo.from(PersonSchema).one().create({ firstName: 'Katherine', lastName: 'Johnson' })
 
 			await expect(repo.from(PersonSchema).all().select(['fullName']).find()).rejects.toBeInstanceOf(EquippedError)
 		})
@@ -614,7 +614,7 @@ if (import.meta.vitest) {
 			const repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 
 			const use = adapter.use(TestSchema, { prefix: 'findbytest' })
-			await use.insertOne({ id: 'x' })
+			await use.createOne({ id: 'x' })
 
 			const found = await repo.findByPk(TestSchema, 'x')
 			expect(found).toEqual({ id: 'x' })
@@ -623,10 +623,10 @@ if (import.meta.vitest) {
 			expect(missing).toBeNull()
 		})
 
-		describe('schema-per-call insert path', () => {
-			test('insertOne round-trip via findByPk', async () => {
+		describe('schema-per-call create path', () => {
+			test('createOne round-trip via findByPk', async () => {
 				const repo = makeRepo()
-				const inserted = await repo.insertOne(UserSchema, { email: 'rt@test.com', name: 'RoundTrip' })
+				const inserted = await repo.createOne(UserSchema, { email: 'rt@test.com', name: 'RoundTrip' })
 				expect(inserted.email).toBe('rt@test.com')
 				expect(inserted.name).toBe('RoundTrip')
 				expect(inserted.id).toBeDefined()
@@ -637,33 +637,33 @@ if (import.meta.vitest) {
 				expect(found!.email).toBe('rt@test.com')
 			})
 
-			test('insertOne injects onCreate defaults for missing fields', async () => {
+			test('createOne injects onCreate defaults for missing fields', async () => {
 				const repo = makeRepo()
-				const inserted = await repo.insertOne(UserSchema, { email: 'defaults@test.com', name: 'Defaults' })
+				const inserted = await repo.createOne(UserSchema, { email: 'defaults@test.com', name: 'Defaults' })
 				expect(inserted.createdAt).toBe(1000)
 				expect(inserted.id).toBeDefined()
 			})
 
-			test('insertOne throws OrmValidationError with kind validation and field populated', async () => {
+			test('createOne throws OrmValidationError with kind validation and field populated', async () => {
 				const { OrmValidationError } = await import('../schema-validations')
 				const repo = makeRepo()
 				try {
-					await repo.insertOne(UserSchema, { email: 123 as any, name: 'Bad' })
+					await repo.createOne(UserSchema, { email: 123 as any, name: 'Bad' })
 					expect.unreachable()
 				} catch (e) {
 					expect(e).toBeInstanceOf(OrmValidationError)
 					const err = e as InstanceType<typeof OrmValidationError>
 					expect(err.kind).toBe('validation')
-					expect(err.operation).toBe('insertOne')
+					expect(err.operation).toBe('createOne')
 					expect(err.schema).toBe('users')
 					expect(err.failures.length).toBeGreaterThan(0)
 					expect(err.failures[0].field).toBe('email')
 				}
 			})
 
-			test('insertMany round-trip via findByPk', async () => {
+			test('createMany round-trip via findByPk', async () => {
 				const repo = makeRepo()
-				const inserted = await repo.insertMany(UserSchema, [
+				const inserted = await repo.createMany(UserSchema, [
 					{ email: 'a@test.com', name: 'Alice' },
 					{ email: 'b@test.com', name: 'Bob' },
 				])
@@ -675,11 +675,11 @@ if (import.meta.vitest) {
 				expect(foundB!.email).toBe('b@test.com')
 			})
 
-			test('insertMany collects all failures with rowIndex and throws single OrmValidationError', async () => {
+			test('createMany collects all failures with rowIndex and throws single OrmValidationError', async () => {
 				const { OrmValidationError } = await import('../schema-validations')
 				const repo = makeRepo()
 				try {
-					await repo.insertMany(UserSchema, [
+					await repo.createMany(UserSchema, [
 						{ email: 'good@test.com', name: 'Good' },
 						{ email: 123 as any, name: 'Bad' },
 						{ email: 'also-bad' as any, name: 456 as any },
@@ -689,7 +689,7 @@ if (import.meta.vitest) {
 					expect(e).toBeInstanceOf(OrmValidationError)
 					const err = e as InstanceType<typeof OrmValidationError>
 					expect(err.kind).toBe('validation')
-					expect(err.operation).toBe('insertMany')
+					expect(err.operation).toBe('createMany')
 					expect(err.schema).toBe('users')
 					const rowIndices = err.failures.map((f) => f.rowIndex)
 					expect(rowIndices).toContain(1)
@@ -704,9 +704,9 @@ if (import.meta.vitest) {
 				expect(result).toBeNull()
 			})
 
-			test('insertMany with onCreate defaults applied to all rows', async () => {
+			test('createMany with onCreate defaults applied to all rows', async () => {
 				const repo = makeRepo()
-				const inserted = await repo.insertMany(UserSchema, [
+				const inserted = await repo.createMany(UserSchema, [
 					{ email: 'x@test.com', name: 'X' },
 					{ email: 'y@test.com', name: 'Y' },
 				])
@@ -719,7 +719,7 @@ if (import.meta.vitest) {
 
 		test('repo.deleteByPk removes and returns document, null for missing', async () => {
 			const repo = makeRepo()
-			const user = await repo.from(UserSchema).one().insert({ email: 'del@test.com', name: 'ToDelete' })
+			const user = await repo.from(UserSchema).one().create({ email: 'del@test.com', name: 'ToDelete' })
 
 			const deleted = await repo.deleteByPk(UserSchema, user.id)
 			expect(deleted).toEqual(expect.objectContaining({ id: user.id, name: 'ToDelete' }))
@@ -742,7 +742,7 @@ if (import.meta.vitest) {
 			await repo
 				.from(UserSchema)
 				.all()
-				.insert([
+				.create([
 					{ email: 'a@test.com', name: 'Alice' },
 					{ email: 'b@test.com', name: 'Bob' },
 				])
@@ -756,7 +756,7 @@ if (import.meta.vitest) {
 			await repo
 				.from(UserSchema)
 				.all()
-				.insert([
+				.create([
 					{ email: 'a@test.com', name: 'Same' },
 					{ email: 'b@test.com', name: 'Same' },
 				])
@@ -774,7 +774,7 @@ if (import.meta.vitest) {
 			await repo
 				.from(UserSchema)
 				.all()
-				.insert([
+				.create([
 					{ email: 'a@test.com', name: 'Same' },
 					{ email: 'b@test.com', name: 'Same' },
 					{ email: 'c@test.com', name: 'Different' },
@@ -793,7 +793,7 @@ if (import.meta.vitest) {
 					.field('updatedAt', v.number(), { onCreate: () => 0, onUpdate: () => 9999 }),
 			)
 			const repo = makeRepo()
-			await repo.from(AutoSchema).one().insert({ name: 'A' })
+			await repo.from(AutoSchema).one().create({ name: 'A' })
 
 			const updated = await repo.updateMany(AutoSchema, (q) => q.eq('name', 'A'), { name: 'B' })
 			expect(updated[0].updatedAt).toBe(9999)
@@ -804,7 +804,7 @@ if (import.meta.vitest) {
 			await repo
 				.from(UserSchema)
 				.all()
-				.insert([
+				.create([
 					{ email: 'a@test.com', name: 'Alice' },
 					{ email: 'b@test.com', name: 'Bob' },
 				])
@@ -821,7 +821,7 @@ if (import.meta.vitest) {
 			await repo
 				.from(UserSchema)
 				.all()
-				.insert([
+				.create([
 					{ email: 'a@test.com', name: 'ToDelete' },
 					{ email: 'b@test.com', name: 'ToDelete' },
 					{ email: 'c@test.com', name: 'Keep' },
@@ -837,7 +837,7 @@ if (import.meta.vitest) {
 
 		test('round-trip update via filter preserves data integrity', async () => {
 			const repo = makeRepo()
-			const user = await repo.from(UserSchema).one().insert({ email: 'rt@test.com', name: 'Original' })
+			const user = await repo.from(UserSchema).one().create({ email: 'rt@test.com', name: 'Original' })
 
 			await repo.updateOne(UserSchema, (q) => q.eq('id', user.id), { name: 'Modified' })
 
@@ -897,7 +897,7 @@ if (import.meta.vitest) {
 			await repo
 				.from(TestSchema)
 				.all()
-				.insert([
+				.create([
 					{ name: 'Alice', age: 30, active: true, tags: ['admin', 'user'] },
 					{ name: 'Bob', age: 20, active: false, tags: ['user'] },
 					{ name: 'Carol', age: 40, active: true, tags: ['admin'] },
@@ -1216,7 +1216,7 @@ if (import.meta.vitest) {
 		test('round-trip update via updateByPk', async () => {
 			const { set } = await import('../updates')
 			const repo = makeUpdateRepo()
-			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+			const item = await repo.from(ItemSchema).one().create({ title: 'Hello', views: 0 })
 			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ title: 'Updated' }))
 			expect(updated).not.toBeNull()
 			expect(updated!.title).toBe('Updated')
@@ -1229,7 +1229,7 @@ if (import.meta.vitest) {
 		test('auto-bump injects updatedAt on un-touched onUpdate field', async () => {
 			const { set } = await import('../updates')
 			const repo = makeUpdateRepo()
-			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+			const item = await repo.from(ItemSchema).one().create({ title: 'Hello', views: 0 })
 			const before = item.updatedAt
 
 			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ title: 'Changed' }))
@@ -1240,7 +1240,7 @@ if (import.meta.vitest) {
 		test('user set({updatedAt:X}) suppresses auto-bump', async () => {
 			const { set } = await import('../updates')
 			const repo = makeUpdateRepo()
-			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+			const item = await repo.from(ItemSchema).one().create({ title: 'Hello', views: 0 })
 
 			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ updatedAt: 9999 }))
 			expect(updated!.updatedAt).toBe(9999)
@@ -1250,7 +1250,7 @@ if (import.meta.vitest) {
 			const { set, inc } = await import('../updates')
 			const { OrmValidationError } = await import('../schema-validations')
 			const repo = makeUpdateRepo()
-			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 0 })
+			const item = await repo.from(ItemSchema).one().create({ title: 'Hello', views: 0 })
 
 			await expect(
 				repo.updateByPk(
@@ -1278,7 +1278,7 @@ if (import.meta.vitest) {
 		test('updateByPk with inc op', async () => {
 			const { inc } = await import('../updates')
 			const repo = makeUpdateRepo()
-			const item = await repo.from(ItemSchema).one().insert({ title: 'Hello', views: 10 })
+			const item = await repo.from(ItemSchema).one().create({ title: 'Hello', views: 10 })
 
 			const updated = await repo.updateByPk(ItemSchema, item.id, inc<typeof ItemSchema>(ItemSchema.fields.views, 5))
 			expect(updated!.views).toBe(15)
@@ -1316,7 +1316,7 @@ if (import.meta.vitest) {
 			return defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
 		}
 
-		test('insert-then-ops path: row missing → inserts and applies ops', async () => {
+		test('create-then-ops path: row missing → creates and applies ops', async () => {
 			const { set } = await import('../updates')
 			const repo = makeUpsertRepo()
 
@@ -1332,7 +1332,7 @@ if (import.meta.vitest) {
 			expect(result.createdAt).toBe(1000)
 		})
 
-		test('insert path with set op overriding insert field is allowed', async () => {
+		test('create path with set op overriding create field is allowed', async () => {
 			const { set } = await import('../updates')
 			const repo = makeUpsertRepo()
 
@@ -1347,11 +1347,11 @@ if (import.meta.vitest) {
 			expect(result.name).toBe('Original')
 		})
 
-		test('update-only-on-exists path: row exists → ignores insert, applies ops + auto-bump', async () => {
+		test('update-only-on-exists path: row exists → ignores create, applies ops + auto-bump', async () => {
 			const { set } = await import('../updates')
 			const repo = makeUpsertRepo()
 
-			await repo.insertOne(UpsertSchema, { email: 'bob@test.com', name: 'Bob', views: 42 })
+			await repo.createOne(UpsertSchema, { email: 'bob@test.com', name: 'Bob', views: 42 })
 
 			const result = await repo.upsertOne(
 				UpsertSchema,
@@ -1365,7 +1365,7 @@ if (import.meta.vitest) {
 			expect(result.updatedAt).toBe(9999)
 		})
 
-		test('insert-vs-op conflict throws OrmValidationError with kind conflicting-ops', async () => {
+		test('create-vs-op conflict throws OrmValidationError with kind conflicting-ops', async () => {
 			const { inc } = await import('../updates')
 			const { OrmValidationError } = await import('../schema-validations')
 			const repo = makeUpsertRepo()
@@ -1387,7 +1387,7 @@ if (import.meta.vitest) {
 			}
 		})
 
-		test('empty-ops-allowed-on-upsert: insert with no ops is allowed', async () => {
+		test('empty-ops-allowed-on-upsert: create with no ops is allowed', async () => {
 			const repo = makeUpsertRepo()
 
 			const result = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'noops@test.com'), {
@@ -1403,7 +1403,7 @@ if (import.meta.vitest) {
 		test('empty-ops-allowed-on-upsert: if exists do nothing', async () => {
 			const repo = makeUpsertRepo()
 
-			await repo.insertOne(UpsertSchema, { email: 'exists@test.com', name: 'Original', views: 5 })
+			await repo.createOne(UpsertSchema, { email: 'exists@test.com', name: 'Original', views: 5 })
 
 			const result = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'exists@test.com'), {
 				email: 'exists@test.com',
@@ -1437,7 +1437,7 @@ if (import.meta.vitest) {
 			expect(updateResult.name).toBe('DocUpdated')
 		})
 
-		test('validates insert payload via validateInsert (onCreate defaults injected)', async () => {
+		test('validates create payload via validateCreate (onCreate defaults injected)', async () => {
 			const repo = makeUpsertRepo()
 
 			const result = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'defaults@test.com'), {
@@ -1450,7 +1450,7 @@ if (import.meta.vitest) {
 			expect(result.createdAt).toBe(1000)
 		})
 
-		test('validates insert payload and throws OrmValidationError on invalid', async () => {
+		test('validates create payload and throws OrmValidationError on invalid', async () => {
 			const { OrmValidationError } = await import('../schema-validations')
 			const repo = makeUpsertRepo()
 
@@ -1556,12 +1556,12 @@ if (import.meta.vitest) {
 
 		test('throw-to-rollback: uncaught throw rolls back all writes and rejects with same error', async () => {
 			const repo = makeSessionRepo()
-			await repo.insertOne(SchemaA, { balance: 100 })
+			await repo.createOne(SchemaA, { balance: 100 })
 
 			const err = new Error('boom')
 			await expect(
 				repo.session(async () => {
-					await repo.insertOne(SchemaA, { balance: 200 })
+					await repo.createOne(SchemaA, { balance: 200 })
 					throw err
 				}),
 			).rejects.toBe(err)
@@ -1574,7 +1574,7 @@ if (import.meta.vitest) {
 		test('return-to-commit: successful return commits and resolves with callback value', async () => {
 			const repo = makeSessionRepo()
 			const result = await repo.session(async () => {
-				await repo.insertOne(SchemaA, { balance: 500 })
+				await repo.createOne(SchemaA, { balance: 500 })
 				return 'committed'
 			})
 
@@ -1586,12 +1586,12 @@ if (import.meta.vitest) {
 
 		test('cross-schema session: multiple schemas share one tx; on throw both roll back', async () => {
 			const repo = makeSessionRepo()
-			const account = await repo.insertOne(SchemaA, { balance: 1000 })
+			const account = await repo.createOne(SchemaA, { balance: 1000 })
 
 			await expect(
 				repo.session(async () => {
 					await repo.updateMany(SchemaA, (q) => q.eq('id', account.id), { balance: 900 })
-					await repo.insertOne(SchemaB, { amount: 100, accountId: account.id })
+					await repo.createOne(SchemaB, { amount: 100, accountId: account.id })
 					throw new Error('tx failure')
 				}),
 			).rejects.toThrow('tx failure')
@@ -1607,9 +1607,9 @@ if (import.meta.vitest) {
 			const repo = makeSessionRepo()
 
 			const result = await repo.session(async () => {
-				await repo.insertOne(SchemaA, { balance: 100 })
+				await repo.createOne(SchemaA, { balance: 100 })
 				const inner = await repo.session(async () => {
-					await repo.insertOne(SchemaA, { balance: 200 })
+					await repo.createOne(SchemaA, { balance: 200 })
 					return 'inner'
 				})
 				return inner
@@ -1622,13 +1622,13 @@ if (import.meta.vitest) {
 
 		test('nested session: throw in inner rolls back entire outer tx (flat nesting)', async () => {
 			const repo = makeSessionRepo()
-			await repo.insertOne(SchemaA, { balance: 50 })
+			await repo.createOne(SchemaA, { balance: 50 })
 
 			await expect(
 				repo.session(async () => {
-					await repo.insertOne(SchemaA, { balance: 100 })
+					await repo.createOne(SchemaA, { balance: 100 })
 					await repo.session(async () => {
-						await repo.insertOne(SchemaA, { balance: 200 })
+						await repo.createOne(SchemaA, { balance: 200 })
 						throw new Error('inner boom')
 					})
 				}),

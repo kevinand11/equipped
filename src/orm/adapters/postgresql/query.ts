@@ -211,16 +211,16 @@ export function buildUpsertQuery(
 	tableName: string,
 	conflictColumn: string,
 	primaryKey: string,
-	insert: Record<string, unknown>,
+	create: Record<string, unknown>,
 	data: Record<string, unknown>,
 ): { sql: string; params: unknown[] } {
-	const columns = Object.keys(insert)
-	const insertParams = Object.values(insert)
+	const columns = Object.keys(create)
+	const createParams = Object.values(create)
 	const placeholders = columns.map((_, i) => `$${i + 1}`)
 	const pgConflictCol = mapField(conflictColumn, primaryKey)
 
 	let setClause: string
-	const allParams = [...insertParams]
+	const allParams = [...createParams]
 
 	if (Object.keys(data).length > 0) {
 		const { setParts, params: setParams } = buildSetParts(data, columns.length + 1)

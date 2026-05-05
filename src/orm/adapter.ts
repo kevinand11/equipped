@@ -26,7 +26,7 @@ export type UpdateOpName = 'set' | 'inc' | 'mul' | 'min' | 'max' | 'unset' | 'pu
 
 export type CrudBag<Config> = {
 	findByPk?: (schema: AnySchema, config: Config, pk: unknown) => Promise<Record<string, unknown> | null>
-	insertMany?: (schema: AnySchema, config: Config, data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>
+	createMany?: (schema: AnySchema, config: Config, data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>
 	updateByPk?: (
 		schema: AnySchema,
 		config: Config,
@@ -55,7 +55,7 @@ export type QueryableBag<Config> = {
 		schema: AnySchema,
 		config: Config,
 		filter: FilterGroup,
-		insert: Record<string, unknown>,
+		create: Record<string, unknown>,
 		ops: AnyUpdateOp[],
 	) => Promise<Record<string, unknown>>
 }
@@ -180,19 +180,19 @@ export function defineAdapter<Acc>(build: (b: AdapterBuilder) => AdapterBuilder<
 				const rows = await use.findMany(filter, { limit: 1 })
 				return rows[0] ?? null
 			},
-			insertOne: async (d) => {
-				const rows = await use.insertMany([d])
+			createOne: async (d) => {
+				const rows = await use.createMany([d])
 				return rows[0]
 			},
-			insertMany: (d) => crud?.insertMany?.(schema, config, d) ?? Promise.resolve([]),
+			createMany: (d) => crud?.createMany?.(schema, config, d) ?? Promise.resolve([]),
 			updateMany: (filter, d) =>
 				queryable?.updateMany?.(schema, config, filter, d) ?? Promise.resolve([]),
 			updateOne: async (filter, d) => {
 				const rows = await use.updateMany(filter, d)
 				return rows[0] ?? null
 			},
-			upsertOne: (filter, insert, ops) =>
-				queryable?.upsertOne?.(schema, config, filter, insert, ops) ?? Promise.reject(new Error('upsertOne not implemented')),
+			upsertOne: (filter, create, ops) =>
+				queryable?.upsertOne?.(schema, config, filter, create, ops) ?? Promise.reject(new Error('upsertOne not implemented')),
 			deleteOne: async (filter) => {
 				const row = await use.findOne(filter)
 				if (!row) return null

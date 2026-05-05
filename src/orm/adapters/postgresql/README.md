@@ -46,14 +46,14 @@ The adapter enforces this at the filter level: the filter passed to `upsertOne` 
 
 Valid:
 ```ts
-repo.upsertOne(Schema, (q) => q.eq('email', 'a@b.com'), insert, ...ops)
+repo.upsertOne(Schema, (q) => q.eq('email', 'a@b.com'), create, ...ops)
 ```
 
 Invalid (throws):
 ```ts
-repo.upsertOne(Schema, (q) => q.eq('a', 1).eq('b', 2), insert)  // multiple filters
-repo.upsertOne(Schema, (q) => q.gt('age', 10), insert)            // non-eq filter
-repo.upsertOne(Schema, (q) => q, insert)                          // empty filter
+repo.upsertOne(Schema, (q) => q.eq('a', 1).eq('b', 2), create)  // multiple filters
+repo.upsertOne(Schema, (q) => q.gt('age', 10), create)            // non-eq filter
+repo.upsertOne(Schema, (q) => q, create)                          // empty filter
 ```
 
 The adapter does not validate that the filter field has a UNIQUE index — that responsibility lies with the database schema design. Without a unique constraint on the conflict column, the `ON CONFLICT` clause will fail at the database level.

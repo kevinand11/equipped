@@ -4,15 +4,15 @@ import { FilterGroup, type FilterFactory } from '../filter'
 import { OrderBy } from '../query'
 import type { AnyPreloadDef } from '../relations'
 import type { AnySchema, SchemaOutput } from '../schema'
-import type { SchemaInsertInput, SchemaUpdateInput } from '../schema-validations'
+import type { SchemaCreateInput, SchemaUpdateInput } from '../schema-validations'
 import { applyComputedSelection, planSelection } from './internals/computeds'
 import {
+	runAllCreate,
 	runAllDelete,
-	runAllInsert,
 	runAllRead,
 	runAllUpdate,
+	runOneCreate,
 	runOneDelete,
-	runOneInsert,
 	runOneRead,
 	runOneUpdate,
 	runOneUpsert,
@@ -21,7 +21,7 @@ import { resolvePreloads } from './internals/preloads'
 import type { SelectedWithPreloads } from './internals/types'
 
 type SchemaPrimaryKeyValue<S extends AnySchema> = SchemaOutput<S>[S['pkField']['name'] & keyof SchemaOutput<S>]
-type UpsertInput<S extends AnySchema> = { insert: SchemaInsertInput<S> } | { insert: SchemaInsertInput<S>; update: SchemaUpdateInput<S> }
+type UpsertInput<S extends AnySchema> = { create: SchemaCreateInput<S> } | { create: SchemaCreateInput<S>; update: SchemaUpdateInput<S> }
 type ReadState<Sel extends string, P extends readonly AnyPreloadDef[] = readonly AnyPreloadDef[]> = {
 	where?: FilterGroup
 	select?: readonly Sel[]
@@ -158,8 +158,8 @@ export class OneBuilder<S extends AnySchema, Sel extends string, P extends reado
 		) as any
 	}
 
-	insert(data: SchemaInsertInput<S>) {
-		return runOneInsert(
+	create(data: SchemaCreateInput<S>) {
+		return runOneCreate(
 			this._context,
 			{
 				select: this._select,
@@ -262,8 +262,8 @@ export class AllBuilder<S extends AnySchema, Sel extends string, P extends reado
 		return cloned as this
 	}
 
-	insert(data: SchemaInsertInput<S>[]) {
-		return runAllInsert(
+	create(data: SchemaCreateInput<S>[]) {
+		return runAllCreate(
 			this._context,
 			{
 				select: this._select,
@@ -326,7 +326,7 @@ if (import.meta.vitest) {
 				 .field('name', v.string()),
 			)
 
-			const created = await repo.from(UserSchema).one().insert({ email: 'up@test.com', name: 'Before' })
+			const created = await repo.from(UserSchema).one().create({ email: 'up@test.com', name: 'Before' })
 			const updated = await repo.from(UserSchema).one().id(created.id).update({ name: 'After' })
 			expect(updated?.name).toBe('After')
 			const found = await repo.from(UserSchema).one().id(created.id).find()
@@ -343,7 +343,7 @@ if (import.meta.vitest) {
 			await repo
 				.from(UserSchema)
 				.all()
-				.insert([
+				.create([
 					{ email: 'a@x.com', name: 'Alice' },
 					{ email: 'b@x.com', name: 'Bob' },
 				])
@@ -366,7 +366,7 @@ if (import.meta.vitest) {
 			await repo
 				.from(UserSchema)
 				.all()
-				.insert([
+				.create([
 					{ email: 'alice@x.com', name: 'Alice' },
 					{ email: 'bob@x.com', name: 'Bob' },
 				])

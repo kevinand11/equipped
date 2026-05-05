@@ -250,9 +250,9 @@ if (import.meta.vitest) {
 
 		test('hasMany preload resolves related entities', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' })
-			await Repo.from(PostSchema).one().insert({ title: 'Post 1', userId: user.id })
-			await Repo.from(PostSchema).one().insert({ title: 'Post 2', userId: user.id })
+			const user = await Repo.from(UserSchema).one().create({ email: 'u@test.com', name: 'User' })
+			await Repo.from(PostSchema).one().create({ title: 'Post 1', userId: user.id })
+			await Repo.from(PostSchema).one().create({ title: 'Post 2', userId: user.id })
 
 			const users = await Repo.from(UserSchema).all().preload([UserRels.posts]).find()
 			expect(users[0].posts).toHaveLength(2)
@@ -260,8 +260,8 @@ if (import.meta.vitest) {
 
 		test('hasOne and belongsTo preloads resolve null and non-null branches', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.from(UserSchema).one().insert({ email: 'x@test.com', name: 'X' })
-			await Repo.from(ProfileSchema).one().insert({ bio: 'Hello', userId: user.id })
+			const user = await Repo.from(UserSchema).one().create({ email: 'x@test.com', name: 'X' })
+			await Repo.from(ProfileSchema).one().create({ bio: 'Hello', userId: user.id })
 
 			const users = await Repo.from(UserSchema).all().preload([UserRels.profile]).find()
 			expect(users[0].profile?.bio).toBe('Hello')
@@ -272,9 +272,9 @@ if (import.meta.vitest) {
 
 		test('nested preload resolves recursively', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.from(UserSchema).one().insert({ email: 'nested@test.com', name: 'Nested User' })
-			await Repo.from(ProfileSchema).one().insert({ bio: 'Hello nested', userId: user.id })
-			await Repo.from(PostSchema).one().insert({ title: 'Nested Post', userId: user.id })
+			const user = await Repo.from(UserSchema).one().create({ email: 'nested@test.com', name: 'Nested User' })
+			await Repo.from(ProfileSchema).one().create({ bio: 'Hello nested', userId: user.id })
+			await Repo.from(PostSchema).one().create({ title: 'Nested Post', userId: user.id })
 
 			const users = await Repo.from(UserSchema)
 				.all()
@@ -294,8 +294,8 @@ if (import.meta.vitest) {
 
 		test('cycle detection throws descriptive error', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.from(UserSchema).one().insert({ email: 'cycle@test.com', name: 'Cycle User' })
-			await Repo.from(PostSchema).one().insert({ title: 'Cycle Post', userId: user.id })
+			const user = await Repo.from(UserSchema).one().create({ email: 'cycle@test.com', name: 'Cycle User' })
+			await Repo.from(PostSchema).one().create({ title: 'Cycle Post', userId: user.id })
 
 			await expect(
 				Repo.from(UserSchema)
@@ -312,13 +312,13 @@ if (import.meta.vitest) {
 
 		test('depth limit throws when chain exceeds max depth', async () => {
 			const Repo = makeRepo()
-			const a = await Repo.from(ASchema).one().insert({})
-			const b = await Repo.from(BSchema).one().insert({ aId: a.id })
-			const c = await Repo.from(CSchema).one().insert({ bId: b.id })
-			const d = await Repo.from(DSchema).one().insert({ cId: c.id })
-			const e = await Repo.from(ESchema).one().insert({ dId: d.id })
-			const f = await Repo.from(FSchema).one().insert({ eId: e.id })
-			await Repo.from(GSchema).one().insert({ fId: f.id })
+			const a = await Repo.from(ASchema).one().create({})
+			const b = await Repo.from(BSchema).one().create({ aId: a.id })
+			const c = await Repo.from(CSchema).one().create({ bId: b.id })
+			const d = await Repo.from(DSchema).one().create({ cId: c.id })
+			const e = await Repo.from(ESchema).one().create({ dId: d.id })
+			const f = await Repo.from(FSchema).one().create({ eId: e.id })
+			await Repo.from(GSchema).one().create({ fId: f.id })
 
 			await expect(
 				Repo.from(ASchema)
@@ -355,7 +355,7 @@ if (import.meta.vitest) {
 
 		test('invalid nested preload definition throws a validation error', async () => {
 			const Repo = makeRepo()
-			await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' })
+			await Repo.from(UserSchema).one().create({ email: 'u@test.com', name: 'User' })
 
 			await expect(
 				Repo.from(UserSchema)
@@ -367,8 +367,8 @@ if (import.meta.vitest) {
 
 		test('findOne with preloads resolves relations', async () => {
 			const Repo = makeRepo()
-			const user = await Repo.from(UserSchema).one().insert({ email: 'u@test.com', name: 'User' })
-			await Repo.from(PostSchema).one().insert({ title: 'Post', userId: user.id })
+			const user = await Repo.from(UserSchema).one().create({ email: 'u@test.com', name: 'User' })
+			await Repo.from(PostSchema).one().create({ title: 'Post', userId: user.id })
 
 			const found = await Repo.from(UserSchema).one().id(user.id).preload([UserRels.posts]).find()
 			expect(found?.posts).toHaveLength(1)
@@ -391,13 +391,13 @@ if (import.meta.vitest) {
 			})
 
 			const Repo = defineRepo((r) => r.adapter(adapter).resolve((s) => ({ prefix: s.name })))
-			const u1 = await Repo.from(UserSchema).one().insert({ email: 'a@test.com', name: 'A' })
-			const u2 = await Repo.from(UserSchema).one().insert({ email: 'b@test.com', name: 'B' })
-			const u3 = await Repo.from(UserSchema).one().insert({ email: 'c@test.com', name: 'C' })
-			await Repo.from(PostSchema).one().insert({ title: 'P1', userId: u1.id })
-			await Repo.from(PostSchema).one().insert({ title: 'P2', userId: u1.id })
-			await Repo.from(PostSchema).one().insert({ title: 'P3', userId: u2.id })
-			await Repo.from(PostSchema).one().insert({ title: 'P4', userId: u3.id })
+			const u1 = await Repo.from(UserSchema).one().create({ email: 'a@test.com', name: 'A' })
+			const u2 = await Repo.from(UserSchema).one().create({ email: 'b@test.com', name: 'B' })
+			const u3 = await Repo.from(UserSchema).one().create({ email: 'c@test.com', name: 'C' })
+			await Repo.from(PostSchema).one().create({ title: 'P1', userId: u1.id })
+			await Repo.from(PostSchema).one().create({ title: 'P2', userId: u1.id })
+			await Repo.from(PostSchema).one().create({ title: 'P3', userId: u2.id })
+			await Repo.from(PostSchema).one().create({ title: 'P4', userId: u3.id })
 
 			queryCount = 0
 			const users = await Repo.from(UserSchema).all().preload([UserRels.posts]).find()
