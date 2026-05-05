@@ -2,7 +2,7 @@ import type { PipeOutput } from 'valleyed'
 
 import type { OrmUse } from './adapters/base'
 import type { SchemaField } from './fields'
-import type { FilterGroup } from './filter'
+import { FilterGroup } from './filter'
 import type { QueryOptions } from './query'
 import type { AnySchema, SchemaFields } from './schema'
 import type { AnyUpdateOp } from './updates'
@@ -164,7 +164,11 @@ export class AdapterBuilder<Acc = {}> {
 				updateMany: (filter, d) =>
 					queryable?.updateMany?.(schema, config, filter, d) ?? Promise.resolve([]),
 				updateOne: async (filter, d) => {
-					const rows = await use.updateMany(filter, d)
+					const match = await use.findOne(filter)
+					if (!match) return null
+					const pk = schema.pkField.name
+					const pkFilter = FilterGroup.create().eq(pk, match[pk])
+					const rows = await use.updateMany(pkFilter, d)
 					return rows[0] ?? null
 				},
 				upsertOne: (filter, create, ops) =>

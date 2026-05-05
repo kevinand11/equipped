@@ -1,19 +1,8 @@
-import type { InferAdapterConfig, InferAdapterQueryableOps, SchemaCompatible } from '../adapter'
+import type { InferAdapterConfig } from '../adapter'
 import type { OrmAdapterConfig, OrmAdapterLike } from '../adapters/base'
-import { assertNormalisedFilter, FilterGroup, type FilterFactory, type GatedFilterFactory } from '../filter'
-import type { AnySchema, SchemaOutput, SchemaPersistedOutput } from '../schema'
-import {
-	validateCreate,
-	validateCreateMany,
-	validateUpdate,
-	validateUpdateOps,
-	validateUpsertConflicts,
-	type SchemaCreateInput,
-	type SchemaUpdateInput,
-} from '../schema-validations'
-import type { AnyUpdateOp, UpdateOp } from '../updates'
+import type { AnySchema } from '../schema'
 import { currentTransforms, run } from './als'
-import { SchemaContext, SchemaRef } from './builders'
+import { SchemaContext, SchemaRef, type SchemaRefSurface } from './builders'
 
 export type { ConfigTransform } from './als'
 
@@ -38,169 +27,16 @@ export class Repo<A extends OrmAdapterLike<any>> {
 		return this.#adapter.use(s, this.#getConfig(s))
 	}
 
-	#resolveFilter(s: AnySchema, filter: GatedFilterFactory<InferAdapterQueryableOps<A>>): FilterGroup {
-		const group = (filter as unknown as FilterFactory)(FilterGroup.create())
-		assertNormalisedFilter(s, group)
-		return group
-	}
-
-	on<S extends AnySchema>(schema: S): SchemaRef<S> {
-		return new SchemaRef<S>(new SchemaContext(schema, (target) => this.#getUse(target)))
+	on<S extends AnySchema>(schema: S): SchemaRefSurface<S, A> {
+		return new SchemaRef<S, A>(new SchemaContext(schema, (target) => this.#getUse(target))) as SchemaRefSurface<S, A>
 	}
 
 	static from<NewA extends OrmAdapterLike<any>>(adapter: NewA): RepoBuilder<NewA> {
 		return new RepoBuilder<NewA>(adapter)
 	}
 
-	async findByPk<S extends AnySchema>(schema: SchemaCompatible<A, S>, pk: unknown): Promise<SchemaPersistedOutput<S> | null> {
-		const s = schema as unknown as AnySchema
-		const config = this.#getConfig(s)
-		const adapter = this.#adapter as any
-		if (!adapter.crud?.findByPk) {
-			throw new Error('Adapter does not implement crud.findByPk')
-		}
-		const result = await adapter.crud.findByPk(s, config, pk)
-		return (result as SchemaPersistedOutput<S>) ?? null
-	}
-
-	async findMany<S extends AnySchema>(
-		schema: SchemaCompatible<A, S>,
-		q: GatedFilterFactory<InferAdapterQueryableOps<A>>,
-	): Promise<SchemaPersistedOutput<S>[]> {
-		const s = schema as unknown as AnySchema
-		const group = this.#resolveFilter(s, q)
-		return (await this.#getUse(s).findMany(group)) as SchemaPersistedOutput<S>[]
-	}
-
-	async findOne<S extends AnySchema>(
-		schema: SchemaCompatible<A, S>,
-		q: GatedFilterFactory<InferAdapterQueryableOps<A>>,
-	): Promise<SchemaPersistedOutput<S> | null> {
-		const s = schema as unknown as AnySchema
-		const group = this.#resolveFilter(s, q)
-		return (await this.#getUse(s).findOne(group)) as SchemaPersistedOutput<S> | null
-	}
-
-	async updateByPk<S extends AnySchema>(
-		schema: SchemaCompatible<A, S>,
-		pk: unknown,
-		op0: UpdateOp<S, A>,
-		...rest: UpdateOp<S, A>[]
-	): Promise<SchemaPersistedOutput<S> | null> {
-		const s = schema as unknown as AnySchema
-		const config = this.#getConfig(s)
-		const adapter = this.#adapter as any
-		if (!adapter.crud?.updateByPk) {
-			throw new Error('Adapter does not implement crud.updateByPk')
-		}
-		const ops = [op0, ...rest] as AnyUpdateOp[]
-		const normalised = validateUpdateOps(s, ops)
-		const result = await adapter.crud.updateByPk(s, config, pk, normalised)
-		return (result as SchemaPersistedOutput<S>) ?? null
-	}
-
-	async deleteByPk<S extends AnySchema>(schema: SchemaCompatible<A, S>, pk: unknown): Promise<SchemaPersistedOutput<S> | null> {
-		const s = schema as unknown as AnySchema
-		const config = this.#getConfig(s)
-		const adapter = this.#adapter as any
-		if (!adapter.crud?.deleteByPk) {
-			throw new Error('Adapter does not implement crud.deleteByPk')
-		}
-		const result = await adapter.crud.deleteByPk(s, config, pk)
-		return (result as SchemaPersistedOutput<S>) ?? null
-	}
-
-	async raw<T = unknown>(schema: AnySchema, command: unknown, params?: unknown[]): Promise<T> {
-		const config = this.#getConfig(schema)
-		const adapter = this.#adapter as any
-		if (!adapter.crud?.raw) {
-			throw new Error('Adapter does not implement crud.raw')
-		}
-		return adapter.crud.raw(schema, config, command, params)
-	}
-
-	async updateOne<S extends AnySchema>(
-		schema: SchemaCompatible<A, S>,
-		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
-		data: SchemaUpdateInput<S>,
-	): Promise<SchemaPersistedOutput<S> | null> {
-		const s = schema as unknown as AnySchema
-		const validated = validateUpdate(s, data as any)
-		const group = this.#resolveFilter(s, filter)
-		const use = this.#getUse(s)
-		const match = await use.findOne(group)
-		if (!match) return null
-		const pkQ = FilterGroup.create().eq(s.pkField.name, match[s.pkField.name])
-		const rows = await use.updateMany(pkQ, validated as any)
-		return (rows[0] as SchemaPersistedOutput<S>) ?? null
-	}
-
-	async updateMany<S extends AnySchema>(
-		schema: SchemaCompatible<A, S>,
-		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
-		data: SchemaUpdateInput<S>,
-	): Promise<SchemaPersistedOutput<S>[]> {
-		const s = schema as unknown as AnySchema
-		const validated = validateUpdate(s, data as any)
-		const group = this.#resolveFilter(s, filter)
-		const rows = await this.#getUse(s).updateMany(group, validated as any)
-		return rows as SchemaPersistedOutput<S>[]
-	}
-
-	async deleteOne<S extends AnySchema>(
-		schema: SchemaCompatible<A, S>,
-		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
-	): Promise<SchemaPersistedOutput<S> | null> {
-		const s = schema as unknown as AnySchema
-		const group = this.#resolveFilter(s, filter)
-		const row = await this.#getUse(s).deleteOne(group)
-		return (row as SchemaPersistedOutput<S>) ?? null
-	}
-
-	async deleteMany<S extends AnySchema>(
-		schema: SchemaCompatible<A, S>,
-		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
-	): Promise<SchemaPersistedOutput<S>[]> {
-		const s = schema as unknown as AnySchema
-		const group = this.#resolveFilter(s, filter)
-		const rows = await this.#getUse(s).deleteMany(group)
-		return rows as SchemaPersistedOutput<S>[]
-	}
-
-	async upsertOne<S extends AnySchema>(
-		schema: SchemaCompatible<A, S>,
-		filter: GatedFilterFactory<InferAdapterQueryableOps<A>>,
-		create: SchemaCreateInput<S>,
-		...ops: UpdateOp<S, A>[]
-	): Promise<SchemaPersistedOutput<S>> {
-		const s = schema as unknown as AnySchema
-		const rawCreate = create as Record<string, unknown>
-		const castOps = ops as unknown as AnyUpdateOp[]
-		validateUpsertConflicts(s, rawCreate, castOps)
-		const validatedCreate = validateCreate(s, rawCreate)
-		const validatedOps = castOps.length > 0 ? validateUpdateOps(s, castOps, 'upsertOne') : []
-		const group = this.#resolveFilter(s, filter)
-		const use = this.#getUse(s)
-		const row = await use.upsertOne(group, validatedCreate as Record<string, unknown>, validatedOps)
-		return row as SchemaPersistedOutput<S>
-	}
-
 	async session<T>(fn: () => Promise<T>): Promise<T> {
 		return this.#adapter.session(fn)
-	}
-
-	async createOne<S extends AnySchema>(schema: S, data: SchemaCreateInput<S>): Promise<SchemaOutput<S>> {
-		const validated = validateCreate(schema, data as Record<string, unknown>)
-		const use = this.#getUse(schema)
-		const row = await use.createOne(validated as Record<string, unknown>)
-		return row as SchemaOutput<S>
-	}
-
-	async createMany<S extends AnySchema>(schema: S, data: SchemaCreateInput<S>[]): Promise<SchemaOutput<S>[]> {
-		const validated = validateCreateMany(schema, data as Record<string, unknown>[])
-		const use = this.#getUse(schema)
-		const rows = await use.createMany(validated as Record<string, unknown>[])
-		return rows as SchemaOutput<S>[]
 	}
 
 	resolve<T>(resolver: (config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>, fn: () => T): T {
@@ -232,12 +68,6 @@ class RepoBuilder<A extends OrmAdapterLike<any>> {
 type HasMethod<A, Bag extends string, Method extends string> = A extends Record<Bag, Record<Method, (...args: any) => any>> ? true : false
 
 export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
-	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { updateOne: never; updateMany: never }) &
-	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { deleteOne: never; deleteMany: never }) &
-	(HasMethod<A, 'crud', 'updateByPk'> extends true ? {} : { updateByPk: never }) &
-	(HasMethod<A, 'crud', 'deleteByPk'> extends true ? {} : { deleteByPk: never }) &
-	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never }) &
-	(HasMethod<A, 'queryable', 'upsertOne'> extends true ? {} : { upsertOne: never }) &
 	(HasMethod<A, 'transactional', 'session'> extends true ? {} : { session: never })
 
 if (import.meta.vitest) {
@@ -615,7 +445,7 @@ if (import.meta.vitest) {
 			await expect(repo.on(PersonSchema).all().select(['fullName']).find()).rejects.toBeInstanceOf(EquippedError)
 		})
 
-		test('repo.findByPk returns seeded document and null for missing', async () => {
+		test('one().id().find() returns seeded document and null for missing', async () => {
 			const TestSchema = Schema.from('findbytest')
 				.pk('id', v.string(), () => 'gen')
 				.build()
@@ -627,22 +457,22 @@ if (import.meta.vitest) {
 			const use = adapter.use(TestSchema, { table: 'findbytest' })
 			await use.createOne({ id: 'x' })
 
-			const found = await repo.findByPk(TestSchema, 'x')
+			const found = await repo.on(TestSchema).one().id('x').find()
 			expect(found).toEqual({ id: 'x' })
 
-			const missing = await repo.findByPk(TestSchema, 'missing')
+			const missing = await repo.on(TestSchema).one().id('missing').find()
 			expect(missing).toBeNull()
 		})
 
 		describe('schema-per-call create path', () => {
-			test('createOne round-trip via findByPk', async () => {
+			test('createOne round-trip via one().id().find()', async () => {
 				const repo = makeRepo()
-				const inserted = await repo.createOne(UserSchema, { email: 'rt@test.com', name: 'RoundTrip' })
+				const inserted = await repo.on(UserSchema).one().create({ email: 'rt@test.com', name: 'RoundTrip' })
 				expect(inserted.email).toBe('rt@test.com')
 				expect(inserted.name).toBe('RoundTrip')
 				expect(inserted.id).toBeDefined()
 
-				const found = await repo.findByPk(UserSchema, inserted.id)
+				const found = await repo.on(UserSchema).one().id(inserted.id).find()
 				expect(found).not.toBeNull()
 				expect(found!.id).toBe(inserted.id)
 				expect(found!.email).toBe('rt@test.com')
@@ -650,7 +480,7 @@ if (import.meta.vitest) {
 
 			test('createOne injects onCreate defaults for missing fields', async () => {
 				const repo = makeRepo()
-				const inserted = await repo.createOne(UserSchema, { email: 'defaults@test.com', name: 'Defaults' })
+				const inserted = await repo.on(UserSchema).one().create({ email: 'defaults@test.com', name: 'Defaults' })
 				expect(inserted.createdAt).toBe(1000)
 				expect(inserted.id).toBeDefined()
 			})
@@ -659,7 +489,7 @@ if (import.meta.vitest) {
 				const { OrmValidationError } = await import('../schema-validations')
 				const repo = makeRepo()
 				try {
-					await repo.createOne(UserSchema, { email: 123 as any, name: 'Bad' })
+					await repo.on(UserSchema).one().create({ email: 123 as any, name: 'Bad' })
 					expect.unreachable()
 				} catch (e) {
 					expect(e).toBeInstanceOf(OrmValidationError)
@@ -672,16 +502,16 @@ if (import.meta.vitest) {
 				}
 			})
 
-			test('createMany round-trip via findByPk', async () => {
+			test('createMany round-trip via one().id().find()', async () => {
 				const repo = makeRepo()
-				const inserted = await repo.createMany(UserSchema, [
+				const inserted = await repo.on(UserSchema).all().create([
 					{ email: 'a@test.com', name: 'Alice' },
 					{ email: 'b@test.com', name: 'Bob' },
 				])
 				expect(inserted).toHaveLength(2)
 
-				const foundA = await repo.findByPk(UserSchema, inserted[0].id)
-				const foundB = await repo.findByPk(UserSchema, inserted[1].id)
+				const foundA = await repo.on(UserSchema).one().id(inserted[0].id).find()
+				const foundB = await repo.on(UserSchema).one().id(inserted[1].id).find()
 				expect(foundA!.email).toBe('a@test.com')
 				expect(foundB!.email).toBe('b@test.com')
 			})
@@ -690,7 +520,7 @@ if (import.meta.vitest) {
 				const { OrmValidationError } = await import('../schema-validations')
 				const repo = makeRepo()
 				try {
-					await repo.createMany(UserSchema, [
+					await repo.on(UserSchema).all().create([
 						{ email: 'good@test.com', name: 'Good' },
 						{ email: 123 as any, name: 'Bad' },
 						{ email: 'also-bad' as any, name: 456 as any },
@@ -709,15 +539,15 @@ if (import.meta.vitest) {
 				}
 			})
 
-			test('findByPk returns null for non-existent pk', async () => {
+			test('one().id().find() returns null for non-existent pk', async () => {
 				const repo = makeRepo()
-				const result = await repo.findByPk(UserSchema, 'nonexistent')
+				const result = await repo.on(UserSchema).one().id('nonexistent').find()
 				expect(result).toBeNull()
 			})
 
 			test('createMany with onCreate defaults applied to all rows', async () => {
 				const repo = makeRepo()
-				const inserted = await repo.createMany(UserSchema, [
+				const inserted = await repo.on(UserSchema).all().create([
 					{ email: 'x@test.com', name: 'X' },
 					{ email: 'y@test.com', name: 'Y' },
 				])
@@ -728,27 +558,21 @@ if (import.meta.vitest) {
 			})
 		})
 
-		test('repo.deleteByPk removes and returns document, null for missing', async () => {
+		test('one().id().delete() removes and returns document, null for missing', async () => {
 			const repo = makeRepo()
 			const user = await repo.on(UserSchema).one().create({ email: 'del@test.com', name: 'ToDelete' })
 
-			const deleted = await repo.deleteByPk(UserSchema, user.id)
+			const deleted = await repo.on(UserSchema).one().id(user.id).delete()
 			expect(deleted).toEqual(expect.objectContaining({ id: user.id, name: 'ToDelete' }))
 
-			const found = await repo.findByPk(UserSchema, user.id)
+			const found = await repo.on(UserSchema).one().id(user.id).find()
 			expect(found).toBeNull()
 
-			const missing = await repo.deleteByPk(UserSchema, 'nonexistent')
+			const missing = await repo.on(UserSchema).one().id('nonexistent').delete()
 			expect(missing).toBeNull()
 		})
 
-		test('repo.raw passes through to adapter crud.raw', async () => {
-			const { EquippedError } = await import('../../errors')
-			const repo = makeRepo()
-			await expect(repo.raw(UserSchema, 'SELECT * FROM users')).rejects.toBeInstanceOf(EquippedError)
-		})
-
-		test('repo.updateOne updates first matching document via filter', async () => {
+		test('one().where().update() updates first matching document via filter', async () => {
 			const repo = makeRepo()
 			await repo
 				.on(UserSchema)
@@ -758,11 +582,15 @@ if (import.meta.vitest) {
 					{ email: 'b@test.com', name: 'Bob' },
 				])
 
-			const updated = await repo.updateOne(UserSchema, (q) => q.eq('name', 'Alice'), { name: 'Alicia' })
+			const updated = await repo
+				.on(UserSchema)
+				.one()
+				.where((q) => q.eq('name', 'Alice'))
+				.update({ name: 'Alicia' })
 			expect(updated?.name).toBe('Alicia')
 		})
 
-		test('repo.updateOne with non-unique filter selects first match', async () => {
+		test('one().where().update() with non-unique filter selects first match', async () => {
 			const repo = makeRepo()
 			await repo
 				.on(UserSchema)
@@ -772,7 +600,11 @@ if (import.meta.vitest) {
 					{ email: 'b@test.com', name: 'Same' },
 				])
 
-			const updated = await repo.updateOne(UserSchema, (q) => q.eq('name', 'Same'), { name: 'Changed' })
+			const updated = await repo
+				.on(UserSchema)
+				.one()
+				.where((q) => q.eq('name', 'Same'))
+				.update({ name: 'Changed' })
 			expect(updated?.name).toBe('Changed')
 
 			const all = await repo.on(UserSchema).all().find()
@@ -780,7 +612,7 @@ if (import.meta.vitest) {
 			expect(changedCount).toBe(1)
 		})
 
-		test('repo.updateMany updates all matching documents', async () => {
+		test('all().where().update() updates all matching documents', async () => {
 			const repo = makeRepo()
 			await repo
 				.on(UserSchema)
@@ -791,12 +623,16 @@ if (import.meta.vitest) {
 					{ email: 'c@test.com', name: 'Different' },
 				])
 
-			const updated = await repo.updateMany(UserSchema, (q) => q.eq('name', 'Same'), { name: 'Updated' })
+			const updated = await repo
+				.on(UserSchema)
+				.all()
+				.where((q) => q.eq('name', 'Same'))
+				.update({ name: 'Updated' })
 			expect(updated).toHaveLength(2)
 			expect(updated.every((u) => u.name === 'Updated')).toBe(true)
 		})
 
-		test('repo.updateMany applies auto-bump for onUpdate fields', async () => {
+		test('all().where().update() applies auto-bump for onUpdate fields', async () => {
 			const AutoSchema = Schema.from('auto')
 				.pk('id', v.string(), () => `a${++userCounter}`)
 				.field('name', v.string())
@@ -805,11 +641,15 @@ if (import.meta.vitest) {
 			const repo = makeRepo()
 			await repo.on(AutoSchema).one().create({ name: 'A' })
 
-			const updated = await repo.updateMany(AutoSchema, (q) => q.eq('name', 'A'), { name: 'B' })
+			const updated = await repo
+				.on(AutoSchema)
+				.all()
+				.where((q) => q.eq('name', 'A'))
+				.update({ name: 'B' })
 			expect(updated[0].updatedAt).toBe(9999)
 		})
 
-		test('repo.deleteOne removes first matching document', async () => {
+		test('one().where().delete() removes first matching document', async () => {
 			const repo = makeRepo()
 			await repo
 				.on(UserSchema)
@@ -819,14 +659,18 @@ if (import.meta.vitest) {
 					{ email: 'b@test.com', name: 'Bob' },
 				])
 
-			const deleted = await repo.deleteOne(UserSchema, (q) => q.eq('name', 'Alice'))
+			const deleted = await repo
+				.on(UserSchema)
+				.one()
+				.where((q) => q.eq('name', 'Alice'))
+				.delete()
 			expect(deleted?.name).toBe('Alice')
 
 			const remaining = await repo.on(UserSchema).all().find()
 			expect(remaining).toHaveLength(1)
 		})
 
-		test('repo.deleteMany removes all matching and returns them', async () => {
+		test('all().where().delete() removes all matching and returns them', async () => {
 			const repo = makeRepo()
 			await repo
 				.on(UserSchema)
@@ -837,7 +681,11 @@ if (import.meta.vitest) {
 					{ email: 'c@test.com', name: 'Keep' },
 				])
 
-			const deleted = await repo.deleteMany(UserSchema, (q) => q.eq('name', 'ToDelete'))
+			const deleted = await repo
+				.on(UserSchema)
+				.all()
+				.where((q) => q.eq('name', 'ToDelete'))
+				.delete()
 			expect(deleted).toHaveLength(2)
 
 			const remaining = await repo.on(UserSchema).all().find()
@@ -849,232 +697,15 @@ if (import.meta.vitest) {
 			const repo = makeRepo()
 			const user = await repo.on(UserSchema).one().create({ email: 'rt@test.com', name: 'Original' })
 
-			await repo.updateOne(UserSchema, (q) => q.eq('id', user.id), { name: 'Modified' })
+			await repo
+				.on(UserSchema)
+				.one()
+				.where((q) => q.eq('id', user.id))
+				.update({ name: 'Modified' })
 
-			const found = await repo.findByPk(UserSchema, user.id)
+			const found = await repo.on(UserSchema).one().id(user.id).find()
 			expect(found?.name).toBe('Modified')
 			expect(found?.email).toBe('rt@test.com')
-		})
-	})
-
-	// TODO: broken
-	/* describe('type-level: Repo.from builder uniqueness', () => {
-		test('duplicate .resolve() call is a TS error', () => {
-			const { adapter } = createInMemoryAdapter()
-			const resolve = (s) => ({ table: s.name })
-			// @ts-expect-error — calling resolve() twice should fail
-			Repo.from(adapter).resolve(resolve).resolve(resolve)
-		})
-	}) */
-
-	describe('type-level: SchemaCompatible on repo.findByPk', () => {
-		test('adapter with matching field types accepts schema', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			expectTypeOf(_repo.findByPk<typeof _TestSchema>).toBeFunction()
-		})
-	})
-
-	describe('repo.findMany / repo.findOne end-to-end', () => {
-		const TestSchema = Schema.from('e2e')
-			.pk('id', v.string(), () => `e-${Math.random().toString(36).slice(2)}`)
-			.field('name', v.string())
-			.field('age', v.number())
-			.field('active', v.boolean())
-			.field('tags', v.array(v.string()))
-			.field('score', v.optional(v.number()), { onCreate: () => undefined })
-			.build()
-
-		function makeE2eRepo() {
-			const { adapter } = createInMemoryAdapter()
-			const repo = Repo.from(adapter)
-				.resolve((s) => ({ table: s.name }))
-				.build()
-			return { repo, adapter }
-		}
-
-		async function seedData(repo: any) {
-			await repo
-				.on(TestSchema)
-				.all()
-				.create([
-					{ name: 'Alice', age: 30, active: true, tags: ['admin', 'user'] },
-					{ name: 'Bob', age: 20, active: false, tags: ['user'] },
-					{ name: 'Carol', age: 40, active: true, tags: ['admin'] },
-					{ name: 'Dave', age: 25, active: true, tags: ['user', 'guest'], score: 100 },
-				])
-		}
-
-		test('repo.findMany returns matching documents', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.eq(TestSchema.fields.active, true))
-			expect(results).toHaveLength(3)
-			expect(results.every((r) => r.active === true)).toBe(true)
-		})
-
-		test('repo.findOne returns first matching document', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const result = await repo.findOne(TestSchema, (q) => q.eq(TestSchema.fields.name, 'Bob'))
-			expect(result).not.toBeNull()
-			expect(result!.name).toBe('Bob')
-		})
-
-		test('repo.findOne returns null when no match', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const result = await repo.findOne(TestSchema, (q) => q.eq(TestSchema.fields.name, 'Nobody'))
-			expect(result).toBeNull()
-		})
-
-		test('eq filter op matches exact value', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.eq(TestSchema.fields.age, 30))
-			expect(results).toHaveLength(1)
-			expect(results[0].name).toBe('Alice')
-		})
-
-		test('ne filter op excludes matching values', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.ne(TestSchema.fields.name, 'Alice'))
-			expect(results).toHaveLength(3)
-			expect(results.every((r) => r.name !== 'Alice')).toBe(true)
-		})
-
-		test('gt filter op matches values greater than', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.gt(TestSchema.fields.age, 25))
-			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
-		})
-
-		test('gte filter op matches values greater than or equal', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.gte(TestSchema.fields.age, 30))
-			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
-		})
-
-		test('lt filter op matches values less than', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.lt(TestSchema.fields.age, 25))
-			expect(results).toHaveLength(1)
-			expect(results[0].name).toBe('Bob')
-		})
-
-		test('lte filter op matches values less than or equal', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.lte(TestSchema.fields.age, 25))
-			expect(results.map((r) => r.name).sort()).toEqual(['Bob', 'Dave'])
-		})
-
-		test('in filter op matches values in array', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.in(TestSchema.fields.name, ['Alice', 'Carol']))
-			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
-		})
-
-		test('notIn filter op excludes values in array', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.notIn(TestSchema.fields.name, ['Alice', 'Carol']))
-			expect(results.map((r) => r.name).sort()).toEqual(['Bob', 'Dave'])
-		})
-
-		test('like filter op matches substring case-insensitively', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.like(TestSchema.fields.name, 'ali'))
-			expect(results).toHaveLength(1)
-			expect(results[0].name).toBe('Alice')
-		})
-
-		test('exists filter op matches non-null values', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.exists(TestSchema.fields.score))
-			expect(results).toHaveLength(1)
-			expect(results[0].name).toBe('Dave')
-		})
-
-		test('notExists filter op matches null/undefined values', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.notExists(TestSchema.fields.score))
-			expect(results).toHaveLength(3)
-		})
-
-		test('contains filter op matches array subset', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.contains('tags', ['admin']))
-			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
-		})
-
-		test('notContains filter op excludes array subset', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.notContains('tags', ['admin']))
-			expect(results.map((r) => r.name).sort()).toEqual(['Bob', 'Dave'])
-		})
-
-		test('and combinator requires all conditions', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) =>
-				q.and([(g) => g.gt(TestSchema.fields.age, 20), (g) => g.eq(TestSchema.fields.active, true)]),
-			)
-			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol', 'Dave'])
-		})
-
-		test('or combinator matches any condition', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) =>
-				q.or([(g) => g.eq(TestSchema.fields.name, 'Alice'), (g) => g.eq(TestSchema.fields.name, 'Bob')]),
-			)
-			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Bob'])
-		})
-
-		test('raw-string field overload works end-to-end', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			const results = await repo.findMany(TestSchema, (q) => q.eq('name', 'Alice'))
-			expect(results).toHaveLength(1)
-			expect(results[0].name).toBe('Alice')
-		})
-
-		test('empty and([]) throws at builder time', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			await expect(repo.findMany(TestSchema, (q) => q.and([]))).rejects.toThrow()
-		})
-
-		test('empty or([]) throws at builder time', async () => {
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			await expect(repo.findMany(TestSchema, (q) => q.or([]))).rejects.toThrow()
-		})
-
-		test('unknown field in filter throws OrmValidationError at boundary', async () => {
-			const { OrmValidationError: OrmValErr } = await import('../schema-validations')
-			const { repo } = makeE2eRepo()
-			await seedData(repo)
-			await expect(repo.findMany(TestSchema, (q) => q.eq('nonexistentField', 42))).rejects.toBeInstanceOf(OrmValErr)
 		})
 	})
 
@@ -1139,8 +770,8 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('type-level: repo method gating', () => {
-		test('missing queryable.updateMany collapses repo.updateOne and repo.updateMany to never', () => {
+	describe('type-level: builder method gating', () => {
+		test('missing queryable.updateMany collapses one().update and all().update to never', () => {
 			const _adapter = Adapter.from<unknown>()
 				.supportedFieldTypes('string')
 				.crud({ findByPk: async () => null })
@@ -1148,11 +779,16 @@ if (import.meta.vitest) {
 			const _repo = Repo.from(_adapter)
 				.resolve(() => ({}))
 				.build()
-			expectTypeOf(_repo.updateOne).toBeNever()
-			expectTypeOf(_repo.updateMany).toBeNever()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _one = _repo.on(_TestSchema).one()
+			const _all = _repo.on(_TestSchema).all()
+			expectTypeOf(_one.update).toBeNever()
+			expectTypeOf(_all.update).toBeNever()
 		})
 
-		test('missing queryable.deleteMany collapses repo.deleteOne and repo.deleteMany to never', () => {
+		test('missing queryable.deleteMany collapses one().delete and all().delete to never', () => {
 			const _adapter = Adapter.from<unknown>()
 				.supportedFieldTypes('string')
 				.crud({ findByPk: async () => null })
@@ -1160,11 +796,16 @@ if (import.meta.vitest) {
 			const _repo = Repo.from(_adapter)
 				.resolve(() => ({}))
 				.build()
-			expectTypeOf(_repo.deleteOne).toBeNever()
-			expectTypeOf(_repo.deleteMany).toBeNever()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _one = _repo.on(_TestSchema).one()
+			const _all = _repo.on(_TestSchema).all()
+			expectTypeOf(_one.delete).toBeNever()
+			expectTypeOf(_all.delete).toBeNever()
 		})
 
-		test('missing crud.raw collapses repo.raw to never', () => {
+		test('missing crud.raw collapses schemaRef.raw to never', () => {
 			const _adapter = Adapter.from<unknown>()
 				.supportedFieldTypes('string')
 				.crud({ findByPk: async () => null })
@@ -1172,32 +813,30 @@ if (import.meta.vitest) {
 			const _repo = Repo.from(_adapter)
 				.resolve(() => ({}))
 				.build()
-			expectTypeOf(_repo.raw).toBeNever()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _ref = _repo.on(_TestSchema)
+			expectTypeOf(_ref.raw).toBeNever()
 		})
 
-		test('missing crud.deleteByPk collapses repo.deleteByPk to never', () => {
+		test('missing queryable.upsertOne collapses one().upsert to never', () => {
 			const _adapter = Adapter.from<unknown>()
 				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
+				.queryableOps('eq')
+				.queryable({ findMany: async () => [] })
 				.build()
 			const _repo = Repo.from(_adapter)
 				.resolve(() => ({}))
 				.build()
-			expectTypeOf(_repo.deleteByPk).toBeNever()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _one = _repo.on(_TestSchema).one()
+			expectTypeOf(_one.upsert).toBeNever()
 		})
 
-		test('missing crud.updateByPk collapses repo.updateByPk to never', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			expectTypeOf(_repo.updateByPk).toBeNever()
-		})
-
-		test('adapter with queryable.updateMany enables repo.updateOne and repo.updateMany', () => {
+		test('adapter with queryable.updateMany enables one().update and all().update', () => {
 			const _adapter = Adapter.from<unknown>()
 				.supportedFieldTypes('string')
 				.queryableOps('eq')
@@ -1206,11 +845,16 @@ if (import.meta.vitest) {
 			const _repo = Repo.from(_adapter)
 				.resolve(() => ({}))
 				.build()
-			expectTypeOf(_repo.updateOne).toBeFunction()
-			expectTypeOf(_repo.updateMany).toBeFunction()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _one = _repo.on(_TestSchema).one()
+			const _all = _repo.on(_TestSchema).all()
+			expectTypeOf(_one.update).toBeFunction()
+			expectTypeOf(_all.update).toBeFunction()
 		})
 
-		test('adapter with queryable.deleteMany enables repo.deleteOne and repo.deleteMany', () => {
+		test('adapter with queryable.deleteMany enables one().delete and all().delete', () => {
 			const _adapter = Adapter.from<unknown>()
 				.supportedFieldTypes('string')
 				.queryableOps('eq')
@@ -1219,16 +863,20 @@ if (import.meta.vitest) {
 			const _repo = Repo.from(_adapter)
 				.resolve(() => ({}))
 				.build()
-			expectTypeOf(_repo.deleteOne).toBeFunction()
-			expectTypeOf(_repo.deleteMany).toBeFunction()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _one = _repo.on(_TestSchema).one()
+			const _all = _repo.on(_TestSchema).all()
+			expectTypeOf(_one.delete).toBeFunction()
+			expectTypeOf(_all.delete).toBeFunction()
 		})
 
-		test('adapter with crud.deleteByPk and crud.raw enables those repo methods', () => {
+		test('adapter with crud.raw enables schemaRef.raw', () => {
 			const _adapter = Adapter.from<unknown>()
 				.supportedFieldTypes('string')
 				.crud({
 					findByPk: async () => null,
-					deleteByPk: async () => null,
 					raw: async () => {
 						throw new Error('not implemented')
 					},
@@ -1237,12 +885,320 @@ if (import.meta.vitest) {
 			const _repo = Repo.from(_adapter)
 				.resolve(() => ({}))
 				.build()
-			expectTypeOf(_repo.deleteByPk).toBeFunction()
-			expectTypeOf(_repo.raw).toBeFunction()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _ref = _repo.on(_TestSchema)
+			expectTypeOf(_ref.raw).toBeFunction()
+		})
+
+		test('gating survives through select() chains', () => {
+			const _adapter = Adapter.from<unknown>()
+				.supportedFieldTypes('string')
+				.crud({ findByPk: async () => null })
+				.build()
+			const _repo = Repo.from(_adapter)
+				.resolve(() => ({}))
+				.build()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.field('name', v.string())
+				.build()
+			const _one = _repo.on(_TestSchema).one().select(['id'])
+			const _all = _repo.on(_TestSchema).all().select(['id'])
+			expectTypeOf(_one.update).toBeNever()
+			expectTypeOf(_one.delete).toBeNever()
+			expectTypeOf(_all.update).toBeNever()
+			expectTypeOf(_all.delete).toBeNever()
 		})
 	})
 
-	describe('repo.updateByPk', () => {
+	describe('repo.on().all().where().find() end-to-end', () => {
+		const TestSchema = Schema.from('e2e')
+			.pk('id', v.string(), () => `e-${Math.random().toString(36).slice(2)}`)
+			.field('name', v.string())
+			.field('age', v.number())
+			.field('active', v.boolean())
+			.field('tags', v.array(v.string()))
+			.field('score', v.optional(v.number()), { onCreate: () => undefined })
+			.build()
+
+		function makeE2eRepo() {
+			const { adapter } = createInMemoryAdapter()
+			const repo = Repo.from(adapter)
+				.resolve((s) => ({ table: s.name }))
+				.build()
+			return { repo, adapter }
+		}
+
+		async function seedData(repo: any) {
+			await repo
+				.on(TestSchema)
+				.all()
+				.create([
+					{ name: 'Alice', age: 30, active: true, tags: ['admin', 'user'] },
+					{ name: 'Bob', age: 20, active: false, tags: ['user'] },
+					{ name: 'Carol', age: 40, active: true, tags: ['admin'] },
+					{ name: 'Dave', age: 25, active: true, tags: ['user', 'guest'], score: 100 },
+				])
+		}
+
+		test('all().where().find() returns matching documents', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.eq(TestSchema.fields.active, true))
+				.find()
+			expect(results).toHaveLength(3)
+			expect(results.every((r) => r.active === true)).toBe(true)
+		})
+
+		test('one().where().find() returns first matching document', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const result = await repo
+				.on(TestSchema)
+				.one()
+				.where((q) => q.eq(TestSchema.fields.name, 'Bob'))
+				.find()
+			expect(result).not.toBeNull()
+			expect(result!.name).toBe('Bob')
+		})
+
+		test('one().where().find() returns null when no match', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const result = await repo
+				.on(TestSchema)
+				.one()
+				.where((q) => q.eq(TestSchema.fields.name, 'Nobody'))
+				.find()
+			expect(result).toBeNull()
+		})
+
+		test('eq filter op matches exact value', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.eq(TestSchema.fields.age, 30))
+				.find()
+			expect(results).toHaveLength(1)
+			expect(results[0].name).toBe('Alice')
+		})
+
+		test('ne filter op excludes matching values', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.ne(TestSchema.fields.name, 'Alice'))
+				.find()
+			expect(results).toHaveLength(3)
+			expect(results.every((r) => r.name !== 'Alice')).toBe(true)
+		})
+
+		test('gt filter op matches values greater than', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.gt(TestSchema.fields.age, 25))
+				.find()
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
+		})
+
+		test('gte filter op matches values greater than or equal', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.gte(TestSchema.fields.age, 30))
+				.find()
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
+		})
+
+		test('lt filter op matches values less than', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.lt(TestSchema.fields.age, 25))
+				.find()
+			expect(results).toHaveLength(1)
+			expect(results[0].name).toBe('Bob')
+		})
+
+		test('lte filter op matches values less than or equal', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.lte(TestSchema.fields.age, 25))
+				.find()
+			expect(results.map((r) => r.name).sort()).toEqual(['Bob', 'Dave'])
+		})
+
+		test('in filter op matches values in array', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.in(TestSchema.fields.name, ['Alice', 'Carol']))
+				.find()
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
+		})
+
+		test('notIn filter op excludes values in array', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.notIn(TestSchema.fields.name, ['Alice', 'Carol']))
+				.find()
+			expect(results.map((r) => r.name).sort()).toEqual(['Bob', 'Dave'])
+		})
+
+		test('like filter op matches substring case-insensitively', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.like(TestSchema.fields.name, 'ali'))
+				.find()
+			expect(results).toHaveLength(1)
+			expect(results[0].name).toBe('Alice')
+		})
+
+		test('exists filter op matches non-null values', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.exists(TestSchema.fields.score))
+				.find()
+			expect(results).toHaveLength(1)
+			expect(results[0].name).toBe('Dave')
+		})
+
+		test('notExists filter op matches null/undefined values', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.notExists(TestSchema.fields.score))
+				.find()
+			expect(results).toHaveLength(3)
+		})
+
+		test('contains filter op matches array subset', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.contains('tags', ['admin']))
+				.find()
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol'])
+		})
+
+		test('notContains filter op excludes array subset', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.notContains('tags', ['admin']))
+				.find()
+			expect(results.map((r) => r.name).sort()).toEqual(['Bob', 'Dave'])
+		})
+
+		test('and combinator requires all conditions', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.and([(g) => g.gt(TestSchema.fields.age, 20), (g) => g.eq(TestSchema.fields.active, true)]))
+				.find()
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Carol', 'Dave'])
+		})
+
+		test('or combinator matches any condition', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.or([(g) => g.eq(TestSchema.fields.name, 'Alice'), (g) => g.eq(TestSchema.fields.name, 'Bob')]))
+				.find()
+			expect(results.map((r) => r.name).sort()).toEqual(['Alice', 'Bob'])
+		})
+
+		test('raw-string field overload works end-to-end', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			const results = await repo
+				.on(TestSchema)
+				.all()
+				.where((q) => q.eq('name', 'Alice'))
+				.find()
+			expect(results).toHaveLength(1)
+			expect(results[0].name).toBe('Alice')
+		})
+
+		test('empty and([]) throws at builder time', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			expect(() =>
+				repo
+					.on(TestSchema)
+					.all()
+					.where((q) => q.and([]))
+					.find(),
+			).toThrow()
+		})
+
+		test('empty or([]) throws at builder time', async () => {
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			expect(() =>
+				repo
+					.on(TestSchema)
+					.all()
+					.where((q) => q.or([]))
+					.find(),
+			).toThrow()
+		})
+
+		test('unknown field in filter throws OrmValidationError at boundary', async () => {
+			const { OrmValidationError: OrmValErr } = await import('../schema-validations')
+			const { repo } = makeE2eRepo()
+			await seedData(repo)
+			await expect(
+				repo
+					.on(TestSchema)
+					.all()
+					.where((q) => q.eq('nonexistentField', 42))
+					.find(),
+			).rejects.toBeInstanceOf(OrmValErr)
+		})
+	})
+
+	describe('one().id().update() (replaces updateByPk)', () => {
 		let viewCounter = 0
 		const ItemSchema = Schema.from('items')
 			.pk('id', v.string(), () => `item-${++viewCounter}`)
@@ -1258,92 +1214,53 @@ if (import.meta.vitest) {
 				.build()
 		}
 
-		test('round-trip update via updateByPk', async () => {
-			const { set } = await import('../updates')
+		test('round-trip update via one().id().update()', async () => {
 			const repo = makeUpdateRepo()
 			const item = await repo.on(ItemSchema).one().create({ title: 'Hello', views: 0 })
-			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ title: 'Updated' }))
+			const updated = await repo.on(ItemSchema).one().id(item.id).update({ title: 'Updated' })
 			expect(updated).not.toBeNull()
 			expect(updated!.title).toBe('Updated')
 			expect(updated!.views).toBe(0)
 
-			const found = await repo.findByPk(ItemSchema, item.id)
+			const found = await repo.on(ItemSchema).one().id(item.id).find()
 			expect(found!.title).toBe('Updated')
 		})
 
 		test('auto-bump injects updatedAt on un-touched onUpdate field', async () => {
-			const { set } = await import('../updates')
 			const repo = makeUpdateRepo()
 			const item = await repo.on(ItemSchema).one().create({ title: 'Hello', views: 0 })
 			const before = item.updatedAt
 
-			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ title: 'Changed' }))
+			const updated = await repo.on(ItemSchema).one().id(item.id).update({ title: 'Changed' })
 			expect(updated!.updatedAt).not.toBe(before)
 			expect(updated!.updatedAt).toBeGreaterThanOrEqual(before)
 		})
 
 		test('user set({updatedAt:X}) suppresses auto-bump', async () => {
-			const { set } = await import('../updates')
 			const repo = makeUpdateRepo()
 			const item = await repo.on(ItemSchema).one().create({ title: 'Hello', views: 0 })
 
-			const updated = await repo.updateByPk(ItemSchema, item.id, set<typeof ItemSchema>({ updatedAt: 9999 }))
+			const updated = await repo.on(ItemSchema).one().id(item.id).update({ updatedAt: 9999 })
 			expect(updated!.updatedAt).toBe(9999)
 		})
 
-		test('set({views:0}) + inc(views, 1) throws collected conflict error', async () => {
-			const { set, inc } = await import('../updates')
-			const { OrmValidationError } = await import('../schema-validations')
-			const repo = makeUpdateRepo()
-			const item = await repo.on(ItemSchema).one().create({ title: 'Hello', views: 0 })
-
-			await expect(
-				repo.updateByPk(
-					ItemSchema,
-					item.id,
-					set<typeof ItemSchema>({ views: 0 }),
-					inc<typeof ItemSchema>(ItemSchema.fields.views, 1),
-				),
-			).rejects.toThrow(OrmValidationError)
-
-			try {
-				await repo.updateByPk(
-					ItemSchema,
-					item.id,
-					set<typeof ItemSchema>({ views: 0 }),
-					inc<typeof ItemSchema>(ItemSchema.fields.views, 1),
-				)
-			} catch (e) {
-				const err = e as InstanceType<typeof OrmValidationError>
-				expect(err.kind).toBe('conflicting-ops')
-				expect(err.failures[0].field).toBe('views')
-			}
-		})
-
-		test('updateByPk with inc op', async () => {
-			const { inc } = await import('../updates')
+		test('update with inc op via SchemaUpdateInput', async () => {
+			const { IncOp } = await import('../updates')
 			const repo = makeUpdateRepo()
 			const item = await repo.on(ItemSchema).one().create({ title: 'Hello', views: 10 })
 
-			const updated = await repo.updateByPk(ItemSchema, item.id, inc<typeof ItemSchema>(ItemSchema.fields.views, 5))
+			const updated = await repo.on(ItemSchema).one().id(item.id).update({ views: new IncOp('views', 5) })
 			expect(updated!.views).toBe(15)
 		})
 
-		test('updateByPk returns null for missing pk', async () => {
-			const { set } = await import('../updates')
+		test('update returns null for missing pk', async () => {
 			const repo = makeUpdateRepo()
-			const result = await repo.updateByPk(ItemSchema, 'nonexistent', set<typeof ItemSchema>({ title: 'X' }))
+			const result = await repo.on(ItemSchema).one().id('nonexistent').update({ title: 'X' })
 			expect(result).toBeNull()
-		})
-
-		test('updateByPk requires ≥1 op (type-level)', () => {
-			const _repo = makeUpdateRepo()
-			// @ts-expect-error — updateByPk requires at least one op argument
-			void ((_r: typeof _repo) => _r.updateByPk(ItemSchema, 'id'))
 		})
 	})
 
-	describe('repo.upsertOne', () => {
+	describe('one().where().upsert() (replaces upsertOne)', () => {
 		let upsertCounter = 0
 
 		const UpsertSchema = Schema.from('upserts')
@@ -1362,49 +1279,52 @@ if (import.meta.vitest) {
 				.build()
 		}
 
-		test('create-then-ops path: row missing → inserts and applies ops', async () => {
-			const { set } = await import('../updates')
+		test('create-then-update path: row missing → inserts and applies update', async () => {
 			const repo = makeUpsertRepo()
 
-			const result = await repo.upsertOne(
-				UpsertSchema,
-				(q) => q.eq('email', 'alice@test.com'),
-				{ email: 'alice@test.com', name: 'Alice', views: 0 },
-				set<typeof UpsertSchema>({ name: 'Alice Updated' }),
-			)
+			const result = await repo
+				.on(UpsertSchema)
+				.one()
+				.where((q) => q.eq('email', 'alice@test.com'))
+				.upsert({
+					create: { email: 'alice@test.com', name: 'Alice', views: 0 },
+					update: { name: 'Alice Updated' },
+				})
 
 			expect(result.email).toBe('alice@test.com')
 			expect(result.name).toBe('Alice Updated')
 			expect(result.createdAt).toBe(1000)
 		})
 
-		test('create path with set op overriding create field is allowed', async () => {
-			const { set } = await import('../updates')
+		test('create path with set value overriding create field is allowed', async () => {
 			const repo = makeUpsertRepo()
 
-			const result = await repo.upsertOne(
-				UpsertSchema,
-				(q) => q.eq('email', 'override@test.com'),
-				{ email: 'override@test.com', name: 'Original', views: 0 },
-				set<typeof UpsertSchema>({ views: 42 }),
-			)
+			const result = await repo
+				.on(UpsertSchema)
+				.one()
+				.where((q) => q.eq('email', 'override@test.com'))
+				.upsert({
+					create: { email: 'override@test.com', name: 'Original', views: 0 },
+					update: { views: 42 },
+				})
 
 			expect(result.views).toBe(42)
 			expect(result.name).toBe('Original')
 		})
 
-		test('update-only-on-exists path: row exists → ignores create, applies ops + auto-bump', async () => {
-			const { set } = await import('../updates')
+		test('update-only-on-exists path: row exists → ignores create, applies update + auto-bump', async () => {
 			const repo = makeUpsertRepo()
 
-			await repo.createOne(UpsertSchema, { email: 'bob@test.com', name: 'Bob', views: 42 })
+			await repo.on(UpsertSchema).one().create({ email: 'bob@test.com', name: 'Bob', views: 42 })
 
-			const result = await repo.upsertOne(
-				UpsertSchema,
-				(q) => q.eq('email', 'bob@test.com'),
-				{ email: 'bob@test.com', name: 'IGNORED', views: 0 },
-				set<typeof UpsertSchema>({ name: 'Bob Updated' }),
-			)
+			const result = await repo
+				.on(UpsertSchema)
+				.one()
+				.where((q) => q.eq('email', 'bob@test.com'))
+				.upsert({
+					create: { email: 'bob@test.com', name: 'IGNORED', views: 0 },
+					update: { name: 'Bob Updated' },
+				})
 
 			expect(result.name).toBe('Bob Updated')
 			expect(result.views).toBe(42)
@@ -1412,17 +1332,19 @@ if (import.meta.vitest) {
 		})
 
 		test('create-vs-op conflict throws OrmValidationError with kind conflicting-ops', async () => {
-			const { inc } = await import('../updates')
+			const { IncOp } = await import('../updates')
 			const { OrmValidationError } = await import('../schema-validations')
 			const repo = makeUpsertRepo()
 
 			try {
-				await repo.upsertOne(
-					UpsertSchema,
-					(q) => q.eq('email', 'conflict@test.com'),
-					{ email: 'conflict@test.com', name: 'Conflict', views: 0 },
-					inc<typeof UpsertSchema>(UpsertSchema.fields.views, 1),
-				)
+				await repo
+					.on(UpsertSchema)
+					.one()
+					.where((q) => q.eq('email', 'conflict@test.com'))
+					.upsert({
+						create: { email: 'conflict@test.com', name: 'Conflict', views: 0 },
+						update: { views: new IncOp('views', 1) },
+					})
 				expect.unreachable()
 			} catch (e) {
 				expect(e).toBeInstanceOf(OrmValidationError)
@@ -1433,52 +1355,53 @@ if (import.meta.vitest) {
 			}
 		})
 
-		test('empty-ops-allowed-on-upsert: create with no ops is allowed', async () => {
+		test('empty-update-allowed: create with no update is allowed', async () => {
 			const repo = makeUpsertRepo()
 
-			const result = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'noops@test.com'), {
-				email: 'noops@test.com',
-				name: 'NoOps',
-				views: 0,
-			})
+			const result = await repo
+				.on(UpsertSchema)
+				.one()
+				.where((q) => q.eq('email', 'noops@test.com'))
+				.upsert({ create: { email: 'noops@test.com', name: 'NoOps', views: 0 } })
 
 			expect(result.email).toBe('noops@test.com')
 			expect(result.name).toBe('NoOps')
 		})
 
-		test('empty-ops-allowed-on-upsert: if exists do nothing', async () => {
+		test('empty-update-allowed: if exists do nothing', async () => {
 			const repo = makeUpsertRepo()
 
-			await repo.createOne(UpsertSchema, { email: 'exists@test.com', name: 'Original', views: 5 })
+			await repo.on(UpsertSchema).one().create({ email: 'exists@test.com', name: 'Original', views: 5 })
 
-			const result = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'exists@test.com'), {
-				email: 'exists@test.com',
-				name: 'IGNORED',
-				views: 0,
-			})
+			const result = await repo
+				.on(UpsertSchema)
+				.one()
+				.where((q) => q.eq('email', 'exists@test.com'))
+				.upsert({ create: { email: 'exists@test.com', name: 'IGNORED', views: 0 } })
 
 			expect(result.name).toBe('Original')
 			expect(result.views).toBe(5)
 		})
 
 		test('upsert-returns-document rule: returns resulting document', async () => {
-			const { set } = await import('../updates')
 			const repo = makeUpsertRepo()
 
-			const insertResult = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'doc@test.com'), {
-				email: 'doc@test.com',
-				name: 'Doc',
-				views: 0,
-			})
+			const insertResult = await repo
+				.on(UpsertSchema)
+				.one()
+				.where((q) => q.eq('email', 'doc@test.com'))
+				.upsert({ create: { email: 'doc@test.com', name: 'Doc', views: 0 } })
 			expect(insertResult.id).toBeDefined()
 			expect(insertResult.email).toBe('doc@test.com')
 
-			const updateResult = await repo.upsertOne(
-				UpsertSchema,
-				(q) => q.eq('email', 'doc@test.com'),
-				{ email: 'doc@test.com', name: 'IGNORED', views: 0 },
-				set<typeof UpsertSchema>({ name: 'DocUpdated' }),
-			)
+			const updateResult = await repo
+				.on(UpsertSchema)
+				.one()
+				.where((q) => q.eq('email', 'doc@test.com'))
+				.upsert({
+					create: { email: 'doc@test.com', name: 'IGNORED', views: 0 },
+					update: { name: 'DocUpdated' },
+				})
 			expect(updateResult.id).toBe(insertResult.id)
 			expect(updateResult.name).toBe('DocUpdated')
 		})
@@ -1486,11 +1409,11 @@ if (import.meta.vitest) {
 		test('validates create payload via validateCreate (onCreate defaults injected)', async () => {
 			const repo = makeUpsertRepo()
 
-			const result = await repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'defaults@test.com'), {
-				email: 'defaults@test.com',
-				name: 'Defaults',
-				views: 0,
-			})
+			const result = await repo
+				.on(UpsertSchema)
+				.one()
+				.where((q) => q.eq('email', 'defaults@test.com'))
+				.upsert({ create: { email: 'defaults@test.com', name: 'Defaults', views: 0 } })
 
 			expect(result.id).toBeDefined()
 			expect(result.createdAt).toBe(1000)
@@ -1501,7 +1424,11 @@ if (import.meta.vitest) {
 			const repo = makeUpsertRepo()
 
 			await expect(
-				repo.upsertOne(UpsertSchema, (q) => q.eq('email', 'bad@test.com'), { email: 123 as any, name: 'Bad', views: 0 }),
+				repo
+					.on(UpsertSchema)
+					.one()
+					.where((q) => q.eq('email', 'bad@test.com'))
+					.upsert({ create: { email: 123 as any, name: 'Bad', views: 0 } }),
 			).rejects.toBeInstanceOf(OrmValidationError)
 		})
 
@@ -1528,11 +1455,11 @@ if (import.meta.vitest) {
 				.build()
 
 			try {
-				await repo.upsertOne(UpsertSchema, (q: any) => q.eq('email', 'x@test.com'), {
-					email: 'x@test.com',
-					name: 'X',
-					views: 0,
-				})
+				await repo
+					.on(UpsertSchema)
+					.one()
+					.where((q: any) => q.eq('email', 'x@test.com'))
+					.upsert({ create: { email: 'x@test.com', name: 'X', views: 0 } })
 				expect.unreachable()
 			} catch (e) {
 				expect(e).toBeInstanceOf(OrmValidationError)
@@ -1542,8 +1469,8 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('type-level: repo.upsertOne gate', () => {
-		test('adapter with queryable.upsertOne enables repo.upsertOne', () => {
+	describe('type-level: upsert gating', () => {
+		test('adapter with queryable.upsertOne enables one().upsert', () => {
 			const _adapter = Adapter.from<unknown>()
 				.supportedFieldTypes('string', 'number')
 				.queryableOps('eq')
@@ -1556,10 +1483,14 @@ if (import.meta.vitest) {
 			const _repo = Repo.from(_adapter)
 				.resolve(() => ({}))
 				.build()
-			expectTypeOf(_repo.upsertOne).toBeFunction()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _one = _repo.on(_TestSchema).one()
+			expectTypeOf(_one.upsert).toBeFunction()
 		})
 
-		test('adapter without queryable.upsertOne collapses repo.upsertOne to never', () => {
+		test('adapter without queryable.upsertOne collapses one().upsert to never', () => {
 			const _adapter = Adapter.from<unknown>()
 				.supportedFieldTypes('string', 'number')
 				.queryableOps('eq')
@@ -1571,10 +1502,14 @@ if (import.meta.vitest) {
 			const _repo = Repo.from(_adapter)
 				.resolve(() => ({}))
 				.build()
-			expectTypeOf(_repo.upsertOne).toBeNever()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _one = _repo.on(_TestSchema).one()
+			expectTypeOf(_one.upsert).toBeNever()
 		})
 
-		test('adapter without queryable bag collapses repo.upsertOne to never', () => {
+		test('adapter without queryable bag collapses one().upsert to never', () => {
 			const _adapter = Adapter.from<unknown>()
 				.supportedFieldTypes('string', 'number')
 				.updateOps('set')
@@ -1583,7 +1518,11 @@ if (import.meta.vitest) {
 			const _repo = Repo.from(_adapter)
 				.resolve(() => ({}))
 				.build()
-			expectTypeOf(_repo.upsertOne).toBeNever()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _one = _repo.on(_TestSchema).one()
+			expectTypeOf(_one.upsert).toBeNever()
 		})
 	})
 
@@ -1607,17 +1546,21 @@ if (import.meta.vitest) {
 
 		test('throw-to-rollback: uncaught throw rolls back all writes and rejects with same error', async () => {
 			const repo = makeSessionRepo()
-			await repo.createOne(SchemaA, { balance: 100 })
+			await repo.on(SchemaA).one().create({ balance: 100 })
 
 			const err = new Error('boom')
 			await expect(
 				repo.session(async () => {
-					await repo.createOne(SchemaA, { balance: 200 })
+					await repo.on(SchemaA).one().create({ balance: 200 })
 					throw err
 				}),
 			).rejects.toBe(err)
 
-			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			const all = await repo
+				.on(SchemaA)
+				.all()
+				.where((q) => q.gte('balance', 0))
+				.find()
 			expect(all).toHaveLength(1)
 			expect(all[0].balance).toBe(100)
 		})
@@ -1625,32 +1568,44 @@ if (import.meta.vitest) {
 		test('return-to-commit: successful return commits and resolves with callback value', async () => {
 			const repo = makeSessionRepo()
 			const result = await repo.session(async () => {
-				await repo.createOne(SchemaA, { balance: 500 })
+				await repo.on(SchemaA).one().create({ balance: 500 })
 				return 'committed'
 			})
 
 			expect(result).toBe('committed')
-			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			const all = await repo
+				.on(SchemaA)
+				.all()
+				.where((q) => q.gte('balance', 0))
+				.find()
 			expect(all).toHaveLength(1)
 			expect(all[0].balance).toBe(500)
 		})
 
 		test('cross-schema session: multiple schemas share one tx; on throw both roll back', async () => {
 			const repo = makeSessionRepo()
-			const account = await repo.createOne(SchemaA, { balance: 1000 })
+			const account = await repo.on(SchemaA).one().create({ balance: 1000 })
 
 			await expect(
 				repo.session(async () => {
-					await repo.updateMany(SchemaA, (q) => q.eq('id', account.id), { balance: 900 })
-					await repo.createOne(SchemaB, { amount: 100, accountId: account.id })
+					await repo
+						.on(SchemaA)
+						.all()
+						.where((q) => q.eq('id', account.id))
+						.update({ balance: 900 })
+					await repo.on(SchemaB).one().create({ amount: 100, accountId: account.id })
 					throw new Error('tx failure')
 				}),
 			).rejects.toThrow('tx failure')
 
-			const acct = await repo.findByPk(SchemaA, account.id)
+			const acct = await repo.on(SchemaA).one().id(account.id).find()
 			expect(acct!.balance).toBe(1000)
 
-			const entries = await repo.findMany(SchemaB, (q) => q.eq('accountId', account.id))
+			const entries = await repo
+				.on(SchemaB)
+				.all()
+				.where((q) => q.eq('accountId', account.id))
+				.find()
 			expect(entries).toHaveLength(0)
 		})
 
@@ -1658,34 +1613,42 @@ if (import.meta.vitest) {
 			const repo = makeSessionRepo()
 
 			const result = await repo.session(async () => {
-				await repo.createOne(SchemaA, { balance: 100 })
+				await repo.on(SchemaA).one().create({ balance: 100 })
 				const inner = await repo.session(async () => {
-					await repo.createOne(SchemaA, { balance: 200 })
+					await repo.on(SchemaA).one().create({ balance: 200 })
 					return 'inner'
 				})
 				return inner
 			})
 
 			expect(result).toBe('inner')
-			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			const all = await repo
+				.on(SchemaA)
+				.all()
+				.where((q) => q.gte('balance', 0))
+				.find()
 			expect(all).toHaveLength(2)
 		})
 
 		test('nested session: throw in inner rolls back entire outer tx (flat nesting)', async () => {
 			const repo = makeSessionRepo()
-			await repo.createOne(SchemaA, { balance: 50 })
+			await repo.on(SchemaA).one().create({ balance: 50 })
 
 			await expect(
 				repo.session(async () => {
-					await repo.createOne(SchemaA, { balance: 100 })
+					await repo.on(SchemaA).one().create({ balance: 100 })
 					await repo.session(async () => {
-						await repo.createOne(SchemaA, { balance: 200 })
+						await repo.on(SchemaA).one().create({ balance: 200 })
 						throw new Error('inner boom')
 					})
 				}),
 			).rejects.toThrow('inner boom')
 
-			const all = await repo.findMany(SchemaA, (q) => q.gte('balance', 0))
+			const all = await repo
+				.on(SchemaA)
+				.all()
+				.where((q) => q.gte('balance', 0))
+				.find()
 			expect(all).toHaveLength(1)
 			expect(all[0].balance).toBe(50)
 		})
