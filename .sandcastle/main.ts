@@ -126,14 +126,22 @@ type CandidateIssue = {
 
 type IssueState = 'OPEN' | 'CLOSED'
 
-// Matches lines that *begin* with `Depends on` / `Blocked by` (case-insensitive).
-// The line-start anchor keeps mid-paragraph mentions like "this depends on #42
-// in some way" out — only intentional declarations at the start of a line
-// count. Multiple refs and parenthetical annotations on the same line are
-// fine; we truncate at the first sentence terminator (`.` or `;`) so trailing
-// prose (e.g. "Depends on #8, #10. Parallel-safe with #11.") doesn't pull in
-// incidental refs like #11.
+// Inline form: matches lines that *begin* with `Depends on` / `Blocked by`
+// (case-insensitive). The line-start anchor keeps mid-paragraph mentions like
+// "this depends on #42 in some way" out — only intentional declarations at the
+// start of a line count. Multiple refs and parenthetical annotations on the
+// same line are fine; we truncate at the first sentence terminator (`.` or
+// `;`) so trailing prose (e.g. "Depends on #8, #10. Parallel-safe with #11.")
+// doesn't pull in incidental refs like #11.
 const DEPS_LINE_RE = /^[\t ]*(?:Depends on|Blocked by)\b.*$/gim
+// Block form: matches a markdown heading line that consists *only* of the
+// keyword (e.g. `## Blocked by`). The parser then collects refs from each
+// subsequent line until the next markdown heading or end of body.
+const DEPS_BLOCK_HEAD_RE = /^[\t ]*#+[\t ]+(?:Depends on|Blocked by)[\t ]*$/i
+// Markdown ATX heading: one-or-more `#` followed by whitespace and content.
+// The whitespace requirement distinguishes a heading from an issue ref like
+// `#28` (no space after `#`).
+const HEADING_RE = /^[\t ]*#+[\t ]+\S/
 // Bare `#N` not preceded by a word char or `/` — this excludes cross-repo
 // refs (`owner/repo#42`) which we don't support.
 const ISSUE_REF_RE = /(?<![\w/])#(\d+)\b/g
@@ -153,10 +161,25 @@ async function remoteBranchExists(branch: string): Promise<boolean> {
 
 function parseDeps(body: string): number[] {
 	const out = new Set<number>()
-	for (const lineMatch of body.matchAll(DEPS_LINE_RE)) {
-		const head = lineMatch[0].split(/[.;]/, 1)[0]!
+	const collectRefs = (line: string) => {
+		const head = line.split(/[.;]/, 1)[0]!
 		for (const refMatch of head.matchAll(ISSUE_REF_RE)) {
 			out.add(Number.parseInt(refMatch[1]!, 10))
+		}
+	}
+	// Inline form
+	for (const lineMatch of body.matchAll(DEPS_LINE_RE)) {
+		collectRefs(lineMatch[0])
+	}
+	// Block form: scan lines, when a `## Depends on` / `## Blocked by` heading
+	// is found, collect refs from subsequent lines until the next markdown
+	// heading or end of body.
+	const lines = body.split('\n')
+	for (let i = 0; i < lines.length; i++) {
+		if (!DEPS_BLOCK_HEAD_RE.test(lines[i]!)) continue
+		for (let j = i + 1; j < lines.length; j++) {
+			if (HEADING_RE.test(lines[j]!)) break
+			collectRefs(lines[j]!)
 		}
 	}
 	return [...out]
