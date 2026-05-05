@@ -18,6 +18,7 @@ const entry = [
 	'src/jobs/adapters/redis/index.ts',
 	'src/orm/index.ts',
 	'src/orm/adapters/in-memory/index.ts',
+	'src/orm/adapters/json/index.ts',
 	'src/orm/adapters/mongodb/index.ts',
 	'src/orm/adapters/postgresql/index.ts',
 	'src/server/index.ts',

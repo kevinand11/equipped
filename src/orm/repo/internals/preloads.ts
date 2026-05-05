@@ -245,7 +245,7 @@ if (import.meta.vitest) {
 
 		function makeRepo() {
 			const { adapter } = createInMemoryAdapter()
-			return Repo.from(adapter).resolve((s) => ({ prefix: s.name })).build()
+			return Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
 		}
 
 		test('hasMany preload resolves related entities', async () => {
@@ -390,7 +390,7 @@ if (import.meta.vitest) {
 				}
 			})
 
-			const repo = Repo.from(adapter).resolve((s) => ({ prefix: s.name })).build()
+			const repo = Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
 			const u1 = await repo.on(UserSchema).one().create({ email: 'a@test.com', name: 'A' })
 			const u2 = await repo.on(UserSchema).one().create({ email: 'b@test.com', name: 'B' })
 			const u3 = await repo.on(UserSchema).one().create({ email: 'c@test.com', name: 'C' })

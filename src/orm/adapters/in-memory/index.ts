@@ -10,10 +10,7 @@ import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
 
 export type InMemoryRepoConfig = {
-	table?: string
-	collection?: string
-	col?: string
-	name?: string
+	table: string
 	prefix?: string
 }
 
@@ -51,8 +48,8 @@ function compareValues(a: unknown, b: unknown): number {
 	return sa < sb ? -1 : 1
 }
 
-function resolveConfigName(schema: AnySchema, config: InMemoryRepoConfig): string {
-	return config.table ?? config.collection ?? config.col ?? config.name ?? config.prefix ?? schema.name
+function resolveConfigName(_: AnySchema, config: InMemoryRepoConfig): string {
+	return `${config.prefix ?? ''}${config.table}`
 }
 
 function evaluateFilter(doc: Record<string, unknown>, filter: Filter): boolean {
@@ -449,16 +446,18 @@ if (import.meta.vitest) {
 		})
 
 		test('crud.findByPk returns seeded document and null for missing', async () => {
-			const schema = Schema.from('test').pk('id', v.string(), () => 'gen').build()
+			const schema = Schema.from('test')
+				.pk('id', v.string(), () => 'gen')
+				.build()
 			const { adapter } = createInMemoryAdapter()
 
-			const use = adapter.use(schema, { prefix: 'test' })
+			const use = adapter.use(schema, { table: 'test' })
 			await use.createOne({ id: 'x' })
 
-			const found = await adapter.crud.findByPk!(schema, { prefix: 'test' }, 'x')
+			const found = await adapter.crud.findByPk!(schema, { table: 'test' }, 'x')
 			expect(found).toEqual({ id: 'x' })
 
-			const missing = await adapter.crud.findByPk!(schema, { prefix: 'test' }, 'missing')
+			const missing = await adapter.crud.findByPk!(schema, { table: 'test' }, 'missing')
 			expect(missing).toBeNull()
 		})
 	})

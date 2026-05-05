@@ -107,13 +107,11 @@ export function createJsonAdapter(options: { filePath: string }) {
 			},
 		})
 		.transactional({
-			session: async <T>(fn: () => Promise<T>): Promise<T> => {
-				return inMemory.session(async () => {
+			session: async <T>(fn: () => Promise<T>): Promise<T> => inMemory.session(async () => {
 					const result = await fn()
 					await persistToDisk()
 					return result
-				})
-			},
+				}),
 		})
 		.build()
 

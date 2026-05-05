@@ -27,3 +27,4 @@ export type OrmAdapterLike<Config extends object = object> = {
 	session<T>(fn: () => Promise<T>): Promise<T>
 }
 
+export type OrmAdapterConfig<Adapter extends OrmAdapterLike<any>> = Adapter extends OrmAdapterLike<infer Config> ? Config : never
