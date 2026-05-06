@@ -166,14 +166,7 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	}
 
 	protected _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(next: ReadState<NewSel, NewP>) {
-		return new OneBuilder<S, A, NewSel, NewP>(
-			this._context,
-			this._readState({
-				where: next.where,
-				select: next.select,
-				preloads: next.preloads,
-			}),
-		) as any
+		return new OneBuilder<S, A, NewSel, NewP>(this._context, this._readState(next)) as any
 	}
 
 	create(data: SchemaCreateInput<S>) {
@@ -251,51 +244,31 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	}
 
 	protected _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(next: ReadState<NewSel, NewP>) {
-		return new AllBuilder<S, A, NewSel, NewP>(
-			this._context,
-			this._readState({
-				where: next.where,
-				select: next.select,
-				preloads: next.preloads,
-			}),
-			this.#queryState(),
-		) as any
+		return new AllBuilder<S, A, NewSel, NewP>(this._context, this._readState(next), this.#queryState()) as any
 	}
 
 	orderBy(field: string | AnyField, direction: 'asc' | 'desc' = 'asc') {
-		return new AllBuilder<S, A, Sel, P>(
-			this._context,
-			this._readState({
-				where: this._where.clone(),
-				select: this._select as readonly Sel[] | undefined,
-				preloads: this._preloads,
-			}),
-			{ orderBy: [...this.#orderBy, new OrderBy(field, direction)], limit: this.#limit, offset: this.#offset },
-		) as this
+		return new AllBuilder<S, A, Sel, P>(this._context, this._readState(), {
+			orderBy: [...this.#orderBy, new OrderBy(field, direction)],
+			limit: this.#limit,
+			offset: this.#offset,
+		}) as this
 	}
 
 	limit(limit: number) {
-		return new AllBuilder<S, A, Sel, P>(
-			this._context,
-			this._readState({
-				where: this._where.clone(),
-				select: this._select as readonly Sel[] | undefined,
-				preloads: this._preloads,
-			}),
-			{ orderBy: [...this.#orderBy], limit, offset: this.#offset },
-		) as this
+		return new AllBuilder<S, A, Sel, P>(this._context, this._readState(), {
+			orderBy: [...this.#orderBy],
+			limit,
+			offset: this.#offset,
+		}) as this
 	}
 
 	offset(offset: number) {
-		return new AllBuilder<S, A, Sel, P>(
-			this._context,
-			this._readState({
-				where: this._where.clone(),
-				select: this._select as readonly Sel[] | undefined,
-				preloads: this._preloads,
-			}),
-			{ orderBy: [...this.#orderBy], limit: this.#limit, offset },
-		) as this
+		return new AllBuilder<S, A, Sel, P>(this._context, this._readState(), {
+			orderBy: [...this.#orderBy],
+			limit: this.#limit,
+			offset,
+		}) as this
 	}
 
 	create(data: SchemaCreateInput<S>[]) {
