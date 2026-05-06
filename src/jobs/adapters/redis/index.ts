@@ -44,15 +44,11 @@ export class RedisJob extends configurable(
 				{ connection: redisCache.connectionOptions, autorun: false, skipVersionCheck: true },
 			)
 
-			Instance.on(
-				'start',
-				async () => {
-					await this.#cleanup()
-					await Promise.all(this.crons.map(({ cron, name }) => this.#addCron(name, cron)))
-					worker.run()
-				},
-				10,
-			)
+			Instance.on('start', async () => {
+				await this.#cleanup()
+				await Promise.all(this.crons.map(({ cron, name }) => this.#addCron(name, cron)))
+				worker.run()
+			})
 		}
 
 		#getNewId() {

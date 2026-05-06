@@ -76,7 +76,7 @@ export const ExpressServer = configurableFn(serverConfigPipe, (config): Server =
 			new Promise((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
 				try {
 					const app = httpServer.listen({ host: '0.0.0.0', port }, async () => resolve(true))
-					Instance.on('close', app.close, 1)
+					Instance.on('close', app.close)
 				} catch (err) {
 					reject(<Error>err)
 				}

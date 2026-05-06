@@ -43,21 +43,17 @@ export class SocketEmitter {
 	) {
 		this.socketInstance = socket
 		this.#setupSocketConnection()
-		Instance.on(
-			'setup',
-			() => {
-				const stream = config.eventBus?.stream(EmitterEvent as never, { fanout: true })
-				this.#publish = stream
-					? (stream.publish as unknown as (data: EmitData) => Promise<void>)
-					: async (data: EmitData) => {
-							socket.to(data.channel).emit(data.channel, data)
-						}
-				stream?.subscribe(async (data: EmitData) => {
-					socket.to(data.channel).emit(data.channel, data)
-				})
-			},
-			1,
-		)
+		Instance.on('setup', () => {
+			const stream = config.eventBus?.stream(EmitterEvent as never, { fanout: true })
+			this.#publish = stream
+				? (stream.publish as unknown as (data: EmitData) => Promise<void>)
+				: async (data: EmitData) => {
+						socket.to(data.channel).emit(data.channel, data)
+					}
+			stream?.subscribe(async (data: EmitData) => {
+				socket.to(data.channel).emit(data.channel, data)
+			})
+		})
 	}
 
 	async created<T extends Entity>(channels: string[], data: T, to: string | string[] | null) {

@@ -65,38 +65,34 @@ export class MongoDbChange<Model extends core.Model<{ _id: string }>, Entity ext
 				})
 		})
 
-		Instance.on(
-			'start',
-			async () => {
-				if (this.#started) return
-				this.#started = true
+		Instance.on('start', async () => {
+			if (this.#started) return
+			this.#started = true
 
-				await retry(
-					async () => {
-						const started = await this.configureConnector(topic, {
-							'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
-							'capture.mode': 'change_streams_update_full_with_pre_image',
-							'mongodb.connection.string': config.uri,
-							'collection.include.list': dbColName,
-							'snapshot.mode': 'when_needed',
-							'capture.scope': 'collection',
-							'capture.target': dbColName,
-							'heartbeat.interval.ms': '60000',
-							'errors.max.retries': '3',
-						})
+			await retry(
+				async () => {
+					const started = await this.configureConnector(topic, {
+						'connector.class': 'io.debezium.connector.mongodb.MongoDbConnector',
+						'capture.mode': 'change_streams_update_full_with_pre_image',
+						'mongodb.connection.string': config.uri,
+						'collection.include.list': dbColName,
+						'snapshot.mode': 'when_needed',
+						'capture.scope': 'collection',
+						'capture.target': dbColName,
+						'heartbeat.interval.ms': '60000',
+						'errors.max.retries': '3',
+					})
 
-						if (started) return { done: true, value: true }
-						await collection.findOneAndUpdate(condition, { $set: { colName } as any }, { upsert: true })
-						await collection.findOneAndDelete(condition)
-						Instance.get().log.warn(`Waiting for db changes for ${dbColName} to start...`)
-						return { done: false }
-					},
-					6,
-					30_000,
-				).catch((err) => Instance.crash(new EquippedError(`Failed to start db changes`, { dbColName }, err)))
-			},
-			10,
-		)
+					if (started) return { done: true, value: true }
+					await collection.findOneAndUpdate(condition, { $set: { colName } as any }, { upsert: true })
+					await collection.findOneAndDelete(condition)
+					Instance.get().log.warn(`Waiting for db changes for ${dbColName} to start...`)
+					return { done: false }
+				},
+				6,
+				30_000,
+			).catch((err) => Instance.crash(new EquippedError(`Failed to start db changes`, { dbColName }, err)))
+		})
 	}
 }
 
