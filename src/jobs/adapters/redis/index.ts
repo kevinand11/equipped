@@ -22,7 +22,7 @@ export class RedisJob extends configurable(
 		constructor(config: PipeOutput<ReturnType<typeof redisJobsConfigPipe>>) {
 			super()
 
-			const redisCache = RedisCache.create(config.redisConfig, {
+			const redisCache = (RedisCache.create as any)(config.redisConfig, {
 				maxRetriesPerRequest: null,
 				enableReadyCheck: false,
 			})
