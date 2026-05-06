@@ -38,39 +38,35 @@ export class MongoDb extends Db<{ _id: string }> {
 		super(dbConfig)
 		this.mongoConfig = v.assert(mongoDbConfigPipe(), mongoConfig)
 		this.client = new MongoClient(mongoConfig.uri, { ignoreUndefined: true })
-		Instance.on(
-			'start',
-			async () => {
-				await this.client.connect()
+		Instance.on('start', async () => {
+			await this.client.connect()
 
-				const grouped = this.#cols.reduce<Record<string, string[]>>((acc, cur) => {
-					if (!acc[cur.db]) acc[cur.db] = []
-					acc[cur.db].push(cur.col)
-					return acc
-				}, {})
+			const grouped = this.#cols.reduce<Record<string, string[]>>((acc, cur) => {
+				if (!acc[cur.db]) acc[cur.db] = []
+				acc[cur.db].push(cur.col)
+				return acc
+			}, {})
 
-				const options = {
-					changeStreamPreAndPostImages: { enabled: true },
-				}
-				await Promise.all(
-					Object.entries(grouped).map(async ([dbName, colNames]) => {
-						const db = this.client.db(dbName)
-						const collections = await db.listCollections<CollectionInfo>().toArray()
-						return colNames.map(async (colName) => {
-							const existing = collections.find((collection) => collection.name === colName)
-							if (existing) {
-								if (
-									existing.options?.changeStreamPreAndPostImages?.enabled !== options.changeStreamPreAndPostImages.enabled
-								)
-									await db.command({ collMod: colName, ...options })
-							} else await db.createCollection(colName, options)
-						})
-					}),
-				)
-			},
-			3,
-		)
-		Instance.on('close', async () => this.client.close(), 1)
+			const options = {
+				changeStreamPreAndPostImages: { enabled: true },
+			}
+			await Promise.all(
+				Object.entries(grouped).map(async ([dbName, colNames]) => {
+					const db = this.client.db(dbName)
+					const collections = await db.listCollections<CollectionInfo>().toArray()
+					return colNames.map(async (colName) => {
+						const existing = collections.find((collection) => collection.name === colName)
+						if (existing) {
+							if (
+								existing.options?.changeStreamPreAndPostImages?.enabled !== options.changeStreamPreAndPostImages.enabled
+							)
+								await db.command({ collMod: colName, ...options })
+						} else await db.createCollection(colName, options)
+					})
+				}),
+			)
+		})
+		Instance.on('close', async () => this.client.close())
 	}
 
 	async session<T>(callback: () => Promise<T>) {

@@ -125,7 +125,7 @@ export class ExpressServer extends configurable(serverConfigPipe, Server as unkn
 		return new Promise<boolean>((resolve: (s: boolean) => void, reject: (e: Error) => void) => {
 			try {
 				const server = this.#httpServer.listen({ host: '0.0.0.0', port }, async () => resolve(true))
-				Instance.on('close', server.close, 1)
+				Instance.on('close', server.close)
 			} catch (err) {
 				reject(<Error>err)
 			}

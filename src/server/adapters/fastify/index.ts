@@ -122,7 +122,7 @@ export class FastifyServer extends configurable(serverConfigPipe, Server as unkn
 	protected async startServer(port: number) {
 		await this.#app.ready()
 		await this.#app.listen({ port, host: '0.0.0.0' })
-		Instance.on('close', this.#app.close, 1)
+		Instance.on('close', this.#app.close)
 		return true
 	}
 }

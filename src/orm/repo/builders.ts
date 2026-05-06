@@ -102,8 +102,7 @@ abstract class ReadSelectState<S extends AnySchema, A = unknown, Sel extends str
 	}
 
 	where(factory: FilterFactory): this {
-		const nextGroup = this._where.clone()
-		factory(nextGroup)
+		const nextGroup = factory(this._where.clone())
 		return this._clone<Sel, P>({
 			where: nextGroup,
 			select: this._select as readonly Sel[] | undefined,
@@ -158,8 +157,7 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	declare readonly _builderKind: 'one'
 
 	id(value: SchemaPrimaryKeyValue<S>): this {
-		const nextGroup = this._where.clone()
-		nextGroup.eq(this._context.schema.pkField, value)
+		const nextGroup = this._where.clone().eq(this._context.schema.pkField, value)
 		return this._clone<Sel, P>({
 			where: nextGroup,
 			select: this._select as readonly Sel[] | undefined,
@@ -233,53 +231,71 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> extends ReadSelectState<S, A, Sel, P> {
 	declare readonly _builderKind: 'all'
 
-	#orderBy: OrderBy[] = []
+	#orderBy: OrderBy[]
 	#limit: number | undefined
 	#offset: number | undefined
 
+	constructor(
+		context: SchemaContext<S>,
+		state?: ReadState<Sel, P>,
+		queryState?: { orderBy?: OrderBy[]; limit?: number; offset?: number },
+	) {
+		super(context, state)
+		this.#orderBy = queryState?.orderBy ?? []
+		this.#limit = queryState?.limit
+		this.#offset = queryState?.offset
+	}
+
+	#queryState() {
+		return { orderBy: [...this.#orderBy], limit: this.#limit, offset: this.#offset }
+	}
+
 	protected _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(next: ReadState<NewSel, NewP>) {
-		const cloned = new AllBuilder<S, A, NewSel, NewP>(
+		return new AllBuilder<S, A, NewSel, NewP>(
 			this._context,
 			this._readState({
 				where: next.where,
 				select: next.select,
 				preloads: next.preloads,
 			}),
-		)
-		cloned.#orderBy.push(...this.#orderBy)
-		cloned.#limit = this.#limit
-		cloned.#offset = this.#offset
-		return cloned as any
+			this.#queryState(),
+		) as any
 	}
 
 	orderBy(field: string | AnyField, direction: 'asc' | 'desc' = 'asc') {
-		const cloned = this._clone<Sel, P>({
-			where: this._where.clone(),
-			select: this._select as readonly Sel[] | undefined,
-			preloads: this._preloads,
-		}) as AllBuilder<S, A, Sel, P>
-		cloned.#orderBy = this.#orderBy.concat(new OrderBy(field, direction))
-		return cloned as this
+		return new AllBuilder<S, A, Sel, P>(
+			this._context,
+			this._readState({
+				where: this._where.clone(),
+				select: this._select as readonly Sel[] | undefined,
+				preloads: this._preloads,
+			}),
+			{ orderBy: [...this.#orderBy, new OrderBy(field, direction)], limit: this.#limit, offset: this.#offset },
+		) as this
 	}
 
 	limit(limit: number) {
-		const cloned = this._clone<Sel, P>({
-			where: this._where.clone(),
-			select: this._select as readonly Sel[] | undefined,
-			preloads: this._preloads,
-		}) as AllBuilder<S, A, Sel, P>
-		cloned.#limit = limit
-		return cloned as this
+		return new AllBuilder<S, A, Sel, P>(
+			this._context,
+			this._readState({
+				where: this._where.clone(),
+				select: this._select as readonly Sel[] | undefined,
+				preloads: this._preloads,
+			}),
+			{ orderBy: [...this.#orderBy], limit, offset: this.#offset },
+		) as this
 	}
 
 	offset(offset: number) {
-		const cloned = this._clone<Sel, P>({
-			where: this._where.clone(),
-			select: this._select as readonly Sel[] | undefined,
-			preloads: this._preloads,
-		}) as AllBuilder<S, A, Sel, P>
-		cloned.#offset = offset
-		return cloned as this
+		return new AllBuilder<S, A, Sel, P>(
+			this._context,
+			this._readState({
+				where: this._where.clone(),
+				select: this._select as readonly Sel[] | undefined,
+				preloads: this._preloads,
+			}),
+			{ orderBy: [...this.#orderBy], limit: this.#limit, offset },
+		) as this
 	}
 
 	create(data: SchemaCreateInput<S>[]) {

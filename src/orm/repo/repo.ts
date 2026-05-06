@@ -48,13 +48,13 @@ class RepoBuilder<A extends OrmAdapterLike<any>> {
 	#adapter: unknown
 	#resolve: unknown
 
-	constructor(adapter?: unknown) {
+	constructor(adapter?: unknown, resolve?: unknown) {
 		this.#adapter = adapter
+		this.#resolve = resolve
 	}
 
 	resolve(fn: (schema: AnySchema) => OrmAdapterConfig<A>): RepoBuilder<A> {
-		this.#resolve = fn
-		return this as unknown as RepoBuilder<A>
+		return new RepoBuilder<A>(this.#adapter, fn)
 	}
 
 	build(this: RepoBuilder<A>): RepoSurface<A> {
@@ -103,6 +103,15 @@ if (import.meta.vitest) {
 				.build()
 			const ref = repo.on(TestSchema)
 			expect(ref).toBeInstanceOf(SchemaRef)
+		})
+	})
+
+	describe('clone-on-step: RepoBuilder fan-out independence', () => {
+		test('.resolve() returns a new builder, not the same instance', () => {
+			const { adapter } = createInMemoryAdapter()
+			const base = Repo.from(adapter)
+			const a = base.resolve((s) => ({ table: s.name }))
+			expect(a).not.toBe(base)
 		})
 	})
 
