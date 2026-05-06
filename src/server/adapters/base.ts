@@ -90,7 +90,7 @@ export abstract class Server {
 	#oai!: ReturnType<typeof openapi>
 	#serverConfig!: ServerConfig
 	#queue: (() => void | Promise<void>)[] = []
-	#routesByKey = new Map<string, boolean>()
+	#routesByKey = new Set<string>()
 
 	protected abstract parseRequest(req: any): Promise<Request<any>>
 	protected abstract handleResponse(res: any, response: Response<any>): Promise<void>
@@ -123,7 +123,7 @@ export abstract class Server {
 				const { method, path, schema = {}, onError, middlewares = [], responseMiddlewares = [] } = route
 
 				const key = `(${method.toUpperCase()}) ${this.#oai.cleanPath(path)}`
-				if (this.#routesByKey.get(key))
+				if (this.#routesByKey.has(key))
 					throw new EquippedError(`Route key ${key} already registered. All route keys must be unique`, { route, key })
 
 				middlewares.forEach((m) => m.onSetup?.(route as any))
@@ -132,7 +132,7 @@ export abstract class Server {
 
 				const { validateRequest, validateResponse, jsonSchema } = this.#resolveSchema(method, schema)
 
-				this.#routesByKey.set(key, true)
+				this.#routesByKey.add(key)
 				await this.#oai.register(route, jsonSchema)
 				this.registerRoute(method, this.#oai.cleanPath(path), async (req, res) => {
 					const request = await validateRequest(await this.parseRequest(req))
