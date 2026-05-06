@@ -80,10 +80,11 @@ export type PreloadedMap<P extends readonly AnyPreloadDef[], Depth extends reado
 
 class RelationsBuilder<S extends AnySchema, R extends Record<string, AnyRelDef> = Record<never, never>> {
 	readonly #source: S
-	readonly #defs: Record<string, AnyRelDef> = {}
+	readonly #defs: Record<string, AnyRelDef>
 
-	constructor(source: S) {
+	constructor(source: S, defs?: Record<string, AnyRelDef>) {
 		this.#source = source
+		this.#defs = defs ?? {}
 	}
 
 	hasMany<K extends string, T extends AnySchema, FK extends Field<any, any, T>>(
@@ -100,8 +101,8 @@ class RelationsBuilder<S extends AnySchema, R extends Record<string, AnyRelDef> 
 		}
 	> {
 		const target = (fk as any).__schema as AnySchema
-		this.#defs[name] = new ManyRelation(name, this.#source, target, fk as any, this.#source.pkField)
-		return this as any
+		const nextDefs = { ...this.#defs, [name]: new ManyRelation(name, this.#source, target, fk as any, this.#source.pkField) }
+		return new RelationsBuilder(this.#source, nextDefs) as any
 	}
 
 	hasOne<K extends string, T extends AnySchema, FK extends Field<any, any, T>>(
@@ -118,8 +119,8 @@ class RelationsBuilder<S extends AnySchema, R extends Record<string, AnyRelDef> 
 		}
 	> {
 		const target = (fk as any).__schema as AnySchema
-		this.#defs[name] = new OneRelation(name, this.#source, target, fk as any, 'target', this.#source.pkField)
-		return this as any
+		const nextDefs = { ...this.#defs, [name]: new OneRelation(name, this.#source, target, fk as any, 'target', this.#source.pkField) }
+		return new RelationsBuilder(this.#source, nextDefs) as any
 	}
 
 	belongsTo<K extends string, T extends AnySchema, FK extends Field<any, any, S>>(
@@ -138,8 +139,8 @@ class RelationsBuilder<S extends AnySchema, R extends Record<string, AnyRelDef> 
 		}
 	> {
 		const ref = references ?? target.pkField
-		this.#defs[name] = new OneRelation(name, this.#source, target, fk as any, 'source', ref as any)
-		return this as any
+		const nextDefs = { ...this.#defs, [name]: new OneRelation(name, this.#source, target, fk as any, 'source', ref as any) }
+		return new RelationsBuilder(this.#source, nextDefs) as any
 	}
 
 	build(): R {
@@ -201,6 +202,33 @@ if (import.meta.vitest) {
 
 			expect(rels.org.foreignKey).toBe(UserSchema.fields.orgId)
 			expect(rels.org.target).toBe(OrgSchema)
+		})
+
+		test('clone-on-step: .hasMany() returns a new builder', () => {
+			const base = Relations.from(UserSchema)
+			const a = base.hasMany('posts', PostSchema.fields.userId)
+			expect(a).not.toBe(base)
+		})
+
+		test('clone-on-step: .hasOne() returns a new builder', () => {
+			const base = Relations.from(UserSchema)
+			const a = base.hasOne('profile', ProfileSchema.fields.userId)
+			expect(a).not.toBe(base)
+		})
+
+		test('clone-on-step: .belongsTo() returns a new builder', () => {
+			const base = Relations.from(UserSchema)
+			const a = base.belongsTo('org', UserSchema.fields.orgId, OrgSchema)
+			expect(a).not.toBe(base)
+		})
+
+		test('clone-on-step: fan-out from shared base does not pollute either branch', () => {
+			const base = Relations.from(UserSchema)
+			const branchA = base.hasMany('posts', PostSchema.fields.userId).build()
+			const branchB = base.hasOne('profile', ProfileSchema.fields.userId).build()
+
+			expect(Object.keys(branchA)).toEqual(['posts'])
+			expect(Object.keys(branchB)).toEqual(['profile'])
 		})
 	})
 
