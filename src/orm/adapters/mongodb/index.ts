@@ -132,18 +132,11 @@ export function createMongoAdapter(connectionConfig: MongoDbConnectionConfig) {
 					)
 				}
 			},
-			raw: async <T = unknown>(_schema: AnySchema, config: MongoDbRepoConfig, command: unknown) => {
+			raw: async (_schema: AnySchema, config: MongoDbRepoConfig, pipeline: Record<string, unknown>[]) => {
 				try {
 					const collection = getCollection(config)
-					if (!command || typeof command !== 'object') {
-						throw new EquippedError('MongoDB raw requires a command object', {
-							adapter: 'mongodb',
-							operation: 'raw',
-							collection: config.col,
-						})
-					}
-					const result = await collection.aggregate(command as any[], { session: sessionStore.getStore() }).toArray()
-					return result as T
+					const result = await collection.aggregate(pipeline, { session: sessionStore.getStore() }).toArray()
+					return result
 				} catch (error) {
 					if (error instanceof EquippedError) throw error
 					throw new EquippedError(
@@ -381,6 +374,30 @@ if (import.meta.vitest) {
 			expectTypeOf(_all.delete).toBeFunction()
 			expectTypeOf(_ref.raw).toBeFunction()
 			expectTypeOf(repo.session).toBeFunction()
+		})
+
+		test('type-level: raw arg-tuple infers (pipeline: Record<string, unknown>[]) from Mongo adapter', async () => {
+			const { Repo } = await import('../../repo/repo')
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { adapter } = createMongoAdapter({ host: 'localhost', port: 27017 })
+			const repo = Repo.from(adapter).resolve(() => ({ db: 'test', col: 'test' })).build()
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const _ref = repo.on(_TestSchema)
+
+			expectTypeOf(_ref.raw).parameters.toEqualTypeOf<[pipeline: Record<string, unknown>[]]>()
+		})
+
+		test('type-level: per-call <T> override narrows Mongo raw return type', async () => {
+			const { Repo } = await import('../../repo/repo')
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { adapter } = createMongoAdapter({ host: 'localhost', port: 27017 })
+			const repo = Repo.from(adapter).resolve(() => ({ db: 'test', col: 'test' })).build()
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const _ref = repo.on(_TestSchema)
+
+			expectTypeOf(_ref.raw<{ total: number }[]>).returns.toEqualTypeOf<Promise<{ total: number }[]>>()
 		})
 
 		test('nested session returns callback without starting new transaction', () => {

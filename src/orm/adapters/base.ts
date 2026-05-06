@@ -17,7 +17,7 @@ export type OrmUse = {
 	) => Promise<Record<string, unknown>>
 	deleteOne: (filter: FilterGroup) => Promise<Record<string, unknown> | null>
 	deleteMany: (filter: FilterGroup) => Promise<Record<string, unknown>[]>
-	raw: <T = unknown>(command: unknown, params?: unknown[]) => Promise<T>
+	raw: (...args: any[]) => Promise<any>
 }
 
 export type OrmAdapterLike<Config extends object = object> = {

@@ -28,7 +28,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	}
 
 	on<S extends AnySchema>(schema: S): SchemaRefSurface<S, A> {
-		return new SchemaRef<S, A>(new SchemaContext(schema, (target) => this.#getUse(target))) as SchemaRefSurface<S, A>
+		return new SchemaRef<S, A>(new SchemaContext(schema, (target) => this.#getUse(target))) as unknown as SchemaRefSurface<S, A>
 	}
 
 	static from<NewA extends OrmAdapterLike<any>>(adapter: NewA): RepoBuilder<NewA> {
@@ -360,14 +360,63 @@ if (import.meta.vitest) {
 			expect(updated?.posts).toHaveLength(1)
 		})
 
-		test('raw operations throw EquippedError on in-memory adapter', async () => {
-			const { EquippedError } = await import('../../errors')
+		test('in-memory adapter without crud.raw collapses schemaRef.raw to never', () => {
 			const repo = makeRepo()
-			const error = await repo
-				.on(UserSchema)
-				.raw('SELECT * FROM users')
-				.catch((e) => e)
-			expect(error).toBeInstanceOf(EquippedError)
+			const ref = repo.on(UserSchema)
+			expectTypeOf(ref.raw).toBeNever()
+		})
+
+		test('raw forwards user args through adapter.use to crud.raw', async () => {
+			let capturedArgs: unknown[] = []
+			const rawAdapter = Adapter.from<{ table: string }>()
+				.supportedFieldTypes('string', 'number')
+				.queryableOps('eq')
+				.queryable({ findMany: async () => [] })
+				.crud({
+					findByPk: async () => null,
+					raw: async (_s, _c, command: string, params: unknown[]) => {
+						capturedArgs = [_s, _c, command, params]
+						return { rows: [{ id: '1' }] }
+					},
+				})
+				.build()
+			const repo = Repo.from(rawAdapter)
+				.resolve((s) => ({ table: s.name }))
+				.build()
+			const TestSchema = Schema.from('raw_test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+
+			const result = await repo.on(TestSchema).raw('SELECT * FROM raw_test WHERE id = $1', ['abc'])
+			expect(capturedArgs[0]).toBe(TestSchema)
+			expect(capturedArgs[1]).toEqual({ table: 'raw_test' })
+			expect(capturedArgs[2]).toBe('SELECT * FROM raw_test WHERE id = $1')
+			expect(capturedArgs[3]).toEqual(['abc'])
+			expect(result).toEqual({ rows: [{ id: '1' }] })
+		})
+
+		test('raw with single-arg adapter (mongo-style) forwards correctly', async () => {
+			let capturedPipeline: unknown = undefined
+			const mongoStyleAdapter = Adapter.from<{ col: string }>()
+				.supportedFieldTypes('string')
+				.crud({
+					findByPk: async () => null,
+					raw: async (_s, _c, pipeline: Record<string, unknown>[]) => {
+						capturedPipeline = pipeline
+						return [{ total: 42 }]
+					},
+				})
+				.build()
+			const repo = Repo.from(mongoStyleAdapter)
+				.resolve(() => ({ col: 'test' }))
+				.build()
+			const TestSchema = Schema.from('mongo_test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+
+			const result = await repo.on(TestSchema).raw([{ $count: 'total' }])
+			expect(capturedPipeline).toEqual([{ $count: 'total' }])
+			expect(result).toEqual([{ total: 42 }])
 		})
 
 		test('computed fields are derived and shaped correctly when selected', async () => {
@@ -875,9 +924,7 @@ if (import.meta.vitest) {
 				.supportedFieldTypes('string')
 				.crud({
 					findByPk: async () => null,
-					raw: async () => {
-						throw new Error('not implemented')
-					},
+					raw: async (_schema, _config, _command: string) => ({ rows: [] }),
 				})
 				.build()
 			const _repo = Repo.from(_adapter)
@@ -888,6 +935,66 @@ if (import.meta.vitest) {
 				.build()
 			const _ref = _repo.on(_TestSchema)
 			expectTypeOf(_ref.raw).toBeFunction()
+		})
+
+		test('adapter raw signature drives arg-tuple inference on schemaRef.raw', () => {
+			const _adapter = Adapter.from<{ table: string }>()
+				.supportedFieldTypes('string')
+				.crud({
+					findByPk: async () => null,
+					raw: async (_schema: import('../schema').AnySchema, _config: { table: string }, _sql: string, _params: number[]) => [42],
+				})
+				.build()
+			const _repo = Repo.from(_adapter)
+				.resolve(() => ({ table: 'test' }))
+				.build()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _ref = _repo.on(_TestSchema)
+			expectTypeOf(_ref.raw).toBeFunction()
+			expectTypeOf(_ref.raw).parameters.toEqualTypeOf<[sql: string, params: number[]]>()
+		})
+
+		test('per-call <T> override narrows raw return type', () => {
+			const _adapter = Adapter.from<{ table: string }>()
+				.supportedFieldTypes('string')
+				.crud({
+					findByPk: async () => null,
+					raw: async (_schema: import('../schema').AnySchema, _config: { table: string }, _sql: string) => ({ rows: [] as unknown[] }),
+				})
+				.build()
+			const _repo = Repo.from(_adapter)
+				.resolve(() => ({ table: 'test' }))
+				.build()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _ref = _repo.on(_TestSchema)
+			const _defaultResult = _ref.raw('SELECT 1')
+			expectTypeOf(_defaultResult).toEqualTypeOf<Promise<{ rows: unknown[] }>>()
+			const _narrowed = _ref.raw<string[]>('SELECT 1')
+			expectTypeOf(_narrowed).toEqualTypeOf<Promise<string[]>>()
+		})
+
+		test('adapter with zero-arg raw infers empty arg tuple', () => {
+			const _adapter = Adapter.from<unknown>()
+				.supportedFieldTypes('string')
+				.crud({
+					findByPk: async () => null,
+					raw: async (_schema: import('../schema').AnySchema, _config: unknown) => 'pong',
+				})
+				.build()
+			const _repo = Repo.from(_adapter)
+				.resolve(() => ({}))
+				.build()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const _ref = _repo.on(_TestSchema)
+			expectTypeOf(_ref.raw).parameters.toEqualTypeOf<[]>()
+			const _result = _ref.raw()
+			expectTypeOf(_result).toEqualTypeOf<Promise<string>>()
 		})
 
 		test('gating survives through select() chains', () => {

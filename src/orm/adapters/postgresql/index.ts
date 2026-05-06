@@ -134,17 +134,10 @@ export function createPostgresAdapter(connectionConfig: PostgresqlConnectionConf
 					)
 				}
 			},
-			raw: async <T = unknown>(_schema: AnySchema, config: PostgresqlRepoConfig, command: unknown, params: unknown[] = []) => {
+			raw: async (_schema: AnySchema, config: PostgresqlRepoConfig, command: string, params: unknown[] = []) => {
 				try {
-					if (typeof command !== 'string') {
-						throw new EquippedError('PostgreSQL raw requires a SQL string command', {
-							adapter: 'postgresql',
-							operation: 'raw',
-							table: config.table,
-						})
-					}
 					const result = await getClient().query(command, params)
-					return result as T
+					return result
 				} catch (error) {
 					if (error instanceof EquippedError) throw error
 					throw new EquippedError(
@@ -401,6 +394,42 @@ if (import.meta.vitest) {
 			expectTypeOf(_all.delete).toBeFunction()
 			expectTypeOf(_ref.raw).toBeFunction()
 			expectTypeOf(repo.session).toBeFunction()
+		})
+
+		test('type-level: raw arg-tuple infers (command: string, params?: unknown[]) from PG adapter', async () => {
+			const { Repo } = await import('../../repo/repo')
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { adapter } = createPostgresAdapter({
+				host: 'localhost',
+				port: 5432,
+				username: 'test',
+				password: 'test',
+				database: 'testdb',
+			})
+			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const _ref = repo.on(_TestSchema)
+
+			expectTypeOf(_ref.raw).parameters.toEqualTypeOf<[command: string, params?: unknown[]]>()
+		})
+
+		test('type-level: per-call <T> override narrows PG raw return type', async () => {
+			const { Repo } = await import('../../repo/repo')
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { adapter } = createPostgresAdapter({
+				host: 'localhost',
+				port: 5432,
+				username: 'test',
+				password: 'test',
+				database: 'testdb',
+			})
+			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const _ref = repo.on(_TestSchema)
+
+			expectTypeOf(_ref.raw<{ id: string }[]>).returns.toEqualTypeOf<Promise<{ id: string }[]>>()
 		})
 
 		test('nested session returns callback without starting new transaction', () => {
