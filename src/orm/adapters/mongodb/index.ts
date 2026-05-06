@@ -400,6 +400,26 @@ if (import.meta.vitest) {
 			expectTypeOf(_ref.raw<{ total: number }[]>).returns.toEqualTypeOf<Promise<{ total: number }[]>>()
 		})
 
+		test('raw forwards pipeline to collection.aggregate at runtime', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const schema = Schema.from('mongo_raw').pk('id', v.string(), () => 'x').build()
+			const { adapter, client } = createMongoAdapter({ host: 'localhost', port: 27017 })
+			let capturedPipeline: unknown
+			const mockResults = [{ total: 42 }]
+			;(client as any).db = () => ({
+				collection: () => ({
+					aggregate: (pipeline: unknown, _opts: unknown) => {
+						capturedPipeline = pipeline
+						return { toArray: async () => mockResults }
+					},
+				}),
+			})
+			const result = await adapter.use(schema, { db: 'testdb', col: 'things' }).raw([{ $count: 'total' }])
+			expect(capturedPipeline).toEqual([{ $count: 'total' }])
+			expect(result).toEqual(mockResults)
+		})
+
 		test('nested session returns callback without starting new transaction', () => {
 			const { adapter } = createMongoAdapter({ host: 'localhost', port: 27017 })
 			expect(adapter.transactional!.session).toBeDefined()

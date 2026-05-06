@@ -432,6 +432,51 @@ if (import.meta.vitest) {
 			expectTypeOf(_ref.raw<{ id: string }[]>).returns.toEqualTypeOf<Promise<{ id: string }[]>>()
 		})
 
+		test('raw forwards (command, params) to pool.query at runtime', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const schema = Schema.from('pg_raw').pk('id', v.string(), () => 'x').build()
+			const { adapter, pool } = createPostgresAdapter({
+				host: 'localhost',
+				port: 5432,
+				username: 'test',
+				password: 'test',
+				database: 'testdb',
+			})
+			let capturedCommand: unknown
+			let capturedParams: unknown
+			const mockResult = { rows: [{ id: '1' }], rowCount: 1 }
+			;(pool as any).query = async (cmd: unknown, params: unknown) => {
+				capturedCommand = cmd
+				capturedParams = params
+				return mockResult
+			}
+			const result = await adapter.use(schema, { table: 'users' }).raw('SELECT * FROM users WHERE id = $1', ['abc'])
+			expect(capturedCommand).toBe('SELECT * FROM users WHERE id = $1')
+			expect(capturedParams).toEqual(['abc'])
+			expect(result).toBe(mockResult)
+		})
+
+		test('raw defaults params to [] when omitted', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const schema = Schema.from('pg_raw2').pk('id', v.string(), () => 'x').build()
+			const { adapter, pool } = createPostgresAdapter({
+				host: 'localhost',
+				port: 5432,
+				username: 'test',
+				password: 'test',
+				database: 'testdb',
+			})
+			let capturedParams: unknown
+			;(pool as any).query = async (_cmd: unknown, params: unknown) => {
+				capturedParams = params
+				return { rows: [] }
+			}
+			await adapter.use(schema, { table: 'users' }).raw('SELECT 1')
+			expect(capturedParams).toEqual([])
+		})
+
 		test('nested session returns callback without starting new transaction', () => {
 			const { adapter } = createPostgresAdapter({
 				host: 'localhost',
