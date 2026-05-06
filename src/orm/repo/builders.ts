@@ -246,8 +246,20 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 		this.#offset = queryState?.offset
 	}
 
-	#queryState() {
-		return { orderBy: [...this.#orderBy], limit: this.#limit, offset: this.#offset }
+	#withQuery(queryOverride: Partial<{ orderBy: OrderBy[]; limit: number; offset: number }>) {
+		return new AllBuilder<S, A, Sel, P>(
+			this._context,
+			this._readState({
+				where: this._where.clone(),
+				select: this._select as readonly Sel[] | undefined,
+				preloads: this._preloads,
+			}),
+			{
+				orderBy: queryOverride.orderBy ?? [...this.#orderBy],
+				limit: queryOverride.limit ?? this.#limit,
+				offset: queryOverride.offset ?? this.#offset,
+			},
+		) as this
 	}
 
 	protected _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(next: ReadState<NewSel, NewP>) {
@@ -258,44 +270,20 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 				select: next.select,
 				preloads: next.preloads,
 			}),
-			this.#queryState(),
+			{ orderBy: [...this.#orderBy], limit: this.#limit, offset: this.#offset },
 		) as any
 	}
 
 	orderBy(field: string | AnyField, direction: 'asc' | 'desc' = 'asc') {
-		return new AllBuilder<S, A, Sel, P>(
-			this._context,
-			this._readState({
-				where: this._where.clone(),
-				select: this._select as readonly Sel[] | undefined,
-				preloads: this._preloads,
-			}),
-			{ orderBy: [...this.#orderBy, new OrderBy(field, direction)], limit: this.#limit, offset: this.#offset },
-		) as this
+		return this.#withQuery({ orderBy: [...this.#orderBy, new OrderBy(field, direction)] })
 	}
 
 	limit(limit: number) {
-		return new AllBuilder<S, A, Sel, P>(
-			this._context,
-			this._readState({
-				where: this._where.clone(),
-				select: this._select as readonly Sel[] | undefined,
-				preloads: this._preloads,
-			}),
-			{ orderBy: [...this.#orderBy], limit, offset: this.#offset },
-		) as this
+		return this.#withQuery({ limit })
 	}
 
 	offset(offset: number) {
-		return new AllBuilder<S, A, Sel, P>(
-			this._context,
-			this._readState({
-				where: this._where.clone(),
-				select: this._select as readonly Sel[] | undefined,
-				preloads: this._preloads,
-			}),
-			{ orderBy: [...this.#orderBy], limit: this.#limit, offset },
-		) as this
+		return this.#withQuery({ offset })
 	}
 
 	create(data: SchemaCreateInput<S>[]) {
