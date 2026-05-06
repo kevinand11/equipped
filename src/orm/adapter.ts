@@ -1,4 +1,4 @@
-import type { PipeOutput } from 'valleyed'
+import type { Pipe, PipeInput, PipeOutput } from 'valleyed'
 
 import type { OrmUse } from './adapters/base'
 import type { SchemaField } from './fields'
@@ -223,9 +223,11 @@ export class Adapter {
 
 export type InferAdapterConfig<A> = A extends { __config: infer C }
 	? C
-	: A extends { use: (schema: any, config: infer C) => any }
-		? C
-		: never
+	: A extends { schemaConfigPipe: infer P extends Pipe<any, any> }
+		? PipeInput<P>
+		: A extends { use: (schema: any, config: infer C) => any }
+			? C
+			: never
 
 export type InferAdapterQueryableOps<A> = A extends { queryableOps: infer Ops extends readonly FilterOpName[] }
 	? Ops
@@ -233,11 +235,15 @@ export type InferAdapterQueryableOps<A> = A extends { queryableOps: infer Ops ex
 
 export type InferRawArgs<A> = A extends { crud: { raw: (schema: any, config: any, ...args: infer Args) => any } }
 	? Args
-	: never
+	: A extends { raw: (schema: any, config: any, ...args: infer Args) => any }
+		? Args
+		: never
 
 export type InferRawReturn<A> = A extends { crud: { raw: (...args: any[]) => Promise<infer R> } }
 	? R
-	: unknown
+	: A extends { raw: (...args: any[]) => Promise<infer R> }
+		? R
+		: unknown
 
 type ToFieldTypeName<T> = T extends undefined
 	? never

@@ -1,5 +1,6 @@
 export * from './adapter'
 export * from './adapters/base'
+export { OrmAdapter } from './orm-adapter'
 export * from './fields'
 export * from './filter'
 export * from './query'

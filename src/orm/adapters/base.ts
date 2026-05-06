@@ -20,11 +20,11 @@ export type OrmUse = {
 	raw: (...args: any[]) => Promise<any>
 }
 
-export type OrmAdapterLike<Config extends object = object> = {
-	connect(): Promise<void>
-	disconnect(): Promise<void>
+export type OrmAdapterLike<Config = unknown> = {
 	use(schema: AnySchema, config: Config): OrmUse
-	session<T>(fn: () => Promise<T>): Promise<T>
+	connect?(): Promise<void>
+	disconnect?(): Promise<void>
+	session?<T>(fn: () => Promise<T>): Promise<T>
 }
 
-export type OrmAdapterConfig<Adapter extends OrmAdapterLike<any>> = Adapter extends OrmAdapterLike<infer Config> ? Config : never
+export type OrmAdapterConfig<A extends OrmAdapterLike<any>> = A extends OrmAdapterLike<infer Config> ? Config : never

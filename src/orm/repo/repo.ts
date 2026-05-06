@@ -1,23 +1,32 @@
+import type { Pipe } from 'valleyed'
+
 import type { InferAdapterConfig } from '../adapter'
 import { currentTransforms, run } from './als'
 import { SchemaContext, SchemaRef, type HasMethod, type SchemaRefSurface } from './builders'
 import type { OrmAdapterConfig, OrmAdapterLike } from '../adapters/base'
 import type { AnySchema } from '../schema'
+import { composeSchemaConfig } from '../schema-validations'
 
 export type { ConfigTransform } from './als'
 
 export class Repo<A extends OrmAdapterLike<any>> {
 	readonly #adapter: A
 	readonly #defaults: (schema: AnySchema) => InferAdapterConfig<A>
+	readonly #schemaConfigPipe: Pipe<any, any> | undefined
 
 	constructor({ adapter, resolve }: { adapter: A; resolve: (schema: AnySchema) => InferAdapterConfig<A> }) {
 		this.#adapter = adapter
 		this.#defaults = resolve
+		this.#schemaConfigPipe = (adapter as any).schemaConfigPipe
 	}
 
 	#getConfig(s: AnySchema): InferAdapterConfig<A> {
+		const transforms = [...currentTransforms<InferAdapterConfig<A>>()]
+		if (this.#schemaConfigPipe) {
+			return composeSchemaConfig(this.#defaults, transforms, s, this.#schemaConfigPipe) as InferAdapterConfig<A>
+		}
 		let config = this.#defaults(s)
-		for (const transform of currentTransforms<InferAdapterConfig<A>>()) {
+		for (const transform of transforms) {
 			config = transform(config, s)
 		}
 		return config
@@ -36,7 +45,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	}
 
 	async session<T>(fn: () => Promise<T>): Promise<T> {
-		return this.#adapter.session(fn)
+		return this.#adapter.session?.(fn) ?? fn()
 	}
 
 	resolve<T>(resolver: (config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>, fn: () => T): T {
@@ -1925,6 +1934,252 @@ if (import.meta.vitest) {
 			expect(seenConfigs).toHaveLength(2)
 			expect(seenConfigs[0]).toEqual({ table: 'async_test' })
 			expect(seenConfigs[1]).toEqual({ table: 'async_test' })
+		})
+	})
+
+	describe('class-based OrmAdapter with Repo', async () => {
+		const { OrmAdapter } = await import('../orm-adapter')
+		const { FilterGroup } = await import('../filter')
+		const { OrmValidationError } = await import('../schema-validations')
+
+		function makeClassAdapter() {
+			const stores = new Map<string, Map<string, Record<string, unknown>>>()
+			function getStore(name: string) {
+				if (!stores.has(name)) stores.set(name, new Map())
+				return stores.get(name)!
+			}
+
+			class TestClassAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string', 'number'] as const
+				readonly queryableOps = ['eq'] as const
+				readonly updateOps = ['set'] as const
+
+				async findMany(_schema: import('../schema').AnySchema, config: unknown, group: import('../filter').FilterGroup) {
+					const cfg = config as { table: string }
+					const store = getStore(cfg.table)
+					return [...store.values()].filter((doc) => {
+						for (const child of group.children) {
+							if (child instanceof (FilterGroup as any).constructor) continue
+							const f = child as any
+							if (f.op === 'eq' && doc[f.field] !== f.value) return false
+						}
+						return true
+					})
+				}
+
+				async createMany(s: import('../schema').AnySchema, config: unknown, data: Record<string, unknown>[]) {
+					const cfg = config as { table: string }
+					const store = getStore(cfg.table)
+					const pk = s.pkField.name
+					for (const d of data) store.set(String(d[pk]), { ...d })
+					return data.map((d) => ({ ...d }))
+				}
+
+				async updateMany(s: import('../schema').AnySchema, config: unknown, group: import('../filter').FilterGroup, data: Record<string, unknown>) {
+					const rows = await this.findMany(s, config, group)
+					const cfg = config as { table: string }
+					const store = getStore(cfg.table)
+					const pk = s.pkField.name
+					return rows.map((row) => {
+						const updated = { ...row, ...data }
+						store.set(String(updated[pk]), updated)
+						return { ...updated }
+					})
+				}
+
+				async deleteMany(s: import('../schema').AnySchema, config: unknown, group: import('../filter').FilterGroup) {
+					const rows = await this.findMany(s, config, group)
+					const cfg = config as { table: string }
+					const store = getStore(cfg.table)
+					const pk = s.pkField.name
+					for (const row of rows) store.delete(String(row[pk]))
+					return rows
+				}
+			}
+
+			vi.spyOn(Instance, 'on').mockImplementation(() => {})
+			const adapter = new (TestClassAdapter as any)() as InstanceType<typeof TestClassAdapter>
+			vi.restoreAllMocks()
+			return { adapter, stores }
+		}
+
+		const { Instance } = await import('../../instance')
+
+		const TestSchema = Schema.from('class_test')
+			.pk('id', v.string(), () => `ct-${Math.random().toString(36).slice(2, 8)}`)
+			.field('name', v.string())
+			.field('age', v.number())
+			.build()
+
+		test('Repo.from(classAdapter).resolve(...).build() creates a working repo', async () => {
+			const { adapter } = makeClassAdapter()
+			const repo = Repo.from(adapter)
+				.resolve((s) => ({ table: s.name }))
+				.build()
+
+			const created = await repo.on(TestSchema).one().create({ name: 'Alice', age: 30 })
+			expect(created.name).toBe('Alice')
+			expect(created.age).toBe(30)
+
+			const found = await repo.on(TestSchema).one().id(created.id).find()
+			expect(found).not.toBeNull()
+			expect(found!.name).toBe('Alice')
+		})
+
+		test('dispatch validator validates config against schemaConfigPipe', async () => {
+			const { adapter } = makeClassAdapter()
+			const repo = Repo.from(adapter)
+				.resolve(() => ({ table: 123 }) as any)
+				.build()
+
+			await expect(
+				repo.on(TestSchema).all().find(),
+			).rejects.toBeInstanceOf(OrmValidationError)
+		})
+
+		test('dispatch validator validates after transforms applied', async () => {
+			const { adapter } = makeClassAdapter()
+			const repo = Repo.from(adapter)
+				.resolve((s) => ({ table: s.name }))
+				.build()
+
+			await expect(
+				repo.resolve(
+					() => ({ table: 42 }) as any,
+					async () => repo.on(TestSchema).all().find(),
+				),
+			).rejects.toBeInstanceOf(OrmValidationError)
+		})
+
+		test('createMany + findMany round-trip works', async () => {
+			const { adapter } = makeClassAdapter()
+			const repo = Repo.from(adapter)
+				.resolve((s) => ({ table: s.name }))
+				.build()
+
+			const created = await repo.on(TestSchema).all().create([
+				{ name: 'Alice', age: 30 },
+				{ name: 'Bob', age: 25 },
+			])
+			expect(created).toHaveLength(2)
+
+			const all = await repo.on(TestSchema).all().find()
+			expect(all).toHaveLength(2)
+		})
+
+		test('update and delete work on class-based adapter', async () => {
+			const { adapter } = makeClassAdapter()
+			const repo = Repo.from(adapter)
+				.resolve((s) => ({ table: s.name }))
+				.build()
+
+			const user = await repo.on(TestSchema).one().create({ name: 'Alice', age: 30 })
+			const updated = await repo.on(TestSchema).one().id(user.id).update({ name: 'Alicia' })
+			expect(updated?.name).toBe('Alicia')
+
+			const deleted = await repo.on(TestSchema).one().id(user.id).delete()
+			expect(deleted?.id).toBe(user.id)
+
+			const found = await repo.on(TestSchema).one().id(user.id).find()
+			expect(found).toBeNull()
+		})
+	})
+
+	describe('type-level: class-based adapter surface narrowing', async () => {
+		const { OrmAdapter } = await import('../orm-adapter')
+
+		test('class-based adapter with findMany enables all().find()', () => {
+			class FindAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+			}
+
+			type A = FindAdapter
+			type S = import('../schema').AnySchema
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<All['find']>().toBeFunction()
+		})
+
+		test('class-based adapter without updateMany narrows out update()', () => {
+			class ReadOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+			}
+
+			type A = ReadOnlyAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<One['update']>().toBeNever()
+			expectTypeOf<All['update']>().toBeNever()
+		})
+
+		test('class-based adapter without deleteMany narrows out delete()', () => {
+			class NoDeletAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() { return [] }
+			}
+
+			type A = NoDeletAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<One['delete']>().toBeNever()
+			expectTypeOf<All['delete']>().toBeNever()
+		})
+
+		test('class-based adapter without session narrows out repo.session', () => {
+			class NoSessionAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() { return [] }
+			}
+
+			type A = NoSessionAdapter
+			const _repo = {} as import('./repo').RepoSurface<A>
+			expectTypeOf(_repo.session).toBeNever()
+		})
+
+		test('class-based adapter with session enables repo.session', () => {
+			class WithSessionAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async session<T>(fn: () => Promise<T>): Promise<T> { return fn() }
+			}
+
+			type A = WithSessionAdapter
+			const _repo = {} as import('./repo').RepoSurface<A>
+			expectTypeOf(_repo.session).toBeFunction()
+		})
+
+		test('class-based adapter with raw enables schemaRef.raw', () => {
+			class WithRawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async raw(_s: any, _c: any, _sql: string, _params: unknown[]) { return { rows: [] } }
+			}
+
+			type A = WithRawAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['raw']>().toBeFunction()
+		})
+
+		test('class-based adapter without raw narrows out schemaRef.raw', () => {
+			class NoRawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() { return [] }
+			}
+
+			type A = NoRawAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['raw']>().toBeNever()
 		})
 	})
 }
