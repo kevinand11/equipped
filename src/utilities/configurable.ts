@@ -2,10 +2,10 @@ import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
 type CtorParams<T> = ConstructorParameters<T & (abstract new (...args: any[]) => any)>
 
-export function configurable<P extends Pipe<any, any>, Base extends new (...args: any[]) => any>(pipeFn: () => P, base: Base) {
+export function configurable<P extends Pipe<any, any>, Base extends abstract new (...args: any[]) => any>(pipeFn: () => P, base: Base) {
 	let pipe: P | undefined
 
-	abstract class Configurable extends (base as new (...args: any[]) => any) {
+	abstract class Configurable extends (base as unknown as new (...args: any[]) => any) {
 		declare static readonly Config: PipeOutput<P>
 
 		protected readonly config: PipeOutput<P>
