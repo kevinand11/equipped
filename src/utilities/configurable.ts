@@ -40,7 +40,6 @@ export function configurable<P extends Pipe<any, any>, Base extends new (...args
 	}
 }
 
-
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf } = import.meta.vitest
 	const { v } = await import('valleyed')

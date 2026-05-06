@@ -11,8 +11,8 @@ import { pinoHttp } from 'pino-http'
 
 import { Instance } from '../../../instance'
 import { configurable, getMediaDuration } from '../../../utilities'
-import { Request } from '../../requests'
-import { StatusCodes, type IncomingFile } from '../../types'
+import { Request, Response } from '../../requests'
+import { StatusCodes, type IncomingFile, type MethodsEnum } from '../../types'
 import { Server, serverConfigPipe } from '../base'
 
 export class ExpressServer extends configurable(serverConfigPipe, Server as unknown as new () => Server) {
@@ -98,10 +98,10 @@ export class ExpressServer extends configurable(serverConfigPipe, Server as unkn
 		})
 	}
 
-	protected async handleResponse(res: any, response: any) {
+	protected async handleResponse(res: any, response: Response<any>) {
 		if (!response.piped) {
 			Object.entries(response.headers).forEach(([key, value]) => res.header(key, value as string))
-			Object.entries(response.cookies).forEach(([key, { value, ...opts }]: [string, any]) => res.cookie(key, value, opts))
+			Object.entries(response.cookies).forEach(([key, { value, ...opts }]) => res.cookie(key, value, opts))
 			const type = response.body === null || response.body === undefined ? 'json' : 'send'
 			res.status(response.status)[type](response.body).end()
 		} else {
@@ -109,7 +109,7 @@ export class ExpressServer extends configurable(serverConfigPipe, Server as unkn
 		}
 	}
 
-	protected registerRoute(method: any, path: string, cb: (req: any, res: any) => Promise<void>) {
+	protected registerRoute(method: MethodsEnum, path: string, cb: (req: any, res: any) => Promise<void>) {
 		this.#app[method]?.(path, async (req: any, res: any) => cb(req, res))
 	}
 

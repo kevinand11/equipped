@@ -12,8 +12,8 @@ import qs from 'qs'
 import { ValidationError } from '../../../errors'
 import { Instance } from '../../../instance'
 import { configurable, getMediaDuration } from '../../../utilities'
-import { Request } from '../../requests'
-import { StatusCodes, type IncomingFile } from '../../types'
+import { Request, Response } from '../../requests'
+import { StatusCodes, type IncomingFile, type MethodsEnum } from '../../types'
 import { Server, serverConfigPipe } from '../base'
 
 export class FastifyServer extends configurable(serverConfigPipe, Server as unknown as new () => Server) {
@@ -100,12 +100,12 @@ export class FastifyServer extends configurable(serverConfigPipe, Server as unkn
 		})
 	}
 
-	protected async handleResponse(res: any, response: any) {
-		for (const [key, { value, ...opts }] of Object.entries(response.cookies) as [string, any][]) res = res.setCookie(key, value, opts)
+	protected async handleResponse(res: any, response: Response<any>) {
+		for (const [key, { value, ...opts }] of Object.entries(response.cookies)) res = res.setCookie(key, value, opts)
 		await res.status(response.status).headers(response.headers).send(response.body)
 	}
 
-	protected registerRoute(method: any, path: string, cb: (req: any, res: any) => Promise<void>) {
+	protected registerRoute(method: MethodsEnum, path: string, cb: (req: any, res: any) => Promise<void>) {
 		this.#app.register(async (inst) => {
 			inst.route({ url: path, method, handler: cb })
 		})
