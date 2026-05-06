@@ -373,8 +373,10 @@ if (import.meta.vitest) {
 			>()
 		})
 
-		test('type-level: Repo.from with postgres adapter enables all methods', async () => {
+		test('type-level: Repo.from with postgres adapter enables all builder methods', async () => {
 			const { Repo } = await import('../../repo/repo')
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
 			const { adapter } = createPostgresAdapter({
 				host: 'localhost',
 				port: 5432,
@@ -383,21 +385,22 @@ if (import.meta.vitest) {
 				database: 'testdb',
 			})
 			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
 
-			expectTypeOf(repo.findByPk).toBeFunction()
-			expectTypeOf(repo.findMany).toBeFunction()
-			expectTypeOf(repo.findOne).toBeFunction()
-			expectTypeOf(repo.createOne).toBeFunction()
-			expectTypeOf(repo.createMany).toBeFunction()
-			expectTypeOf(repo.updateByPk).toBeFunction()
-			expectTypeOf(repo.updateOne).toBeFunction()
-			expectTypeOf(repo.updateMany).toBeFunction()
-			expectTypeOf(repo.deleteByPk).toBeFunction()
-			expectTypeOf(repo.deleteOne).toBeFunction()
-			expectTypeOf(repo.deleteMany).toBeFunction()
-			expectTypeOf(repo.upsertOne).toBeFunction()
+			const _one = repo.on(_TestSchema).one()
+			const _all = repo.on(_TestSchema).all()
+			const _ref = repo.on(_TestSchema)
+			expectTypeOf(_one.create).toBeFunction()
+			expectTypeOf(_one.find).toBeFunction()
+			expectTypeOf(_one.update).toBeFunction()
+			expectTypeOf(_one.delete).toBeFunction()
+			expectTypeOf(_one.upsert).toBeFunction()
+			expectTypeOf(_all.create).toBeFunction()
+			expectTypeOf(_all.find).toBeFunction()
+			expectTypeOf(_all.update).toBeFunction()
+			expectTypeOf(_all.delete).toBeFunction()
+			expectTypeOf(_ref.raw).toBeFunction()
 			expectTypeOf(repo.session).toBeFunction()
-			expectTypeOf(repo.raw).toBeFunction()
 		})
 
 		test('nested session returns callback without starting new transaction', () => {

@@ -346,74 +346,10 @@ const repo = Repo.from(adapter)
 
 -   **`Repo.from(adapter)`** — starts the builder, binding the adapter.
 -   **`.resolve(fn)`** — maps schema → adapter config. Called once.
--   **`.context(source)`** — optional. Wires a `ContextSource` for per-query config transforms (see [Context & Multi-tenancy](#context--multi-tenancy)).
 
 ### Repository API
 
-The Repo exposes two API surfaces: a **schema-per-call** API for direct method invocation and a **fluent builder** API via `repo.on(Schema)`.
-
-#### Schema-per-call API
-
-**CRUD by primary key** (gated by `crud` bag):
-
-```typescript
-const user = await repo.findByPk(UserSchema, 'u1')
-const created = await repo.createOne(UserSchema, { email: 'a@b.com', name: 'Alice' })
-const batch = await repo.createMany(UserSchema, [
-    { email: 'a@b.com', name: 'Alice' },
-    { email: 'b@c.com', name: 'Bob' },
-])
-const updated = await repo.updateByPk(UserSchema, 'u1', set<typeof UserSchema>({ name: 'New' }))
-const deleted = await repo.deleteByPk(UserSchema, 'u1')
-const result = await repo.raw(UserSchema, 'SELECT * FROM users WHERE id = $1', ['u1'])
-```
-
-**Filter-based methods** (gated by `queryable` bag):
-
-```typescript
-const users = await repo.findMany(UserSchema, (q) => q.eq('name', 'Alice'))
-const user = await repo.findOne(UserSchema, (q) => q.eq('email', 'a@b.com'))
-const updated = await repo.updateOne(
-    UserSchema,
-    (q) => q.eq('name', 'Alice'),
-    { name: 'Alicia' },
-)
-const allUpdated = await repo.updateMany(
-    UserSchema,
-    (q) => q.eq('name', 'Same'),
-    { name: 'Updated' },
-)
-const deleted = await repo.deleteOne(UserSchema, (q) => q.eq('name', 'Alice'))
-const allDeleted = await repo.deleteMany(UserSchema, (q) => q.eq('name', 'ToDelete'))
-```
-
-**Upsert** (gated by `queryable.upsertOne`):
-
-```typescript
-const result = await repo.upsertOne(
-    UserSchema,
-    (q) => q.eq('email', 'a@b.com'),
-    { email: 'a@b.com', name: 'Alice', age: 30 },        // full create payload
-    set<typeof UserSchema>({ name: 'Alice Updated' }),      // ops for update path
-)
-```
-
-Dual-path semantics: if no row matches, the create payload is persisted and ops are applied on top. If a row exists, the create payload is ignored and only ops + auto-bump run. The result is always the resulting document.
-
-**Transactions** (gated by `transactional.session`):
-
-```typescript
-const result = await repo.session(async () => {
-    const user = await repo.createOne(UserSchema, { email: 'a@b.com', name: 'Alice' })
-    await repo.createOne(PostSchema, { title: 'Hello', userId: user.id })
-    return user.id
-})
-// Throw inside the callback → automatic rollback
-```
-
-#### Fluent Builder API
-
-`repo.on(Schema)` returns a builder that branches into `.one()` (single document) or `.all()` (collection).
+All CRUD goes through `repo.on(Schema)`, which returns a `SchemaRef` that branches into `.one()` (single document) or `.all()` (collection). The Repo's only consumer-facing methods are `on(schema)`, `resolve(transform, fn)`, and `session(fn)`.
 
 ```typescript
 // Create
@@ -467,28 +403,34 @@ const raw = await repo.on(UserSchema).raw('SELECT * FROM users')
 
 Builder snapshots are immutable — branching from a base builder does not mutate the original.
 
+**Transactions** (gated by `transactional.session`):
+
+```typescript
+const result = await repo.session(async () => {
+    const user = await repo.on(UserSchema).one().create({ email: 'a@b.com', name: 'Alice' })
+    await repo.on(PostSchema).one().create({ title: 'Hello', userId: user.id })
+    return user.id
+})
+// Throw inside the callback → automatic rollback
+```
+
 #### Method Gating
 
-Every Repo method is gated by the adapter's capability declarations. Methods whose bag or sub-method isn't declared collapse to `never` at the type level:
+Builder methods are gated by the adapter's capability declarations. Methods whose bag or sub-method isn't declared collapse to `never` at the type level:
 
-| Repo method | Required adapter capability |
+| Builder method | Required adapter capability |
 |---|---|
-| `findByPk` | `crud.findByPk` |
-| `createOne` / `createMany` | `crud.createMany` |
-| `updateByPk` | `crud.updateByPk` |
-| `deleteByPk` | `crud.deleteByPk` |
-| `raw` | `crud.raw` |
-| `findOne` / `findMany` | `queryable.findMany` |
-| `updateOne` / `updateMany` | `queryable.updateMany` |
-| `deleteOne` / `deleteMany` | `queryable.deleteMany` |
-| `upsertOne` | `queryable.upsertOne` |
-| `session` | `transactional.session` |
+| `schemaRef.raw()` | `crud.raw` |
+| `one().update()` / `all().update()` | `queryable.updateMany` |
+| `one().delete()` / `all().delete()` | `queryable.deleteMany` |
+| `one().upsert()` | `queryable.upsertOne` |
+| `repo.session()` | `transactional.session` |
 
 A schema with a field type not in `supportedFieldTypes` resolves to `never` in the schema argument position — the call won't compile.
 
 ### Filters (Query API)
 
-Filter-based Repo methods accept a factory `(q) => q.op(field, value)` that builds a `FilterGroup`. Every method on `FilterGroup` maps to one of the 13 canonical filter ops:
+The `.where()` builder step accepts a factory `(q) => q.op(field, value)` that builds a `FilterGroup`. Every method on `FilterGroup` maps to one of the 13 canonical filter ops:
 
 | Op | Signature | Description |
 |---|---|---|
@@ -528,7 +470,7 @@ Filter ops are gated per-adapter: the `FilterGroup` passed to a Repo method only
 
 ### Update Operations
 
-The `updateByPk` method and `upsertOne` accept typed update ops. Nine canonical op helpers are exported from `equipped/orm`:
+The `.update()` and `.upsert()` builder methods accept typed update data. Atomic update op helpers are exported from `equipped/orm`:
 
 | Op | Helper | Target |
 |---|---|---|
@@ -543,18 +485,15 @@ The `updateByPk` method and `upsertOne` accept typed update ops. Nine canonical 
 | `patch` | `patch<Schema>(field, value)` | Object fields |
 
 ```typescript
-import { set, inc, push } from 'equipped/orm'
+import { IncOp } from 'equipped/orm'
 
-await repo.updateByPk(
-    UserSchema, 'u1',
-    set<typeof UserSchema>({ name: 'Alice' }),
-    inc<typeof UserSchema>(UserSchema.fields.age, 1),
-    push<typeof UserSchema>(UserSchema.fields.tags, 'premium'),
-)
+await repo.on(UserSchema).one().id('u1').update({
+    name: 'Alice',
+    age: new IncOp('age', 1),
+})
 ```
 
--   `updateByPk` requires at least one op (enforced at the type level).
--   Conflicting ops on the same field (e.g. `set({ views: 0 })` + `inc(views, 1)`) throw `OrmValidationError` with `kind: 'conflicting-ops'`.
+-   Conflicting ops on the same field (e.g. setting and incrementing `views`) throw `OrmValidationError` with `kind: 'conflicting-ops'`.
 -   Only `set` values are pipe-validated; atomic op operands are not.
 -   Op availability is gated by the adapter's `updateOps` declaration — undeclared ops resolve to `never`.
 

@@ -21,19 +21,36 @@ import { resolvePreloads } from './internals/preloads'
 import type { SelectedWithPreloads } from './internals/types'
 
 type SchemaPrimaryKeyValue<S extends AnySchema> = SchemaOutput<S>[S['pkField']['name'] & keyof SchemaOutput<S>]
-type UpsertInput<S extends AnySchema> = { create: SchemaCreateInput<S> } | { create: SchemaCreateInput<S>; update: SchemaUpdateInput<S> }
+export type UpsertInput<S extends AnySchema> = { create: SchemaCreateInput<S> } | { create: SchemaCreateInput<S>; update: SchemaUpdateInput<S> }
 type ReadState<Sel extends string, P extends readonly AnyPreloadDef[] = readonly AnyPreloadDef[]> = {
 	where?: FilterGroup
 	select?: readonly Sel[]
 	preloads?: P
 }
 
-type ReadBuilderFor<TBuilder, S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]> = TBuilder extends {
+export type HasMethod<A, Bag extends string, Method extends string> = A extends Record<Bag, Record<Method, (...args: any) => any>> ? true : false
+
+export type OneBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> =
+	OneBuilder<S, A, Sel, P> &
+	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { update: never }) &
+	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { delete: never }) &
+	(HasMethod<A, 'queryable', 'upsertOne'> extends true ? {} : { upsert: never })
+
+export type AllBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> =
+	AllBuilder<S, A, Sel, P> &
+	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { update: never }) &
+	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { delete: never })
+
+export type SchemaRefSurface<S extends AnySchema, A = unknown> =
+	SchemaRef<S, A> &
+	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never })
+
+type ReadBuilderFor<TBuilder, S extends AnySchema, A, Sel extends string, P extends readonly AnyPreloadDef[]> = TBuilder extends {
 	_builderKind: 'one'
 }
-	? OneBuilder<S, Sel, P>
+	? OneBuilderSurface<S, A, Sel, P>
 	: TBuilder extends { _builderKind: 'all' }
-		? AllBuilder<S, Sel, P>
+		? AllBuilderSurface<S, A, Sel, P>
 		: never
 
 export class SchemaContext<S extends AnySchema> {
@@ -68,7 +85,7 @@ export class SchemaContext<S extends AnySchema> {
 	}
 }
 
-abstract class ReadSelectState<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]> {
+abstract class ReadSelectState<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> {
 	protected readonly _context: SchemaContext<S>
 	protected _where: FilterGroup
 	protected _select: readonly Sel[] | undefined
@@ -91,11 +108,11 @@ abstract class ReadSelectState<S extends AnySchema, Sel extends string, P extend
 		}) as unknown as this
 	}
 
-	select<NewSel extends keyof SchemaOutput<S> & string>(fields: readonly NewSel[]): ReadBuilderFor<this, S, NewSel, P> {
+	select<NewSel extends keyof SchemaOutput<S> & string>(fields: readonly NewSel[]): ReadBuilderFor<this, S, A, NewSel, P> {
 		return this._clone<NewSel, P>({ select: fields })
 	}
 
-	preload<NewP extends readonly AnyPreloadDef[]>(defs: NewP): ReadBuilderFor<this, S, Sel, NewP> {
+	preload<NewP extends readonly AnyPreloadDef[]>(defs: NewP): ReadBuilderFor<this, S, A, Sel, NewP> {
 		return this._clone<Sel, NewP>({ preloads: defs })
 	}
 
@@ -111,22 +128,22 @@ abstract class ReadSelectState<S extends AnySchema, Sel extends string, P extend
 
 	protected abstract _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(
 		_next: ReadState<NewSel, NewP>,
-	): ReadBuilderFor<this, S, NewSel, NewP>
+	): ReadBuilderFor<this, S, A, NewSel, NewP>
 }
 
-export class SchemaRef<S extends AnySchema> {
+export class SchemaRef<S extends AnySchema, A = unknown> {
 	readonly #context: SchemaContext<S>
 
 	constructor(context: SchemaContext<S>) {
 		this.#context = context
 	}
 
-	one() {
-		return new OneBuilder<S, never, []>(this.#context)
+	one(): OneBuilderSurface<S, A, never, []> {
+		return new OneBuilder<S, A, never, []>(this.#context) as OneBuilderSurface<S, A, never, []>
 	}
 
-	all() {
-		return new AllBuilder<S, never, []>(this.#context)
+	all(): AllBuilderSurface<S, A, never, []> {
+		return new AllBuilder<S, A, never, []>(this.#context) as AllBuilderSurface<S, A, never, []>
 	}
 
 	raw<T = unknown>(command: unknown, params?: unknown[]) {
@@ -134,7 +151,7 @@ export class SchemaRef<S extends AnySchema> {
 	}
 }
 
-export class OneBuilder<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]> extends ReadSelectState<S, Sel, P> {
+export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> extends ReadSelectState<S, A, Sel, P> {
 	declare readonly _builderKind: 'one'
 
 	id(value: SchemaPrimaryKeyValue<S>): this {
@@ -148,7 +165,7 @@ export class OneBuilder<S extends AnySchema, Sel extends string, P extends reado
 	}
 
 	protected _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(next: ReadState<NewSel, NewP>) {
-		return new OneBuilder<S, NewSel, NewP>(
+		return new OneBuilder<S, A, NewSel, NewP>(
 			this._context,
 			this._readState({
 				where: next.where,
@@ -210,7 +227,7 @@ export class OneBuilder<S extends AnySchema, Sel extends string, P extends reado
 	}
 }
 
-export class AllBuilder<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]> extends ReadSelectState<S, Sel, P> {
+export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> extends ReadSelectState<S, A, Sel, P> {
 	declare readonly _builderKind: 'all'
 
 	#orderBy: OrderBy[] = []
@@ -218,7 +235,7 @@ export class AllBuilder<S extends AnySchema, Sel extends string, P extends reado
 	#offset: number | undefined
 
 	protected _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(next: ReadState<NewSel, NewP>) {
-		const cloned = new AllBuilder<S, NewSel, NewP>(
+		const cloned = new AllBuilder<S, A, NewSel, NewP>(
 			this._context,
 			this._readState({
 				where: next.where,
@@ -237,7 +254,7 @@ export class AllBuilder<S extends AnySchema, Sel extends string, P extends reado
 			where: this._where.clone(),
 			select: this._select as readonly Sel[] | undefined,
 			preloads: this._preloads,
-		}) as AllBuilder<S, Sel, P>
+		}) as AllBuilder<S, A, Sel, P>
 		cloned.#orderBy = this.#orderBy.concat(new OrderBy(field, direction))
 		return cloned as this
 	}
@@ -247,7 +264,7 @@ export class AllBuilder<S extends AnySchema, Sel extends string, P extends reado
 			where: this._where.clone(),
 			select: this._select as readonly Sel[] | undefined,
 			preloads: this._preloads,
-		}) as AllBuilder<S, Sel, P>
+		}) as AllBuilder<S, A, Sel, P>
 		cloned.#limit = limit
 		return cloned as this
 	}
@@ -257,7 +274,7 @@ export class AllBuilder<S extends AnySchema, Sel extends string, P extends reado
 			where: this._where.clone(),
 			select: this._select as readonly Sel[] | undefined,
 			preloads: this._preloads,
-		}) as AllBuilder<S, Sel, P>
+		}) as AllBuilder<S, A, Sel, P>
 		cloned.#offset = offset
 		return cloned as this
 	}
