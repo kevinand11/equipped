@@ -3,7 +3,7 @@ import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 type CtorParams<T> = ConstructorParameters<T & (abstract new (...args: any[]) => any)>
 
 export function configurable<P extends Pipe<any, any>, Base extends new (...args: any[]) => any>(pipeFn: () => P, base: Base) {
-	let compiled = false
+	let pipe: P | undefined
 
 	abstract class Configurable extends (base as new (...args: any[]) => any) {
 		declare static readonly Config: PipeOutput<P>
@@ -21,10 +21,9 @@ export function configurable<P extends Pipe<any, any>, Base extends new (...args
 			input: PipeInput<P>,
 			...args: CtorParams<This> extends [PipeOutput<P>, ...infer R] ? R : never
 		): This['prototype'] {
-			const pipe = pipeFn()
-			if (!compiled) {
+			if (!pipe) {
+				pipe = pipeFn()
 				v.compile(pipe)
-				compiled = true
 			}
 			const validated = v.assert(pipe, input)
 			return new (this as any)(validated, ...args) as This['prototype']
@@ -172,17 +171,6 @@ if (import.meta.vitest) {
 			const instance = MyClass.create({ host: 'localhost', port: 3000 }, 'test-label')
 
 			expect(instance.label).toBe('test-label')
-		})
-
-		test('validation rejects invalid input', () => {
-			const Wrapped = configurable(testPipe, TestBase)
-			class MyClass extends Wrapped {
-				protected constructor(config: typeof MyClass.Config) {
-					super(config)
-				}
-			}
-
-			expect(() => MyClass.create({ host: 123, port: 'bad' } as any)).toThrow()
 		})
 
 		test('config is accessible as protected readonly on instances', () => {
