@@ -1,11 +1,11 @@
-import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
+import { v, type ConditionalObjectKeys, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
 type CtorParams<T> = ConstructorParameters<T & (abstract new (...args: any[]) => any)>
 
-export function configurable<P extends Pipe<any, any>, Base extends new (...args: any[]) => any>(pipeFn: () => P, base: Base) {
+export function configurable<P extends Pipe<any, any>, Base extends abstract new (...args: any[]) => any>(pipeFn: () => P, base: Base) {
 	let pipe: P | undefined
 
-	abstract class Configurable extends (base as new (...args: any[]) => any) {
+	abstract class Configurable extends (base as unknown as new (...args: any[]) => any) {
 		declare static readonly Config: PipeOutput<P>
 
 		protected readonly config: PipeOutput<P>
@@ -18,7 +18,7 @@ export function configurable<P extends Pipe<any, any>, Base extends new (...args
 
 		static create<This extends Function & { prototype: any }>(
 			this: This,
-			input: PipeInput<P>,
+			input: ConditionalObjectKeys<PipeInput<P>>,
 			...args: CtorParams<This> extends [PipeOutput<P>, ...infer R] ? R : never
 		): This['prototype'] {
 			if (!pipe) {
@@ -34,7 +34,7 @@ export function configurable<P extends Pipe<any, any>, Base extends new (...args
 		readonly Config: PipeOutput<P>
 		create<This extends Function & { prototype: any }>(
 			this: This,
-			input: PipeInput<P>,
+			input: ConditionalObjectKeys<PipeInput<P>>,
 			...args: CtorParams<This> extends [PipeOutput<P>, ...infer R] ? R : never
 		): This['prototype']
 	}
@@ -187,6 +187,26 @@ if (import.meta.vitest) {
 
 			const instance = MyClass.create({ host: 'localhost', port: 3000 })
 			expect(instance.getHost()).toBe('localhost')
+		})
+
+		test('accepts an abstract base class', () => {
+			abstract class AbstractBase {
+				abstract greet(): string
+			}
+
+			const Wrapped = configurable(testPipe, AbstractBase)
+			class Concrete extends Wrapped {
+				protected constructor(config: typeof Concrete.Config) {
+					super(config)
+				}
+				greet() {
+					return `hello from ${this.config.host}`
+				}
+			}
+
+			const instance = Concrete.create({ host: 'localhost', port: 3000 })
+			expect(instance.greet()).toBe('hello from localhost')
+			expectTypeOf(instance).toHaveProperty('config')
 		})
 	})
 }
