@@ -36,7 +36,7 @@ export type SchemaTaggedFields<S extends AnySchema> = {
 	[K in keyof SchemaFields<S>]: SchemaFields<S>[K] & { readonly __schema?: S }
 }
 
-export class Schema<
+export class SchemaBuilder<
 	N extends string,
 	PKField extends AnyPrimaryKeyField | never = never,
 	F extends Record<string, AnySchemaField> = {},
@@ -51,15 +51,18 @@ export class Schema<
 		this.#name = name
 	}
 
+	get name() {
+		return this.#name
+	}
+
 	pk<K extends string, P extends Pipe<any, any>>(
 		name: [PKField] extends [never] ? K : never,
 		pipe: P,
 		generate: () => PipeOutput<P>,
-	): Schema<N, SchemaField<K, P, true>, F> {
-		const schema = this as unknown as Schema<N, SchemaField<K, P, true>, F>
-		schema.#pkField = new SchemaField(name, pipe, { onCreate: generate })
-		Object.defineProperty(schema.#pkField, '__schema', { value: this, enumerable: false })
-		return schema
+	): SchemaBuilder<N, SchemaField<K, P, true>, F> {
+		const builder = this as unknown as SchemaBuilder<N, SchemaField<K, P, true>, F>
+		builder.#pkField = new SchemaField(name, pipe, { onCreate: generate })
+		return builder
 	}
 
 	field<
@@ -70,7 +73,7 @@ export class Schema<
 		name: K extends keyof F ? never : K,
 		pipe: P,
 		opts?: O,
-	): Schema<
+	): SchemaBuilder<
 		N,
 		PKField,
 		{
@@ -82,7 +85,6 @@ export class Schema<
 		}
 	> {
 		this.#fieldDefs[name] = new SchemaField(name, pipe, opts) as any
-		Object.defineProperty(this.#fieldDefs[name], '__schema', { value: this, enumerable: false })
 		return this as any
 	}
 
@@ -95,7 +97,7 @@ export class Schema<
 		deps: Deps,
 		pipe: P,
 		compute: (data: Pick<SchemaPersistedOutput<Schema<N, PKField, F, C>>, Deps[number]>) => PipeOutput<P>,
-	): Schema<
+	): SchemaBuilder<
 		N,
 		PKField,
 		F,
@@ -105,6 +107,36 @@ export class Schema<
 	> {
 		this.#computedDefs[name as K] = new ComputedField(name as K, pipe, deps, compute as any) as any
 		return this as any
+	}
+
+	build(this: [PKField] extends [never] ? never : SchemaBuilder<N, PKField, F, C>): Schema<N, PKField, F, C> {
+		const self = this as unknown as SchemaBuilder<N, PKField, F, C>
+		return new Schema<N, PKField, F, C>(self.#name, self.#pkField as PKField, self.#fieldDefs, self.#computedDefs)
+	}
+}
+
+export class Schema<
+	N extends string,
+	PKField extends AnyPrimaryKeyField | never = never,
+	F extends Record<string, AnySchemaField> = {},
+	C extends Record<string, AnyComputedField> = {},
+> {
+	#name: N
+	#pkField: PKField | null
+	#fieldDefs: F
+	#computedDefs: C
+
+	constructor(name: N, pkField: PKField | null, fieldDefs: F, computedDefs: C) {
+		this.#name = name
+		this.#pkField = pkField
+		this.#fieldDefs = fieldDefs
+		this.#computedDefs = computedDefs
+		if (this.#pkField) {
+			Object.defineProperty(this.#pkField, '__schema', { value: this, enumerable: false })
+		}
+		for (const field of Object.values(this.#fieldDefs)) {
+			Object.defineProperty(field, '__schema', { value: this, enumerable: false })
+		}
 	}
 
 	get name() {
@@ -131,12 +163,8 @@ export class Schema<
 		} as unknown as SchemaTaggedFields<this>
 	}
 
-	build(this: [PKField] extends [never] ? never : Schema<N, PKField, F, C>): Schema<N, PKField, F, C> {
-		return this as unknown as Schema<N, PKField, F, C>
-	}
-
-	static from<N extends string>(name: N): Schema<N> {
-		return new Schema(name)
+	static from<N extends string>(name: N): SchemaBuilder<N> {
+		return new SchemaBuilder(name)
 	}
 }
 
@@ -154,12 +182,28 @@ if (import.meta.vitest) {
 			.build()
 
 		describe('Schema.from()', () => {
+			test('returns a SchemaBuilder instance', () => {
+				expect(Schema.from('test')).toBeInstanceOf(SchemaBuilder)
+			})
+
 			test('returns a Schema instance after build', () => {
 				const s = Schema.from('test').pk('id', v.string(), () => 'x').build()
 				expect(s).toBeInstanceOf(Schema)
 			})
 
-			test('stores the schema name', () => {
+			test('Schema has no builder methods', () => {
+				const s = Schema.from('test').pk('id', v.string(), () => 'x').build()
+				expect(s).not.toHaveProperty('pk')
+				expect(s).not.toHaveProperty('field')
+				expect(s).not.toHaveProperty('computed')
+				expect(s).not.toHaveProperty('build')
+			})
+
+			test('stores the schema name on builder', () => {
+				expect(Schema.from('orders').name).toBe('orders')
+			})
+
+			test('stores the schema name after build', () => {
 				expect(Schema.from('orders').pk('id', v.string(), () => 'x').build().name).toBe('orders')
 			})
 
@@ -177,16 +221,6 @@ if (import.meta.vitest) {
 			test('.build() is unavailable without .pk() at the type level', () => {
 				// @ts-expect-error — .build() requires .pk() to have been called
 				Schema.from('test').field('name', v.string()).build()
-			})
-		})
-
-		describe('Schema.from() basics', () => {
-			test('returns a Schema instance', () => {
-				expect(Schema.from('test')).toBeInstanceOf(Schema)
-			})
-
-			test('stores the schema name', () => {
-				expect(Schema.from('orders').name).toBe('orders')
 			})
 		})
 
@@ -219,7 +253,8 @@ if (import.meta.vitest) {
 			})
 
 			test('pkField throws when no pk defined', () => {
-				expect(() => Schema.from('nopk').field('name', v.string()).pkField).toThrow()
+				const schema = new Schema('nopk', null, { name: new SchemaField('name', v.string()) }, {})
+				expect(() => schema.pkField).toThrow()
 			})
 		})
 
