@@ -65,7 +65,7 @@ export class RabbitMQEventBus extends configurable(
 						})
 					}
 
-					Instance.on('start', subscribe, 2)
+					Instance.on('start', subscribe)
 				},
 			}
 		}

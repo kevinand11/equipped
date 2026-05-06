@@ -3,8 +3,10 @@ import { ulid } from 'ulid'
 import { type Pipe, v } from 'valleyed'
 
 import { EquippedError } from '../errors'
-import { type HookCb, type HookEvent, type HookRecord, runHooks } from './hooks'
+import { type ClassRef, type HookCb, type HookEvent, type HookOptions, type HookRecord, registerHook, runHooks } from './hooks'
 import { instanceSettingsPipe, type Settings, type SettingsInput } from './settings'
+
+export type { ClassRef, HookCb, HookEvent, HookOptions }
 
 export class Instance {
 	static #id: string | undefined
@@ -87,9 +89,10 @@ export class Instance {
 		return Instance.#instance
 	}
 
-	static on(event: HookEvent, cb: HookCb, order: number) {
+	static on(event: HookEvent, cb: HookCb, options?: HookOptions) {
 		Instance.#hooks[event] ??= []
-		Instance.#hooks[event].push({ cb, order })
+		const record: HookRecord = { cb, class: options?.class, after: options?.after ?? [] }
+		registerHook(Instance.#hooks[event], record)
 	}
 
 	static #registerOnExitHandler() {
@@ -101,7 +104,7 @@ export class Instance {
 
 		Object.entries(signals).forEach(([signal, code]) => {
 			process.on(signal, async () => {
-				await runHooks(Instance.#hooks['close'] ?? [], () => {})
+				await runHooks(Instance.#hooks['close'] ?? [], () => {}, true)
 				process.exit(128 + code)
 			})
 		})
@@ -109,7 +112,7 @@ export class Instance {
 
 	static resolveBeforeCrash<T>(cb: () => Promise<T>) {
 		const value = cb()
-		Instance.on('close', async () => await value, 10)
+		Instance.on('close', async () => await value)
 		return value
 	}
 
