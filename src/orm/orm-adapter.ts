@@ -26,15 +26,14 @@ export abstract class OrmAdapter {
 	findMany?(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions): Promise<Record<string, unknown>[]>
 	updateMany?(schema: AnySchema, config: unknown, filter: FilterGroup, data: Record<string, unknown>): Promise<Record<string, unknown>[]>
 	deleteMany?(schema: AnySchema, config: unknown, filter: FilterGroup): Promise<Record<string, unknown>[]>
-	upsertOne?(schema: AnySchema, config: unknown, filter: FilterGroup, create: Record<string, unknown>, ops: AnyUpdateOp[]): Promise<Record<string, unknown>>
+	upsertOne?(
+		schema: AnySchema,
+		config: unknown,
+		filter: FilterGroup,
+		create: Record<string, unknown>,
+		ops: AnyUpdateOp[],
+	): Promise<Record<string, unknown>>
 	session?<T>(fn: () => Promise<T>): Promise<T>
-
-	get connectOrder(): number {
-		return 0
-	}
-	get disconnectOrder(): number {
-		return 0
-	}
 
 	protected onFatalError(err: unknown): never {
 		const wrapped = err instanceof EquippedError ? err : new EquippedError('OrmAdapter fatal error', {}, err)
@@ -82,7 +81,8 @@ export abstract class OrmAdapter {
 				if (self.deleteByPk) {
 					await self.deleteByPk(schema, config, row[pk])
 				} else if (self.deleteMany) {
-					await self.deleteMany(schema, config, filter)
+					const pkFilter = FilterGroup.create().eq(pk, row[pk])
+					await self.deleteMany(schema, config, pkFilter)
 				}
 				return row
 			},
@@ -142,40 +142,6 @@ if (import.meta.vitest) {
 			expect(adapter.queryableOps).toEqual([])
 			expect(adapter.updateOps).toEqual([])
 			expect(adapter.supportedFieldTypes).toEqual([])
-
-			vi.restoreAllMocks()
-		})
-
-		test('connectOrder and disconnectOrder default to 0', async () => {
-			const { Instance: Inst } = await import('../instance')
-			vi.spyOn(Inst, 'on').mockImplementation(() => {})
-
-			class DefaultAdapter extends OrmAdapter {
-				readonly schemaConfigPipe = v.object({ table: v.string() })
-			}
-			const adapter = new (DefaultAdapter as any)() as DefaultAdapter
-			expect(adapter.connectOrder).toBe(0)
-			expect(adapter.disconnectOrder).toBe(0)
-
-			vi.restoreAllMocks()
-		})
-
-		test('subclass can override connectOrder/disconnectOrder via getter', async () => {
-			const { Instance: Inst } = await import('../instance')
-			vi.spyOn(Inst, 'on').mockImplementation(() => {})
-
-			class OrderedAdapter extends OrmAdapter {
-				readonly schemaConfigPipe = v.object({ table: v.string() })
-				get connectOrder() {
-					return 10
-				}
-				get disconnectOrder() {
-					return 20
-				}
-			}
-			const adapter = new (OrderedAdapter as any)() as OrderedAdapter
-			expect(adapter.connectOrder).toBe(10)
-			expect(adapter.disconnectOrder).toBe(20)
 
 			vi.restoreAllMocks()
 		})
@@ -243,7 +209,9 @@ if (import.meta.vitest) {
 				}
 			}
 
-			const TestSchema = Schema.from('bridge_test').pk('id', v.string(), () => 'x').build()
+			const TestSchema = Schema.from('bridge_test')
+				.pk('id', v.string(), () => 'x')
+				.build()
 			const adapter = new (BridgeAdapter as any)() as BridgeAdapter
 			const ormUse = adapter.use(TestSchema, { table: 'bridge_test' })
 
@@ -274,7 +242,10 @@ if (import.meta.vitest) {
 				}
 			}
 
-			const TestSchema = Schema.from('upd_test').pk('id', v.string(), () => 'x').field('name', v.string()).build()
+			const TestSchema = Schema.from('upd_test')
+				.pk('id', v.string(), () => 'x')
+				.field('name', v.string())
+				.build()
 			const adapter = new (UpdateAdapter as any)() as UpdateAdapter
 			const ormUse = adapter.use(TestSchema, { table: 'upd_test' })
 
@@ -304,7 +275,9 @@ if (import.meta.vitest) {
 				}
 			}
 
-			const TestSchema = Schema.from('del_test').pk('id', v.string(), () => 'x').build()
+			const TestSchema = Schema.from('del_test')
+				.pk('id', v.string(), () => 'x')
+				.build()
 			const adapter = new (DeleteAdapter as any)() as DeleteAdapter
 			const ormUse = adapter.use(TestSchema, { table: 'del_test' })
 

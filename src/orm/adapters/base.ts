@@ -10,11 +10,7 @@ export type OrmUse = {
 	createMany: (data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>
 	updateMany: (filter: FilterGroup, data: Record<string, unknown>) => Promise<Record<string, unknown>[]>
 	updateOne: (filter: FilterGroup, data: Record<string, unknown>) => Promise<Record<string, unknown> | null>
-	upsertOne: (
-		filter: FilterGroup,
-		create: Record<string, unknown>,
-		ops: AnyUpdateOp[],
-	) => Promise<Record<string, unknown>>
+	upsertOne: (filter: FilterGroup, create: Record<string, unknown>, ops: AnyUpdateOp[]) => Promise<Record<string, unknown>>
 	deleteOne: (filter: FilterGroup) => Promise<Record<string, unknown> | null>
 	deleteMany: (filter: FilterGroup) => Promise<Record<string, unknown>[]>
 	raw: (...args: any[]) => Promise<any>
