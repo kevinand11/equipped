@@ -117,7 +117,7 @@ export class FilterGroup {
 
 export type GatedFilterGroup<DeclaredOps extends readonly FilterOpName[]> = {
 	[K in FilterOpName]: K extends DeclaredOps[number] ? FilterGroup[K] : never
-} & Pick<FilterGroup, 'and' | 'or' | 'clone' | 'op'> & { readonly children: readonly FilterChild[] }
+} & Pick<FilterGroup, 'and' | 'or' | 'clone' | 'children' | 'op'>
 
 export type GatedFilterFactory<DeclaredOps extends readonly FilterOpName[]> = (
 	q: GatedFilterGroup<DeclaredOps>,
