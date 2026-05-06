@@ -9,50 +9,44 @@ export async function fetchCandidates(prdNumber: number): Promise<Candidate[]> {
 		'api',
 		'--paginate',
 		`repos/{owner}/{repo}/issues/${prdNumber}/sub_issues`,
-		'--jq', '[.[] | {number, state, labels: [.labels[].name]}]',
+		'--jq',
+		'[.[] | {number, title, body, state, labels: [.labels[].name]}]',
 	])
 	const subIssues = JSON.parse(subIssuesJson) as Array<{
 		number: number
+		title: string
+		body: string
 		state: string
 		labels: string[]
 	}>
 
-	const eligible = subIssues.filter(
-		(s) => s.state.toUpperCase() === 'OPEN' && s.labels.includes(READY_FOR_AGENT_LABEL),
-	)
-
-	const candidates: Candidate[] = []
-	for (const sub of eligible) {
-		const { stdout } = await exec('gh', [
-			'issue', 'view', String(sub.number),
-			'--json', 'number,title,body,labels',
-		])
-		const raw = JSON.parse(stdout) as {
-			number: number
-			title: string
-			body: string
-			labels: Array<{ name: string }>
+	return subIssues.map((s): Candidate => {
+		return {
+			number: s.number,
+			title: s.title,
+			body: s.body,
+			labels: s.labels,
+			state: s.state.toUpperCase() as 'OPEN' | 'CLOSED',
 		}
-		candidates.push({
-			number: raw.number,
-			title: raw.title,
-			body: raw.body ?? '',
-			labels: raw.labels.map((l) => l.name),
-		})
-	}
-	return candidates
+	})
 }
 
 export async function classify(candidate: Candidate): Promise<ResumeState> {
+	if (candidate.state !== 'OPEN' || !candidate.labels.includes(READY_FOR_AGENT_LABEL)) return { kind: 'done' }
 	const branch = await lookupLinkedBranch(candidate.number)
 	if (!branch) return { kind: 'implement' }
 
 	const { stdout } = await exec('gh', [
-		'pr', 'list',
-		'--head', branch,
-		'--base', FEATURE_BRANCH,
-		'--state', 'all',
-		'--json', 'number,state,isDraft,labels',
+		'pr',
+		'list',
+		'--head',
+		branch,
+		'--base',
+		FEATURE_BRANCH,
+		'--state',
+		'all',
+		'--json',
+		'number,state,isDraft,labels',
 	])
 	const prs = JSON.parse(stdout) as Array<{
 		number: number
