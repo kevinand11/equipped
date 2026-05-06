@@ -1,8 +1,8 @@
 import type { InferAdapterConfig } from '../adapter'
-import type { OrmAdapterConfig, OrmAdapterLike } from '../adapters/base'
-import type { AnySchema } from '../schema'
 import { currentTransforms, run } from './als'
 import { SchemaContext, SchemaRef, type HasMethod, type SchemaRefSurface } from './builders'
+import type { OrmAdapterConfig, OrmAdapterLike } from '../adapters/base'
+import type { AnySchema } from '../schema'
 
 export type { ConfigTransform } from './als'
 

@@ -88,41 +88,71 @@ Vocabulary:
 
 ### 1.3 Adapter
 
-An **Adapter** is a capability declaration plus a set of method-bag
-implementations that the framework calls to talk to a specific database.
+An **Adapter** is a class — a subclass of the abstract `OrmAdapter` base —
+that the framework instantiates and calls to talk to a specific database.
 Adapters are typically bound to a specific database driver/SDK. The package
 ships a small set of in-tree reference adapters (in-memory, json, postgresql,
 mongodb); production targets the package doesn't cover are user-supplied.
 
-An Adapter is **not** a connection. It is **not** stateful per-database — one
-Adapter object can serve many connections; connection pooling is the adapter's
-internal concern. It is **not** a Repo (Repo wraps an Adapter; an Adapter
-doesn't know about Repo).
+An Adapter is **not** a builder (Schema, Relations, and Repo are; Adapter is
+not — see §2.2 for the carve-out). It is **not** a connection (the connection
+client is an instance field on the adapter). It is **not** a Repo (Repo wraps
+an adapter instance; an Adapter doesn't know about Repo).
 
-The Adapter's per-schema config type is declared as a generic on the static
-factory: `Adapter.from<Config>()`. The framework threads `Config` into every
-bag method's `config` parameter so adapter authors get typed access.
+Each adapter class is constructed via the package-level `configurable(pipe, Base)`
+primitive (`src/utilities/configurable.ts`): it extends `configurable(connectionPipe, OrmAdapter)`,
+so the `connectionPipe` validates the connection-level config at
+`MyAdapter.create(rawConfig, ...extras)`, and the validated value is exposed
+as `this.config` (typed via the phantom `typeof MyAdapter.Config` marker).
+Per-call schema-level config is declared separately as a required
+`readonly schemaConfigPipe` on the adapter — see §6.1 (two-tier config
+split).
 
 ```ts
-const PostgresAdapter = Adapter.from<PgCfg>()
-  .queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-  .updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
-  .supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
-  .lifecycle({ connect, disconnect })
-  .crud({ findByPk, createMany, updateByPk, deleteByPk, raw })
-  .queryable({ findMany, updateMany, deleteMany, upsertOne })
-  .transactional({ session })
-  .build()
+const mongoConnectionPipe = () => v.object({
+  uri: v.string(),
+  // ...other connection-level fields
+})
+
+export class MongoAdapter extends configurable(mongoConnectionPipe, OrmAdapter) {
+  readonly schemaConfigPipe = v.object({ db: v.string(), col: v.string() })
+
+  readonly queryableOps = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains'] as const
+  readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
+  readonly supportedFieldTypes = ['string', 'number', 'boolean', 'null', 'object', 'array', 'date'] as const
+
+  #client: MongoClient
+  protected constructor(config: typeof MongoAdapter.Config, options?: MongoOptions) {
+    super(config)
+    this.#client = new MongoClient(config.uri, options)
+  }
+
+  async connect()    { await this.#client.connect() }
+  async disconnect() { await this.#client.close() }
+
+  async findByPk(schema, schemaCfg, pk)        { /* ... */ }
+  async createMany(schema, schemaCfg, data)    { /* ... */ }
+  async findMany(schema, schemaCfg, filter, options?) { /* ... */ }
+  async session<T>(fn: () => Promise<T>)       { /* ... */ }
+  // ...optional methods the adapter chooses to implement
+}
+
+const adapter = MongoAdapter.create({ uri: 'mongodb://...' })
 ```
 
 Vocabulary:
 
-- The Adapter has two kinds of named parts: **behaviours** (runtime method
-  groups: `lifecycle`, `crud`, `queryable`, `transactional`) and **capability
-  declarations** (literal-list type-only fields: `queryableOps`, `updateOps`,
-  `supportedFieldTypes`).
-- There is no "capability" umbrella term. Cross-cutting effects (e.g.
-  `updateOps` gating ops on update methods) are described by their declaration.
+- The Adapter has two kinds of named parts: **methods** (flat optional
+  instance methods on `OrmAdapter`: `connect`, `disconnect`, `findByPk`,
+  `createMany`, `updateByPk`, `deleteByPk`, `raw`, `findMany`, `updateMany`,
+  `deleteMany`, `upsertOne`, `session`) and **capability declarations**
+  (literal-typed `readonly` instance fields: `queryableOps`, `updateOps`,
+  `supportedFieldTypes`, plus the required `schemaConfigPipe`).
+- The historical bag groupings (`lifecycle`, `crud`, `queryable`,
+  `transactional`) survive **only as documentation labels** — see §3.1. They
+  no longer carry runtime or type-system structure.
+- Cross-cutting effects (e.g. `updateOps` gating ops on update methods) are
+  described by their declaration.
 - See §3 for the full Adapter surface vocabulary.
 
 ### 1.4 Repo
@@ -163,17 +193,20 @@ Vocabulary:
 
 ### 1.5 Cross-artifact conventions
 
-- Every artifact is constructed via `X.from(args).step()...build()`. The four
-  artifact classes (`Schema`, `Adapter`, `Relations`, `Repo`) export static
-  `.from(...)` factories that return a builder; `.build()` is the explicit
-  terminal step that returns the artifact instance.
+- The three **declarative-data artifacts** (`Schema`, `Relations`, `Repo`) are
+  constructed via `X.from(args).step()...build()`. Each exports a static
+  `.from(...)` factory that returns a builder; `.build()` is the explicit
+  terminal step that returns the artifact instance. The fourth artifact —
+  `Adapter` — is **behavioural** and uses the class-via-`configurable` form
+  instead of a builder chain (see §2.2 carve-out and §1.3).
 - Each `.from(...)` takes only its **constructor-essential** input(s):
   - `Schema.from(name)` — name positional
   - `Relations.from(source)` — source schema positional
-  - `Adapter.from<Config>()` — Config as type-only generic
   - `Repo.from(adapter)` — adapter positional
-  Everything else (fields, FK descriptors, bag implementations, resolver,
-  capability declarations) goes into builder steps.
+  Everything else (fields, FK descriptors, resolver) goes into builder steps.
+  Adapters take the connection-config pipe as the first argument to
+  `configurable(connectionPipe, OrmAdapter)`; everything else (capability
+  declarations, methods, `schemaConfigPipe`) is class body.
 - Pluralisation uses natural English plurals (`schemas`, `adapters`, `repos`).
   `Relations` is a singular noun in plural form; capitalise when ambiguous.
 - The collective term for "things produced by `.from(...).build()`" is
@@ -190,12 +223,13 @@ and rules of the pattern.
 ### 2.1 Vocabulary
 
 - A **factory** is the static factory method (`Schema.from`, `Relations.from`,
-  `Adapter.from`, `Repo.from`). Calling it returns a **builder**.
+  `Repo.from`). Calling it returns a **builder**. Adapter has no `.from` —
+  it's class-via-`configurable` (§1.3, §2.2).
 - The **builder** is the object returned by `.from(...)`. Each builder method
   returns a new builder whose accumulator type includes the declarations from
   prior steps.
-- A **builder step** is a method on the builder (`.field()`, `.queryableOps()`,
-  `.crud()`).
+- A **builder step** is a method on the builder (`.field()`, `.pk()`,
+  `.computed()`, `.hasMany()`, `.belongsTo()`, `.resolve()`).
 - The **terminal step** is `.build()` — the only step that returns the
   artifact instance. `.build()`'s availability is gated on the accumulator
   satisfying the artifact's prerequisites (§2.6).
@@ -205,28 +239,49 @@ and rules of the pattern.
 ### 2.2 Rules
 
 - **Builder-chain rule.** Static-factory builder chains are the canonical
-  shape for all declarative artifact construction in the package. New
-  artifacts follow `X.from(args).step1().step2().build()`; flat-object
-  factories deferred unless a concrete reason to deviate.
+  shape for **declarative-data** artifact construction (Schema, Relations,
+  Repo). New declarative-data artifacts follow `X.from(args).step1().step2().build()`;
+  flat-object factories deferred unless a concrete reason to deviate.
+  **Behavioural artifacts** (Adapter, plus package-level adapters in
+  cache/jobs/events/server) use the class-via-`configurable` form instead —
+  `class X extends configurable(pipe, Base) {...}` with a `protected constructor`
+  and inherited `static create(input, ...args)`. The split is deliberate: a
+  builder chain is the right tool for accumulating typed declarations
+  (fields, FK descriptors, capability lists); a class is the right tool for
+  encapsulating behaviour (instance state, methods, lifecycle). See ADR
+  2026-05-06 for the decision and the alternatives considered.
 - **Once-per-step rule.** Each builder step is callable at most once. Calling
   the same step twice is a compile error via the **uniqueness guard**
   (see §2.3).
 - **Per-step coherence.** Later steps reference earlier accumulator state.
-  Examples: `.queryable({...})`'s methods are typed against `.queryableOps(...)`
-  declared earlier; `.computed({...})`'s `deps` are constrained to prior
-  `.field(...)` names. Violations fire at the offending call line, not at the
-  end of the chain.
-- **Rest-args convention.** Op lists use rest-args, not array literals:
-  `.queryableOps('eq', 'ne', 'gt')` — not `.queryableOps(['eq', 'ne', 'gt'])`.
+  Example: `.computed({...})`'s `deps` are constrained to prior `.field(...)`
+  names. Violations fire at the offending call line, not at the end of the
+  chain.
+- **Rest-args convention.** Where a builder step takes a fixed-shape list,
+  rest-args are preferred over array literals (mostly applicable to
+  schema/relations builder steps; the analogous rule on Adapter classes is
+  that capability arrays use `as const` literal types).
   Uses TS 5.0+ `const` type parameters
   (`<const Ops extends readonly OpName[]>`) to preserve literal types in
   rest-args without `as const`.
-- **Omission-equals-empty rule.** A builder step not called means the artifact
-  doesn't declare that capability. Op-list fields default to `readonly []`;
-  behaviours default to absent.
+- **Omission-equals-empty rule.** A builder step not called means the
+  artifact doesn't declare that capability. Op-list fields default to
+  `readonly []`; absent steps default to absent. The same rule applies to
+  Adapter classes — undeclared capability arrays default to `readonly []` on
+  `OrmAdapter`; unimplemented methods stay undeclared.
 - **Build-gated materialisation rule.** The artifact instance only exists
   after `.build()`. The builder is *not* the artifact; reading runtime methods
   off a non-built builder is a type error.
+- **Clone-on-step rule.** Every builder step returns a *new* builder
+  instance, not a mutated `this`. This applies uniformly across module-load
+  artifact builders (`SchemaBuilder`, `RelationsBuilder`, `RepoBuilder`),
+  filter sub-builders (`FilterGroup`), and per-call query builders
+  (`OneBuilder`, `AllBuilder`). The reason is divergent reuse: a user holding
+  a partially-built builder must be able to fan out from it
+  (`const base = X.from(...).step1(...); const a = base.step2(p); const b = base.step3(q)`)
+  without `a` and `b` polluting each other or the shared base. In-place
+  mutation would break this. The cost is one allocation per step — small
+  compared to the bug class it eliminates.
 
 ### 2.3 Uniqueness guard
 
@@ -288,112 +343,123 @@ the accumulator doesn't satisfy, `this` doesn't bind and TS errors at the
 | Artifact | `.build()` requires |
 |---|---|
 | `Schema` | `.pk(...)` was called (PK-less schemas have no meaning) |
-| `Adapter` | nothing enforced — runtime errors via `RepoSurface` narrowing if no behaviours declared |
 | `Relations` | nothing enforced — empty Relations is a valid no-op |
 | `Repo` | `.resolve(...)` was called (the only thing that produces a config) |
+
+(Adapter is constructed via class-via-`configurable`, not a builder — see
+§1.3. The equivalent prerequisite for an Adapter class is "extends
+`configurable(connectionPipe, OrmAdapter)` and declares `schemaConfigPipe`,"
+both enforced at the type level.)
 
 ---
 
 ## 3. Adapter surface & narrowing
 
-This section describes the rules and vocabulary around the Adapter's behaviours
-and capability declarations, and how they narrow the Repo's surface.
+This section describes the rules and vocabulary around the Adapter class's
+methods and capability declarations, and how they narrow the Repo's surface.
 
-### 3.1 Behaviours
+### 3.1 Methods (and the historical bag groupings)
 
-A **behaviour** is a runtime method group on the Adapter. There are exactly
-four:
+The Adapter exposes exactly twelve **optional methods** declared on the
+abstract `OrmAdapter` base. Each subclass implements the ones it supports and
+omits the rest:
 
-| Behaviour | Methods (each independently optional) |
+| Method-group label | Methods (each independently optional) |
 |---|---|
 | `lifecycle` | `connect`, `disconnect` |
 | `crud` | `findByPk`, `createMany`, `updateByPk`, `deleteByPk`, `raw` |
 | `queryable` | `findMany`, `updateMany`, `deleteMany`, `upsertOne` |
 | `transactional` | `session` |
 
-Every behaviour is optional. Many adapter targets (Firestore, DynamoDB, edge
-serverless drivers, in-memory mocks, REST-API adapters) have no meaningful
-connect/disconnect — forcing no-op stubs is silent ceremony, so `lifecycle` is
-optional too.
+The four group labels (`lifecycle`, `crud`, `queryable`, `transactional`)
+survive **only as documentation** — they are vocabulary for discussing related
+methods together. They are *not* runtime objects, *not* type-system bags, and
+*not* required to be implemented as a unit. The methods themselves are flat
+on the class. An adapter that implements `findByPk` and `raw` and nothing else
+is a valid adapter (read-only PK-keyed access plus an escape hatch).
 
-Within a behaviour, methods are independently optional. An adapter can declare
-`crud: { findByPk, raw }` only — read-only with an escape hatch.
+Many adapter targets (Firestore, DynamoDB, edge serverless drivers, in-memory
+mocks, REST-API adapters) have no meaningful connect/disconnect — leaving
+`connect`/`disconnect` unimplemented is silent and structural; no no-op stubs
+required.
 
 ### 3.2 Capability declarations
 
-A **capability declaration** is a literal-list field on the Adapter that gates
-ops or field types. There are exactly three:
+A **capability declaration** is a literal-typed `readonly` instance field on
+the Adapter that gates ops or field types. There are exactly three plus one
+required pipe:
 
 | Declaration | Canonical set | Gates |
 |---|---|---|
 | `queryableOps` | filter ops | which filter ops the adapter supports |
 | `updateOps` | update ops | which update ops `update*` and `upsertOne` accept |
 | `supportedFieldTypes` | field types | which schemas can pair with the adapter |
+| `schemaConfigPipe` | (a valleyed pipe) | the per-call schema config's shape; validated at the Repo→Adapter boundary every query (§6.3) |
+
+`queryableOps`, `updateOps`, and `supportedFieldTypes` default to `readonly []`
+on `OrmAdapter`; subclasses override with `as const` literal arrays to declare
+what they support. `schemaConfigPipe` is **abstract** on `OrmAdapter` — every
+adapter subclass must declare it.
 
 `updateOps` is a value-level union of `AnyUpdateOp` variants the adapter
 supports. It is not a capability registry — surface methods like `upsertOne`
-are gated on behaviour-method presence, not on `updateOps` membership (§5.1,
-§12.2).
+are gated on method-presence, not on `updateOps` membership (§5.1, §12.2).
 
-Each declaration's values are drawn from a closed canonical set (§4). Adapters
-**subset** the canonical set; they cannot add new members.
+Each op-list declaration's values are drawn from a closed canonical set (§4).
+Adapters **subset** the canonical set; they cannot add new members.
 
-The Adapter's per-schema **config type** is *not* a capability declaration —
-it is a type-only generic on the static factory (`Adapter.from<Config>()`).
-The framework threads `Config` into every bag method's `config` parameter so
-adapter authors get typed access. The Repo's `.resolve(fn)` step (§6) is
-constrained to return the same `Config` type.
+The Adapter's **connection config type** is *not* a capability declaration —
+it flows from the `connectionPipe` argument to `configurable(connectionPipe, OrmAdapter)`,
+exposed on each subclass as the phantom `static Config` type marker
+(`typeof MyAdapter.Config`) and as the `this.config` instance property
+(§1.3). The Repo's `.resolve(fn)` step (§6) returns the per-call **schema
+config** (typed by `schemaConfigPipe`), not the connection config.
 
-### 3.3 Co-required pair
+### 3.3 Surface narrowing and structural inference
 
-A **co-required pair** is a structural relationship where a behaviour and a
-declaration are both required for the surface to make sense. Currently only
-one such pair exists:
-
-- `queryable` behaviour ↔ `queryableOps` declaration.
-
-The factory rejects `.queryable({...})` if `queryableOps` was not called with a
-non-empty list. The methods in the `queryable` behaviour are meaningless
-without ops to filter by.
-
-Other declarations are cross-cutting (no paired behaviour):
-
-- `updateOps` modifies which ops `updateByPk` (in `crud`), `updateOne` /
-  `updateMany` (in `queryable`), and `upsertOne` (in `queryable`) accept.
-- `supportedFieldTypes` gates whether *any* schema can be passed to *any* Repo
-  method — schema-arg-level constraint, not behaviour-level.
-
-### 3.4 Surface narrowing and structural inference
-
-The **Adapter surface** is the union of all behaviours and capability
-declarations on an Adapter. The Adapter **declares** a behaviour or op when it
-appears in the definition; an absent behaviour or op is **undeclared**.
+The **Adapter surface** is the union of all methods and capability
+declarations on the Adapter class. The Adapter **declares** a method or op
+when it appears on the class (instance method present; literal-typed array
+contains the op); an absent method or op is **undeclared**.
 
 **Surface narrowing** is the process by which the Repo's typed methods are
 reduced based on the Adapter's declarations. The result of narrowing is the
-Repo surface; methods whose required behaviour or op is undeclared are
+Repo surface; methods whose required method or op is undeclared are
 **narrowed-out methods** — their type resolves to `never`, so calling them is
 a compile error.
 
-**Structural inference** is the rule that the Adapter's set of supported
-capabilities is inferred from which capability declarations and behaviours are
-present. There is no explicit `capabilities: [...]` array. Presence is the
-declaration.
+The mechanism is purely structural: the Repo's per-verb gates read off the
+class's instance type via `keyof InstanceType<A>` (method presence) and
+`A['queryableOps'][number]` / `A['updateOps'][number]` /
+`A['supportedFieldTypes'][number]` (capability membership). There is no
+accumulator, no explicit `capabilities: [...]` array, and no separate
+"declared methods" registry. Presence on the class is the declaration.
 
-### 3.5 Per-op gating, parity, and the no-emulation rule
+The historical "co-required pair" between the `queryable` bag and a non-empty
+`queryableOps` is **self-policing** under structural narrowing: if an adapter
+implements `findMany` but leaves `queryableOps = []`, the filter chain
+(`q.eq(...)` etc.) is unreachable type-wise (each filter-method is gated on
+`'eq' extends queryableOps[number]`, which resolves to `never`), so
+`findMany` is effectively narrowed-out at the consumer with no construction-
+time check needed.
+
+### 3.4 Per-op gating, parity, and the no-emulation rule
 
 **Per-op gating** is the TypeScript-level mechanism by which an undeclared op
 becomes a compile error. The op-list declarations (`queryableOps`, `updateOps`)
 drive per-op gating; the field-type declaration (`supportedFieldTypes`) drives
 schema-arg gating.
 
-**Declaration-implementation parity** is the invariant that the factory
+**Declaration-implementation parity** is the invariant that the type system
 compile-errors on any mismatch between a declaration and its implementation
-(e.g. `.queryable({...})` rejecting ops that aren't in `queryableOps`).
+on the adapter class. The mechanism is structural method override: the
+optional method signatures inherited from `OrmAdapter` constrain each
+subclass's method bodies, so a misplaced parameter or wrong return type is
+caught at the subclass definition site, not at the Repo dispatch site.
 Implementation cannot exceed declaration; declaration cannot lack
 implementation.
 
-**No-emulation rule.** The framework never emulates a missing op or behaviour
+**No-emulation rule.** The framework never emulates a missing method or op
 client-side. If an adapter doesn't declare an op, calling it is a compile
 error. Adapter-specific power lives in the adapter's `raw` method only. The
 framework does not silently fall back to `findMany` + filter to emulate
@@ -443,8 +509,8 @@ verb-form. Future additions must respect this. `Set`, `INC`, `addToSet`,
 
 Every member of the canonical update-op set has a corresponding op variant
 (§10.1) and an op helper (§10.2). The set is closed (§4.4) — adapters subset
-it; method-shape capabilities (e.g. `upsertOne`) are gated on behaviour
-presence, not by adding members to this set.
+it; method-shape capabilities (e.g. `upsertOne`) are gated on method
+presence on the adapter class, not by adding members to this set.
 
 ### 4.3 Canonical field-type set
 
@@ -524,7 +590,7 @@ Adapter's declarations:
 | `repo.session(fn)` | `transactional.session` declared |
 
 There is no truly "always-on" verb; every verb is gated by something. Verbs
-whose gates aren't satisfied are narrowed-out (§3.4) — their type resolves to
+whose gates aren't satisfied are narrowed-out (§3.3) — their type resolves to
 `never` and calling them is a compile error.
 
 ### 5.2 Schema-per-call
@@ -568,14 +634,17 @@ Query chains split into two families based on which intermediate verb is
 chosen:
 
 - **PK-keyed chains** start with `.one().id(pk)` — they identify a document
-  directly by primary key. Backed by the adapter's `crud` behaviour.
+  directly by primary key. Backed by the adapter's PK-keyed CRUD methods
+  (label `crud` — `findByPk`, `createMany`, `updateByPk`, `deleteByPk`,
+  `raw`).
 - **Filter-based chains** use `.one().where(q)` / `.all().where(q)` — they
   identify documents via a `FilterGroup` filter (§11). Backed by the
-  adapter's `queryable` behaviour.
+  adapter's filter-based methods (label `queryable` — `findMany`,
+  `updateMany`, `deleteMany`, `upsertOne`).
 
-The split mirrors the adapter behaviour split. PK-keyed and filter-based
-chains can be declared independently — an adapter can be PK-only (no
-`queryable` behaviour) or query-only (only `queryable`).
+The split mirrors the method-group split on the adapter. PK-keyed and
+filter-based chains can be declared independently — an adapter can be PK-only
+(no `queryable` methods declared) or query-only (only `queryable` methods).
 
 ### 5.5 The `raw` escape hatch
 
@@ -588,14 +657,15 @@ function signature; the framework infers both. The Repo's chain propagates
 the inferred shape and exposes a per-call `<T>` override on the result type:
 
 ```ts
-// Adapter-side: function signature declares args + result
-const pgAdapter = Adapter.from<PgCfg>()
-  .crud({
-    raw: async (schema, config, command: string, params: unknown[]) => {
-      const r = await getClient().query(command, params)
-      return r.rows                              // adapter-default result: unknown[]
-    },
-  }).build()
+// Adapter-side: method signature declares args + result
+class PostgresAdapter extends configurable(pgConnectionPipe, OrmAdapter) {
+  readonly schemaConfigPipe = v.object({ table: v.string() })
+  // ...
+  async raw(schema, schemaCfg, command: string, params: unknown[]) {
+    const r = await this.#client.query(command, params)
+    return r.rows                                // adapter-default result: unknown[]
+  }
+}
 
 // Call site: args spread, optional <T> override on result
 const orgs = await pgRepo.on(OrgSchema).raw<Org[]>('SELECT * FROM orgs WHERE id = $1', ['o1'])
@@ -605,8 +675,8 @@ Different adapters declare different arg-tuples — Postgres has
 `[command: string, params: unknown[]]`, Mongo has
 `[pipeline: Record<string, unknown>[]]`, a hypothetical ping adapter has
 `[]`. The framework reads the adapter's `raw` signature, drops the
-framework-supplied `(schema, config, ...)` prefix, and uses the rest as the
-chain's call-site args.
+framework-supplied `(schema, schemaCfg, ...)` prefix, and uses the rest as
+the chain's call-site args.
 
 All adapter-specific filter shapes, server-side joins, aggregates, and
 out-of-scope features go through `raw`.
@@ -628,21 +698,36 @@ The Repo holds two pieces of config-machinery: a **base resolver** that maps
 a schema to a config (build-time, required), and a **runtime override stack**
 that lets callers temporarily transform the base config (call-time, optional).
 
-### 6.1 Base resolver and base config
+### 6.1 Two-tier config and the base resolver
+
+Adapter configuration splits into two tiers:
+
+- **Connection config** — connection-level (URI, credentials, pool options).
+  Lives on the adapter instance (`this.config`), validated **once** at
+  `MyAdapter.create(...)` against the `connectionPipe` declared in
+  `configurable(connectionPipe, OrmAdapter)` (§1.3). Not produced by the
+  resolver; not transformed per query.
+- **Schema config** — per-schema (table name, collection name, mapper
+  options). Produced **per query** by the Repo's base resolver (and possibly
+  transformed by the runtime override stack, §6.2). Validated against
+  `adapter.schemaConfigPipe` at the Repo→Adapter boundary every query (§6.3).
 
 The **base resolver** is the function passed to `Repo.from(adapter).resolve(...)`
-at build time. It produces a **base config** per schema. The Config type the
-adapter declared via `Adapter.from<Config>()` is the type the resolver must
-return — the framework enforces `(schema: AnySchema) => Config`.
+at build time. It produces a **base schema config** per schema. The
+resolver's return type is constrained to `PipeInput<typeof adapter.schemaConfigPipe>`
+— the framework enforces `(schema: AnySchema) => SchemaConfigInput`.
 
 ```ts
-const repo = Repo.from(PostgresAdapter)
-  .resolve((schema) => ({ table: schema.name }))   // return type constrained to PgCfg
+const adapter = PostgresAdapter.create({ host, port, user, password })
+//      ^^^^^^^ connection config validated here, exposed as adapter.config
+
+const repo = Repo.from(adapter)
+  .resolve((schema) => ({ table: schema.name }))   // schema-config; typed by adapter.schemaConfigPipe
   .build()
 ```
 
-The base resolver is the only thing that *produces* a config from a schema.
-Without `.resolve(...)`, `.build()` is unavailable (§2.6).
+The base resolver is the only thing that *produces* a schema config from a
+schema. Without `.resolve(...)`, `.build()` is unavailable (§2.6).
 
 ### 6.2 Runtime override: `repo.resolve(transform, fn)`
 
@@ -676,17 +761,28 @@ their own scope-entry layer (§6.5).
 ### 6.3 Config resolution pipeline
 
 The **config resolution pipeline** is the per-query process that produces the
-**effective config** — the config actually handed to the adapter:
+**effective schema config** — the schema-level config actually handed to the
+adapter method:
 
-1. **Base resolve.** `.resolve(...)` runs against the schema → base config.
+1. **Base resolve.** `.resolve(...)` runs against the schema → base schema config.
 2. **Stack apply.** Every transform currently active on the runtime stack
    (pushed via `repo.resolve(transform, fn)`) is applied in push order on top
    of the base.
+3. **Pipe validate.** The composed result is validated against
+   `adapter.schemaConfigPipe` (§3.2). Failure throws an `OrmValidationError`
+   from the Repo dispatch layer — pointing at the resolver/transform stack,
+   not the adapter internals. Validation runs at the Repo→Adapter boundary,
+   consistent with the package's "every layer boundary gets a pipe" rule
+   (§7.1).
 
 The **per-query resolution rule**: this pipeline runs for every query —
 top-level chains, preload sub-queries (§9.8), and queries inside a session.
-There is no session-level or Repo-level config caching that bypasses the
-pipeline.
+There is no session-level or Repo-level schema-config caching that bypasses
+the pipeline.
+
+Connection config (`adapter.config`) is **not** part of this pipeline. It is
+validated once at `Adapter.create(...)` and stays put for the lifetime of the
+adapter instance.
 
 ### 6.4 Library-owned ALS scope (config only)
 
@@ -1147,7 +1243,7 @@ interface PatchOp<S> { kind: 'patch'; field: ObjectFieldOf<S>; value: Partial<un
 ```
 
 `UpdateOp<S, A>` resolves a variant to the variant type if `A['updateOps']`
-includes the kind, and to `never` otherwise — per-op gating (§3.5).
+includes the kind, and to `never` otherwise — per-op gating (§3.4).
 
 ### 10.2 Op helpers, helper-kind parity, narrowed-out helpers
 
@@ -1164,7 +1260,7 @@ of the broader name-parity rule (§4.1).
 
 A **narrowed-out helper** is an op helper that produces a `never` type because
 the adapter doesn't declare its op kind. Calling it is a compile error — same
-mechanic as narrowed-out methods (§3.4), at the helper layer.
+mechanic as narrowed-out methods (§3.3), at the helper layer.
 
 ### 10.3 Field-category constraints
 
@@ -1214,8 +1310,8 @@ The `[op0, ...rest]` array passed to a single update call is the **op list**.
 
 Every member of the canonical update-op set has a corresponding op helper
 (§10.2). There are no gating-only ops — method-shape capabilities (e.g.
-`upsertOne`) are gated on behaviour-method presence, not on `updateOps`
-membership.
+`upsertOne`) are gated on method presence on the adapter class, not on
+`updateOps` membership.
 
 Op helpers are exported top-level from `equipped/orm`. Users who collide with
 JS built-in `Set` rename on import (`import { set as setOp } from 'equipped/orm'`).
@@ -1259,7 +1355,7 @@ It also exposes **structural combinators**: `and(facFns)` and `or(facFns)`.
 
 - **Combinators-always-available rule.** `and` and `or` are always available
   on any `FilterGroup`, regardless of `queryableOps` declarations. They build
-  sub-tree structure, not field-ops; the per-op gating rule (§3.5) applies to
+  sub-tree structure, not field-ops; the per-op gating rule (§3.4) applies to
   filter ops only.
 - **Empty-combinator rejection rule.** `and([])` and `or([])` throw at the
   moment `FilterGroup.and([])` / `FilterGroup.or([])` is called — at builder
@@ -1307,7 +1403,7 @@ does NOT do them):
 There is no `FilterGroup.raw(...)` filter-shape escape hatch. Custom
 adapter-specific filter shapes go via the adapter's `raw(...)` method
 (Repo-level), not via the FilterGroup tree. The **no-FilterGroup-raw rule**
-locks this — consistent with the no-emulation rule (§3.5) and the closed-set
+locks this — consistent with the no-emulation rule (§3.4) and the closed-set
 rule (§4.4).
 
 ### 11.8 Filter-tree clone
@@ -1344,22 +1440,26 @@ Three argument roles:
 
 ### 12.2 Gate rule
 
-**Upsert gate rule.** `upsertOne` exists when `queryable.upsertOne` is
-declared on the adapter. Missing → narrowed-out. Symmetric with every other
-filter-based Repo method (§5.1) — gate is behaviour-method presence, no
-separate capability flag.
+**Upsert gate rule.** `upsertOne` exists when `upsertOne` is declared as a
+method on the adapter class. Missing → narrowed-out. Symmetric with every
+other filter-based Repo method (§5.1) — gate is method presence, no separate
+capability flag.
 
-`queryable.upsertOne` requires `queryableOps` to be non-empty (co-required
-pair, §3.3) and accepts the adapter's declared `updateOps` for its op-list
-arg. Both flow through the existing `queryable` machinery; no upsert-specific
-declaration exists.
+`upsertOne` is meaningful only when `queryableOps` is non-empty, and the
+filter chain it consumes is gated on those ops; with `queryableOps = []` the
+filter argument is unreachable and `upsertOne` is effectively narrowed-out at
+the consumer (self-policing — see §3.3). It accepts the adapter's declared
+`updateOps` for its op-list arg. Both flow through the existing filter and
+update machinery; no upsert-specific declaration exists.
 
 The **query-only-upsert rule**: there is no `upsertByPk` variant. Real-world
 upserts identify by natural key (email, slug, FK), not PK. PK-keyed upsert is
 expressible as `q.eq(schema.pkField, pk)` if needed.
 
-The **upsert-in-queryable rule**: `upsertOne` lives in the `queryable`
-behaviour, not `crud`. Important for adapter authors.
+The **upsert-in-queryable rule**: `upsertOne` is grouped with the filter-
+based methods (label `queryable`), not with PK-keyed CRUD (label `crud`).
+Important for adapter authors — its filter argument flows through the same
+machinery as `findMany` / `updateMany` / `deleteMany`.
 
 ### 12.3 Dual-path semantics
 
@@ -1445,7 +1545,7 @@ criterion: a rule earns a place here if it crosses three or more sections.
 | # | Principle | Statement |
 |---|---|---|
 | 1 | **Builder-chain rule** | Static-factory builder chains (`X.from(args).step()...build()`) are the canonical shape for all artifact construction; direct calls for invocation/operations. (§2.2) |
-| 2 | **No-emulation rule** | The framework never emulates a missing op or behaviour client-side. Adapter-specific power lives in the adapter's `raw` method only. (§3.5) |
+| 2 | **No-emulation rule** | The framework never emulates a missing op or method client-side. Adapter-specific power lives in the adapter's `raw` method only. (§3.4) |
 | 3 | **Closed-set rule** | Adapters subset the canonical sets (filter ops, update ops, field types, relation kinds); they cannot extend them. Extension requires a package version bump. (§4.4) |
 | 4 | **Type-system-is-the-contract rule** | Capability mismatches are compile errors wherever feasible, not runtime throws. The TypeScript surface is the load-bearing contract. |
 | 5 | **Validate-once rule** | Validation runs exactly once, at the Repo-entry boundary; adapters receive validated input and never re-validate. (§7.1) |

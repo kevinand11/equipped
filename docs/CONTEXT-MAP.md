@@ -7,9 +7,11 @@ canonical location).
 
 ## Contexts
 
-| Context | Domain doc            |
-| ------- | --------------------- |
-| `orm`   | `docs/orm/CONTEXT.md` |
+| Context     | Domain doc                  |
+| ----------- | --------------------------- |
+| `orm`       | `docs/orm/CONTEXT.md`       |
+| `instance`  | `docs/instance/CONTEXT.md`  |
+| `utilities` | `docs/utilities/CONTEXT.md` |
 
 Add a new row when a subsystem's vocabulary stabilises enough to deserve its own
 `CONTEXT.md`. `/grill-with-docs` creates these lazily as terms get resolved.
