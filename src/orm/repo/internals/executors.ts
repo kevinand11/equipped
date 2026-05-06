@@ -6,7 +6,7 @@ import type { AnyPreloadDef } from '../../relations'
 import type { AnySchema } from '../../schema'
 import { validateCreate, validateCreateMany, validateUpdate, validateUpsertConflicts, type SchemaCreateInput, type SchemaUpdateInput } from '../../schema-validations'
 import { SetOp, isUpdateOp, type AnyUpdateOp } from '../../updates'
-import type { SchemaContext } from '../builders'
+import type { SchemaContext, UpsertInput } from '../builders'
 
 export async function runOneRead<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
@@ -43,8 +43,6 @@ export async function runAllRead<S extends AnySchema, Sel extends string, P exte
 	})
 	return context.shapeRows(state.select, state.preloads, rows)
 }
-
-type UpsertInput<S extends AnySchema> = { create: SchemaCreateInput<S> } | { create: SchemaCreateInput<S>; update: SchemaUpdateInput<S> }
 
 export async function runOneCreate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,

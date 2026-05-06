@@ -2,7 +2,7 @@ import type { InferAdapterConfig } from '../adapter'
 import type { OrmAdapterConfig, OrmAdapterLike } from '../adapters/base'
 import type { AnySchema } from '../schema'
 import { currentTransforms, run } from './als'
-import { SchemaContext, SchemaRef, type SchemaRefSurface } from './builders'
+import { SchemaContext, SchemaRef, type HasMethod, type SchemaRefSurface } from './builders'
 
 export type { ConfigTransform } from './als'
 
@@ -64,8 +64,6 @@ class RepoBuilder<A extends OrmAdapterLike<any>> {
 		}) as RepoSurface<A>
 	}
 }
-
-type HasMethod<A, Bag extends string, Method extends string> = A extends Record<Bag, Record<Method, (...args: any) => any>> ? true : false
 
 export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
 	(HasMethod<A, 'transactional', 'session'> extends true ? {} : { session: never })
