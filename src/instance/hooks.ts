@@ -1,6 +1,6 @@
 export type HookEvent = 'setup' | 'start' | 'close'
 export type HookCb = Promise<unknown | void> | (() => void | unknown | Promise<void | unknown>)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export type ClassRef = abstract new (...args: any[]) => any
 export type HookOptions = {
 	class?: ClassRef
@@ -96,19 +96,11 @@ export function resolveHookDAG(hooks: HookRecord[], invert: boolean = false): Ho
 	for (const h of hooks) {
 		if (!h.class) continue
 		for (const dep of h.after) {
-			if (!invert) {
-				const edges = graph.get(dep)!
-				if (!edges.includes(h.class)) {
-					edges.push(h.class)
-					inDegree.set(h.class, (inDegree.get(h.class) ?? 0) + 1)
-				}
-			} else {
-				const edges = graph.get(h.class)
-				if (!edges) continue
-				if (!edges.includes(dep)) {
-					edges.push(dep)
-					inDegree.set(dep, (inDegree.get(dep) ?? 0) + 1)
-				}
+			const [from, to] = invert ? [h.class, dep] : [dep, h.class]
+			const edges = graph.get(from)!
+			if (!edges.includes(to)) {
+				edges.push(to)
+				inDegree.set(to, inDegree.get(to)! + 1)
 			}
 		}
 	}
