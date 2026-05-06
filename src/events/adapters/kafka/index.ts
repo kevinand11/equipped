@@ -1,11 +1,11 @@
 import { KafkaJS } from '@confluentinc/kafka-javascript'
+import { v } from 'valleyed'
 
 import { EquippedError } from '../../../errors'
 import { Instance } from '../../../instance'
 import type { Events } from '../../../types'
 import { Random, configurable, parseJSONValue } from '../../../utilities'
 import { EventBus, type Stream, type StreamOptions } from '../base'
-import { v } from 'valleyed'
 
 export const kafkaConfigPipe = () =>
 	v.meta(
