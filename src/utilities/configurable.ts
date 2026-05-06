@@ -40,21 +40,6 @@ export function configurable<P extends Pipe<any, any>, Base extends new (...args
 	}
 }
 
-/** @deprecated Use class-based `configurable` instead. Will be removed when server adapters migrate. */
-export function configurableFn<P extends Pipe<any, any>, T, Args extends ReadonlyArray<any>>(
-	pipeFn: () => P,
-	fn: (config: PipeOutput<P>, ...args: Args) => T,
-): { create: (config: PipeInput<P>, ...args: Args) => T } {
-	const pipe = pipeFn()
-	v.compile(pipe)
-	return {
-		create: (config: PipeInput<P>, ...args: Args) => {
-			const validated = v.assert(pipe, config)
-			return fn(validated, ...args)
-		},
-	}
-}
-
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf } = import.meta.vitest
 	const { v } = await import('valleyed')
