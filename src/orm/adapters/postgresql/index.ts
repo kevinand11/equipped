@@ -134,17 +134,10 @@ export function createPostgresAdapter(connectionConfig: PostgresqlConnectionConf
 					)
 				}
 			},
-			raw: async <T = unknown>(_schema: AnySchema, config: PostgresqlRepoConfig, command: unknown, params: unknown[] = []) => {
+			raw: async (_schema: AnySchema, config: PostgresqlRepoConfig, command: string, params: unknown[] = []) => {
 				try {
-					if (typeof command !== 'string') {
-						throw new EquippedError('PostgreSQL raw requires a SQL string command', {
-							adapter: 'postgresql',
-							operation: 'raw',
-							table: config.table,
-						})
-					}
 					const result = await getClient().query(command, params)
-					return result as T
+					return result
 				} catch (error) {
 					if (error instanceof EquippedError) throw error
 					throw new EquippedError(
@@ -401,6 +394,87 @@ if (import.meta.vitest) {
 			expectTypeOf(_all.delete).toBeFunction()
 			expectTypeOf(_ref.raw).toBeFunction()
 			expectTypeOf(repo.session).toBeFunction()
+		})
+
+		test('type-level: raw arg-tuple infers (command: string, params?: unknown[]) from PG adapter', async () => {
+			const { Repo } = await import('../../repo/repo')
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { adapter } = createPostgresAdapter({
+				host: 'localhost',
+				port: 5432,
+				username: 'test',
+				password: 'test',
+				database: 'testdb',
+			})
+			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const _ref = repo.on(_TestSchema)
+
+			expectTypeOf(_ref.raw).parameters.toEqualTypeOf<[command: string, params?: unknown[]]>()
+		})
+
+		test('type-level: per-call <T> override narrows PG raw return type', async () => {
+			const { Repo } = await import('../../repo/repo')
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { adapter } = createPostgresAdapter({
+				host: 'localhost',
+				port: 5432,
+				username: 'test',
+				password: 'test',
+				database: 'testdb',
+			})
+			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const _ref = repo.on(_TestSchema)
+
+			expectTypeOf(_ref.raw<{ id: string }[]>).returns.toEqualTypeOf<Promise<{ id: string }[]>>()
+		})
+
+		test('raw forwards (command, params) to pool.query at runtime', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const schema = Schema.from('pg_raw').pk('id', v.string(), () => 'x').build()
+			const { adapter, pool } = createPostgresAdapter({
+				host: 'localhost',
+				port: 5432,
+				username: 'test',
+				password: 'test',
+				database: 'testdb',
+			})
+			let capturedCommand: unknown
+			let capturedParams: unknown
+			const mockResult = { rows: [{ id: '1' }], rowCount: 1 }
+			;(pool as any).query = async (cmd: unknown, params: unknown) => {
+				capturedCommand = cmd
+				capturedParams = params
+				return mockResult
+			}
+			const result = await adapter.use(schema, { table: 'users' }).raw('SELECT * FROM users WHERE id = $1', ['abc'])
+			expect(capturedCommand).toBe('SELECT * FROM users WHERE id = $1')
+			expect(capturedParams).toEqual(['abc'])
+			expect(result).toBe(mockResult)
+		})
+
+		test('raw defaults params to [] when omitted', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const schema = Schema.from('pg_raw2').pk('id', v.string(), () => 'x').build()
+			const { adapter, pool } = createPostgresAdapter({
+				host: 'localhost',
+				port: 5432,
+				username: 'test',
+				password: 'test',
+				database: 'testdb',
+			})
+			let capturedParams: unknown
+			;(pool as any).query = async (_cmd: unknown, params: unknown) => {
+				capturedParams = params
+				return { rows: [] }
+			}
+			await adapter.use(schema, { table: 'users' }).raw('SELECT 1')
+			expect(capturedParams).toEqual([])
 		})
 
 		test('nested session returns callback without starting new transaction', () => {

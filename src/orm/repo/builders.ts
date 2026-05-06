@@ -1,3 +1,4 @@
+import type { InferRawArgs, InferRawReturn } from '../adapter'
 import type { OrmUse } from '../adapters/base'
 import type { AnyField } from '../fields'
 import { FilterGroup, type FilterFactory } from '../filter'
@@ -42,8 +43,10 @@ export type AllBuilderSurface<S extends AnySchema, A = unknown, Sel extends stri
 	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { delete: never })
 
 export type SchemaRefSurface<S extends AnySchema, A = unknown> =
-	SchemaRef<S, A> &
-	(HasMethod<A, 'crud', 'raw'> extends true ? {} : { raw: never })
+	Omit<SchemaRef<S, A>, 'raw'> &
+	(HasMethod<A, 'crud', 'raw'> extends true
+		? { raw: <T = InferRawReturn<A>>(...args: InferRawArgs<A>) => Promise<T> }
+		: { raw: never })
 
 type ReadBuilderFor<TBuilder, S extends AnySchema, A, Sel extends string, P extends readonly AnyPreloadDef[]> = TBuilder extends {
 	_builderKind: 'one'
@@ -146,8 +149,8 @@ export class SchemaRef<S extends AnySchema, A = unknown> {
 		return new AllBuilder<S, A, never, []>(this.#context) as AllBuilderSurface<S, A, never, []>
 	}
 
-	raw<T = unknown>(command: unknown, params?: unknown[]) {
-		return this.#context.use.raw<T>(command, params)
+	raw(...args: any[]) {
+		return this.#context.use.raw(...args)
 	}
 }
 

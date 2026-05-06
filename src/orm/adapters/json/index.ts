@@ -1,6 +1,5 @@
 import { writeFile, readFile, rename } from 'node:fs/promises'
 
-import { EquippedError } from '../../../errors'
 import { Adapter } from '../../adapter'
 import { createInMemoryAdapter, type InMemoryRepoConfig } from '../in-memory'
 
@@ -80,12 +79,6 @@ export function createJsonAdapter(options: { filePath: string }) {
 				const result = await inMemory.crud.deleteByPk!(schema, config, pk)
 				if (result) await persistToDisk()
 				return result
-			},
-			raw: async () => {
-				throw new EquippedError('JSON adapter does not support raw operations', {
-					adapter: 'json',
-					operation: 'raw',
-				})
 			},
 		})
 		.queryable({

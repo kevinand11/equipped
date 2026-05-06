@@ -2,7 +2,6 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { differ } from 'valleyed'
 
-import { EquippedError } from '../../../errors'
 import { Adapter } from '../../adapter'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import type { QueryOptions } from '../../query'
@@ -278,12 +277,6 @@ export function createInMemoryAdapter() {
 				const updated = applyOps(doc, ops)
 				store.set(pkStr, updated)
 				return clone(updated)
-			},
-			raw: async () => {
-				throw new EquippedError('In-memory adapter does not support raw operations', {
-					adapter: 'in-memory',
-					operation: 'raw',
-				})
 			},
 		})
 		.queryable({

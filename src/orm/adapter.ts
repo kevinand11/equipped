@@ -34,7 +34,7 @@ export type CrudBag<Config> = {
 		ops: AnyUpdateOp[],
 	) => Promise<Record<string, unknown> | null>
 	deleteByPk?: (schema: AnySchema, config: Config, pk: unknown) => Promise<Record<string, unknown> | null>
-	raw?: <T = unknown>(schema: AnySchema, config: Config, command: unknown, params?: unknown[]) => Promise<T>
+	raw?: (schema: AnySchema, config: Config, ...args: any[]) => Promise<any>
 }
 
 export type QueryableBag<Config> = {
@@ -186,8 +186,8 @@ export class AdapterBuilder<Acc = {}> {
 				},
 				deleteMany: (filter) =>
 					queryable?.deleteMany?.(schema, config, filter) ?? Promise.resolve([]),
-				raw: <T = unknown>(command: unknown, params?: unknown[]) =>
-					(crud?.raw?.(schema, config, command, params) ?? Promise.reject(new Error('raw not implemented'))) as Promise<T>,
+				raw: (...args: any[]) =>
+					crud?.raw?.(schema, config, ...args) ?? Promise.reject(new Error('raw not implemented')),
 			}
 			return use
 		}
@@ -230,6 +230,14 @@ export type InferAdapterConfig<A> = A extends { __config: infer C }
 export type InferAdapterQueryableOps<A> = A extends { queryableOps: infer Ops extends readonly FilterOpName[] }
 	? Ops
 	: readonly []
+
+export type InferRawArgs<A> = A extends { crud: { raw: (schema: any, config: any, ...args: infer Args) => any } }
+	? Args
+	: never
+
+export type InferRawReturn<A> = A extends { crud: { raw: (...args: any[]) => Promise<infer R> } }
+	? R
+	: unknown
 
 type ToFieldTypeName<T> = T extends undefined
 	? never
@@ -297,6 +305,41 @@ if (import.meta.vitest) {
 		test('duplicate .supportedFieldTypes values is a TS error', () => {
 			// @ts-expect-error — duplicate 'string' should fail
 			Adapter.from<unknown>().supportedFieldTypes('string', 'string')
+		})
+	})
+
+	describe('type-level: InferRawArgs and InferRawReturn', () => {
+		test('InferRawArgs extracts user args from adapter raw signature', () => {
+			const _adapter = Adapter.from<{ table: string }>()
+				.supportedFieldTypes('string')
+				.crud({
+					findByPk: async () => null,
+					raw: async (_s: AnySchema, _c: { table: string }, _sql: string, _params: number[]) => [42],
+				})
+				.build()
+			type Args = InferRawArgs<typeof _adapter>
+			expectTypeOf<Args>().toEqualTypeOf<[sql: string, params: number[]]>()
+		})
+
+		test('InferRawReturn extracts return type from adapter raw signature', () => {
+			const _adapter = Adapter.from<{ table: string }>()
+				.supportedFieldTypes('string')
+				.crud({
+					findByPk: async () => null,
+					raw: async (_s: AnySchema, _c: { table: string }, _sql: string) => ({ rows: [] as unknown[] }),
+				})
+				.build()
+			type Ret = InferRawReturn<typeof _adapter>
+			expectTypeOf<Ret>().toEqualTypeOf<{ rows: unknown[] }>()
+		})
+
+		test('InferRawArgs returns never when adapter has no raw', () => {
+			const _adapter = Adapter.from<unknown>()
+				.supportedFieldTypes('string')
+				.crud({ findByPk: async () => null })
+				.build()
+			type Args = InferRawArgs<typeof _adapter>
+			expectTypeOf<Args>().toBeNever()
 		})
 	})
 
