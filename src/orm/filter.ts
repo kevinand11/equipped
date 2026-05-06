@@ -22,92 +22,91 @@ export type FilterFactory = (q: FilterGroup) => FilterGroup
 export type FilterGroupOp = 'and' | 'or'
 
 export class FilterGroup {
-	readonly children: FilterChild[] = []
+	readonly children: readonly FilterChild[]
 
-	private constructor(readonly op: FilterGroupOp = 'and') {}
-
-	#addFilter(field: string | AnyField, condition: FilterOpName, value: unknown): this {
-		this.children.push(new Filter(field, condition, value))
-		return this
+	private constructor(
+		readonly op: FilterGroupOp = 'and',
+		children?: readonly FilterChild[],
+	) {
+		this.children = children ?? []
 	}
 
-	eq<T>(field: string | Field<T>, value: T): this {
-		return this.#addFilter(field, 'eq', value)
+	#withChild(child: FilterChild): FilterGroup {
+		return new FilterGroup(this.op, [...this.children, child])
 	}
 
-	ne<T>(field: string | Field<T>, value: T): this {
-		return this.#addFilter(field, 'ne', value)
+	eq<T>(field: string | Field<T>, value: T): FilterGroup {
+		return this.#withChild(new Filter(field, 'eq', value))
 	}
 
-	gt<T>(field: string | Field<T>, value: T): this {
-		return this.#addFilter(field, 'gt', value)
+	ne<T>(field: string | Field<T>, value: T): FilterGroup {
+		return this.#withChild(new Filter(field, 'ne', value))
 	}
 
-	gte<T>(field: string | Field<T>, value: T): this {
-		return this.#addFilter(field, 'gte', value)
+	gt<T>(field: string | Field<T>, value: T): FilterGroup {
+		return this.#withChild(new Filter(field, 'gt', value))
 	}
 
-	lt<T>(field: string | Field<T>, value: T): this {
-		return this.#addFilter(field, 'lt', value)
+	gte<T>(field: string | Field<T>, value: T): FilterGroup {
+		return this.#withChild(new Filter(field, 'gte', value))
 	}
 
-	lte<T>(field: string | Field<T>, value: T): this {
-		return this.#addFilter(field, 'lte', value)
+	lt<T>(field: string | Field<T>, value: T): FilterGroup {
+		return this.#withChild(new Filter(field, 'lt', value))
 	}
 
-	in<T>(field: string | Field<T>, value: T[]): this {
-		return this.#addFilter(field, 'in', value)
+	lte<T>(field: string | Field<T>, value: T): FilterGroup {
+		return this.#withChild(new Filter(field, 'lte', value))
 	}
 
-	notIn<T>(field: string | Field<T>, value: T[]): this {
-		return this.#addFilter(field, 'notIn', value)
+	in<T>(field: string | Field<T>, value: T[]): FilterGroup {
+		return this.#withChild(new Filter(field, 'in', value))
 	}
 
-	like(field: string | Field<string>, value: string): this {
-		return this.#addFilter(field, 'like', value)
+	notIn<T>(field: string | Field<T>, value: T[]): FilterGroup {
+		return this.#withChild(new Filter(field, 'notIn', value))
 	}
 
-	exists(field: string | Field<unknown>): this {
-		return this.#addFilter(field, 'exists', true)
+	like(field: string | Field<string>, value: string): FilterGroup {
+		return this.#withChild(new Filter(field, 'like', value))
 	}
 
-	notExists(field: string | Field<unknown>): this {
-		return this.#addFilter(field, 'notExists', true)
+	exists(field: string | Field<unknown>): FilterGroup {
+		return this.#withChild(new Filter(field, 'exists', true))
 	}
 
-	contains<T>(field: string | Field<T>, value: T[]): this {
-		return this.#addFilter(field, 'contains', value)
+	notExists(field: string | Field<unknown>): FilterGroup {
+		return this.#withChild(new Filter(field, 'notExists', true))
 	}
 
-	notContains<T>(field: string | Field<T>, value: T[]): this {
-		return this.#addFilter(field, 'notContains', value)
+	contains<T>(field: string | Field<T>, value: T[]): FilterGroup {
+		return this.#withChild(new Filter(field, 'contains', value))
 	}
 
-	and(facFns: FilterFactory[]): this {
+	notContains<T>(field: string | Field<T>, value: T[]): FilterGroup {
+		return this.#withChild(new Filter(field, 'notContains', value))
+	}
+
+	and(facFns: FilterFactory[]): FilterGroup {
 		if (facFns.length === 0) throw new EquippedError('and() requires at least one filter factory', { op: 'and' })
-		const group = new FilterGroup('and')
-		group.children.push(...facFns.map((fn) => fn(new FilterGroup())))
-		this.children.push(group)
-		return this
+		const group = new FilterGroup('and', facFns.map((fn) => fn(FilterGroup.create())))
+		return this.#withChild(group)
 	}
 
-	or(facFns: FilterFactory[]): this {
+	or(facFns: FilterFactory[]): FilterGroup {
 		if (facFns.length === 0) throw new EquippedError('or() requires at least one filter factory', { op: 'or' })
-		const group = new FilterGroup('or')
-		group.children.push(...facFns.map((fn) => fn(new FilterGroup())))
-		this.children.push(group)
-		return this
+		const group = new FilterGroup('or', facFns.map((fn) => fn(FilterGroup.create())))
+		return this.#withChild(group)
 	}
 
 	clone(): FilterGroup {
-		const out = new FilterGroup(this.op)
-		out.children.push(
-			...this.children.map((c) => {
+		return new FilterGroup(
+			this.op,
+			this.children.map((c) => {
 				if (c instanceof Filter) return new Filter(c.field, c.op, structuredClone(c.value))
 				return c.clone()
 			}),
 		)
-		return out
 	}
 
 	static create(): FilterGroup {
@@ -118,7 +117,7 @@ export class FilterGroup {
 
 export type GatedFilterGroup<DeclaredOps extends readonly FilterOpName[]> = {
 	[K in FilterOpName]: K extends DeclaredOps[number] ? FilterGroup[K] : never
-} & Pick<FilterGroup, 'and' | 'or' | 'clone' | 'children' | 'op'>
+} & Pick<FilterGroup, 'and' | 'or' | 'clone' | 'op'> & { readonly children: readonly FilterChild[] }
 
 export type GatedFilterFactory<DeclaredOps extends readonly FilterOpName[]> = (
 	q: GatedFilterGroup<DeclaredOps>,
@@ -335,6 +334,42 @@ if (import.meta.vitest) {
 				expect((original.children[0] as Filter).value).toEqual([1, 2, 3])
 				expect(clonedValue).toEqual([1, 2, 3, 4])
 			})
+		})
+	})
+
+	describe('clone-on-step: fan-out independence', () => {
+		test('.eq() returns a new FilterGroup, not the same instance', () => {
+			const base = FilterGroup.create()
+			const a = base.eq('name', 'Alice')
+			expect(a).not.toBe(base)
+		})
+
+		test('fan-out from shared base does not pollute either branch', () => {
+			const base = FilterGroup.create().eq('name', 'Alice')
+			const branchA = base.gt('age', 20)
+			const branchB = base.lt('age', 40)
+
+			expect(branchA.children).toHaveLength(2)
+			expect(branchB.children).toHaveLength(2)
+			expect(base.children).toHaveLength(1)
+			expect((branchA.children[1] as Filter).op).toBe('gt')
+			expect((branchB.children[1] as Filter).op).toBe('lt')
+		})
+
+		test('.and() returns a new FilterGroup', () => {
+			const base = FilterGroup.create().eq('name', 'Alice')
+			const withAnd = base.and([(q) => q.gt('age', 20)])
+			expect(withAnd).not.toBe(base)
+			expect(base.children).toHaveLength(1)
+			expect(withAnd.children).toHaveLength(2)
+		})
+
+		test('.or() returns a new FilterGroup', () => {
+			const base = FilterGroup.create().eq('name', 'Alice')
+			const withOr = base.or([(q) => q.gt('age', 20)])
+			expect(withOr).not.toBe(base)
+			expect(base.children).toHaveLength(1)
+			expect(withOr.children).toHaveLength(2)
 		})
 	})
 

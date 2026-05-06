@@ -43,12 +43,15 @@ export class SchemaBuilder<
 	C extends Record<string, AnyComputedField> = {},
 > {
 	#name: N
-	#pkField: PKField | null = null
-	#fieldDefs: F = {} as F
-	#computedDefs: C = {} as C
+	#pkField: PKField | null
+	#fieldDefs: F
+	#computedDefs: C
 
-	constructor(name: N) {
+	constructor(name: N, pkField?: PKField | null, fieldDefs?: F, computedDefs?: C) {
 		this.#name = name
+		this.#pkField = pkField ?? null
+		this.#fieldDefs = fieldDefs ?? ({} as F)
+		this.#computedDefs = computedDefs ?? ({} as C)
 	}
 
 	get name() {
@@ -60,9 +63,12 @@ export class SchemaBuilder<
 		pipe: P,
 		generate: () => PipeOutput<P>,
 	): SchemaBuilder<N, SchemaField<K, P, true>, F> {
-		const builder = this as unknown as SchemaBuilder<N, SchemaField<K, P, true>, F>
-		builder.#pkField = new SchemaField(name, pipe, { onCreate: generate })
-		return builder
+		return new SchemaBuilder<N, SchemaField<K, P, true>, F>(
+			this.#name,
+			new SchemaField(name, pipe, { onCreate: generate }),
+			{ ...this.#fieldDefs } as F,
+			undefined,
+		)
 	}
 
 	field<
@@ -84,8 +90,8 @@ export class SchemaBuilder<
 					: never
 		}
 	> {
-		this.#fieldDefs[name] = new SchemaField(name, pipe, opts) as any
-		return this as any
+		const nextFields = { ...this.#fieldDefs, [name]: new SchemaField(name, pipe, opts) }
+		return new SchemaBuilder(this.#name, this.#pkField, nextFields, { ...this.#computedDefs }) as any
 	}
 
 	computed<
@@ -105,8 +111,8 @@ export class SchemaBuilder<
 			[Key in keyof C | K]: Key extends K ? ComputedField<K, P, Deps> : Key extends keyof C ? C[Key] : never
 		}
 	> {
-		this.#computedDefs[name as K] = new ComputedField(name as K, pipe, deps, compute as any) as any
-		return this as any
+		const nextComputed = { ...this.#computedDefs, [name]: new ComputedField(name as K, pipe, deps, compute as any) }
+		return new SchemaBuilder(this.#name, this.#pkField, { ...this.#fieldDefs }, nextComputed) as any
 	}
 
 	build(this: [PKField] extends [never] ? never : SchemaBuilder<N, PKField, F, C>): Schema<N, PKField, F, C> {
@@ -132,10 +138,10 @@ export class Schema<
 		this.#fieldDefs = fieldDefs
 		this.#computedDefs = computedDefs
 		if (this.#pkField) {
-			Object.defineProperty(this.#pkField, '__schema', { value: this, enumerable: false })
+			Object.defineProperty(this.#pkField, '__schema', { value: this, enumerable: false, configurable: true })
 		}
 		for (const field of Object.values(this.#fieldDefs)) {
-			Object.defineProperty(field, '__schema', { value: this, enumerable: false })
+			Object.defineProperty(field, '__schema', { value: this, enumerable: false, configurable: true })
 		}
 	}
 
@@ -357,6 +363,46 @@ if (import.meta.vitest) {
 		test('duplicate .field() name is a TS error', () => {
 			// @ts-expect-error — duplicate field name 'email' should fail
 			Schema.from('test').pk('id', v.string(), () => 'x').field('email', v.string()).field('email', v.string()).build()
+		})
+	})
+
+	describe('clone-on-step: fan-out independence', () => {
+		test('.field() returns a new builder, not the same instance', () => {
+			const base = Schema.from('test').pk('id', v.string(), () => 'x')
+			const a = base.field('email', v.string())
+			expect(a).not.toBe(base)
+		})
+
+		test('.pk() returns a new builder, not the same instance', () => {
+			const base = Schema.from('test')
+			const a = base.pk('id', v.string(), () => 'x')
+			expect(a).not.toBe(base)
+		})
+
+		test('.computed() returns a new builder, not the same instance', () => {
+			const base = Schema.from('test').pk('id', v.string(), () => 'x').field('name', v.string())
+			const a = base.computed('upper', ['name'], v.string(), ({ name }) => name.toUpperCase())
+			expect(a).not.toBe(base)
+		})
+
+		test('fan-out from shared base does not pollute either branch', () => {
+			const base = Schema.from('test').pk('id', v.string(), () => 'x')
+			const branchA = base.field('email', v.string()).build()
+			const branchB = base.field('age', v.number()).build()
+
+			expect(Object.keys(branchA.fieldDefs)).toEqual(['email'])
+			expect(Object.keys(branchB.fieldDefs)).toEqual(['age'])
+		})
+
+		test('fan-out with computed does not pollute base', () => {
+			const base = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.field('name', v.string())
+			const withComputed = base.computed('upper', ['name'], v.string(), ({ name }) => name.toUpperCase()).build()
+			const withoutComputed = base.build()
+
+			expect(Object.keys(withComputed.computedDefs)).toEqual(['upper'])
+			expect(Object.keys(withoutComputed.computedDefs)).toEqual([])
 		})
 	})
 

@@ -102,8 +102,7 @@ abstract class ReadSelectState<S extends AnySchema, A = unknown, Sel extends str
 	}
 
 	where(factory: FilterFactory): this {
-		const nextGroup = this._where.clone()
-		factory(nextGroup)
+		const nextGroup = factory(this._where.clone())
 		return this._clone<Sel, P>({
 			where: nextGroup,
 			select: this._select as readonly Sel[] | undefined,
@@ -158,8 +157,7 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	declare readonly _builderKind: 'one'
 
 	id(value: SchemaPrimaryKeyValue<S>): this {
-		const nextGroup = this._where.clone()
-		nextGroup.eq(this._context.schema.pkField, value)
+		const nextGroup = this._where.clone().eq(this._context.schema.pkField, value)
 		return this._clone<Sel, P>({
 			where: nextGroup,
 			select: this._select as readonly Sel[] | undefined,
