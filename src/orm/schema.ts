@@ -111,7 +111,7 @@ export class SchemaBuilder<
 
 	build(this: [PKField] extends [never] ? never : SchemaBuilder<N, PKField, F, C>): Schema<N, PKField, F, C> {
 		const self = this as unknown as SchemaBuilder<N, PKField, F, C>
-		return new Schema<N, PKField, F, C>(self.#name, self.#pkField as PKField, self.#fieldDefs, self.#computedDefs)
+		return new Schema<N, PKField, F, C>(self.#name, self.#pkField, self.#fieldDefs, self.#computedDefs)
 	}
 }
 
