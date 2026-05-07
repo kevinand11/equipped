@@ -983,6 +983,64 @@ if (import.meta.vitest) {
 		})
 	})
 
+	describe('type-level: aggregate gating', () => {
+		test('adapter with aggregateOps = [] narrows repo.on(S).aggregate to never', () => {
+			class EmptyAggAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly aggregateOps = [] as const
+			}
+			type A = EmptyAggAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['aggregate']>().toBeNever()
+		})
+
+		test('adapter with aggregate method and non-empty aggregateOps narrows to callable', () => {
+			class FullAggAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string', 'number'] as const
+				readonly aggregateOps = ['count', 'sum'] as const
+				async aggregate() { return [] }
+			}
+			type A = FullAggAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['aggregate']>().toBeFunction()
+		})
+
+		test('adapter with aggregate method but empty aggregateOps narrows to never', () => {
+			class MethodOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly aggregateOps = [] as const
+				async aggregate() { return [] }
+			}
+			type A = MethodOnlyAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['aggregate']>().toBeNever()
+		})
+
+		test('adapter with non-empty aggregateOps but no aggregate method narrows to never', () => {
+			class OpsOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly aggregateOps = ['count'] as const
+			}
+			type A = OpsOnlyAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['aggregate']>().toBeNever()
+		})
+
+		test('default aggregateOps on OrmAdapter is empty, so aggregate is never by default', () => {
+			class DefaultAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+			}
+			type A = DefaultAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['aggregate']>().toBeNever()
+		})
+	})
+
 	describe('repo.on().all().where().find() end-to-end', () => {
 		const TestSchema = Schema.from('e2e')
 			.pk('id', v.string(), () => `e-${Math.random().toString(36).slice(2)}`)
