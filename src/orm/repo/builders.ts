@@ -1,6 +1,6 @@
 import type { InferRawArgs, InferRawReturn } from '../adapter'
 import type { OrmUse } from '../adapters/base'
-import { OrmNotFoundError } from '../errors'
+import { OrmNotFoundError, type OrmNotFoundOperation } from '../errors'
 import type { AnyField } from '../fields'
 import { FilterGroup, type FilterFactory } from '../filter'
 import { OrderBy } from '../query'
@@ -57,14 +57,12 @@ export type SchemaRefSurface<S extends AnySchema, A = unknown> =
 
 type ReadBuilderFor<TBuilder, S extends AnySchema, A, Sel extends string, P extends readonly AnyPreloadDef[]> = TBuilder extends {
 	_builderKind: 'one'
-	_req: true
+	_req: infer Req extends boolean
 }
-	? OneBuilderSurface<S, A, Sel, P, true>
-	: TBuilder extends { _builderKind: 'one' }
-		? OneBuilderSurface<S, A, Sel, P, false>
-		: TBuilder extends { _builderKind: 'all' }
-			? AllBuilderSurface<S, A, Sel, P>
-			: never
+	? OneBuilderSurface<S, A, Sel, P, Req>
+	: TBuilder extends { _builderKind: 'all' }
+		? AllBuilderSurface<S, A, Sel, P>
+		: never
 
 export class SchemaContext<S extends AnySchema> {
 	constructor(
@@ -189,6 +187,12 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 		return new OneBuilder<S, A, Sel, P, true>(this._context, this._readState(), { required: true, message }) as OneBuilderSurface<S, A, Sel, P, true>
 	}
 
+	private _assertFound(result: unknown, operation: OrmNotFoundOperation): void {
+		if (this._required && result === null) {
+			throw new OrmNotFoundError({ schema: this._context.schema.name, operation, where: this._where, message: this._requiredMessage })
+		}
+	}
+
 	protected _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(next: ReadState<NewSel, NewP>) {
 		return new OneBuilder<S, A, NewSel, NewP, Req>(this._context, this._readState(next), { required: this._required, message: this._requiredMessage }) as any
 	}
@@ -214,9 +218,7 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 			},
 			data,
 		)
-		if (this._required && result === null) {
-			throw new OrmNotFoundError({ schema: this._context.schema.name, operation: 'updateOne', where: this._where, message: this._requiredMessage })
-		}
+		this._assertFound(result, 'updateOne')
 		return result as any
 	}
 
@@ -238,9 +240,7 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 			select: this._select,
 			preloads: this._preloads,
 		})
-		if (this._required && result === null) {
-			throw new OrmNotFoundError({ schema: this._context.schema.name, operation: 'deleteOne', where: this._where, message: this._requiredMessage })
-		}
+		this._assertFound(result, 'deleteOne')
 		return result as any
 	}
 
@@ -250,9 +250,7 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 			select: this._select,
 			preloads: this._preloads,
 		})
-		if (this._required && result === null) {
-			throw new OrmNotFoundError({ schema: this._context.schema.name, operation: 'findOne', where: this._where, message: this._requiredMessage })
-		}
+		this._assertFound(result, 'findOne')
 		return result as any
 	}
 }
