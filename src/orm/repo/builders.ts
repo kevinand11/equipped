@@ -1,7 +1,7 @@
 import type { InferRawArgs, InferRawReturn } from '../adapter'
 import type { OrmUse } from '../adapters/base'
 import { OrmNotFoundError, type OrmNotFoundOperation } from '../errors'
-import type { AnyField } from '../fields'
+import { toFieldName, type AnyField, type Field } from '../fields'
 import { FilterGroup, type FilterFactory } from '../filter'
 import type { AggregateSpec } from '../orm-adapter'
 import { OrderBy } from '../query'
@@ -163,8 +163,8 @@ export class SchemaRef<S extends AnySchema, A = unknown> {
 		return new AllBuilder<S, A, never, []>(this.#context) as AllBuilderSurface<S, A, never, []>
 	}
 
-	aggregate(): AggregateBuilder<S, A, {}, false> {
-		return new AggregateBuilder<S, A, {}, false>(this.#context)
+	aggregate(): AggregateBuilder<S, A, {}, {}, false, false, false> {
+		return new AggregateBuilder<S, A, {}, {}, false, false, false>(this.#context)
 	}
 
 	raw(...args: any[]) {
@@ -365,48 +365,162 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 
 type AggregateEntry = AggregateSpec['aggregates'][number]
 
-export class AggregateBuilder<S extends AnySchema, A = unknown, Aggs = {}, HasGroupBy extends boolean = false> {
+type FieldsToGroupKeys<F extends readonly AnyField[]> = {
+	[E in F[number] as E extends Field<any, infer N> ? N : never]: E extends Field<infer V> ? V : never
+}
+
+export class AggregateBuilder<
+	S extends AnySchema,
+	A = unknown,
+	Aggs = {},
+	GroupKeys = {},
+	HasGroupBy extends boolean = false,
+	HasWhere extends boolean = false,
+	HasHaving extends boolean = false,
+> {
 	readonly #context: SchemaContext<S>
 	readonly #where: FilterGroup
+	readonly #having: FilterGroup
 	readonly #aggregates: readonly AggregateEntry[]
+	readonly #groupBy: readonly string[]
 
 	constructor(
 		context: SchemaContext<S>,
-		state?: { where?: FilterGroup; aggregates?: readonly AggregateEntry[] },
+		state?: { where?: FilterGroup; having?: FilterGroup; aggregates?: readonly AggregateEntry[]; groupBy?: readonly string[] },
 	) {
 		this.#context = context
 		this.#where = state?.where ? state.where.clone() : FilterGroup.create()
+		this.#having = state?.having ? state.having.clone() : FilterGroup.create()
 		this.#aggregates = state?.aggregates ?? []
+		this.#groupBy = state?.groupBy ?? []
 	}
 
-	where(factory: FilterFactory): AggregateBuilder<S, A, Aggs, HasGroupBy> {
+	where(
+		...args: HasWhere extends true ? [never] : [factory: FilterFactory]
+	): AggregateBuilder<S, A, Aggs, GroupKeys, HasGroupBy, true, HasHaving> {
+		const factory = args[0] as FilterFactory
 		const nextGroup = factory(this.#where.clone())
-		return new AggregateBuilder<S, A, Aggs, HasGroupBy>(this.#context, {
+		return new AggregateBuilder<S, A, Aggs, GroupKeys, HasGroupBy, true, HasHaving>(this.#context, {
 			where: nextGroup,
+			having: this.#having,
 			aggregates: this.#aggregates,
+			groupBy: this.#groupBy,
+		})
+	}
+
+	having(
+		...args: HasHaving extends true ? [never] : [factory: FilterFactory]
+	): AggregateBuilder<S, A, Aggs, GroupKeys, HasGroupBy, HasWhere, true> {
+		const factory = args[0] as FilterFactory
+		const nextGroup = factory(this.#having.clone())
+		return new AggregateBuilder<S, A, Aggs, GroupKeys, HasGroupBy, HasWhere, true>(this.#context, {
+			where: this.#where,
+			having: nextGroup,
+			aggregates: this.#aggregates,
+			groupBy: this.#groupBy,
+		})
+	}
+
+	groupBy<F extends readonly Field<string | number | boolean | Date>[]>(
+		...fields: HasGroupBy extends true ? [never] : [...F]
+	): AggregateBuilder<S, A, Aggs, GroupKeys & FieldsToGroupKeys<F>, true, HasWhere, HasHaving> {
+		const names = (fields as readonly AnyField[]).map((f) => toFieldName(f))
+		return new AggregateBuilder<S, A, Aggs, GroupKeys & FieldsToGroupKeys<F>, true, HasWhere, HasHaving>(this.#context, {
+			where: this.#where,
+			having: this.#having,
+			aggregates: this.#aggregates,
+			groupBy: names,
 		})
 	}
 
 	count<K extends string>(
 		...[alias]: K extends keyof Aggs ? [never] : [alias: K]
-	): AggregateBuilder<S, A, Aggs & Record<K, number>, HasGroupBy> {
-		return new AggregateBuilder<S, A, Aggs & Record<K, number>, HasGroupBy>(this.#context, {
+	): AggregateBuilder<S, A, Aggs & Record<K, number>, GroupKeys, HasGroupBy, HasWhere, HasHaving> {
+		return new AggregateBuilder<S, A, Aggs & Record<K, number>, GroupKeys, HasGroupBy, HasWhere, HasHaving>(this.#context, {
 			where: this.#where,
+			having: this.#having,
 			aggregates: [...this.#aggregates, { fn: 'count', alias: alias as string }],
+			groupBy: this.#groupBy,
+		})
+	}
+
+	countDistinct<K extends string>(
+		field: AnyField,
+		...[alias]: K extends keyof Aggs ? [never] : [alias: K]
+	): AggregateBuilder<S, A, Aggs & Record<K, number>, GroupKeys, HasGroupBy, HasWhere, HasHaving> {
+		return new AggregateBuilder<S, A, Aggs & Record<K, number>, GroupKeys, HasGroupBy, HasWhere, HasHaving>(this.#context, {
+			where: this.#where,
+			having: this.#having,
+			aggregates: [...this.#aggregates, { fn: 'countDistinct', field: toFieldName(field), alias: alias as string }],
+			groupBy: this.#groupBy,
+		})
+	}
+
+	sum<K extends string>(
+		field: Field<number>,
+		...[alias]: K extends keyof Aggs ? [never] : [alias: K]
+	): AggregateBuilder<S, A, Aggs & Record<K, number>, GroupKeys, HasGroupBy, HasWhere, HasHaving> {
+		return new AggregateBuilder<S, A, Aggs & Record<K, number>, GroupKeys, HasGroupBy, HasWhere, HasHaving>(this.#context, {
+			where: this.#where,
+			having: this.#having,
+			aggregates: [...this.#aggregates, { fn: 'sum', field: toFieldName(field), alias: alias as string }],
+			groupBy: this.#groupBy,
+		})
+	}
+
+	avg<K extends string>(
+		field: Field<number>,
+		...[alias]: K extends keyof Aggs ? [never] : [alias: K]
+	): AggregateBuilder<S, A, Aggs & Record<K, number>, GroupKeys, HasGroupBy, HasWhere, HasHaving> {
+		return new AggregateBuilder<S, A, Aggs & Record<K, number>, GroupKeys, HasGroupBy, HasWhere, HasHaving>(this.#context, {
+			where: this.#where,
+			having: this.#having,
+			aggregates: [...this.#aggregates, { fn: 'avg', field: toFieldName(field), alias: alias as string }],
+			groupBy: this.#groupBy,
+		})
+	}
+
+	min<F extends Field<number | string | Date>, K extends string>(
+		field: F,
+		...[alias]: K extends keyof Aggs ? [never] : [alias: K]
+	): AggregateBuilder<S, A, Aggs & Record<K, F extends Field<infer V> ? V : never>, GroupKeys, HasGroupBy, HasWhere, HasHaving> {
+		return new AggregateBuilder<S, A, Aggs & Record<K, F extends Field<infer V> ? V : never>, GroupKeys, HasGroupBy, HasWhere, HasHaving>(this.#context, {
+			where: this.#where,
+			having: this.#having,
+			aggregates: [...this.#aggregates, { fn: 'min', field: toFieldName(field), alias: alias as string }],
+			groupBy: this.#groupBy,
+		})
+	}
+
+	max<F extends Field<number | string | Date>, K extends string>(
+		field: F,
+		...[alias]: K extends keyof Aggs ? [never] : [alias: K]
+	): AggregateBuilder<S, A, Aggs & Record<K, F extends Field<infer V> ? V : never>, GroupKeys, HasGroupBy, HasWhere, HasHaving> {
+		return new AggregateBuilder<S, A, Aggs & Record<K, F extends Field<infer V> ? V : never>, GroupKeys, HasGroupBy, HasWhere, HasHaving>(this.#context, {
+			where: this.#where,
+			having: this.#having,
+			aggregates: [...this.#aggregates, { fn: 'max', field: toFieldName(field), alias: alias as string }],
+			groupBy: this.#groupBy,
 		})
 	}
 
 	async run(
 		..._: [keyof Aggs] extends [never] ? [never] : []
-	): Promise<HasGroupBy extends true ? Aggs[] : Aggs> {
+	): Promise<HasGroupBy extends true ? (Aggs & GroupKeys)[] : Aggs> {
 		const spec: AggregateSpec = {
 			aggregates: this.#aggregates,
-			groupBy: [],
+			groupBy: this.#groupBy,
 		}
 		if (this.#where.children.length > 0) {
 			spec.where = this.#where
 		}
+		if (this.#having.children.length > 0) {
+			spec.having = this.#having
+		}
 		const rows = await runAggregate(this.#context, spec)
+		if (this.#groupBy.length > 0) {
+			return rows as any
+		}
 		return rows[0] as any
 	}
 }
