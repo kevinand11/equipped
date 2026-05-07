@@ -20,7 +20,7 @@ function renderFilterTree(node: FilterGroup | Filter): string {
 	if (node instanceof Filter) {
 		return `${node.field} ${node.op} ${JSON.stringify(node.value)}`
 	}
-	const parts = node.children.map((c) => renderFilterTree(c as FilterGroup | Filter))
+	const parts = node.children.map((c) => renderFilterTree(c))
 	if (parts.length === 1) return parts[0]
 	return `(${parts.join(` ${node.op} `)})`
 }
