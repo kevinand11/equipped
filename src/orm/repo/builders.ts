@@ -29,16 +29,12 @@ type ReadState<Sel extends string, P extends readonly AnyPreloadDef[] = readonly
 	preloads?: P
 }
 
-export type HasMethod<A, Bag extends string, Method extends string> =
-	A extends Record<Bag, Record<Method, (...args: any) => any>>
-		? true
-		: A extends { schemaConfigPipe: any }
-			? Method extends keyof A
-				? A[Method] extends (...args: any) => any
-					? true
-					: false
-				: false
+export type HasMethod<A, _Bag extends string, Method extends string> =
+	Method extends keyof A
+		? A[Method] extends (...args: any) => any
+			? true
 			: false
+		: false
 
 export type OneBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> =
 	OneBuilder<S, A, Sel, P> &
