@@ -2,16 +2,28 @@ import type { Pipe } from 'valleyed'
 
 import { EquippedError } from '../errors'
 import { Instance, type ClassRef } from '../instance'
-import type { FieldTypeName, FilterOpName, UpdateOpName } from './adapter'
+import type { AggregateOpName, FieldTypeName, FilterOpName, UpdateOpName } from './adapter'
 import type { OrmUse } from './adapters/base'
 import { FilterGroup } from './filter'
 import type { QueryOptions } from './query'
 import type { AnySchema } from './schema'
 import type { AnyUpdateOp } from './updates'
 
+export type AggregateSpec = {
+	where?: FilterGroup
+	aggregates: ReadonlyArray<{
+		fn: AggregateOpName
+		field?: string
+		alias: string
+	}>
+	groupBy: readonly string[]
+	having?: FilterGroup
+}
+
 export abstract class OrmAdapter {
 	readonly queryableOps: readonly FilterOpName[] = []
 	readonly updateOps: readonly UpdateOpName[] = []
+	readonly aggregateOps: readonly AggregateOpName[] = []
 	readonly supportedFieldTypes: readonly FieldTypeName[] = []
 
 	abstract readonly schemaConfigPipe: Pipe<any, any>
@@ -33,6 +45,7 @@ export abstract class OrmAdapter {
 		create: Record<string, unknown>,
 		ops: AnyUpdateOp[],
 	): Promise<Record<string, unknown>>
+	aggregate?(schema: AnySchema, config: unknown, spec: AggregateSpec): Promise<Array<Record<string, unknown>>>
 	session?<T>(fn: () => Promise<T>): Promise<T>
 
 	protected onFatalError(err: unknown): never {
@@ -141,6 +154,7 @@ if (import.meta.vitest) {
 			const adapter = new (DefaultAdapter as any)() as DefaultAdapter
 			expect(adapter.queryableOps).toEqual([])
 			expect(adapter.updateOps).toEqual([])
+			expect(adapter.aggregateOps).toEqual([])
 			expect(adapter.supportedFieldTypes).toEqual([])
 
 			vi.restoreAllMocks()

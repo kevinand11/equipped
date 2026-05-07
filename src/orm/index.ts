@@ -1,6 +1,6 @@
 export * from './adapter'
 export * from './adapters/base'
-export { OrmAdapter } from './orm-adapter'
+export { OrmAdapter, type AggregateSpec } from './orm-adapter'
 export * from './errors'
 export * from './fields'
 export * from './filter'

@@ -19,6 +19,7 @@ export type FilterOpName =
 	| 'contains'
 	| 'notContains'
 export type UpdateOpName = 'set' | 'inc' | 'mul' | 'min' | 'max' | 'unset' | 'push' | 'pull' | 'patch'
+export type AggregateOpName = 'count' | 'countDistinct' | 'sum' | 'avg' | 'min' | 'max'
 
 export type InferAdapterConfig<A> = A extends { schemaConfigPipe: infer P extends Pipe<any, any> }
 	? PipeInput<P>
