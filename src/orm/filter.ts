@@ -1,6 +1,7 @@
 import type { FilterOpName } from './adapter'
 import { EquippedError } from '../errors'
-import { OrmValidationError } from './errors'
+import { OrmValidationError, type OrmValidationFailure } from './errors'
+import type { AggregateSpec } from './orm-adapter'
 import { toFieldName, type AnyField, type Field } from './fields'
 import type { AnySchema } from './schema'
 
@@ -123,8 +124,8 @@ export type GatedFilterFactory<DeclaredOps extends readonly FilterOpName[]> = (
 	q: GatedFilterGroup<DeclaredOps>,
 ) => GatedFilterGroup<DeclaredOps>
 
-export function assertNormalisedAggregate(schema: AnySchema, adapter: { aggregateOps: readonly string[] }, spec: import('./orm-adapter').AggregateSpec): void {
-	const failures: import('./errors').OrmValidationFailure[] = []
+export function assertNormalisedAggregate(schema: AnySchema, adapter: { aggregateOps: readonly string[] }, spec: AggregateSpec): void {
+	const failures: OrmValidationFailure[] = []
 
 	if (spec.aggregates.length === 0) {
 		failures.push({ cause: 'At least one aggregator step is required' })

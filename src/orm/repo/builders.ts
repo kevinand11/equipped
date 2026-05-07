@@ -1,4 +1,4 @@
-import type { AggregateOpName, InferRawArgs, InferRawReturn } from '../adapter'
+import type { InferRawArgs, InferRawReturn } from '../adapter'
 import type { OrmUse } from '../adapters/base'
 import { OrmNotFoundError, type OrmNotFoundOperation } from '../errors'
 import type { AnyField } from '../fields'
@@ -363,7 +363,7 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	}
 }
 
-type AggregateEntry = { fn: AggregateOpName; alias: string; field?: string }
+type AggregateEntry = AggregateSpec['aggregates'][number]
 
 export class AggregateBuilder<S extends AnySchema, A = unknown, Aggs = {}, HasGroupBy extends boolean = false> {
 	readonly #context: SchemaContext<S>

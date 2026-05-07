@@ -344,7 +344,8 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		const store = this.#resolveStore(schema, config)
 		let rows = [...store.values()]
 		if (spec.where) {
-			rows = rows.filter((doc) => matchesFilter(doc, spec.where!))
+			const where = spec.where
+			rows = rows.filter((doc) => matchesFilter(doc, where))
 		}
 		const result: Record<string, unknown> = {}
 		for (const agg of spec.aggregates) {
