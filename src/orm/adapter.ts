@@ -1,11 +1,7 @@
 import type { Pipe, PipeInput, PipeOutput } from 'valleyed'
 
-import type { OrmUse } from './adapters/base'
 import type { SchemaField } from './fields'
-import { FilterGroup } from './filter'
-import type { QueryOptions } from './query'
 import type { AnySchema, SchemaFields } from './schema'
-import type { AnyUpdateOp } from './updates'
 
 export type FieldTypeName = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array' | 'date'
 export type FilterOpName =
@@ -24,226 +20,23 @@ export type FilterOpName =
 	| 'notContains'
 export type UpdateOpName = 'set' | 'inc' | 'mul' | 'min' | 'max' | 'unset' | 'push' | 'pull' | 'patch'
 
-export type CrudBag<Config> = {
-	findByPk?: (schema: AnySchema, config: Config, pk: unknown) => Promise<Record<string, unknown> | null>
-	createMany?: (schema: AnySchema, config: Config, data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>
-	updateByPk?: (
-		schema: AnySchema,
-		config: Config,
-		pk: unknown,
-		ops: AnyUpdateOp[],
-	) => Promise<Record<string, unknown> | null>
-	deleteByPk?: (schema: AnySchema, config: Config, pk: unknown) => Promise<Record<string, unknown> | null>
-	raw?: (schema: AnySchema, config: Config, ...args: any[]) => Promise<any>
-}
-
-export type QueryableBag<Config> = {
-	findMany?: (
-		schema: AnySchema,
-		config: Config,
-		filter: FilterGroup,
-		options?: QueryOptions,
-	) => Promise<Record<string, unknown>[]>
-	updateMany?: (
-		schema: AnySchema,
-		config: Config,
-		filter: FilterGroup,
-		data: Record<string, unknown>,
-	) => Promise<Record<string, unknown>[]>
-	deleteMany?: (schema: AnySchema, config: Config, filter: FilterGroup) => Promise<Record<string, unknown>[]>
-	upsertOne?: (
-		schema: AnySchema,
-		config: Config,
-		filter: FilterGroup,
-		create: Record<string, unknown>,
-		ops: AnyUpdateOp[],
-	) => Promise<Record<string, unknown>>
-}
-
-export type LifecycleBag = {
-	connect?: () => Promise<void>
-	disconnect?: () => Promise<void>
-}
-
-export type TransactionalBag = {
-	session?: <T>(fn: () => Promise<T>) => Promise<T>
-}
-
-type UniqueArray<T extends readonly unknown[]> = T extends readonly [infer H, ...infer R]
-	? H extends R[number]
-		? never
-		: readonly [H, ...UniqueArray<R>]
-	: T
-
-type InferConfig<Acc> = 'config' extends keyof Acc ? Acc['config'] : unknown
-
-export class AdapterBuilder<Acc = {}> {
-	#data: Record<string, unknown> = {
-		supportedFieldTypes: [] as readonly FieldTypeName[],
-		queryableOps: [] as readonly FilterOpName[],
-		updateOps: [] as readonly UpdateOpName[],
-	}
-
-	supportedFieldTypes<const T extends readonly FieldTypeName[]>(
-		...types: 'supportedFieldTypes' extends keyof Acc ? [never] : T & UniqueArray<T>
-	): AdapterBuilder<Acc & { supportedFieldTypes: T }> {
-		this.#data.supportedFieldTypes = types
-		return this as any
-	}
-
-	queryableOps<const T extends readonly FilterOpName[]>(
-		...ops: 'queryableOps' extends keyof Acc ? [never] : T & UniqueArray<T>
-	): AdapterBuilder<Acc & { queryableOps: T }> {
-		this.#data.queryableOps = ops
-		return this as any
-	}
-
-	updateOps<const T extends readonly UpdateOpName[]>(
-		...ops: 'updateOps' extends keyof Acc ? [never] : T & UniqueArray<T>
-	): AdapterBuilder<Acc & { updateOps: T }> {
-		this.#data.updateOps = ops
-		return this as any
-	}
-
-	lifecycle(bag: 'lifecycle' extends keyof Acc ? never : LifecycleBag): AdapterBuilder<Acc & { lifecycle: typeof bag }> {
-		this.#data.lifecycle = bag
-		return this as any
-	}
-
-	crud<B extends CrudBag<InferConfig<Acc>>>(bag: 'crud' extends keyof Acc ? never : B): AdapterBuilder<Acc & { crud: B }> {
-		this.#data.crud = bag
-		return this as any
-	}
-
-	queryable<B extends QueryableBag<InferConfig<Acc>>>(
-		bag: 'queryable' extends keyof Acc
-			? never
-			: 'queryableOps' extends keyof Acc
-				? Acc['queryableOps'] extends readonly [FilterOpName, ...FilterOpName[]]
-					? B
-					: never
-				: never,
-	): AdapterBuilder<Acc & { queryable: B }> {
-		if (!(this.#data.queryableOps as readonly FilterOpName[])?.length) {
-			throw new Error('Adapter: .queryable() requires .queryableOps() to be called first with a non-empty list')
-		}
-		this.#data.queryable = bag
-		return this as any
-	}
-
-	transactional<B extends TransactionalBag>(
-		bag: 'transactional' extends keyof Acc ? never : B,
-	): AdapterBuilder<Acc & { transactional: B }> {
-		this.#data.transactional = bag
-		return this as any
-	}
-
-	build(): AdapterResult<Acc> {
-		const data = this.#data as unknown as AdapterResult<Acc>
-
-		const result: Record<string, unknown> = { ...data }
-
-		const crud = data.crud as CrudBag<any> | undefined
-		const queryable = data.queryable as QueryableBag<any> | undefined
-		const transactional = data.transactional as TransactionalBag | undefined
-		const lifecycle = data.lifecycle as LifecycleBag | undefined
-
-		result.use = function (schema: AnySchema, config: any): OrmUse {
-			const use: OrmUse = {
-				findMany: (filter, opts) =>
-					queryable?.findMany?.(schema, config, filter, opts) ?? Promise.resolve([]),
-				findOne: async (filter) => {
-					const rows = await use.findMany(filter, { limit: 1 })
-					return rows[0] ?? null
-				},
-				createOne: async (d) => {
-					const rows = await use.createMany([d])
-					return rows[0]
-				},
-				createMany: (d) => crud?.createMany?.(schema, config, d) ?? Promise.resolve([]),
-				updateMany: (filter, d) =>
-					queryable?.updateMany?.(schema, config, filter, d) ?? Promise.resolve([]),
-				updateOne: async (filter, d) => {
-					const match = await use.findOne(filter)
-					if (!match) return null
-					const pk = schema.pkField.name
-					const pkFilter = FilterGroup.create().eq(pk, match[pk])
-					const rows = await use.updateMany(pkFilter, d)
-					return rows[0] ?? null
-				},
-				upsertOne: (filter, create, ops) =>
-					queryable?.upsertOne?.(schema, config, filter, create, ops) ?? Promise.reject(new Error('upsertOne not implemented')),
-				deleteOne: async (filter) => {
-					const row = await use.findOne(filter)
-					if (!row) return null
-					const pk = schema.pkField.name
-					if (crud?.deleteByPk) {
-						await crud.deleteByPk(schema, config, row[pk])
-					} else if (queryable?.deleteMany) {
-						await queryable.deleteMany(schema, config, filter)
-					}
-					return row
-				},
-				deleteMany: (filter) =>
-					queryable?.deleteMany?.(schema, config, filter) ?? Promise.resolve([]),
-				raw: (...args: any[]) =>
-					crud?.raw?.(schema, config, ...args) ?? Promise.reject(new Error('raw not implemented')),
-			}
-			return use
-		}
-
-		result.connect = async () => lifecycle?.connect?.()
-		result.disconnect = async () => lifecycle?.disconnect?.()
-		result.session = <T>(fn: () => Promise<T>): Promise<T> =>
-			transactional?.session?.(fn) ?? fn()
-
-		return result as AdapterResult<Acc>
-	}
-}
-
-export type AdapterResult<Acc> = {
-	readonly supportedFieldTypes: 'supportedFieldTypes' extends keyof Acc ? Acc['supportedFieldTypes'] : readonly []
-	readonly queryableOps: 'queryableOps' extends keyof Acc ? Acc['queryableOps'] : readonly []
-	readonly updateOps: 'updateOps' extends keyof Acc ? Acc['updateOps'] : readonly []
-	readonly crud: 'crud' extends keyof Acc ? Acc['crud'] : undefined
-	readonly queryable: 'queryable' extends keyof Acc ? Acc['queryable'] : undefined
-	readonly transactional: 'transactional' extends keyof Acc ? Acc['transactional'] : undefined
-	readonly lifecycle: 'lifecycle' extends keyof Acc ? Acc['lifecycle'] : undefined
-	use(schema: AnySchema, config: InferConfig<Acc>): OrmUse
-	connect(): Promise<void>
-	disconnect(): Promise<void>
-	session<T>(fn: () => Promise<T>): Promise<T>
-} & ('config' extends keyof Acc ? { readonly __config: Acc['config'] } : {})
-
-export class Adapter {
-	static from<Config>(): AdapterBuilder<{ config: Config }> {
-		return new AdapterBuilder<{ config: Config }>()
-	}
-}
-
-export type InferAdapterConfig<A> = A extends { __config: infer C }
-	? C
-	: A extends { schemaConfigPipe: infer P extends Pipe<any, any> }
-		? PipeInput<P>
-		: A extends { use: (schema: any, config: infer C) => any }
-			? C
-			: never
+export type InferAdapterConfig<A> = A extends { schemaConfigPipe: infer P extends Pipe<any, any> }
+	? PipeInput<P>
+	: A extends { use: (schema: any, config: infer C) => any }
+		? C
+		: never
 
 export type InferAdapterQueryableOps<A> = A extends { queryableOps: infer Ops extends readonly FilterOpName[] }
 	? Ops
 	: readonly []
 
-export type InferRawArgs<A> = A extends { crud: { raw: (schema: any, config: any, ...args: infer Args) => any } }
+export type InferRawArgs<A> = A extends { raw: (schema: any, config: any, ...args: infer Args) => any }
 	? Args
-	: A extends { raw: (schema: any, config: any, ...args: infer Args) => any }
-		? Args
-		: never
+	: never
 
-export type InferRawReturn<A> = A extends { crud: { raw: (...args: any[]) => Promise<infer R> } }
+export type InferRawReturn<A> = A extends { raw: (...args: any[]) => Promise<infer R> }
 	? R
-	: A extends { raw: (...args: any[]) => Promise<infer R> }
-		? R
-		: unknown
+	: unknown
 
 type ToFieldTypeName<T> = T extends undefined
 	? never
@@ -277,108 +70,68 @@ if (import.meta.vitest) {
 	const { describe, test, expectTypeOf } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { Schema } = await import('./schema')
-
-	describe('Adapter.from()', () => {
-		test('creates adapter with Config as generic (no .config() step)', () => {
-			const adapter = Adapter.from<{ prefix: string }>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
-
-			expectTypeOf(adapter.supportedFieldTypes).toEqualTypeOf<readonly ['string']>()
-		})
-
-		test('queryableOps and queryable work together', () => {
-			const adapter = Adapter.from<{ prefix: string }>()
-				.supportedFieldTypes('string', 'number')
-				.queryableOps('eq', 'ne')
-				.queryable({ findMany: async () => [] })
-				.build()
-
-			expectTypeOf(adapter.queryableOps).toEqualTypeOf<readonly ['eq', 'ne']>()
-		})
-	})
-
-	describe('type-level: Adapter.from builder uniqueness', () => {
-		test('duplicate .queryableOps values is a TS error', () => {
-			const validAdapter = Adapter.from<{ prefix: string }>().queryableOps('eq', 'ne').build()
-			expectTypeOf(validAdapter.queryableOps).toEqualTypeOf<readonly ['eq', 'ne']>()
-
-			// @ts-expect-error — duplicate 'eq' in queryableOps should fail
-			Adapter.from<unknown>().queryableOps('eq', 'eq')
-		})
-
-		test('duplicate .supportedFieldTypes values is a TS error', () => {
-			// @ts-expect-error — duplicate 'string' should fail
-			Adapter.from<unknown>().supportedFieldTypes('string', 'string')
-		})
-	})
+	const { OrmAdapter } = await import('./orm-adapter')
 
 	describe('type-level: InferRawArgs and InferRawReturn', () => {
-		test('InferRawArgs extracts user args from adapter raw signature', () => {
-			const _adapter = Adapter.from<{ table: string }>()
-				.supportedFieldTypes('string')
-				.crud({
-					findByPk: async () => null,
-					raw: async (_s: AnySchema, _c: { table: string }, _sql: string, _params: number[]) => [42],
-				})
-				.build()
-			type Args = InferRawArgs<typeof _adapter>
+		test('InferRawArgs extracts user args from class-based adapter raw signature', () => {
+			class RawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async raw(_s: AnySchema, _c: unknown, _sql: string, _params: number[]) { return [42] }
+			}
+			type Args = InferRawArgs<RawAdapter>
 			expectTypeOf<Args>().toEqualTypeOf<[sql: string, params: number[]]>()
 		})
 
-		test('InferRawReturn extracts return type from adapter raw signature', () => {
-			const _adapter = Adapter.from<{ table: string }>()
-				.supportedFieldTypes('string')
-				.crud({
-					findByPk: async () => null,
-					raw: async (_s: AnySchema, _c: { table: string }, _sql: string) => ({ rows: [] as unknown[] }),
-				})
-				.build()
-			type Ret = InferRawReturn<typeof _adapter>
+		test('InferRawReturn extracts return type from class-based adapter raw signature', () => {
+			class RawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async raw(_s: AnySchema, _c: unknown, _sql: string) { return { rows: [] as unknown[] } }
+			}
+			type Ret = InferRawReturn<RawAdapter>
 			expectTypeOf<Ret>().toEqualTypeOf<{ rows: unknown[] }>()
 		})
 
 		test('InferRawArgs returns never when adapter has no raw', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
-			type Args = InferRawArgs<typeof _adapter>
+			class NoRawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+			}
+			type Args = InferRawArgs<NoRawAdapter>
 			expectTypeOf<Args>().toBeNever()
 		})
 	})
 
 	describe('type-level: SchemaCompatible', () => {
 		test('adapter with empty supportedFieldTypes rejects any schema', () => {
-			const _emptyAdapter = Adapter.from<{ prefix: string }>().crud({ findByPk: async () => null }).build()
+			class EmptyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = [] as const
+			}
 			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
-
-			type Result = SchemaCompatible<typeof _emptyAdapter, typeof _TestSchema>
+			type Result = SchemaCompatible<EmptyAdapter, typeof _TestSchema>
 			expectTypeOf<Result>().toBeNever()
 		})
 
 		test('adapter with matching supportedFieldTypes accepts schema', () => {
-			const _adapter = Adapter.from<{ prefix: string }>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
+			class StringAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+			}
 			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
-
-			type Result = SchemaCompatible<typeof _adapter, typeof _TestSchema>
+			type Result = SchemaCompatible<StringAdapter, typeof _TestSchema>
 			expectTypeOf<Result>().toEqualTypeOf<typeof _TestSchema>()
 		})
 
 		test('adapter missing required field type rejects schema', () => {
-			const _stringOnlyAdapter = Adapter.from<{ prefix: string }>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
+			class StringOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+			}
 			const _SchemaWithNumber = Schema.from('nums').pk('id', v.string(), () => 'x').field('age', v.number()).build()
-
-			type Result = SchemaCompatible<typeof _stringOnlyAdapter, typeof _SchemaWithNumber>
+			type Result = SchemaCompatible<StringOnlyAdapter, typeof _SchemaWithNumber>
 			expectTypeOf<Result>().toBeNever()
 		})
 	})
-
 }

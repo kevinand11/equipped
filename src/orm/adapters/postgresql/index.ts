@@ -357,19 +357,19 @@ if (import.meta.vitest) {
 		})
 
 		test('type-level: capability declarations use as const', () => {
-			const adapter = PostgresAdapter.create(testConnectionConfig)
+			const _adapter = PostgresAdapter.create(testConnectionConfig)
 
-			type Ops = typeof adapter.updateOps
+			type Ops = typeof _adapter.updateOps
 			expectTypeOf<Ops>().toEqualTypeOf<
 				readonly ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch']
 			>()
 
-			type Types = typeof adapter.supportedFieldTypes
+			type Types = typeof _adapter.supportedFieldTypes
 			expectTypeOf<Types>().toEqualTypeOf<
 				readonly ['string', 'number', 'boolean', 'null', 'object', 'array', 'date']
 			>()
 
-			type QOps = typeof adapter.queryableOps
+			type QOps = typeof _adapter.queryableOps
 			expectTypeOf<QOps>().toEqualTypeOf<
 				readonly ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains']
 			>()
