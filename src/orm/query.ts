@@ -51,88 +51,89 @@ export type QueryOptions<Sel extends string = string> = {
 }
 
 export class QueryGroup {
-	children: FilterOp[] = []
+	readonly children: readonly FilterOp[]
 
-	private constructor(readonly op: WhereGroupOp = WhereGroupOp.and) {}
-
-	#where(field: string | AnyField, condition: WhereOp, value: unknown): this {
-		this.children.push(new Where(field, condition, value))
-		return this
+	private constructor(
+		readonly op: WhereGroupOp = WhereGroupOp.and,
+		children?: readonly FilterOp[],
+	) {
+		this.children = children ?? []
 	}
 
-	eq<T>(field: string | Field<T>, value: T): this {
-		return this.#where(field, WhereOp.eq, value)
+	#withChild(child: FilterOp): QueryGroup {
+		return new QueryGroup(this.op, [...this.children, child])
 	}
 
-	ne<T>(field: string | Field<T>, value: T): this {
-		return this.#where(field, WhereOp.ne, value)
+	eq<T>(field: string | Field<T>, value: T): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.eq, value))
 	}
 
-	gt<T>(field: string | Field<T>, value: T): this {
-		return this.#where(field, WhereOp.gt, value)
+	ne<T>(field: string | Field<T>, value: T): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.ne, value))
 	}
 
-	gte<T>(field: string | Field<T>, value: T): this {
-		return this.#where(field, WhereOp.gte, value)
+	gt<T>(field: string | Field<T>, value: T): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.gt, value))
 	}
 
-	lt<T>(field: string | Field<T>, value: T): this {
-		return this.#where(field, WhereOp.lt, value)
+	gte<T>(field: string | Field<T>, value: T): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.gte, value))
 	}
 
-	lte<T>(field: string | Field<T>, value: T): this {
-		return this.#where(field, WhereOp.lte, value)
+	lt<T>(field: string | Field<T>, value: T): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.lt, value))
 	}
 
-	in<T>(field: string | Field<T>, value: T[]): this {
-		return this.#where(field, WhereOp.in, value)
+	lte<T>(field: string | Field<T>, value: T): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.lte, value))
 	}
 
-	nin<T>(field: string | Field<T>, value: T[]): this {
-		return this.#where(field, WhereOp.nin, value)
+	in<T>(field: string | Field<T>, value: T[]): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.in, value))
 	}
 
-	like(field: string | Field<string>, value: string): this {
-		return this.#where(field, WhereOp.like, value)
+	nin<T>(field: string | Field<T>, value: T[]): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.nin, value))
 	}
 
-	exists(field: string | Field<unknown>): this {
-		return this.#where(field, WhereOp.exists, true)
+	like(field: string | Field<string>, value: string): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.like, value))
 	}
 
-	nexists(field: string | Field<unknown>): this {
-		return this.#where(field, WhereOp.exists, false)
+	exists(field: string | Field<unknown>): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.exists, true))
 	}
 
-	contains<T>(field: string | Field<T>, value: T[]): this {
-		return this.#where(field, WhereOp.contains, value)
+	nexists(field: string | Field<unknown>): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.exists, false))
 	}
 
-	ncontains<T>(field: string | Field<T>, value: T[]): this {
-		return this.#where(field, WhereOp.ncontains, value)
+	contains<T>(field: string | Field<T>, value: T[]): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.contains, value))
 	}
 
-	and(facFns: WhereFactory[]): this {
-		const group = new QueryGroup(WhereGroupOp.and)
-		group.children = facFns.map((facFn) => facFn(new QueryGroup()))
-		this.children.push(group)
-		return this
+	ncontains<T>(field: string | Field<T>, value: T[]): QueryGroup {
+		return this.#withChild(new Where(field, WhereOp.ncontains, value))
 	}
 
-	or(facFns: WhereFactory[]): this {
-		const group = new QueryGroup(WhereGroupOp.or)
-		group.children = facFns.map((facFn) => facFn(new QueryGroup()))
-		this.children.push(group)
-		return this
+	and(facFns: WhereFactory[]): QueryGroup {
+		const group = new QueryGroup(WhereGroupOp.and, facFns.map((facFn) => facFn(QueryGroup.from())))
+		return this.#withChild(group)
+	}
+
+	or(facFns: WhereFactory[]): QueryGroup {
+		const group = new QueryGroup(WhereGroupOp.or, facFns.map((facFn) => facFn(QueryGroup.from())))
+		return this.#withChild(group)
 	}
 
 	clone(): QueryGroup {
-		const out = new QueryGroup(this.op)
-		out.children = this.children.map((c) => {
-			if (c instanceof Where) return new Where(c.field, c.op, structuredClone(c.value))
-			return c.clone()
-		})
-		return out
+		return new QueryGroup(
+			this.op,
+			this.children.map((c) => {
+				if (c instanceof Where) return new Where(c.field, c.op, structuredClone(c.value))
+				return c.clone()
+			}),
+		)
 	}
 
 	static from() {
@@ -144,6 +145,42 @@ if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { Schema } = await import('./schema')
+
+	describe('clone-on-step: fan-out independence', () => {
+		test('.eq() returns a new QueryGroup, not the same instance', () => {
+			const base = QueryGroup.from()
+			const a = base.eq('name', 'Alice')
+			expect(a).not.toBe(base)
+		})
+
+		test('fan-out from shared base does not pollute either branch', () => {
+			const base = QueryGroup.from().eq('name', 'Alice')
+			const branchA = base.gt('age', 20)
+			const branchB = base.lt('age', 40)
+
+			expect(branchA.children).toHaveLength(2)
+			expect(branchB.children).toHaveLength(2)
+			expect(base.children).toHaveLength(1)
+			expect((branchA.children[1] as Where).op).toBe(WhereOp.gt)
+			expect((branchB.children[1] as Where).op).toBe(WhereOp.lt)
+		})
+
+		test('.and() returns a new QueryGroup', () => {
+			const base = QueryGroup.from().eq('name', 'Alice')
+			const withAnd = base.and([(q) => q.gt('age', 20)])
+			expect(withAnd).not.toBe(base)
+			expect(base.children).toHaveLength(1)
+			expect(withAnd.children).toHaveLength(2)
+		})
+
+		test('.or() returns a new QueryGroup', () => {
+			const base = QueryGroup.from().eq('name', 'Alice')
+			const withOr = base.or([(q) => q.gt('age', 20)])
+			expect(withOr).not.toBe(base)
+			expect(base.children).toHaveLength(1)
+			expect(withOr.children).toHaveLength(2)
+		})
+	})
 
 	describe('query', () => {
 		test('stores clauses and nested groups', () => {

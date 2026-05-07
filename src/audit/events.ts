@@ -48,17 +48,13 @@ export class EventAudit {
 			options: { skipAudit: true },
 		})
 
-		Instance.on(
-			'start',
-			() => {
-				setInterval(async () => {
-					const queue = [...this.asyncQueue]
-					this.asyncQueue = []
-					await Promise.all(queue.map((job) => job()))
-				}, 200)
-			},
-			4,
-		)
+		Instance.on('start', () => {
+			setInterval(async () => {
+				const queue = [...this.asyncQueue]
+				this.asyncQueue = []
+				await Promise.all(queue.map((job) => job()))
+			}, 200)
+		})
 	}
 
 	async #createEvent(name: string, payload: unknown, context: Context) {

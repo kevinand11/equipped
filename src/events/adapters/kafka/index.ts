@@ -92,16 +92,12 @@ export class KafkaEventBus extends configurable(
 						})
 
 						if (options.fanout)
-							Instance.on(
-								'close',
-								async () => {
-									await consumer.disconnect()
-									await this.#deleteGroup(groupId)
-								},
-								10,
-							)
+							Instance.on('close', async () => {
+								await consumer.disconnect()
+								await this.#deleteGroup(groupId)
+							})
 					}
-					Instance.on('start', subscribe, 2)
+					Instance.on('start', subscribe)
 				},
 			}
 		}

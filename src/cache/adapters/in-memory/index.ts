@@ -18,19 +18,15 @@ export class InMemoryCache extends configurable(
 
 		constructor() {
 			super()
-			Instance.on(
-				'start',
-				async () => {
-					this.#interval = setInterval(() => {
-						const now = Date.now()
-						for (const [key, record] of this.#caches.entries()) {
-							if (record.expiredAt && record.expiredAt <= now) this.#caches.delete(key)
-						}
-					}, 5000)
-				},
-				1,
-			)
-			Instance.on('close', async () => clearInterval(this.#interval), 1)
+			Instance.on('start', async () => {
+				this.#interval = setInterval(() => {
+					const now = Date.now()
+					for (const [key, record] of this.#caches.entries()) {
+						if (record.expiredAt && record.expiredAt <= now) this.#caches.delete(key)
+					}
+				}, 5000)
+			})
+			Instance.on('close', async () => clearInterval(this.#interval))
 		}
 
 		async delete(key: string) {

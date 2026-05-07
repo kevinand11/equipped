@@ -175,6 +175,23 @@ export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[], operati
 	return allOps
 }
 
+export function composeSchemaConfig(
+	resolve: (schema: AnySchema) => unknown,
+	transforms: ReadonlyArray<(config: any, schema: AnySchema) => any>,
+	schema: AnySchema,
+	pipe: Pipe<any, any>,
+): unknown {
+	let config = resolve(schema)
+	for (const transform of transforms) {
+		config = transform(config, schema)
+	}
+	try {
+		return v.assert(pipe, config)
+	} catch (cause) {
+		throw new OrmValidationError('validation', schema.name, 'schemaConfig', [{ cause }])
+	}
+}
+
 export function validateUpsertConflicts(
 	schema: AnySchema,
 	rawCreate: Record<string, unknown>,
@@ -506,6 +523,84 @@ if (import.meta.vitest) {
 				expect(err.kind).toBe('conflicting-ops')
 				expect(err.failures.length).toBe(2)
 			}
+		})
+	})
+
+	describe('composeSchemaConfig', () => {
+		const TestSchema = Schema.from('cfg_test')
+			.pk('id', v.string(), () => 'x')
+			.build()
+
+		const tablePipe = v.object({ table: v.string() })
+
+		test('composes base resolver output and validates against pipe', () => {
+			const result = composeSchemaConfig(
+				() => ({ table: 'users' }),
+				[],
+				TestSchema,
+				tablePipe,
+			)
+			expect(result).toEqual({ table: 'users' })
+		})
+
+		test('applies transforms in order before validation', () => {
+			const result = composeSchemaConfig(
+				() => ({ table: 'users' }),
+				[
+					(cfg: any) => ({ ...cfg, table: `a_${cfg.table}` }),
+					(cfg: any) => ({ ...cfg, table: `b_${cfg.table}` }),
+				],
+				TestSchema,
+				tablePipe,
+			)
+			expect(result).toEqual({ table: 'b_a_users' })
+		})
+
+		test('throws OrmValidationError when composed config fails pipe validation', () => {
+			try {
+				composeSchemaConfig(
+					() => ({ table: 123 }),
+					[],
+					TestSchema,
+					tablePipe,
+				)
+				expect.unreachable()
+			} catch (e) {
+				expect(e).toBeInstanceOf(OrmValidationError)
+				const err = e as OrmValidationError
+				expect(err.kind).toBe('validation')
+				expect(err.schema).toBe('cfg_test')
+				expect(err.operation).toBe('schemaConfig')
+				expect(err.failures).toHaveLength(1)
+			}
+		})
+
+		test('throws OrmValidationError when transform corrupts valid base config', () => {
+			try {
+				composeSchemaConfig(
+					() => ({ table: 'users' }),
+					[(cfg: any) => ({ ...cfg, table: 42 })],
+					TestSchema,
+					tablePipe,
+				)
+				expect.unreachable()
+			} catch (e) {
+				expect(e).toBeInstanceOf(OrmValidationError)
+				const err = e as OrmValidationError
+				expect(err.kind).toBe('validation')
+				expect(err.operation).toBe('schemaConfig')
+			}
+		})
+
+		test('returns typed effective config on success', () => {
+			const pipe = v.object({ table: v.string(), prefix: v.optional(v.string()) })
+			const result = composeSchemaConfig(
+				() => ({ table: 'orders' }),
+				[(cfg: any) => ({ ...cfg, prefix: 'tenant1' })],
+				TestSchema,
+				pipe,
+			)
+			expect(result).toEqual({ table: 'orders', prefix: 'tenant1' })
 		})
 	})
 }
