@@ -1,7 +1,7 @@
 export type HookEvent = 'setup' | 'start' | 'close'
 export type HookCb = Promise<unknown | void> | (() => void | unknown | Promise<void | unknown>)
 
-export type ClassRef = Function & { prototype: unknown }
+export type ClassRef = Function & { prototype: unknown; name: string }
 export type HookOptions = {
 	class?: ClassRef
 	after?: ClassRef[]
