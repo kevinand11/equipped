@@ -2,6 +2,7 @@ import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
 import { EquippedError } from '../errors'
 import type { AnySchemaField, SchemaField } from './fields'
+import { OrmValidationError, type OrmValidationFailure } from './errors'
 import { Schema, type AnySchema, type SchemaFields, type SchemaOutput } from './schema'
 import { SetOp, isUpdateOp, opTouchedFields, type AnyUpdateOp } from './updates'
 import type { Prettify } from './utils'
@@ -97,30 +98,7 @@ export function validateUpdate<S extends AnySchema>(s: S, data: Record<string, u
 	return { ...validated, ...ops } as SchemaUpdateOutput<S>
 }
 
-export type OrmValidationErrorKind = 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible'
-
-export type OrmValidationFailure = {
-	opIndex?: number
-	rowIndex?: number
-	field?: string
-	cause: unknown
-}
-
-export class OrmValidationError extends EquippedError {
-	constructor(
-		readonly kind: OrmValidationErrorKind,
-		readonly schema: string,
-		readonly operation: string,
-		readonly failures: OrmValidationFailure[],
-	) {
-		super(`ORM validation error (${kind}) on ${schema}.${operation}`, {
-			kind,
-			schema,
-			operation,
-			failures,
-		})
-	}
-}
+export { OrmValidationError, type OrmValidationErrorKind, type OrmValidationFailure } from './errors'
 
 export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[], operation = 'updateByPk'): AnyUpdateOp[] {
 	const touched = new Map<string, number[]>()

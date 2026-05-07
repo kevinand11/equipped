@@ -1,6 +1,6 @@
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import type { QueryOptions } from '../../query'
-import { OrmValidationError } from '../../schema-validations'
+import { OrmValidationError } from '../../errors'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
 
 function mapField(field: string, primaryKey: string): string {
