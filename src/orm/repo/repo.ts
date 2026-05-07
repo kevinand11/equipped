@@ -1045,18 +1045,21 @@ if (import.meta.vitest) {
 	describe('type-level: AggregateBuilder', () => {
 		class AggAdapter extends OrmAdapter {
 			readonly schemaConfigPipe = v.object({})
-			readonly supportedFieldTypes = ['string', 'number'] as const
-			readonly aggregateOps = ['count'] as const
+			readonly supportedFieldTypes = ['string', 'number', 'boolean', 'object', 'array'] as const
+			readonly aggregateOps = ['count', 'countDistinct', 'sum', 'avg', 'min', 'max'] as const
 			async aggregate() { return [] }
 		}
 		const _S = Schema.from('items')
 			.pk('id', v.string(), () => 'x')
 			.field('name', v.string())
 			.field('amount', v.number())
+			.field('active', v.boolean())
+			.field('tags', v.array(v.string()))
+			.field('meta', v.object({ x: v.number() }))
 			.build()
 		type S = typeof _S
 		type A = AggAdapter
-		type Builder = import('./builders').AggregateBuilder<S, A, {}, false>
+		type Builder = import('./builders').AggregateBuilder<S, A, {}, {}, false>
 
 		test('.count(alias) adds alias to result type as number', () => {
 			type AfterCount = ReturnType<Builder['count']>
@@ -1076,20 +1079,77 @@ if (import.meta.vitest) {
 		})
 
 		test('.run() on non-empty Aggs takes no args', () => {
-			type WithCount = import('./builders').AggregateBuilder<S, A, { total: number }, false>
+			type WithCount = import('./builders').AggregateBuilder<S, A, { total: number }, {}, false>
 			type RunParams = Parameters<WithCount['run']>
 			expectTypeOf<RunParams>().toEqualTypeOf<[]>()
 		})
 
 		test('.run() returns single object when HasGroupBy = false', () => {
-			type WithCount = import('./builders').AggregateBuilder<S, A, { total: number }, false>
+			type WithCount = import('./builders').AggregateBuilder<S, A, { total: number }, {}, false>
 			type Result = Awaited<ReturnType<WithCount['run']>>
 			expectTypeOf<Result>().toEqualTypeOf<{ total: number }>()
 		})
 
+		test('.run() returns array when HasGroupBy = true', () => {
+			type WithGroupBy = import('./builders').AggregateBuilder<S, A, { total: number }, { name: string }, true>
+			type Result = Awaited<ReturnType<WithGroupBy['run']>>
+			expectTypeOf<Result>().toEqualTypeOf<({ total: number } & { name: string })[]>()
+		})
+
+		test('group-key fields appear in result row with schema-declared types', () => {
+			type WithGroupBy = import('./builders').AggregateBuilder<S, A, { total: number }, { name: string; amount: number }, true>
+			type Result = Awaited<ReturnType<WithGroupBy['run']>>
+			type Row = Result[number]
+			expectTypeOf<Row>().toHaveProperty('total')
+			expectTypeOf<Row>().toHaveProperty('name')
+			expectTypeOf<Row>().toHaveProperty('amount')
+		})
+
+		test('.sum rejects string field (field-type constraint)', () => {
+			type SumFieldParam = Parameters<Builder['sum']>[0]
+			type IsAccepted = typeof _S.fields.name extends SumFieldParam ? true : false
+			expectTypeOf<IsAccepted>().toEqualTypeOf<false>()
+		})
+
+		test('.avg rejects string field (field-type constraint)', () => {
+			type AvgFieldParam = Parameters<Builder['avg']>[0]
+			type IsAccepted = typeof _S.fields.name extends AvgFieldParam ? true : false
+			expectTypeOf<IsAccepted>().toEqualTypeOf<false>()
+		})
+
+		test('.min rejects array field', () => {
+			type MinFieldParam = Parameters<Builder['min']>[0]
+			type IsAccepted = typeof _S.fields.tags extends MinFieldParam ? true : false
+			expectTypeOf<IsAccepted>().toEqualTypeOf<false>()
+		})
+
+		test('.max rejects object field', () => {
+			type MaxFieldParam = Parameters<Builder['max']>[0]
+			type IsAccepted = typeof _S.fields.meta extends MaxFieldParam ? true : false
+			expectTypeOf<IsAccepted>().toEqualTypeOf<false>()
+		})
+
+		test('.where().where() is a compile error', () => {
+			type AfterWhere = import('./builders').AggregateBuilder<S, A, {}, {}, false, true, false>
+			type WhereParams = Parameters<AfterWhere['where']>
+			expectTypeOf<WhereParams>().toEqualTypeOf<[never]>()
+		})
+
+		test('.having().having() is a compile error', () => {
+			type AfterHaving = import('./builders').AggregateBuilder<S, A, {}, {}, false, false, true>
+			type HavingParams = Parameters<AfterHaving['having']>
+			expectTypeOf<HavingParams>().toEqualTypeOf<[never]>()
+		})
+
+		test('.groupBy().groupBy() is a compile error', () => {
+			type AfterGroupBy = import('./builders').AggregateBuilder<S, A, {}, { name: string }, true, false, false>
+			type GroupByParams = Parameters<AfterGroupBy['groupBy']>
+			expectTypeOf<GroupByParams>().toEqualTypeOf<[never]>()
+		})
+
 		test('clone-on-step: .where() returns a new builder', () => {
 			type After = ReturnType<Builder['where']>
-			expectTypeOf<After>().toMatchTypeOf<Builder>()
+			expectTypeOf<After>().toMatchTypeOf<import('./builders').AggregateBuilder<S, A, {}, {}, false, true, false>>()
 		})
 	})
 
@@ -2205,6 +2265,220 @@ if (import.meta.vitest) {
 			await expect(
 				repo.on(OrderSchema).aggregate().count('total').where((q) => q.eq('nonexistent', 'x')).run(),
 			).rejects.toThrow(OrmValidationError)
+		})
+
+		test('sum returns total of numeric field', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo.on(OrderSchema).aggregate().sum(OrderSchema.fields.amount, 'revenue').run()
+			expect(result).toEqual({ revenue: 150 })
+		})
+
+		test('avg returns average of numeric field', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo.on(OrderSchema).aggregate().avg(OrderSchema.fields.amount, 'avgAmount').run()
+			expect(result).toEqual({ avgAmount: 30 })
+		})
+
+		test('min returns minimum value', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo.on(OrderSchema).aggregate().min(OrderSchema.fields.amount, 'lowest').run()
+			expect(result).toEqual({ lowest: 10 })
+		})
+
+		test('max returns maximum value', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo.on(OrderSchema).aggregate().max(OrderSchema.fields.amount, 'highest').run()
+			expect(result).toEqual({ highest: 50 })
+		})
+
+		test('countDistinct returns unique value count', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo.on(OrderSchema).aggregate().countDistinct(OrderSchema.fields.product, 'unique').run()
+			expect(result).toEqual({ unique: 2 })
+		})
+
+		test('min on string field returns lexicographic minimum', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo.on(OrderSchema).aggregate().min(OrderSchema.fields.region, 'firstRegion').run()
+			expect(result).toEqual({ firstRegion: 'EU' })
+		})
+
+		test('max on string field returns lexicographic maximum', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo.on(OrderSchema).aggregate().max(OrderSchema.fields.region, 'lastRegion').run()
+			expect(result).toEqual({ lastRegion: 'US' })
+		})
+
+		test('combined aggregators in single chain', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.count('total')
+				.sum(OrderSchema.fields.amount, 'revenue')
+				.avg(OrderSchema.fields.amount, 'avgAmount')
+				.min(OrderSchema.fields.amount, 'lowest')
+				.max(OrderSchema.fields.amount, 'highest')
+				.run()
+			expect(result).toEqual({ total: 5, revenue: 150, avgAmount: 30, lowest: 10, highest: 50 })
+		})
+
+		test('groupBy single column returns per-group results', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.groupBy(OrderSchema.fields.region)
+				.count('cnt')
+				.sum(OrderSchema.fields.amount, 'total')
+				.run()
+			expect(result).toHaveLength(2)
+			const us = result.find((r) => r.region === 'US')
+			const eu = result.find((r) => r.region === 'EU')
+			expect(us).toEqual({ region: 'US', cnt: 3, total: 90 })
+			expect(eu).toEqual({ region: 'EU', cnt: 2, total: 60 })
+		})
+
+		test('groupBy multi-column returns per-combo results', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.groupBy(OrderSchema.fields.region, OrderSchema.fields.product)
+				.count('cnt')
+				.run()
+			expect(result).toHaveLength(2)
+			const usWidget = result.find((r) => r.region === 'US' && r.product === 'Widget')
+			const euGadget = result.find((r) => r.region === 'EU' && r.product === 'Gadget')
+			expect(usWidget?.cnt).toBe(3)
+			expect(euGadget?.cnt).toBe(2)
+		})
+
+		test('where + groupBy filters before grouping', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.where((q) => q.gt('amount', 15))
+				.groupBy(OrderSchema.fields.region)
+				.count('cnt')
+				.run()
+			const us = result.find((r) => r.region === 'US')
+			const eu = result.find((r) => r.region === 'EU')
+			expect(us?.cnt).toBe(2)
+			expect(eu?.cnt).toBe(2)
+		})
+
+		test('having filters after aggregation', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.groupBy(OrderSchema.fields.region)
+				.count('cnt')
+				.sum(OrderSchema.fields.amount, 'total')
+				.having((q) => q.gt('total', 80))
+				.run()
+			expect(result).toHaveLength(1)
+			expect(result[0].region).toBe('US')
+			expect(result[0].total).toBe(90)
+		})
+
+		test('where + having work together', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.where((q) => q.gt('amount', 15))
+				.groupBy(OrderSchema.fields.region)
+				.count('cnt')
+				.having((q) => q.gte('cnt', 2))
+				.run()
+			expect(result).toHaveLength(2)
+		})
+
+		test('countDistinct with groupBy', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.groupBy(OrderSchema.fields.region)
+				.countDistinct(OrderSchema.fields.product, 'uniqueProducts')
+				.run()
+			const us = result.find((r) => r.region === 'US')
+			const eu = result.find((r) => r.region === 'EU')
+			expect(us?.uniqueProducts).toBe(1)
+			expect(eu?.uniqueProducts).toBe(1)
+		})
+
+		test('step order is irrelevant: groupBy before or after aggregators', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const resultA = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.groupBy(OrderSchema.fields.region)
+				.count('cnt')
+				.run()
+			const resultB = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.count('cnt')
+				.groupBy(OrderSchema.fields.region)
+				.run()
+			expect(resultA.sort((a, b) => a.region.localeCompare(b.region)))
+				.toEqual(resultB.sort((a, b) => a.region.localeCompare(b.region)))
+		})
+
+		test('boundary validation rejects unknown groupBy field', async () => {
+			const { repo } = makeAggRepo()
+			await expect(
+				(repo.on(OrderSchema).aggregate() as any).groupBy({ name: 'nonexistent', path: ['nonexistent'] }).count('total').run(),
+			).rejects.toThrow(OrmValidationError)
+		})
+
+		test('boundary validation rejects unknown having field', async () => {
+			const { repo } = makeAggRepo()
+			await expect(
+				repo
+					.on(OrderSchema)
+					.aggregate()
+					.groupBy(OrderSchema.fields.region)
+					.count('cnt')
+					.having((q) => q.gt('nonexistent', 0))
+					.run(),
+			).rejects.toThrow(OrmValidationError)
+		})
+
+		test('min/max on empty store returns null', async () => {
+			const { repo } = makeAggRepo()
+			const result = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.min(OrderSchema.fields.amount, 'lowest')
+				.max(OrderSchema.fields.amount, 'highest')
+				.run()
+			expect(result).toEqual({ lowest: null, highest: null })
+		})
+
+		test('avg on empty store returns zero', async () => {
+			const { repo } = makeAggRepo()
+			const result = await repo.on(OrderSchema).aggregate().avg(OrderSchema.fields.amount, 'avgAmount').run()
+			expect(result).toEqual({ avgAmount: 0 })
 		})
 	})
 

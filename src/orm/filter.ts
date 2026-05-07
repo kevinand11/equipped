@@ -1,8 +1,8 @@
 import type { FilterOpName } from './adapter'
 import { EquippedError } from '../errors'
 import { OrmValidationError, type OrmValidationFailure } from './errors'
-import type { AggregateSpec } from './orm-adapter'
 import { toFieldName, type AnyField, type Field } from './fields'
+import type { AggregateSpec } from './orm-adapter'
 import type { AnySchema } from './schema'
 
 export class Filter {
@@ -143,12 +143,44 @@ export function assertNormalisedAggregate(schema: AnySchema, adapter: { aggregat
 		}
 	}
 
+	const allFields = schema.fields as Record<string, unknown>
+	const fieldNames = new Set(Object.keys(allFields))
+	for (const field of spec.groupBy) {
+		if (!fieldNames.has(field)) {
+			failures.push({ field, cause: `Unknown groupBy field "${field}" on schema "${schema.name}"` })
+		}
+		if (seenAliases.has(field)) {
+			failures.push({ alias: field, cause: `Alias "${field}" collides with groupBy field name` })
+		}
+	}
+
 	if (failures.length > 0) {
 		throw new OrmValidationError('aggregate', schema.name, 'aggregate', failures)
 	}
 
 	if (spec.where) {
 		assertNormalisedFilter(schema, spec.where)
+	}
+
+	if (spec.having) {
+		const validHavingFields = new Set([...seenAliases, ...spec.groupBy])
+		const havingErrors: OrmValidationFailure[] = []
+
+		function walkHaving(node: FilterChild): void {
+			if (node instanceof Filter) {
+				if (!validHavingFields.has(node.field)) {
+					havingErrors.push({ field: node.field, cause: `Unknown having field "${node.field}" — must be an aggregator alias or groupBy field` })
+				}
+			} else if (node instanceof FilterGroup) {
+				for (const child of node.children) walkHaving(child)
+			}
+		}
+
+		for (const child of spec.having.children) walkHaving(child)
+
+		if (havingErrors.length > 0) {
+			throw new OrmValidationError('aggregate', schema.name, 'aggregate', havingErrors)
+		}
 	}
 }
 
@@ -529,6 +561,75 @@ if (import.meta.vitest) {
 				const err = e as OrmValidationError
 				expect(err.failures.length).toBeGreaterThanOrEqual(2)
 			}
+		})
+
+		test('rejects unknown groupBy field', () => {
+			const allOps = { aggregateOps: ['count', 'sum'] as readonly string[] }
+			const spec = {
+				aggregates: [{ fn: 'count' as const, alias: 'total' }],
+				groupBy: ['nonexistent'],
+			}
+			try {
+				assertNormalisedAggregate(UserSchema, allOps, spec)
+				expect.unreachable()
+			} catch (e) {
+				const err = e as OrmValidationError
+				expect(err.kind).toBe('aggregate')
+				expect(err.failures[0].cause).toContain('groupBy')
+				expect(err.failures[0].field).toBe('nonexistent')
+			}
+		})
+
+		test('rejects alias colliding with groupBy field name', () => {
+			const allOps = { aggregateOps: ['count'] as readonly string[] }
+			const spec = {
+				aggregates: [{ fn: 'count' as const, alias: 'name' }],
+				groupBy: ['name'],
+			}
+			try {
+				assertNormalisedAggregate(UserSchema, allOps, spec)
+				expect.unreachable()
+			} catch (e) {
+				const err = e as OrmValidationError
+				expect(err.kind).toBe('aggregate')
+				expect(err.failures.some((f) => String(f.cause).includes('collides'))).toBe(true)
+			}
+		})
+
+		test('rejects unknown having field', () => {
+			const allOps = { aggregateOps: ['count'] as readonly string[] }
+			const spec = {
+				aggregates: [{ fn: 'count' as const, alias: 'total' }],
+				groupBy: ['name'],
+				having: FilterGroup.create().gt('nonexistent', 0),
+			}
+			try {
+				assertNormalisedAggregate(UserSchema, allOps, spec)
+				expect.unreachable()
+			} catch (e) {
+				const err = e as OrmValidationError
+				expect(err.kind).toBe('aggregate')
+				expect(err.failures[0].cause).toContain('having')
+			}
+		})
+
+		test('having accepts alias and groupBy field names', () => {
+			const allOps = { aggregateOps: ['count'] as readonly string[] }
+			const spec = {
+				aggregates: [{ fn: 'count' as const, alias: 'total' }],
+				groupBy: ['name'],
+				having: FilterGroup.create().gt('total', 0).eq('name', 'Alice'),
+			}
+			expect(() => assertNormalisedAggregate(UserSchema, allOps, spec)).not.toThrow()
+		})
+
+		test('passes valid groupBy with known schema fields', () => {
+			const allOps = { aggregateOps: ['count'] as readonly string[] }
+			const spec = {
+				aggregates: [{ fn: 'count' as const, alias: 'total' }],
+				groupBy: ['name', 'age'],
+			}
+			expect(() => assertNormalisedAggregate(UserSchema, allOps, spec)).not.toThrow()
 		})
 	})
 }

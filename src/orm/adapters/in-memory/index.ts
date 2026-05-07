@@ -224,7 +224,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	readonly supportedFieldTypes = ['string', 'number', 'boolean', 'null', 'object', 'array', 'date'] as const
 	readonly queryableOps = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains'] as const
 	readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
-	readonly aggregateOps = ['count'] as const
+	readonly aggregateOps = ['count', 'countDistinct', 'sum', 'avg', 'min', 'max'] as const
 
 	readonly stores = new Map<string, Map<string, Record<string, unknown>>>()
 
@@ -347,13 +347,72 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 			const where = spec.where
 			rows = rows.filter((doc) => matchesFilter(doc, where))
 		}
-		const result: Record<string, unknown> = {}
-		for (const agg of spec.aggregates) {
-			if (agg.fn === 'count') {
-				result[agg.alias] = rows.length
+
+		const groups = new Map<string, Record<string, unknown>[]>()
+		if (spec.groupBy.length > 0) {
+			for (const row of rows) {
+				const key = JSON.stringify(spec.groupBy.map((f) => row[f]))
+				if (!groups.has(key)) groups.set(key, [])
+				groups.get(key)!.push(row)
 			}
+		} else {
+			groups.set('__all__', rows)
 		}
-		return [result]
+
+		const results: Record<string, unknown>[] = []
+		for (const [, groupRows] of groups) {
+			const result: Record<string, unknown> = {}
+			if (spec.groupBy.length > 0 && groupRows.length > 0) {
+				for (const field of spec.groupBy) {
+					result[field] = groupRows[0][field]
+				}
+			}
+			for (const agg of spec.aggregates) {
+				switch (agg.fn) {
+					case 'count':
+						result[agg.alias] = groupRows.length
+						break
+					case 'countDistinct': {
+						const vals = new Set(groupRows.map((r) => JSON.stringify(r[agg.field!])))
+						result[agg.alias] = vals.size
+						break
+					}
+					case 'sum':
+						result[agg.alias] = groupRows.reduce((acc, r) => acc + Number(r[agg.field!] ?? 0), 0)
+						break
+					case 'avg': {
+						const sum = groupRows.reduce((acc, r) => acc + Number(r[agg.field!] ?? 0), 0)
+						result[agg.alias] = groupRows.length > 0 ? sum / groupRows.length : 0
+						break
+					}
+					case 'min': {
+						let minVal: unknown = null
+						for (const r of groupRows) {
+							const val = r[agg.field!]
+							if (val != null && (minVal === null || compareValues(val, minVal) < 0)) minVal = val
+						}
+						result[agg.alias] = minVal
+						break
+					}
+					case 'max': {
+						let maxVal: unknown = null
+						for (const r of groupRows) {
+							const val = r[agg.field!]
+							if (val != null && (maxVal === null || compareValues(val, maxVal) > 0)) maxVal = val
+						}
+						result[agg.alias] = maxVal
+						break
+					}
+				}
+			}
+			results.push(result)
+		}
+
+		if (spec.having) {
+			const having = spec.having
+			return results.filter((r) => matchesFilter(r, having))
+		}
+		return results
 	}
 
 	async session<T>(fn: () => Promise<T>): Promise<T> {
@@ -501,9 +560,9 @@ if (import.meta.vitest) {
 			onSpy.mockRestore()
 		})
 
-		test('declares aggregateOps with count', () => {
+		test('declares aggregateOps with all six canonical ops', () => {
 			const adapter = InMemoryAdapter.create({})
-			expect(adapter.aggregateOps).toEqual(['count'])
+			expect(adapter.aggregateOps).toEqual(['count', 'countDistinct', 'sum', 'avg', 'min', 'max'])
 		})
 
 		test('aggregate count returns correct total', async () => {
@@ -555,6 +614,98 @@ if (import.meta.vitest) {
 				groupBy: [],
 			})
 			expect(result).toEqual([{ total: 0 }])
+		})
+
+		test('aggregate sum/avg/min/max compute correctly', async () => {
+			const schema = Schema.from('items')
+				.pk('id', v.string(), () => 'x')
+				.field('price', v.number())
+				.build()
+			const adapter = InMemoryAdapter.create({})
+			const use = adapter.use(schema, { table: 'items' })
+			await use.createMany([
+				{ id: 'i1', price: 10 },
+				{ id: 'i2', price: 20 },
+				{ id: 'i3', price: 30 },
+			])
+			const result = await adapter.aggregate(schema, { table: 'items' }, {
+				aggregates: [
+					{ fn: 'sum', field: 'price', alias: 'total' },
+					{ fn: 'avg', field: 'price', alias: 'avg' },
+					{ fn: 'min', field: 'price', alias: 'low' },
+					{ fn: 'max', field: 'price', alias: 'high' },
+				],
+				groupBy: [],
+			})
+			expect(result).toEqual([{ total: 60, avg: 20, low: 10, high: 30 }])
+		})
+
+		test('aggregate countDistinct counts unique values', async () => {
+			const schema = Schema.from('items')
+				.pk('id', v.string(), () => 'x')
+				.field('category', v.string())
+				.build()
+			const adapter = InMemoryAdapter.create({})
+			const use = adapter.use(schema, { table: 'items' })
+			await use.createMany([
+				{ id: 'i1', category: 'A' },
+				{ id: 'i2', category: 'B' },
+				{ id: 'i3', category: 'A' },
+			])
+			const result = await adapter.aggregate(schema, { table: 'items' }, {
+				aggregates: [{ fn: 'countDistinct', field: 'category', alias: 'unique' }],
+				groupBy: [],
+			})
+			expect(result).toEqual([{ unique: 2 }])
+		})
+
+		test('aggregate groupBy produces per-group results', async () => {
+			const schema = Schema.from('orders')
+				.pk('id', v.string(), () => 'x')
+				.field('region', v.string())
+				.field('amount', v.number())
+				.build()
+			const adapter = InMemoryAdapter.create({})
+			const use = adapter.use(schema, { table: 'orders' })
+			await use.createMany([
+				{ id: 'o1', region: 'US', amount: 10 },
+				{ id: 'o2', region: 'EU', amount: 20 },
+				{ id: 'o3', region: 'US', amount: 30 },
+			])
+			const result = await adapter.aggregate(schema, { table: 'orders' }, {
+				aggregates: [
+					{ fn: 'count', alias: 'cnt' },
+					{ fn: 'sum', field: 'amount', alias: 'total' },
+				],
+				groupBy: ['region'],
+			})
+			expect(result).toHaveLength(2)
+			const us = result.find((r) => r.region === 'US')
+			const eu = result.find((r) => r.region === 'EU')
+			expect(us).toEqual({ region: 'US', cnt: 2, total: 40 })
+			expect(eu).toEqual({ region: 'EU', cnt: 1, total: 20 })
+		})
+
+		test('aggregate having filters post-aggregation', async () => {
+			const schema = Schema.from('orders')
+				.pk('id', v.string(), () => 'x')
+				.field('region', v.string())
+				.field('amount', v.number())
+				.build()
+			const adapter = InMemoryAdapter.create({})
+			const use = adapter.use(schema, { table: 'orders' })
+			await use.createMany([
+				{ id: 'o1', region: 'US', amount: 10 },
+				{ id: 'o2', region: 'EU', amount: 20 },
+				{ id: 'o3', region: 'US', amount: 30 },
+			])
+			const result = await adapter.aggregate(schema, { table: 'orders' }, {
+				aggregates: [{ fn: 'sum', field: 'amount', alias: 'total' }],
+				groupBy: ['region'],
+				having: FilterGroup.create().gt('total', 25),
+			})
+			expect(result).toHaveLength(1)
+			expect(result[0]).toEqual({ region: 'US', total: 40 })
 		})
 	})
 }
