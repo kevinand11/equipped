@@ -31,73 +31,42 @@ if (import.meta.vitest) {
 	const { EquippedError } = await import('../../errors')
 
 	describe('OrmValidationError', () => {
-		describe('aggregate kind', () => {
-			test('accepts aggregate as kind', () => {
-				const err = new OrmValidationError('aggregate', 'orders', 'aggregate', [])
-				expect(err.kind).toBe('aggregate')
-			})
-
-			test('accepts aggregate as operation', () => {
-				const err = new OrmValidationError('aggregate', 'orders', 'aggregate', [])
-				expect(err.operation).toBe('aggregate')
-			})
-
-			test('formats message with aggregate kind and operation', () => {
-				const err = new OrmValidationError('aggregate', 'orders', 'aggregate', [])
-				expect(err.message).toBe('ORM validation error (aggregate) on orders.aggregate')
-			})
+		test('constructs with aggregate kind', () => {
+			const err = new OrmValidationError('aggregate', 'orders', 'aggregate', [])
+			expect(err.kind).toBe('aggregate')
+			expect(err.operation).toBe('aggregate')
+			expect(err.message).toBe('ORM validation error (aggregate) on orders.aggregate')
+			expect(err).toBeInstanceOf(OrmValidationError)
+			expect(err).toBeInstanceOf(EquippedError)
 		})
 
-		describe('alias carrier on failures', () => {
-			test('failure entry accepts optional alias', () => {
-				const failures: OrmValidationFailure[] = [
-					{ alias: 'total_price', cause: 'alias collision' },
-				]
-				const err = new OrmValidationError('aggregate', 'orders', 'aggregate', failures)
-				expect(err.failures[0].alias).toBe('total_price')
-			})
-
-			test('failure entry without alias still works', () => {
-				const failures: OrmValidationFailure[] = [
-					{ field: 'amount', cause: 'invalid field' },
-				]
-				const err = new OrmValidationError('validation', 'orders', 'createOne', failures)
-				expect(err.failures[0].alias).toBeUndefined()
-				expect(err.failures[0].field).toBe('amount')
-			})
-
-			test('alias is included in the error context', () => {
-				const failures: OrmValidationFailure[] = [
-					{ alias: 'avg_price', cause: 'having-alias-not-found' },
-				]
-				const err = new OrmValidationError('aggregate', 'orders', 'aggregate', failures)
-				expect((err.context as any).failures[0].alias).toBe('avg_price')
-			})
+		test('failure carries alias through to context', () => {
+			const failures: OrmValidationFailure[] = [
+				{ alias: 'total_price', cause: 'alias collision' },
+			]
+			const err = new OrmValidationError('aggregate', 'orders', 'aggregate', failures)
+			expect(err.failures[0].alias).toBe('total_price')
+			expect((err.context as any).failures[0].alias).toBe('total_price')
 		})
 
-		describe('existing kinds unchanged', () => {
-			test.each([
-				'validation',
-				'conflicting-ops',
-				'empty-group',
-				'undeclared-op',
-				'upsert-filter-incompatible',
-			] as const)('kind %s still works', (kind) => {
-				const err = new OrmValidationError(kind, 'users', 'createOne', [])
-				expect(err.kind).toBe(kind)
-			})
+		test('failure without alias still works', () => {
+			const failures: OrmValidationFailure[] = [
+				{ field: 'amount', cause: 'invalid field' },
+			]
+			const err = new OrmValidationError('validation', 'orders', 'createOne', failures)
+			expect(err.failures[0].alias).toBeUndefined()
+			expect(err.failures[0].field).toBe('amount')
 		})
 
-		describe('instanceof discrimination', () => {
-			test('aggregate error is instanceof OrmValidationError', () => {
-				const err = new OrmValidationError('aggregate', 'orders', 'aggregate', [])
-				expect(err).toBeInstanceOf(OrmValidationError)
-			})
-
-			test('aggregate error is instanceof EquippedError', () => {
-				const err = new OrmValidationError('aggregate', 'orders', 'aggregate', [])
-				expect(err).toBeInstanceOf(EquippedError)
-			})
+		test.each([
+			'validation',
+			'conflicting-ops',
+			'empty-group',
+			'undeclared-op',
+			'upsert-filter-incompatible',
+		] as const)('kind %s still works', (kind) => {
+			const err = new OrmValidationError(kind, 'users', 'createOne', [])
+			expect(err.kind).toBe(kind)
 		})
 	})
 }
