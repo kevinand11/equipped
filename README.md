@@ -84,7 +84,7 @@ The `Instance` class is the heart of an Equipped application. It's a singleton t
 
 -   **`Instance.create(envsPipe, settings)`**: Initializes the singleton instance. It must be called only once. It validates environment variables and settings before creating the instance.
 -   **`Instance.get()`**: Retrieves the active instance. Throws an error if `create` has not been called.
--   **`Instance.on(event, callback, order)`**: Registers a lifecycle hook.
+-   **`Instance.on(event, callback, options?)`**: Registers a lifecycle hook.
     -   `setup`: Runs once before `start`. Ideal for setting up connections or listeners.
     -   `start`: Runs after `setup`. The primary phase for starting services.
     -   `close`: Runs when the application is shutting down (e.g., via `SIGINT`).
