@@ -31,6 +31,7 @@ export type PostgresqlConnectionConfig = {
 	username: string
 	password: string
 	database: string
+	ssl?: boolean
 }
 
 const postgresqlConnectionPipe = () =>
@@ -40,6 +41,7 @@ const postgresqlConnectionPipe = () =>
 		username: v.string(),
 		password: v.string(),
 		database: v.string(),
+		ssl: v.defaults(v.boolean(), false),
 	})
 
 const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
@@ -56,7 +58,7 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 
 	readonly pool: Pool
 
-	protected constructor(config: typeof PostgresAdapter.Config, ssl = false) {
+	protected constructor(config: typeof PostgresAdapter.Config) {
 		super(config)
 		this.pool = new Pool({
 			host: config.host,
@@ -64,7 +66,7 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 			user: config.username,
 			password: config.password,
 			database: config.database,
-			ssl: ssl ? { rejectUnauthorized: false } : false,
+			ssl: config.ssl ? { rejectUnauthorized: false } : false,
 		})
 	}
 
@@ -283,6 +285,7 @@ if (import.meta.vitest) {
 		username: 'test',
 		password: 'test',
 		database: 'testdb',
+		ssl: false,
 	} as const
 
 	describe('PostgresAdapter: class-via-configurable shape', () => {

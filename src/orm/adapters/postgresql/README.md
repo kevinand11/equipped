@@ -21,10 +21,10 @@ const repo = Repo.from(adapter)
   .build()
 ```
 
-SSL connections are enabled by passing `true` as the second argument to `create`:
+SSL connections are enabled via the `ssl` option (defaults to `false`):
 
 ```ts
-const adapter = PostgresAdapter.create({ host, port, username, password, database }, true)
+const adapter = PostgresAdapter.create({ host, port, username, password, database, ssl: true })
 ```
 
 ## Typed driver escape hatch
