@@ -1,11 +1,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
-import { v } from 'valleyed'
-import { differ } from 'valleyed'
+import { v, differ } from 'valleyed'
 
 import { configurable } from '../../../utilities/configurable'
-import { OrmAdapter } from '../../orm-adapter'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
+import { OrmAdapter } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
@@ -237,6 +236,10 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		return this.stores.get(name)!
 	}
 
+	#resolveStore(schema: AnySchema, config: unknown) {
+		return this.#getStore(resolveConfigName(schema, config as InMemoryRepoConfig))
+	}
+
 	#snapshot() {
 		const snap = new Map<string, Map<string, Record<string, unknown>>>()
 		for (const [name, store] of this.stores.entries()) {
@@ -257,16 +260,14 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	}
 
 	async findByPk(schema: AnySchema, config: unknown, pk: unknown) {
-		const cfg = config as InMemoryRepoConfig
-		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const store = this.#resolveStore(schema, config)
 		const doc = store.get(String(pk))
 		return doc ? clone(doc) : null
 	}
 
 	async createMany(schema: AnySchema, config: unknown, data: Record<string, unknown>[]) {
-		const cfg = config as InMemoryRepoConfig
 		const pk = schema.pkField.name
-		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const store = this.#resolveStore(schema, config)
 		return data.map((d) => {
 			const row = clone(d)
 			store.set(String(row[pk]), row)
@@ -275,8 +276,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	}
 
 	async deleteByPk(schema: AnySchema, config: unknown, pk: unknown) {
-		const cfg = config as InMemoryRepoConfig
-		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const store = this.#resolveStore(schema, config)
 		const pkStr = String(pk)
 		const doc = store.get(pkStr)
 		if (!doc) return null
@@ -285,8 +285,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	}
 
 	async updateByPk(schema: AnySchema, config: unknown, pk: unknown, ops: AnyUpdateOp[]) {
-		const cfg = config as InMemoryRepoConfig
-		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const store = this.#resolveStore(schema, config)
 		const pkStr = String(pk)
 		const doc = store.get(pkStr)
 		if (!doc) return null
@@ -296,15 +295,13 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	}
 
 	async findMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: QueryOptions) {
-		const cfg = config as InMemoryRepoConfig
-		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const store = this.#resolveStore(schema, config)
 		const rows = [...store.values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc))
 		return applyOptions(rows, options)
 	}
 
 	async updateMany(schema: AnySchema, config: unknown, group: FilterGroup, data: Record<string, unknown>) {
-		const cfg = config as InMemoryRepoConfig
-		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const store = this.#resolveStore(schema, config)
 		const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, group)).map(([id]) => id)
 
 		const updated: Record<string, unknown>[] = []
@@ -319,8 +316,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	}
 
 	async deleteMany(schema: AnySchema, config: unknown, filter: FilterGroup) {
-		const cfg = config as InMemoryRepoConfig
-		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const store = this.#resolveStore(schema, config)
 		const pk = schema.pkField.name
 		const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter)).map((doc) => clone(doc))
 		for (const row of rows) store.delete(String(row[pk]))
@@ -328,8 +324,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	}
 
 	async upsertOne(schema: AnySchema, config: unknown, filter: FilterGroup, create: Record<string, unknown>, ops: AnyUpdateOp[]) {
-		const cfg = config as InMemoryRepoConfig
-		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const store = this.#resolveStore(schema, config)
 		const pk = schema.pkField.name
 		const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter))
 		const current = rows[0]

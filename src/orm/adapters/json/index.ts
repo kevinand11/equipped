@@ -3,12 +3,12 @@ import { writeFile, readFile, rename } from 'node:fs/promises'
 import { v } from 'valleyed'
 
 import { configurable } from '../../../utilities/configurable'
-import { OrmAdapter } from '../../orm-adapter'
-import { InMemoryAdapter, type InMemoryRepoConfig } from '../in-memory'
 import type { FilterGroup } from '../../filter'
+import { OrmAdapter } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import type { AnyUpdateOp } from '../../updates'
+import { InMemoryAdapter, type InMemoryRepoConfig } from '../in-memory'
 
 export type JsonAdapterConfig = InMemoryRepoConfig
 
