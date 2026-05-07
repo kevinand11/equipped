@@ -1,8 +1,8 @@
 import type { FilterOpName } from './adapter'
 import { EquippedError } from '../errors'
+import { OrmValidationError } from './errors'
 import { toFieldName, type AnyField, type Field } from './fields'
 import type { AnySchema } from './schema'
-import { OrmValidationError } from './schema-validations'
 
 export class Filter {
 	readonly field: string
