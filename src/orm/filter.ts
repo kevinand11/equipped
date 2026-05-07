@@ -1,8 +1,8 @@
 import type { FilterOpName } from './adapter'
 import { EquippedError } from '../errors'
 import { OrmValidationError, type OrmValidationFailure } from './errors'
-import type { AggregateSpec } from './orm-adapter'
 import { toFieldName, type AnyField, type Field } from './fields'
+import type { AggregateSpec } from './orm-adapter'
 import type { AnySchema } from './schema'
 
 export class Filter {
@@ -149,9 +149,6 @@ export function assertNormalisedAggregate(schema: AnySchema, adapter: { aggregat
 		if (!fieldNames.has(field)) {
 			failures.push({ field, cause: `Unknown groupBy field "${field}" on schema "${schema.name}"` })
 		}
-	}
-
-	for (const field of spec.groupBy) {
 		if (seenAliases.has(field)) {
 			failures.push({ alias: field, cause: `Alias "${field}" collides with groupBy field name` })
 		}
