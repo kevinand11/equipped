@@ -1,20 +1,44 @@
 import { writeFile, readFile, rename } from 'node:fs/promises'
 
-import { Adapter } from '../../adapter'
-import { createInMemoryAdapter, type InMemoryRepoConfig } from '../in-memory'
+import { v } from 'valleyed'
+
+import { configurable } from '../../../utilities/configurable'
+import { OrmAdapter } from '../../orm-adapter'
+import { InMemoryAdapter, type InMemoryRepoConfig } from '../in-memory'
+import type { FilterGroup } from '../../filter'
+import type { QueryOptions } from '../../query'
+import type { AnySchema } from '../../schema'
+import type { AnyUpdateOp } from '../../updates'
 
 export type JsonAdapterConfig = InMemoryRepoConfig
 
-/** Single-process writer. Multi-process file locking is out of scope. */
-export function createJsonAdapter(options: { filePath: string }) {
-	const { filePath } = options
-	const { adapter: inMemory, stores } = createInMemoryAdapter()
+const jsonConnectionPipe = () =>
+	v.object({
+		filePath: v.string(),
+	})
 
-	let writeQueue: Promise<void> = Promise.resolve()
+export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter as unknown as new () => OrmAdapter) {
+	readonly schemaConfigPipe = v.object({ table: v.string() })
 
-	function serializeStores(): string {
+	readonly supportedFieldTypes = ['string', 'number', 'boolean', 'null', 'object', 'array', 'date'] as const
+	readonly queryableOps = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains'] as const
+	readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
+
+	readonly #inMemory: InMemoryAdapter
+	#writeQueue: Promise<void> = Promise.resolve()
+
+	protected constructor(config: typeof JsonAdapter.Config) {
+		super(config)
+		this.#inMemory = InMemoryAdapter.create({})
+	}
+
+	get stores() {
+		return this.#inMemory.stores
+	}
+
+	#serializeStores(): string {
 		const obj: Record<string, Record<string, Record<string, unknown>>> = {}
-		for (const [name, store] of stores.entries()) {
+		for (const [name, store] of this.stores.entries()) {
 			const records: Record<string, Record<string, unknown>> = {}
 			for (const [pk, doc] of store.entries()) {
 				records[pk] = doc
@@ -24,91 +48,92 @@ export function createJsonAdapter(options: { filePath: string }) {
 		return JSON.stringify(obj)
 	}
 
-	async function atomicWrite(): Promise<void> {
-		const data = serializeStores()
-		const tmpPath = filePath + '.tmp.' + process.pid + '.' + Date.now()
+	async #atomicWrite(): Promise<void> {
+		const data = this.#serializeStores()
+		const tmpPath = this.config.filePath + '.tmp.' + process.pid + '.' + Date.now()
 		await writeFile(tmpPath, data, 'utf-8')
-		await rename(tmpPath, filePath)
+		await rename(tmpPath, this.config.filePath)
 	}
 
-	function persistToDisk(): Promise<void> {
-		const next = writeQueue.then(() => atomicWrite())
-		writeQueue = next.catch(() => {})
+	#persistToDisk(): Promise<void> {
+		const next = this.#writeQueue.then(() => this.#atomicWrite())
+		this.#writeQueue = next.catch(() => {})
 		return next
 	}
 
-	async function loadFromDisk(): Promise<void> {
+	async connect(): Promise<void> {
 		let raw: string
 		try {
-			raw = await readFile(filePath, 'utf-8')
+			raw = await readFile(this.config.filePath, 'utf-8')
 		} catch {
 			return
 		}
 		const data = JSON.parse(raw) as Record<string, Record<string, Record<string, unknown>>>
-		stores.clear()
+		this.stores.clear()
 		for (const [name, records] of Object.entries(data)) {
 			const store = new Map<string, Record<string, unknown>>()
 			for (const [pk, doc] of Object.entries(records)) {
 				store.set(pk, doc)
 			}
-			stores.set(name, store)
+			this.stores.set(name, store)
 		}
 	}
 
-	const adapter = Adapter.from<JsonAdapterConfig>()
-		.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
-		.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-		.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
-		.lifecycle({
-			connect: loadFromDisk,
-			disconnect: () => persistToDisk(),
-		})
-		.crud({
-			findByPk: (schema, config, pk) => inMemory.crud.findByPk!(schema, config, pk),
-			createMany: async (schema, config, data) => {
-				const result = await inMemory.crud.createMany!(schema, config, data)
-				await persistToDisk()
-				return result
-			},
-			updateByPk: async (schema, config, pk, ops) => {
-				const result = await inMemory.crud.updateByPk!(schema, config, pk, ops)
-				if (result) await persistToDisk()
-				return result
-			},
-			deleteByPk: async (schema, config, pk) => {
-				const result = await inMemory.crud.deleteByPk!(schema, config, pk)
-				if (result) await persistToDisk()
-				return result
-			},
-		})
-		.queryable({
-			findMany: (schema, config, group, options) => inMemory.queryable.findMany!(schema, config, group, options),
-			updateMany: async (schema, config, group, data) => {
-				const result = await inMemory.queryable.updateMany!(schema, config, group, data)
-				if (result.length) await persistToDisk()
-				return result
-			},
-			deleteMany: async (schema, config, filter) => {
-				const result = await inMemory.queryable.deleteMany!(schema, config, filter)
-				if (result.length) await persistToDisk()
-				return result
-			},
-			upsertOne: async (schema, config, filter, create, ops) => {
-				const result = await inMemory.queryable.upsertOne!(schema, config, filter, create, ops)
-				await persistToDisk()
-				return result
-			},
-		})
-		.transactional({
-			session: async <T>(fn: () => Promise<T>): Promise<T> => inMemory.session(async () => {
-					const result = await fn()
-					await persistToDisk()
-					return result
-				}),
-		})
-		.build()
+	async disconnect(): Promise<void> {
+		await this.#persistToDisk()
+	}
 
-	return { adapter, stores }
+	async findByPk(schema: AnySchema, config: unknown, pk: unknown) {
+		return this.#inMemory.findByPk(schema, config, pk)
+	}
+
+	async createMany(schema: AnySchema, config: unknown, data: Record<string, unknown>[]) {
+		const result = await this.#inMemory.createMany(schema, config, data)
+		await this.#persistToDisk()
+		return result
+	}
+
+	async updateByPk(schema: AnySchema, config: unknown, pk: unknown, ops: AnyUpdateOp[]) {
+		const result = await this.#inMemory.updateByPk(schema, config, pk, ops)
+		if (result) await this.#persistToDisk()
+		return result
+	}
+
+	async deleteByPk(schema: AnySchema, config: unknown, pk: unknown) {
+		const result = await this.#inMemory.deleteByPk(schema, config, pk)
+		if (result) await this.#persistToDisk()
+		return result
+	}
+
+	async findMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: QueryOptions) {
+		return this.#inMemory.findMany(schema, config, group, options)
+	}
+
+	async updateMany(schema: AnySchema, config: unknown, group: FilterGroup, data: Record<string, unknown>) {
+		const result = await this.#inMemory.updateMany(schema, config, group, data)
+		if (result.length) await this.#persistToDisk()
+		return result
+	}
+
+	async deleteMany(schema: AnySchema, config: unknown, filter: FilterGroup) {
+		const result = await this.#inMemory.deleteMany(schema, config, filter)
+		if (result.length) await this.#persistToDisk()
+		return result
+	}
+
+	async upsertOne(schema: AnySchema, config: unknown, filter: FilterGroup, create: Record<string, unknown>, ops: AnyUpdateOp[]) {
+		const result = await this.#inMemory.upsertOne(schema, config, filter, create, ops)
+		await this.#persistToDisk()
+		return result
+	}
+
+	async session<T>(fn: () => Promise<T>): Promise<T> {
+		return this.#inMemory.session(async () => {
+			const result = await fn()
+			await this.#persistToDisk()
+			return result
+		})
+	}
 }
 
 if (import.meta.vitest) {
@@ -134,6 +159,27 @@ if (import.meta.vitest) {
 		await rm(tmpDir, { recursive: true, force: true })
 	})
 
+	describe('json adapter — class construction', () => {
+		test('JsonAdapter.create({ filePath }) produces a working adapter', () => {
+			const adapter = JsonAdapter.create({ filePath })
+			expect(adapter).toBeInstanceOf(JsonAdapter)
+			expect(adapter.schemaConfigPipe).toBeDefined()
+			expect(adapter.supportedFieldTypes).toEqual(['string', 'number', 'boolean', 'null', 'object', 'array', 'date'])
+		})
+
+		test('auto-wired Instance hooks register connect/disconnect keyed by class', async () => {
+			const { Instance: Inst } = await import('../../../instance')
+			const onSpy = (await import('vitest')).vi.spyOn(Inst, 'on').mockImplementation(() => {})
+
+			JsonAdapter.create({ filePath })
+
+			expect(onSpy).toHaveBeenCalledWith('start', expect.any(Function), expect.objectContaining({ class: JsonAdapter }))
+			expect(onSpy).toHaveBeenCalledWith('close', expect.any(Function), expect.objectContaining({ class: JsonAdapter }))
+
+			onSpy.mockRestore()
+		})
+	})
+
 	describe('json adapter — surface parity with in-memory', () => {
 		test('CRUD: create, find, update, delete round-trip', async () => {
 			const schema = Schema.from('users')
@@ -142,7 +188,7 @@ if (import.meta.vitest) {
 				.field('age', v.number())
 				.build()
 
-			const { adapter } = createJsonAdapter({ filePath })
+			const adapter = JsonAdapter.create({ filePath })
 			await adapter.connect()
 
 			const use = adapter.use(schema, { table: 'users' })
@@ -184,7 +230,7 @@ if (import.meta.vitest) {
 				.field('age', v.number())
 				.build()
 
-			const { adapter } = createJsonAdapter({ filePath })
+			const adapter = JsonAdapter.create({ filePath })
 			await adapter.connect()
 			const use = adapter.use(schema, { table: 'users' })
 
@@ -213,7 +259,7 @@ if (import.meta.vitest) {
 				.field('meta', v.object({ a: v.number() }))
 				.build()
 
-			const { adapter } = createJsonAdapter({ filePath })
+			const adapter = JsonAdapter.create({ filePath })
 			await adapter.connect()
 			const use = adapter.use(schema, { table: 'docs' })
 
@@ -246,7 +292,7 @@ if (import.meta.vitest) {
 				.field('val', v.number())
 				.build()
 
-			const { adapter } = createJsonAdapter({ filePath })
+			const adapter = JsonAdapter.create({ filePath })
 			await adapter.connect()
 			const use = adapter.use(schema, { table: 'items' })
 
@@ -275,22 +321,22 @@ if (import.meta.vitest) {
 				.field('name', v.string())
 				.build()
 
-			const a1 = createJsonAdapter({ filePath })
-			await a1.adapter.connect()
-			const use1 = a1.adapter.use(schema, { table: 'users' })
+			const a1 = JsonAdapter.create({ filePath })
+			await a1.connect()
+			const use1 = a1.use(schema, { table: 'users' })
 			await use1.createMany([
 				{ id: 'u1', name: 'Alice' },
 				{ id: 'u2', name: 'Bob' },
 			])
-			await a1.adapter.disconnect()
+			await a1.disconnect()
 
-			const a2 = createJsonAdapter({ filePath })
-			await a2.adapter.connect()
-			const use2 = a2.adapter.use(schema, { table: 'users' })
+			const a2 = JsonAdapter.create({ filePath })
+			await a2.connect()
+			const use2 = a2.use(schema, { table: 'users' })
 			const rows = await use2.findMany(FilterGroup.create())
 			expect(rows).toHaveLength(2)
 			expect(rows.map((r) => r.name).sort()).toEqual(['Alice', 'Bob'])
-			await a2.adapter.disconnect()
+			await a2.disconnect()
 		})
 
 		test('failed session does not persist rolled-back state to disk', async () => {
@@ -299,29 +345,29 @@ if (import.meta.vitest) {
 				.field('val', v.number())
 				.build()
 
-			const a1 = createJsonAdapter({ filePath })
-			await a1.adapter.connect()
-			const use1 = a1.adapter.use(schema, { table: 'docs' })
+			const a1 = JsonAdapter.create({ filePath })
+			await a1.connect()
+			const use1 = a1.use(schema, { table: 'docs' })
 			await use1.createOne({ id: 'd1', val: 1 })
-			await a1.adapter.disconnect()
+			await a1.disconnect()
 
-			const a2 = createJsonAdapter({ filePath })
-			await a2.adapter.connect()
-			const use2 = a2.adapter.use(schema, { table: 'docs' })
+			const a2 = JsonAdapter.create({ filePath })
+			await a2.connect()
+			const use2 = a2.use(schema, { table: 'docs' })
 			await expect(
-				a2.adapter.session(async () => {
+				a2.session(async () => {
 					await use2.updateOne(FilterGroup.create().eq('id', 'd1'), { val: 999 })
 					throw new Error('rollback')
 				}),
 			).rejects.toThrow('rollback')
-			await a2.adapter.disconnect()
+			await a2.disconnect()
 
-			const a3 = createJsonAdapter({ filePath })
-			await a3.adapter.connect()
-			const use3 = a3.adapter.use(schema, { table: 'docs' })
+			const a3 = JsonAdapter.create({ filePath })
+			await a3.connect()
+			const use3 = a3.use(schema, { table: 'docs' })
 			const row = await use3.findOne(FilterGroup.create().eq('id', 'd1'))
 			expect(row?.val).toBe(1)
-			await a3.adapter.disconnect()
+			await a3.disconnect()
 		})
 	})
 
@@ -333,7 +379,7 @@ if (import.meta.vitest) {
 				.field('val', v.number())
 				.build()
 
-			const { adapter } = createJsonAdapter({ filePath })
+			const adapter = JsonAdapter.create({ filePath })
 			await adapter.connect()
 			const use = adapter.use(schema, { table: 'items' })
 
@@ -352,7 +398,7 @@ if (import.meta.vitest) {
 				.field('val', v.number())
 				.build()
 
-			const { adapter } = createJsonAdapter({ filePath })
+			const adapter = JsonAdapter.create({ filePath })
 			await adapter.connect()
 			const use = adapter.use(schema, { table: 'items' })
 
@@ -374,7 +420,7 @@ if (import.meta.vitest) {
 				.field('val', v.number())
 				.build()
 
-			const { adapter } = createJsonAdapter({ filePath })
+			const adapter = JsonAdapter.create({ filePath })
 			await adapter.connect()
 			const use = adapter.use(schema, { table: 'items' })
 
@@ -386,12 +432,12 @@ if (import.meta.vitest) {
 			expect(rows).toHaveLength(20)
 			await adapter.disconnect()
 
-			const a2 = createJsonAdapter({ filePath })
-			await a2.adapter.connect()
-			const use2 = a2.adapter.use(schema, { table: 'items' })
+			const a2 = JsonAdapter.create({ filePath })
+			await a2.connect()
+			const use2 = a2.use(schema, { table: 'items' })
 			const reloaded = await use2.findMany(FilterGroup.create())
 			expect(reloaded).toHaveLength(20)
-			await a2.adapter.disconnect()
+			await a2.disconnect()
 		})
 	})
 }

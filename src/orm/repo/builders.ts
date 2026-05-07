@@ -353,14 +353,14 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 if (import.meta.vitest) {
 	const { describe, test, expect, beforeEach } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { createInMemoryAdapter } = await import('../adapters/in-memory')
+	const { InMemoryAdapter } = await import('../adapters/in-memory')
 	const { Repo } = await import('./repo')
 	const { Schema } = await import('../schema')
 
 	describe('builders', () => {
 		let repo: any
 		beforeEach(() => {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			repo = Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
 		})
 

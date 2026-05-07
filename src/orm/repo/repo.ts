@@ -80,14 +80,14 @@ export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf, vi } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { createInMemoryAdapter } = await import('../adapters/in-memory')
+	const { InMemoryAdapter } = await import('../adapters/in-memory')
 	const { Adapter } = await import('../adapter')
 	const { Relations } = await import('../relations')
 	const { Schema } = await import('../schema')
 
 	describe('Repo.from() and repo.on()', () => {
 		test('Repo.from(adapter).resolve(...).build() creates a working repo', async () => {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const TestSchema = Schema.from('test')
 				.pk('id', v.string(), () => 'x')
 				.field('name', v.string())
@@ -102,7 +102,7 @@ if (import.meta.vitest) {
 		})
 
 		test('repo.on(schema) returns a SchemaRef', async () => {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const TestSchema = Schema.from('test')
 				.pk('id', v.string(), () => 'x')
 				.field('name', v.string())
@@ -117,7 +117,7 @@ if (import.meta.vitest) {
 
 	describe('clone-on-step: RepoBuilder fan-out independence', () => {
 		test('.resolve() returns a new builder, not the same instance', () => {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const base = Repo.from(adapter)
 			const a = base.resolve((s) => ({ table: s.name }))
 			expect(a).not.toBe(base)
@@ -169,7 +169,7 @@ if (import.meta.vitest) {
 			.build()
 
 		function makeRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			return Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -324,7 +324,7 @@ if (import.meta.vitest) {
 
 		test('resolve chains adapter config transforms', async () => {
 			const seenConfigs: unknown[] = []
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)
@@ -446,7 +446,7 @@ if (import.meta.vitest) {
 		})
 
 		test('computed field selection auto-includes dependencies for adapter reads', async () => {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			let seenSelect: string[] | undefined
 			;(adapter as any).use = vi.fn((schema: any, config: any) => {
@@ -485,7 +485,7 @@ if (import.meta.vitest) {
 
 		test('missing computed dependencies in adapter output fail fast', async () => {
 			const { EquippedError } = await import('../../errors')
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((schema: any, config: any) => {
 				const use = origUse(schema, config)
@@ -514,7 +514,7 @@ if (import.meta.vitest) {
 			const TestSchema = Schema.from('findbytest')
 				.pk('id', v.string(), () => 'gen')
 				.build()
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const repo = Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -1047,7 +1047,7 @@ if (import.meta.vitest) {
 			.build()
 
 		function makeE2eRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const repo = Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -1331,7 +1331,7 @@ if (import.meta.vitest) {
 			.build()
 
 		function makeUpdateRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			return Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -1396,7 +1396,7 @@ if (import.meta.vitest) {
 			.build()
 
 		function makeUpsertRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			return Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -1661,7 +1661,7 @@ if (import.meta.vitest) {
 			.build()
 
 		function makeSessionRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			return Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -1814,7 +1814,7 @@ if (import.meta.vitest) {
 	describe('ALS-backed resolve', () => {
 		test('reads inside repo.resolve see the override', async () => {
 			const seenConfigs: unknown[] = []
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)
@@ -1841,7 +1841,7 @@ if (import.meta.vitest) {
 
 		test('reads outside repo.resolve see the default config', async () => {
 			const seenConfigs: unknown[] = []
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)
@@ -1867,7 +1867,7 @@ if (import.meta.vitest) {
 
 		test('two parallel repo.resolve calls do not bleed into each other', async () => {
 			const seenConfigs: unknown[] = []
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)
@@ -1907,7 +1907,7 @@ if (import.meta.vitest) {
 
 		test('overrides survive across awaits inside fn', async () => {
 			const seenConfigs: unknown[] = []
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)

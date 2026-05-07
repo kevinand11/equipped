@@ -1,12 +1,16 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
+import { v } from 'valleyed'
 import { differ } from 'valleyed'
 
-import { Adapter } from '../../adapter'
+import { configurable } from '../../../utilities/configurable'
+import { OrmAdapter } from '../../orm-adapter'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
+
+const inMemoryConnectionPipe = () => v.object({})
 
 export type InMemoryRepoConfig = {
 	table: string
@@ -215,12 +219,27 @@ function applyOps(doc: Record<string, unknown>, ops: AnyUpdateOp[]): Record<stri
 
 const sessionActiveStore = new AsyncLocalStorage<boolean>()
 
-export function createInMemoryAdapter() {
-	const stores = new Map<string, Map<string, Record<string, unknown>>>()
+export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAdapter as unknown as new () => OrmAdapter) {
+	readonly schemaConfigPipe = v.object({ table: v.string() })
 
-	function snapshot() {
+	readonly supportedFieldTypes = ['string', 'number', 'boolean', 'null', 'object', 'array', 'date'] as const
+	readonly queryableOps = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains'] as const
+	readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
+
+	readonly stores = new Map<string, Map<string, Record<string, unknown>>>()
+
+	protected constructor(config: typeof InMemoryAdapter.Config) {
+		super(config)
+	}
+
+	#getStore(name: string) {
+		if (!this.stores.has(name)) this.stores.set(name, new Map())
+		return this.stores.get(name)!
+	}
+
+	#snapshot() {
 		const snap = new Map<string, Map<string, Record<string, unknown>>>()
-		for (const [name, store] of stores.entries()) {
+		for (const [name, store] of this.stores.entries()) {
 			const storeCopy = new Map<string, Record<string, unknown>>()
 			for (const [id, doc] of store.entries()) {
 				storeCopy.set(id, clone(doc))
@@ -230,113 +249,111 @@ export function createInMemoryAdapter() {
 		return snap
 	}
 
-	function restore(snap: Map<string, Map<string, Record<string, unknown>>>) {
-		stores.clear()
+	#restore(snap: Map<string, Map<string, Record<string, unknown>>>) {
+		this.stores.clear()
 		for (const [name, store] of snap.entries()) {
-			stores.set(name, store)
+			this.stores.set(name, store)
 		}
 	}
 
-	function getStore(name: string) {
-		if (!stores.has(name)) stores.set(name, new Map())
-		return stores.get(name)!
+	async findByPk(schema: AnySchema, config: unknown, pk: unknown) {
+		const cfg = config as InMemoryRepoConfig
+		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const doc = store.get(String(pk))
+		return doc ? clone(doc) : null
 	}
 
-	const adapter = Adapter.from<InMemoryRepoConfig>()
-		.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
-		.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-		.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
-		.crud({
-			findByPk: async (schema, config, pk) => {
-				const store = getStore(resolveConfigName(schema, config))
-				const doc = store.get(String(pk))
-				return doc ? clone(doc) : null
-			},
-			createMany: async (schema, config, data) => {
-				const pk = schema.pkField.name
-				const store = getStore(resolveConfigName(schema, config))
-				return data.map((d) => {
-					const row = clone(d)
-					store.set(String(row[pk]), row)
-					return clone(row)
-				})
-			},
-			deleteByPk: async (schema, config, pk) => {
-				const store = getStore(resolveConfigName(schema, config))
-				const pkStr = String(pk)
-				const doc = store.get(pkStr)
-				if (!doc) return null
-				store.delete(pkStr)
-				return clone(doc)
-			},
-			updateByPk: async (schema, config, pk, ops) => {
-				const store = getStore(resolveConfigName(schema, config))
-				const pkStr = String(pk)
-				const doc = store.get(pkStr)
-				if (!doc) return null
-				const updated = applyOps(doc, ops)
-				store.set(pkStr, updated)
-				return clone(updated)
-			},
+	async createMany(schema: AnySchema, config: unknown, data: Record<string, unknown>[]) {
+		const cfg = config as InMemoryRepoConfig
+		const pk = schema.pkField.name
+		const store = this.#getStore(resolveConfigName(schema, cfg))
+		return data.map((d) => {
+			const row = clone(d)
+			store.set(String(row[pk]), row)
+			return clone(row)
 		})
-		.queryable({
-			findMany: async (schema, config, group, options) => {
-				const store = getStore(resolveConfigName(schema, config))
-				const rows = [...store.values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc))
-				return applyOptions(rows, options)
-			},
-			updateMany: async (schema, config, group, data) => {
-				const store = getStore(resolveConfigName(schema, config))
-				const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, group)).map(([id]) => id)
+	}
 
-				const updated: Record<string, unknown>[] = []
-				for (const id of ids) {
-					const current = store.get(id)
-					if (!current) continue
-					const next = applyUpdateData(current, data)
-					store.set(id, next)
-					updated.push(clone(next))
-				}
-				return updated
-			},
-			deleteMany: async (schema, config, filter) => {
-				const store = getStore(resolveConfigName(schema, config))
-				const pk = schema.pkField.name
-				const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter)).map((doc) => clone(doc))
-				for (const row of rows) store.delete(String(row[pk]))
-				return rows
-			},
-			upsertOne: async (schema, config, filter, create, ops) => {
-				const store = getStore(resolveConfigName(schema, config))
-				const pk = schema.pkField.name
-				const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter))
-				const current = rows[0]
-				if (current) {
-					const next = ops.length > 0 ? applyOps(current, ops) : clone(current)
-					store.set(String(next[pk]), next)
-					return clone(next)
-				}
-				const base = clone(create)
-				const result = ops.length > 0 ? applyOps(base, ops) : base
-				store.set(String(result[pk]), result)
-				return clone(result)
-			},
-		})
-		.transactional({
-			session: async <T>(fn: () => Promise<T>): Promise<T> => {
-				if (sessionActiveStore.getStore()) return fn()
-				const snap = snapshot()
-				try {
-					return await sessionActiveStore.run(true, fn)
-				} catch (error) {
-					restore(snap)
-					throw error
-				}
-			},
-		})
-		.build()
+	async deleteByPk(schema: AnySchema, config: unknown, pk: unknown) {
+		const cfg = config as InMemoryRepoConfig
+		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const pkStr = String(pk)
+		const doc = store.get(pkStr)
+		if (!doc) return null
+		store.delete(pkStr)
+		return clone(doc)
+	}
 
-	return { adapter, stores }
+	async updateByPk(schema: AnySchema, config: unknown, pk: unknown, ops: AnyUpdateOp[]) {
+		const cfg = config as InMemoryRepoConfig
+		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const pkStr = String(pk)
+		const doc = store.get(pkStr)
+		if (!doc) return null
+		const updated = applyOps(doc, ops)
+		store.set(pkStr, updated)
+		return clone(updated)
+	}
+
+	async findMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: QueryOptions) {
+		const cfg = config as InMemoryRepoConfig
+		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const rows = [...store.values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc))
+		return applyOptions(rows, options)
+	}
+
+	async updateMany(schema: AnySchema, config: unknown, group: FilterGroup, data: Record<string, unknown>) {
+		const cfg = config as InMemoryRepoConfig
+		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, group)).map(([id]) => id)
+
+		const updated: Record<string, unknown>[] = []
+		for (const id of ids) {
+			const current = store.get(id)
+			if (!current) continue
+			const next = applyUpdateData(current, data)
+			store.set(id, next)
+			updated.push(clone(next))
+		}
+		return updated
+	}
+
+	async deleteMany(schema: AnySchema, config: unknown, filter: FilterGroup) {
+		const cfg = config as InMemoryRepoConfig
+		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const pk = schema.pkField.name
+		const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter)).map((doc) => clone(doc))
+		for (const row of rows) store.delete(String(row[pk]))
+		return rows
+	}
+
+	async upsertOne(schema: AnySchema, config: unknown, filter: FilterGroup, create: Record<string, unknown>, ops: AnyUpdateOp[]) {
+		const cfg = config as InMemoryRepoConfig
+		const store = this.#getStore(resolveConfigName(schema, cfg))
+		const pk = schema.pkField.name
+		const rows = [...store.values()].filter((doc) => matchesFilter(doc, filter))
+		const current = rows[0]
+		if (current) {
+			const next = ops.length > 0 ? applyOps(current, ops) : clone(current)
+			store.set(String(next[pk]), next)
+			return clone(next)
+		}
+		const base = clone(create)
+		const result = ops.length > 0 ? applyOps(base, ops) : base
+		store.set(String(result[pk]), result)
+		return clone(result)
+	}
+
+	async session<T>(fn: () => Promise<T>): Promise<T> {
+		if (sessionActiveStore.getStore()) return fn()
+		const snap = this.#snapshot()
+		try {
+			return await sessionActiveStore.run(true, fn)
+		} catch (error) {
+			this.#restore(snap)
+			throw error
+		}
+	}
 }
 
 if (import.meta.vitest) {
@@ -349,13 +366,20 @@ if (import.meta.vitest) {
 	const { v } = await import('valleyed')
 
 	describe('in-memory adapter', () => {
+		test('InMemoryAdapter.create({}) produces a working adapter', () => {
+			const adapter = InMemoryAdapter.create({})
+			expect(adapter).toBeInstanceOf(InMemoryAdapter)
+			expect(adapter.schemaConfigPipe).toBeDefined()
+			expect(adapter.supportedFieldTypes).toEqual(['string', 'number', 'boolean', 'null', 'object', 'array', 'date'])
+		})
+
 		test('supports nested filters, ordering, select, offset and limit', async () => {
 			const schema = Schema.from('users')
 				.pk('id', v.string(), () => 'u')
 				.field('name', v.string())
 				.field('age', v.number())
 				.build()
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const use = adapter.use(schema, { table: 'users' })
 			await use.createMany([
 				{ id: 'u1', name: 'Alice', age: 30 },
@@ -378,7 +402,7 @@ if (import.meta.vitest) {
 				.field('tags', v.array(v.string()))
 				.field('meta', v.object({ a: v.number() }))
 				.build()
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const use = adapter.use(schema, { table: 'docs' })
 			await use.createOne({ id: 'd1', count: 1, tags: ['x'], meta: { a: 1 } })
 
@@ -406,7 +430,7 @@ if (import.meta.vitest) {
 				.pk('id', v.string(), () => 'u')
 				.field('name', v.string())
 				.build()
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const use = adapter.use(schema, { table: 'users' })
 			await use.createMany([
 				{ id: 'u1', name: 'Alice' },
@@ -423,7 +447,7 @@ if (import.meta.vitest) {
 				.pk('id', v.string(), () => 'i')
 				.field('val', v.optional(v.string()), { onCreate: () => undefined })
 				.build()
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const use = adapter.use(schema, { table: 'items' })
 			await use.createMany([
 				{ id: 'i1', val: 'present' },
@@ -438,20 +462,31 @@ if (import.meta.vitest) {
 			expect(notExistsRows).toHaveLength(2)
 		})
 
-		test('crud.findByPk returns seeded document and null for missing', async () => {
+		test('findByPk returns seeded document and null for missing', async () => {
 			const schema = Schema.from('test')
 				.pk('id', v.string(), () => 'gen')
 				.build()
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 
 			const use = adapter.use(schema, { table: 'test' })
 			await use.createOne({ id: 'x' })
 
-			const found = await adapter.crud.findByPk!(schema, { table: 'test' }, 'x')
+			const found = await adapter.findByPk(schema, { table: 'test' }, 'x')
 			expect(found).toEqual({ id: 'x' })
 
-			const missing = await adapter.crud.findByPk!(schema, { table: 'test' }, 'missing')
+			const missing = await adapter.findByPk(schema, { table: 'test' }, 'missing')
 			expect(missing).toBeNull()
+		})
+
+		test('auto-wired Instance hooks register correctly keyed by class', async () => {
+			const { Instance: Inst } = await import('../../../instance')
+			const onSpy = (await import('vitest')).vi.spyOn(Inst, 'on').mockImplementation(() => {})
+
+			InMemoryAdapter.create({})
+
+			expect(onSpy).not.toHaveBeenCalled()
+
+			onSpy.mockRestore()
 		})
 	})
 }
