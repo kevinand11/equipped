@@ -3,11 +3,11 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { MongoClient, type ClientSession, type MongoClientOptions, type OptionalUnlessRequiredId } from 'mongodb'
 import { v, type PipeOutput } from 'valleyed'
 
-import { compileMongoFilter, compileMongoOps, compileMongoQuery, compileMongoUpdate } from './query'
+import { compileMongoAggregate, compileMongoFilter, compileMongoOps, compileMongoQuery, compileMongoUpdate } from './query'
 import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities/configurable'
 import type { FilterGroup } from '../../filter'
-import { OrmAdapter } from '../../orm-adapter'
+import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import type { AnyUpdateOp } from '../../updates'
@@ -25,6 +25,7 @@ export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter
 
 	readonly queryableOps = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains'] as const
 	readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
+	readonly aggregateOps = ['count', 'countDistinct', 'sum', 'avg', 'min', 'max'] as const
 	readonly supportedFieldTypes = ['string', 'number', 'boolean', 'null', 'object', 'array', 'date'] as const
 
 	readonly client: MongoClient
@@ -145,6 +146,24 @@ export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter
 			throw new EquippedError(
 				'MongoDB raw failed',
 				{ adapter: 'mongodb', operation: 'raw', collection: schemaCfg.col },
+				error,
+			)
+		}
+	}
+
+	async aggregate(schema: AnySchema, config: unknown, spec: AggregateSpec): Promise<Array<Record<string, unknown>>> {
+		const schemaCfg = config as MongoDbRepoConfig
+		try {
+			const pk = schema.pkField.name
+			const collection = this.#getCollection(schemaCfg)
+			const pipeline = compileMongoAggregate(spec, pk)
+			const result = await collection.aggregate(pipeline, { session: this.#sessionStore.getStore() }).toArray()
+			return result as Array<Record<string, unknown>>
+		} catch (error) {
+			if (error instanceof EquippedError) throw error
+			throw new EquippedError(
+				'MongoDB aggregate failed',
+				{ adapter: 'mongodb', operation: 'aggregate', collection: schemaCfg.col },
 				error,
 			)
 		}
@@ -303,6 +322,9 @@ if (import.meta.vitest) {
 			expect(adapter.updateOps).toEqual([
 				'set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch',
 			])
+			expect(adapter.aggregateOps).toEqual([
+				'count', 'countDistinct', 'sum', 'avg', 'min', 'max',
+			])
 		})
 
 		test('underlying MongoClient exposed as readonly instance field', () => {
@@ -424,6 +446,81 @@ if (import.meta.vitest) {
 		test('nested session returns callback without starting new transaction', () => {
 			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017' })
 			expect(adapter.session).toBeTypeOf('function')
+		})
+
+		test('type-level: adapter declares all 6 canonical aggregate ops', () => {
+			const _adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017' })
+			type Ops = typeof _adapter.aggregateOps
+			expectTypeOf<Ops>().toEqualTypeOf<
+				readonly ['count', 'countDistinct', 'sum', 'avg', 'min', 'max']
+			>()
+		})
+
+		test('type-level: Repo.from with MongoDbAdapter enables aggregate method', async () => {
+			const { Repo } = await import('../../repo/repo')
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017' })
+			const repo = Repo.from(adapter).resolve(() => ({ db: 'test', col: 'test' })).build()
+			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const _ref = repo.on(_TestSchema)
+			expectTypeOf(_ref.aggregate).toBeFunction()
+		})
+
+		test('aggregate forwards compiled pipeline to collection.aggregate', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const schema = Schema.from('mongo_agg').pk('_id', v.string(), () => 'x').field('amount', v.number()).build()
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017' })
+			let capturedPipeline: unknown
+			const mockResults = [{ total: 3, revenue: 150 }]
+			;(adapter.client as any).db = () => ({
+				collection: () => ({
+					aggregate: (pipeline: unknown, _opts: unknown) => {
+						capturedPipeline = pipeline
+						return { toArray: async () => mockResults }
+					},
+				}),
+			})
+			const result = await adapter.aggregate(schema, { db: 'testdb', col: 'orders' }, {
+				aggregates: [
+					{ fn: 'count', alias: 'total' },
+					{ fn: 'sum', field: 'amount', alias: 'revenue' },
+				],
+				groupBy: [],
+			})
+			expect(capturedPipeline).toEqual([
+				{ $group: { _id: null, total: { $sum: 1 }, revenue: { $sum: '$amount' } } },
+				{ $project: { _id: 0, total: 1, revenue: 1 } },
+			])
+			expect(result).toEqual(mockResults)
+		})
+
+		test('aggregate with where and groupBy produces correct pipeline', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { FilterGroup } = await import('../../filter')
+			const schema = Schema.from('mongo_agg2').pk('_id', v.string(), () => 'x').field('region', v.string()).field('amount', v.number()).build()
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017' })
+			let capturedPipeline: unknown
+			;(adapter.client as any).db = () => ({
+				collection: () => ({
+					aggregate: (pipeline: unknown, _opts: unknown) => {
+						capturedPipeline = pipeline
+						return { toArray: async () => [{ region: 'US', total: 2 }] }
+					},
+				}),
+			})
+			await adapter.aggregate(schema, { db: 'testdb', col: 'orders' }, {
+				where: FilterGroup.create().gt('amount', 10),
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: ['region'],
+			})
+			expect(capturedPipeline).toEqual([
+				{ $match: { amount: { $gt: 10 } } },
+				{ $group: { _id: { region: '$region' }, total: { $sum: 1 } } },
+				{ $project: { _id: 0, region: '$_id.region', total: 1 } },
+			])
 		})
 
 		test('auto-wires Instance hooks for connect/disconnect', async () => {
