@@ -16,7 +16,7 @@ import { Request, Response } from '../../requests'
 import { StatusCodes, type IncomingFile, type MethodsEnum } from '../../types'
 import { Server, serverConfigPipe } from '../base'
 
-export class FastifyServer extends configurable(serverConfigPipe, Server as unknown as new () => Server) {
+export class FastifyServer extends configurable(serverConfigPipe, Server) {
 	#app: ReturnType<typeof Fastify>
 
 	protected constructor(config: typeof FastifyServer.Config) {

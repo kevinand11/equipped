@@ -4,8 +4,8 @@ import { Pool, type PoolClient } from 'pg'
 import { v } from 'valleyed'
 
 import {
-	buildDeleteQuery,
 	buildCreateQuery,
+	buildDeleteQuery,
 	buildPkUpdateQuery,
 	buildSelectQuery,
 	buildUpdateQuery,
@@ -44,19 +44,32 @@ const postgresqlConnectionPipe = () =>
 		ssl: v.defaults(v.boolean(), false),
 	})
 
-const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
-
-export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmAdapter as unknown as new () => OrmAdapter) {
+export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmAdapter) {
 	readonly schemaConfigPipe = v.object({
 		schema: v.optional(v.string()),
 		table: v.string(),
 	})
 
 	readonly supportedFieldTypes = ['string', 'number', 'boolean', 'null', 'object', 'array', 'date'] as const
-	readonly queryableOps = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains'] as const
+	readonly queryableOps = [
+		'eq',
+		'ne',
+		'gt',
+		'gte',
+		'lt',
+		'lte',
+		'in',
+		'notIn',
+		'like',
+		'exists',
+		'notExists',
+		'contains',
+		'notContains',
+	] as const
 	readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
 
 	readonly pool: Pool
+	#sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
 
 	protected constructor(config: typeof PostgresAdapter.Config) {
 		super(config)
@@ -71,7 +84,7 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 	}
 
 	#getClient() {
-		return sessionStore.getStore() ?? this.pool
+		return this.#sessionStore.getStore() ?? this.pool
 	}
 
 	#resolveTableName(config: PostgresqlRepoConfig) {
@@ -96,11 +109,7 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 			const result = await this.#getClient().query(`SELECT * FROM "${tableName}" WHERE "${pkName}" = $1`, [pk])
 			return result.rows[0] ?? null
 		} catch (error) {
-			throw new EquippedError(
-				'PostgreSQL findByPk failed',
-				{ adapter: 'postgresql', operation: 'findByPk', table: c.table },
-				error,
-			)
+			throw new EquippedError('PostgreSQL findByPk failed', { adapter: 'postgresql', operation: 'findByPk', table: c.table }, error)
 		}
 	}
 
@@ -170,11 +179,7 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 			return result
 		} catch (error) {
 			if (error instanceof EquippedError) throw error
-			throw new EquippedError(
-				'PostgreSQL raw failed',
-				{ adapter: 'postgresql', operation: 'raw', table: c.table },
-				error,
-			)
+			throw new EquippedError('PostgreSQL raw failed', { adapter: 'postgresql', operation: 'raw', table: c.table }, error)
 		}
 	}
 
@@ -186,11 +191,7 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 			const result = await this.#getClient().query(sql, params)
 			return result.rows
 		} catch (error) {
-			throw new EquippedError(
-				'PostgreSQL findMany failed',
-				{ adapter: 'postgresql', operation: 'findMany', table: c.table },
-				error,
-			)
+			throw new EquippedError('PostgreSQL findMany failed', { adapter: 'postgresql', operation: 'findMany', table: c.table }, error)
 		}
 	}
 
@@ -226,13 +227,7 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 		}
 	}
 
-	async upsertOne(
-		schema: AnySchema,
-		config: unknown,
-		filter: FilterGroup,
-		create: Record<string, unknown>,
-		ops: AnyUpdateOp[],
-	) {
+	async upsertOne(schema: AnySchema, config: unknown, filter: FilterGroup, create: Record<string, unknown>, ops: AnyUpdateOp[]) {
 		const c = config as PostgresqlRepoConfig
 		try {
 			const tableName = this.#resolveTableName(c)
@@ -243,21 +238,17 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 			return result.rows[0]
 		} catch (error) {
 			if (error instanceof EquippedError) throw error
-			throw new EquippedError(
-				'PostgreSQL upsertOne failed',
-				{ adapter: 'postgresql', operation: 'upsertOne', table: c.table },
-				error,
-			)
+			throw new EquippedError('PostgreSQL upsertOne failed', { adapter: 'postgresql', operation: 'upsertOne', table: c.table }, error)
 		}
 	}
 
 	async session<T>(fn: () => Promise<T>): Promise<T> {
-		if (sessionStore.getStore()) return fn()
+		if (this.#sessionStore.getStore()) return fn()
 		let client: PoolClient | undefined
 		try {
 			client = await this.pool.connect()
 			await client.query('BEGIN')
-			const result = await sessionStore.run(client, fn)
+			const result = await this.#sessionStore.run(client, fn)
 			await client.query('COMMIT')
 			return result
 		} catch (error) {
@@ -303,15 +294,23 @@ if (import.meta.vitest) {
 		test('PostgresAdapter.create returns instance with correct capability declarations', () => {
 			const adapter = PostgresAdapter.create(testConnectionConfig)
 
-			expect(adapter.supportedFieldTypes).toEqual([
-				'string', 'number', 'boolean', 'null', 'object', 'array', 'date',
-			])
+			expect(adapter.supportedFieldTypes).toEqual(['string', 'number', 'boolean', 'null', 'object', 'array', 'date'])
 			expect(adapter.queryableOps).toEqual([
-				'eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains',
+				'eq',
+				'ne',
+				'gt',
+				'gte',
+				'lt',
+				'lte',
+				'in',
+				'notIn',
+				'like',
+				'exists',
+				'notExists',
+				'contains',
+				'notContains',
 			])
-			expect(adapter.updateOps).toEqual([
-				'set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch',
-			])
+			expect(adapter.updateOps).toEqual(['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'])
 		})
 
 		test('PostgresAdapter.create validates connection config', () => {
@@ -340,7 +339,9 @@ if (import.meta.vitest) {
 		test('adapter.use returns OrmUse-shaped object', async () => {
 			const { Schema } = await import('../../schema')
 
-			const schema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const schema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
 			const adapter = PostgresAdapter.create(testConnectionConfig)
 			const use = adapter.use(schema, { table: 'test' })
 
@@ -360,14 +361,10 @@ if (import.meta.vitest) {
 			const _adapter = PostgresAdapter.create(testConnectionConfig)
 
 			type Ops = typeof _adapter.updateOps
-			expectTypeOf<Ops>().toEqualTypeOf<
-				readonly ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch']
-			>()
+			expectTypeOf<Ops>().toEqualTypeOf<readonly ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch']>()
 
 			type Types = typeof _adapter.supportedFieldTypes
-			expectTypeOf<Types>().toEqualTypeOf<
-				readonly ['string', 'number', 'boolean', 'null', 'object', 'array', 'date']
-			>()
+			expectTypeOf<Types>().toEqualTypeOf<readonly ['string', 'number', 'boolean', 'null', 'object', 'array', 'date']>()
 
 			type QOps = typeof _adapter.queryableOps
 			expectTypeOf<QOps>().toEqualTypeOf<
@@ -380,8 +377,12 @@ if (import.meta.vitest) {
 			const { Schema } = await import('../../schema')
 
 			const adapter = PostgresAdapter.create(testConnectionConfig)
-			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
-			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const repo = Repo.from(adapter)
+				.resolve(() => ({ table: 'test' }))
+				.build()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
 
 			const _one = repo.on(_TestSchema).one()
 			const _all = repo.on(_TestSchema).all()
@@ -404,8 +405,12 @@ if (import.meta.vitest) {
 			const { Schema } = await import('../../schema')
 
 			const adapter = PostgresAdapter.create(testConnectionConfig)
-			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
-			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const repo = Repo.from(adapter)
+				.resolve(() => ({ table: 'test' }))
+				.build()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
 			const _ref = repo.on(_TestSchema)
 
 			expectTypeOf(_ref.raw).parameters.toEqualTypeOf<[command: string, params?: unknown[]]>()
@@ -416,8 +421,12 @@ if (import.meta.vitest) {
 			const { Schema } = await import('../../schema')
 
 			const adapter = PostgresAdapter.create(testConnectionConfig)
-			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
-			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
+			const repo = Repo.from(adapter)
+				.resolve(() => ({ table: 'test' }))
+				.build()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
 			const _ref = repo.on(_TestSchema)
 
 			expectTypeOf(_ref.raw<{ id: string }[]>).returns.toEqualTypeOf<Promise<{ id: string }[]>>()
@@ -426,7 +435,9 @@ if (import.meta.vitest) {
 		test('raw forwards (command, params) to pool.query at runtime', async () => {
 			const { Schema } = await import('../../schema')
 
-			const schema = Schema.from('pg_raw').pk('id', v.string(), () => 'x').build()
+			const schema = Schema.from('pg_raw')
+				.pk('id', v.string(), () => 'x')
+				.build()
 			const adapter = PostgresAdapter.create(testConnectionConfig)
 			let capturedCommand: unknown
 			let capturedParams: unknown
@@ -445,7 +456,9 @@ if (import.meta.vitest) {
 		test('raw defaults params to [] when omitted', async () => {
 			const { Schema } = await import('../../schema')
 
-			const schema = Schema.from('pg_raw2').pk('id', v.string(), () => 'x').build()
+			const schema = Schema.from('pg_raw2')
+				.pk('id', v.string(), () => 'x')
+				.build()
 			const adapter = PostgresAdapter.create(testConnectionConfig)
 			let capturedParams: unknown
 			;(adapter.pool as any).query = async (_cmd: unknown, params: unknown) => {

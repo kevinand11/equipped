@@ -4,17 +4,15 @@ type CtorParams<T> = ConstructorParameters<T & (abstract new (...args: any[]) =>
 type BaseCtorParams<T> = T extends abstract new (...args: infer A) => any ? A : never
 
 export function configurable<P extends Pipe<any, any>, Base extends abstract new (...args: any[]) => any>(pipeFn: () => P, base: Base) {
-	let pipe: P | undefined
+	const pipe = pipeFn()
+	v.compile(pipe)
 
 	abstract class Configurable extends (base as unknown as new (...args: any[]) => any) {
 		declare static readonly Config: PipeOutput<P>
 
-		protected readonly config: PipeOutput<P>
-
-		protected constructor(validated: PipeOutput<P>, ...baseArgs: BaseCtorParams<Base>) {
+		protected constructor (protected readonly config: PipeOutput<P>, ...baseArgs: BaseCtorParams<Base>) {
 			// eslint-disable-next-line constructor-super
 			super(...baseArgs)
-			this.config = validated
 		}
 
 		static create<This extends Function & { prototype: any }>(
@@ -22,10 +20,6 @@ export function configurable<P extends Pipe<any, any>, Base extends abstract new
 			input: ConditionalObjectKeys<PipeInput<P>>,
 			...args: CtorParams<This> extends [PipeOutput<P>, ...infer R] ? R : never
 		): This['prototype'] {
-			if (!pipe) {
-				pipe = pipeFn()
-				v.compile(pipe)
-			}
 			const validated = v.assert(pipe, input)
 			return new (this as any)(validated, ...args) as This['prototype']
 		}

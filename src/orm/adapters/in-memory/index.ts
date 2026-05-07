@@ -218,7 +218,7 @@ function applyOps(doc: Record<string, unknown>, ops: AnyUpdateOp[]): Record<stri
 
 const sessionActiveStore = new AsyncLocalStorage<boolean>()
 
-export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAdapter as unknown as new () => OrmAdapter) {
+export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAdapter) {
 	readonly schemaConfigPipe = v.object({ table: v.string() })
 
 	readonly supportedFieldTypes = ['string', 'number', 'boolean', 'null', 'object', 'array', 'date'] as const

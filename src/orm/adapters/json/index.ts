@@ -1,4 +1,4 @@
-import { writeFile, readFile, rename } from 'node:fs/promises'
+import { readFile, rename, writeFile } from 'node:fs/promises'
 
 import { v } from 'valleyed'
 
@@ -17,19 +17,19 @@ const jsonConnectionPipe = () =>
 		filePath: v.string(),
 	})
 
-export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter as unknown as new () => OrmAdapter) {
+export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 	readonly schemaConfigPipe = v.object({ table: v.string() })
 
-	readonly supportedFieldTypes = ['string', 'number', 'boolean', 'null', 'object', 'array', 'date'] as const
-	readonly queryableOps = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains'] as const
-	readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
+	readonly #inMemory = InMemoryAdapter.create({})
 
-	readonly #inMemory: InMemoryAdapter
+	readonly supportedFieldTypes = this.#inMemory.supportedFieldTypes
+	readonly queryableOps = this.#inMemory.queryableOps
+	readonly updateOps = this.#inMemory.updateOps
+
 	#writeQueue: Promise<void> = Promise.resolve()
 
 	protected constructor(config: typeof JsonAdapter.Config) {
 		super(config)
-		this.#inMemory = InMemoryAdapter.create({})
 	}
 
 	get stores() {
@@ -296,18 +296,10 @@ if (import.meta.vitest) {
 			await adapter.connect()
 			const use = adapter.use(schema, { table: 'items' })
 
-			const inserted = await use.upsertOne(
-				FilterGroup.create().eq('id', 'i1'),
-				{ id: 'i1', val: 10 },
-				[],
-			)
+			const inserted = await use.upsertOne(FilterGroup.create().eq('id', 'i1'), { id: 'i1', val: 10 }, [])
 			expect(inserted).toEqual({ id: 'i1', val: 10 })
 
-			const updated = await use.upsertOne(
-				FilterGroup.create().eq('id', 'i1'),
-				{ id: 'i1', val: 10 },
-				[new IncOp('val', 5)],
-			)
+			const updated = await use.upsertOne(FilterGroup.create().eq('id', 'i1'), { id: 'i1', val: 10 }, [new IncOp('val', 5)])
 			expect(updated).toEqual({ id: 'i1', val: 15 })
 
 			await adapter.disconnect()
@@ -424,9 +416,7 @@ if (import.meta.vitest) {
 			await adapter.connect()
 			const use = adapter.use(schema, { table: 'items' })
 
-			await Promise.all(
-				Array.from({ length: 20 }, (_, i) => use.createOne({ id: `i${i}`, val: i })),
-			)
+			await Promise.all(Array.from({ length: 20 }, (_, i) => use.createOne({ id: `i${i}`, val: i })))
 
 			const rows = await use.findMany(FilterGroup.create())
 			expect(rows).toHaveLength(20)
