@@ -52,7 +52,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 	let freshUnblocked: Candidate[] = []
 	if (fresh.length > 0) {
 		console.log(`Filtering ${fresh.length} fresh candidate(s) by deps…`)
-		freshUnblocked = await filterByDeps(fresh)
+		freshUnblocked = await filterByDeps(fresh, candidates)
 		console.log(`  · ${freshUnblocked.length} fresh unblocked`)
 	}
 

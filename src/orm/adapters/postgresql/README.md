@@ -1,14 +1,14 @@
 # PostgreSQL Adapter
 
-In-tree PostgreSQL adapter using the `Adapter.from()` builder-chain shape.
+In-tree PostgreSQL adapter using the `class-via-configurable` pattern, extending `OrmAdapter`.
 
 ## Usage
 
 ```ts
-import { createPostgresAdapter, type PostgresqlRepoConfig } from 'equipped/orm/adapters/postgresql'
+import { PostgresAdapter } from 'equipped/orm/adapters/postgresql'
 import { Repo } from 'equipped/orm'
 
-const { adapter } = createPostgresAdapter({
+const adapter = PostgresAdapter.create({
   host: 'localhost',
   port: 5432,
   username: 'admin',
@@ -19,8 +19,20 @@ const { adapter } = createPostgresAdapter({
 const repo = Repo.from(adapter)
   .resolve((schema) => ({ table: schema.name }))
   .build()
+```
 
-await adapter.connect()
+SSL connections are enabled via the `ssl` option (defaults to `false`):
+
+```ts
+const adapter = PostgresAdapter.create({ host, port, username, password, database, ssl: true })
+```
+
+## Typed driver escape hatch
+
+The underlying `pg.Pool` is exposed as a `readonly` instance field for consumers who need direct driver access:
+
+```ts
+const result = await adapter.pool.query('SELECT NOW()')
 ```
 
 ## Capabilities
@@ -30,7 +42,7 @@ await adapter.connect()
 | `supportedFieldTypes` | `string`, `number`, `boolean`, `null`, `object`, `array`, `date` |
 | `queryableOps` | all 13 canonical ops |
 | `updateOps` | `set`, `inc`, `mul`, `min`, `max`, `unset`, `push`, `pull`, `patch` |
-| Bags | `lifecycle`, `crud`, `queryable`, `transactional` |
+| `schemaConfigPipe` | `{ schema?: string, table: string }` |
 
 ## Session nesting behaviour
 

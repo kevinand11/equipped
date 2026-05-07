@@ -1,5 +1,4 @@
-import { exec } from './shell.ts'
-import type { Candidate, IssueState } from './types.ts'
+import type { Candidate } from './types.ts'
 
 // Inline form: matches lines that *begin* with `Depends on` / `Blocked by`
 // (case-insensitive). Truncate at the first sentence terminator (`.` or `;`)
@@ -35,27 +34,10 @@ export function parseDeps(body: string): number[] {
 	return [...out]
 }
 
-async function getIssueState(
-	cache: Map<number, IssueState | null>,
-	number: number,
-): Promise<IssueState | null> {
-	const cached = cache.get(number)
-	if (cached !== undefined) return cached
-	let state: IssueState | null
-	try {
-		const { stdout } = await exec('gh', ['issue', 'view', String(number), '--json', 'state'])
-		state = (JSON.parse(stdout) as { state: IssueState }).state
-	} catch {
-		state = null
-	}
-	cache.set(number, state)
-	return state
-}
-
 async function findCycle(
 	candidates: Candidate[],
 	depsByNumber: Map<number, number[]>,
-	stateCache: Map<number, IssueState | null>,
+	candidatesMap: Map<number, Candidate>,
 ): Promise<number[] | null> {
 	const colour = new Map<number, 'gray' | 'black'>()
 	const stack: number[] = []
@@ -66,23 +48,14 @@ async function findCycle(
 			const start = stack.indexOf(n)
 			return [...stack.slice(start), n]
 		}
-		const state = await getIssueState(stateCache, n)
+		const state = candidatesMap.get(n)?.state
 		if (state !== 'OPEN') {
 			colour.set(n, 'black')
 			return null
 		}
 		colour.set(n, 'gray')
 		stack.push(n)
-		let deps = depsByNumber.get(n)
-		if (deps === undefined) {
-			try {
-				const { stdout } = await exec('gh', ['issue', 'view', String(n), '--json', 'body'])
-				deps = parseDeps((JSON.parse(stdout) as { body: string }).body ?? '')
-			} catch {
-				deps = []
-			}
-			depsByNumber.set(n, deps)
-		}
+		const deps = depsByNumber.get(n) ?? []
 		for (const d of deps) {
 			const found = await visit(d)
 			if (found !== null) return found
@@ -99,28 +72,25 @@ async function findCycle(
 	return null
 }
 
-export async function filterByDeps(candidates: Candidate[]): Promise<Candidate[]> {
-	const stateCache = new Map<number, IssueState | null>()
-	const depsByNumber = new Map<number, number[]>()
-	for (const c of candidates) depsByNumber.set(c.number, parseDeps(c.body))
+export async function filterByDeps(candidates: Candidate[], allCandidates: Candidate[]): Promise<Candidate[]> {
+	const candidatesMap = new Map(allCandidates.map((c) => [c.number, c]))
+	const depsByNumber = new Map<number, number[]>(allCandidates.map((c) => [c.number, parseDeps(c.body)]))
 
 	const missing: Array<{ source: number; bad: number }> = []
 	for (const c of candidates) {
 		for (const dep of depsByNumber.get(c.number)!) {
-			const state = await getIssueState(stateCache, dep)
-			if (state === null) missing.push({ source: c.number, bad: dep })
+			const depCandidate = candidatesMap.get(dep)
+			if (!depCandidate) missing.push({ source: c.number, bad: dep })
 		}
 	}
 	if (missing.length > 0) {
-		const lines = missing.map(
-			(m) => `  · Issue #${m.source} declares "Depends on #${m.bad}" but #${m.bad} does not exist in this repo`,
-		)
+		const lines = missing.map((m) => `  · Issue #${m.source} declares "Depends on #${m.bad}" but #${m.bad} does not exist in this repo`)
 		throw new Error(
 			`Dependency declarations reference missing issues:\n${lines.join('\n')}\n\nFix or remove the trailers, then re-run.`,
 		)
 	}
 
-	const cycle = await findCycle(candidates, depsByNumber, stateCache)
+	const cycle = await findCycle(candidates, depsByNumber, candidatesMap)
 	if (cycle !== null) {
 		throw new Error(
 			`Dependency cycle detected: ${cycle.map((n) => `#${n}`).join(' → ')}.\n` +
@@ -133,8 +103,8 @@ export async function filterByDeps(candidates: Candidate[]): Promise<Candidate[]
 		const deps = depsByNumber.get(c.number)!
 		const openDeps: number[] = []
 		for (const dep of deps) {
-			const state = await getIssueState(stateCache, dep)
-			if (state === 'OPEN') openDeps.push(dep)
+			const depCandidate = candidatesMap.get(dep)
+			if (depCandidate?.state === 'OPEN') openDeps.push(dep)
 		}
 		if (openDeps.length === 0) {
 			survivors.push(c)

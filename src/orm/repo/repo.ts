@@ -1,23 +1,32 @@
+import type { Pipe } from 'valleyed'
+
 import type { InferAdapterConfig } from '../adapter'
 import { currentTransforms, run } from './als'
 import { SchemaContext, SchemaRef, type HasMethod, type SchemaRefSurface } from './builders'
 import type { OrmAdapterConfig, OrmAdapterLike } from '../adapters/base'
 import type { AnySchema } from '../schema'
+import { composeSchemaConfig } from '../schema-validations'
 
 export type { ConfigTransform } from './als'
 
 export class Repo<A extends OrmAdapterLike<any>> {
 	readonly #adapter: A
 	readonly #defaults: (schema: AnySchema) => InferAdapterConfig<A>
+	readonly #schemaConfigPipe: Pipe<any, any> | undefined
 
 	constructor({ adapter, resolve }: { adapter: A; resolve: (schema: AnySchema) => InferAdapterConfig<A> }) {
 		this.#adapter = adapter
 		this.#defaults = resolve
+		this.#schemaConfigPipe = (adapter as any).schemaConfigPipe
 	}
 
 	#getConfig(s: AnySchema): InferAdapterConfig<A> {
+		const transforms = [...currentTransforms<InferAdapterConfig<A>>()]
+		if (this.#schemaConfigPipe) {
+			return composeSchemaConfig(this.#defaults, transforms, s, this.#schemaConfigPipe) as InferAdapterConfig<A>
+		}
 		let config = this.#defaults(s)
-		for (const transform of currentTransforms<InferAdapterConfig<A>>()) {
+		for (const transform of transforms) {
 			config = transform(config, s)
 		}
 		return config
@@ -36,7 +45,7 @@ export class Repo<A extends OrmAdapterLike<any>> {
 	}
 
 	async session<T>(fn: () => Promise<T>): Promise<T> {
-		return this.#adapter.session(fn)
+		return this.#adapter.session?.(fn) ?? fn()
 	}
 
 	resolve<T>(resolver: (config: InferAdapterConfig<A>, schema: AnySchema) => InferAdapterConfig<A>, fn: () => T): T {
@@ -66,19 +75,24 @@ class RepoBuilder<A extends OrmAdapterLike<any>> {
 }
 
 export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
-	(HasMethod<A, 'transactional', 'session'> extends true ? {} : { session: never })
+	(HasMethod<A, 'session'> extends true ? {} : { session: never })
 
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf, vi } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { createInMemoryAdapter } = await import('../adapters/in-memory')
-	const { Adapter } = await import('../adapter')
+	const { InMemoryAdapter } = await import('../adapters/in-memory')
+	const { OrmAdapter } = await import('../orm-adapter')
+	const { Instance } = await import('../../instance')
 	const { Relations } = await import('../relations')
 	const { Schema } = await import('../schema')
 
+	function mockInstance() {
+		return vi.spyOn(Instance, 'on').mockImplementation(() => {})
+	}
+
 	describe('Repo.from() and repo.on()', () => {
 		test('Repo.from(adapter).resolve(...).build() creates a working repo', async () => {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const TestSchema = Schema.from('test')
 				.pk('id', v.string(), () => 'x')
 				.field('name', v.string())
@@ -93,7 +107,7 @@ if (import.meta.vitest) {
 		})
 
 		test('repo.on(schema) returns a SchemaRef', async () => {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const TestSchema = Schema.from('test')
 				.pk('id', v.string(), () => 'x')
 				.field('name', v.string())
@@ -108,7 +122,7 @@ if (import.meta.vitest) {
 
 	describe('clone-on-step: RepoBuilder fan-out independence', () => {
 		test('.resolve() returns a new builder, not the same instance', () => {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const base = Repo.from(adapter)
 			const a = base.resolve((s) => ({ table: s.name }))
 			expect(a).not.toBe(base)
@@ -160,7 +174,7 @@ if (import.meta.vitest) {
 			.build()
 
 		function makeRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			return Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -315,7 +329,7 @@ if (import.meta.vitest) {
 
 		test('resolve chains adapter config transforms', async () => {
 			const seenConfigs: unknown[] = []
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)
@@ -375,20 +389,22 @@ if (import.meta.vitest) {
 			expectTypeOf(ref.raw).toBeNever()
 		})
 
-		test('raw forwards user args through adapter.use to crud.raw', async () => {
+		test('raw forwards user args through adapter.use to adapter.raw', async () => {
 			let capturedArgs: unknown[] = []
-			const rawAdapter = Adapter.from<{ table: string }>()
-				.supportedFieldTypes('string', 'number')
-				.queryableOps('eq')
-				.queryable({ findMany: async () => [] })
-				.crud({
-					findByPk: async () => null,
-					raw: async (_s, _c, command: string, params: unknown[]) => {
-						capturedArgs = [_s, _c, command, params]
-						return { rows: [{ id: '1' }] }
-					},
-				})
-				.build()
+			const spy = mockInstance()
+			class RawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string', 'number'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+				async raw(_s: any, _c: any, command: string, params: unknown[]) {
+					capturedArgs = [_s, _c, command, params]
+					return { rows: [{ id: '1' }] }
+				}
+			}
+			const rawAdapter = new (RawAdapter as any)() as InstanceType<typeof RawAdapter>
+			spy.mockRestore()
+
 			const repo = Repo.from(rawAdapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -406,16 +422,18 @@ if (import.meta.vitest) {
 
 		test('raw with single-arg adapter (mongo-style) forwards correctly', async () => {
 			let capturedPipeline: unknown = undefined
-			const mongoStyleAdapter = Adapter.from<{ col: string }>()
-				.supportedFieldTypes('string')
-				.crud({
-					findByPk: async () => null,
-					raw: async (_s, _c, pipeline: Record<string, unknown>[]) => {
-						capturedPipeline = pipeline
-						return [{ total: 42 }]
-					},
-				})
-				.build()
+			const spy = mockInstance()
+			class MongoStyleAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ col: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async raw(_s: any, _c: any, pipeline: Record<string, unknown>[]) {
+					capturedPipeline = pipeline
+					return [{ total: 42 }]
+				}
+			}
+			const mongoStyleAdapter = new (MongoStyleAdapter as any)() as InstanceType<typeof MongoStyleAdapter>
+			spy.mockRestore()
+
 			const repo = Repo.from(mongoStyleAdapter)
 				.resolve(() => ({ col: 'test' }))
 				.build()
@@ -437,7 +455,7 @@ if (import.meta.vitest) {
 		})
 
 		test('computed field selection auto-includes dependencies for adapter reads', async () => {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			let seenSelect: string[] | undefined
 			;(adapter as any).use = vi.fn((schema: any, config: any) => {
@@ -476,7 +494,7 @@ if (import.meta.vitest) {
 
 		test('missing computed dependencies in adapter output fail fast', async () => {
 			const { EquippedError } = await import('../../errors')
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((schema: any, config: any) => {
 				const use = origUse(schema, config)
@@ -505,7 +523,7 @@ if (import.meta.vitest) {
 			const TestSchema = Schema.from('findbytest')
 				.pk('id', v.string(), () => 'gen')
 				.build()
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const repo = Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -788,242 +806,167 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('type-level: co-required pair (queryable needs queryableOps)', () => {
-		test('queryable without queryableOps is a TS error and runtime throw', () => {
-			expect(() =>
-				// @ts-expect-error — queryable() without queryableOps() is a compile error
-				Adapter.from<unknown>().queryable({ findMany: async () => [] }).build(),
-			).toThrow()
-		})
-
-		test('queryable after queryableOps with zero ops is a TS error and runtime throw', () => {
-			expect(() =>
-				Adapter.from<unknown>()
-					.queryableOps()
-					// @ts-expect-error — queryable() after empty queryableOps should fail
-					.queryable({ findMany: async () => [] })
-					.build(),
-			).toThrow()
-		})
-
-		test('queryable with non-empty queryableOps compiles', () => {
-			const _adapter = Adapter.from<unknown>()
-				.queryableOps('eq')
-				.queryable({ findMany: async () => [] })
-				.build()
-			expect(_adapter.queryableOps).toEqual(['eq'])
-		})
-	})
-
-	describe('type-level: missing queryableOps makes findMany never', () => {
-		test('adapter without queryableOps yields never findMany on repo', () => {
-			const _crudOnlyAdapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
-			type Ops = import('../adapter').InferAdapterQueryableOps<typeof _crudOnlyAdapter>
+	describe('type-level: missing queryableOps yields empty ops', () => {
+		test('adapter without queryableOps yields empty InferAdapterQueryableOps', () => {
+			class MinimalAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = [] as const
+			}
+			type Ops = import('../adapter').InferAdapterQueryableOps<MinimalAdapter>
 			expectTypeOf<Ops>().toEqualTypeOf<readonly []>()
 		})
 	})
 
-	describe('type-level: builder method gating', () => {
-		test('missing queryable.updateMany collapses one().update and all().update to never', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _one = _repo.on(_TestSchema).one()
-			const _all = _repo.on(_TestSchema).all()
-			expectTypeOf(_one.update).toBeNever()
-			expectTypeOf(_all.update).toBeNever()
+	describe('type-level: method gating via class-based adapter', () => {
+		test('missing updateMany collapses one().update and all().update to never', () => {
+			class ReadOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() { return [] }
+			}
+			type A = ReadOnlyAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<One['update']>().toBeNever()
+			expectTypeOf<All['update']>().toBeNever()
 		})
 
-		test('missing queryable.deleteMany collapses one().delete and all().delete to never', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _one = _repo.on(_TestSchema).one()
-			const _all = _repo.on(_TestSchema).all()
-			expectTypeOf(_one.delete).toBeNever()
-			expectTypeOf(_all.delete).toBeNever()
+		test('missing deleteMany collapses one().delete and all().delete to never', () => {
+			class NoDeleteAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() { return [] }
+			}
+			type A = NoDeleteAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<One['delete']>().toBeNever()
+			expectTypeOf<All['delete']>().toBeNever()
 		})
 
-		test('missing crud.raw collapses schemaRef.raw to never', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _ref = _repo.on(_TestSchema)
-			expectTypeOf(_ref.raw).toBeNever()
+		test('missing raw collapses schemaRef.raw to never', () => {
+			class NoRawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() { return [] }
+			}
+			type A = NoRawAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['raw']>().toBeNever()
 		})
 
-		test('missing queryable.upsertOne collapses one().upsert to never', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.queryableOps('eq')
-				.queryable({ findMany: async () => [] })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _one = _repo.on(_TestSchema).one()
-			expectTypeOf(_one.upsert).toBeNever()
+		test('missing upsertOne collapses one().upsert to never', () => {
+			class NoUpsertAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+			}
+			type A = NoUpsertAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			expectTypeOf<One['upsert']>().toBeNever()
 		})
 
-		test('adapter with queryable.updateMany enables one().update and all().update', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.queryableOps('eq')
-				.queryable({ findMany: async () => [], updateMany: async () => [] })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _one = _repo.on(_TestSchema).one()
-			const _all = _repo.on(_TestSchema).all()
-			expectTypeOf(_one.update).toBeFunction()
-			expectTypeOf(_all.update).toBeFunction()
+		test('adapter with updateMany enables one().update and all().update', () => {
+			class WithUpdateAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+				async updateMany() { return [] }
+			}
+			type A = WithUpdateAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<One['update']>().toBeFunction()
+			expectTypeOf<All['update']>().toBeFunction()
 		})
 
-		test('adapter with queryable.deleteMany enables one().delete and all().delete', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.queryableOps('eq')
-				.queryable({ findMany: async () => [], deleteMany: async () => [] })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _one = _repo.on(_TestSchema).one()
-			const _all = _repo.on(_TestSchema).all()
-			expectTypeOf(_one.delete).toBeFunction()
-			expectTypeOf(_all.delete).toBeFunction()
+		test('adapter with deleteMany enables one().delete and all().delete', () => {
+			class WithDeleteAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+				async deleteMany() { return [] }
+			}
+			type A = WithDeleteAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<One['delete']>().toBeFunction()
+			expectTypeOf<All['delete']>().toBeFunction()
 		})
 
-		test('adapter with crud.raw enables schemaRef.raw', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({
-					findByPk: async () => null,
-					raw: async (_schema, _config, _command: string) => ({ rows: [] }),
-				})
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _ref = _repo.on(_TestSchema)
-			expectTypeOf(_ref.raw).toBeFunction()
+		test('adapter with raw enables schemaRef.raw', () => {
+			class WithRawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				async raw(_s: any, _c: any, _command: string) { return { rows: [] } }
+			}
+			type A = WithRawAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['raw']>().toBeFunction()
 		})
 
 		test('adapter raw signature drives arg-tuple inference on schemaRef.raw', () => {
-			const _adapter = Adapter.from<{ table: string }>()
-				.supportedFieldTypes('string')
-				.crud({
-					findByPk: async () => null,
-					raw: async (_schema: import('../schema').AnySchema, _config: { table: string }, _sql: string, _params: number[]) => [42],
-				})
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({ table: 'test' }))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _ref = _repo.on(_TestSchema)
-			expectTypeOf(_ref.raw).toBeFunction()
-			expectTypeOf(_ref.raw).parameters.toEqualTypeOf<[sql: string, params: number[]]>()
+			class TypedRawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async raw(_s: any, _c: any, _sql: string, _params: number[]) { return [42] }
+			}
+			type A = TypedRawAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['raw']>().toBeFunction()
+			expectTypeOf<Ref['raw']>().parameters.toEqualTypeOf<[sql: string, params: number[]]>()
 		})
 
 		test('per-call <T> override narrows raw return type', () => {
-			const _adapter = Adapter.from<{ table: string }>()
-				.supportedFieldTypes('string')
-				.crud({
-					findByPk: async () => null,
-					raw: async (_schema: import('../schema').AnySchema, _config: { table: string }, _sql: string) => ({ rows: [] as unknown[] }),
-				})
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({ table: 'test' }))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _ref = _repo.on(_TestSchema)
-			const _defaultResult = _ref.raw('SELECT 1')
-			expectTypeOf(_defaultResult).toEqualTypeOf<Promise<{ rows: unknown[] }>>()
-			const _narrowed = _ref.raw<string[]>('SELECT 1')
-			expectTypeOf(_narrowed).toEqualTypeOf<Promise<string[]>>()
+			class DefaultRawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async raw(_s: any, _c: any, _sql: string) { return { rows: [] as unknown[] } }
+			}
+			type A = DefaultRawAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['raw']>().toBeFunction()
+			expectTypeOf<Ref['raw']>().parameters.toEqualTypeOf<[sql: string]>()
 		})
 
 		test('adapter with zero-arg raw infers empty arg tuple', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({
-					findByPk: async () => null,
-					raw: async (_schema: import('../schema').AnySchema, _config: unknown) => 'pong',
-				})
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _ref = _repo.on(_TestSchema)
-			expectTypeOf(_ref.raw).parameters.toEqualTypeOf<[]>()
-			const _result = _ref.raw()
-			expectTypeOf(_result).toEqualTypeOf<Promise<string>>()
+			class ZeroArgRawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				async raw(_s: any, _c: any) { return 'pong' }
+			}
+			type A = ZeroArgRawAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['raw']>().parameters.toEqualTypeOf<[]>()
+			expectTypeOf<Ref['raw']>().toBeFunction()
 		})
 
 		test('gating survives through select() chains', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
+			class MinimalAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+			}
+			type A = MinimalAdapter
 			const _TestSchema = Schema.from('test')
 				.pk('id', v.string(), () => 'x')
 				.field('name', v.string())
 				.build()
-			const _one = _repo.on(_TestSchema).one().select(['id'])
-			const _all = _repo.on(_TestSchema).all().select(['id'])
-			expectTypeOf(_one.update).toBeNever()
-			expectTypeOf(_one.delete).toBeNever()
-			expectTypeOf(_all.update).toBeNever()
-			expectTypeOf(_all.delete).toBeNever()
+			type S = typeof _TestSchema
+			type One = import('./builders').OneBuilderSurface<S, A, 'id'>
+			type All = import('./builders').AllBuilderSurface<S, A, 'id'>
+			expectTypeOf<One['update']>().toBeNever()
+			expectTypeOf<One['delete']>().toBeNever()
+			expectTypeOf<All['update']>().toBeNever()
+			expectTypeOf<All['delete']>().toBeNever()
 		})
 	})
 
@@ -1038,7 +981,7 @@ if (import.meta.vitest) {
 			.build()
 
 		function makeE2eRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const repo = Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -1322,7 +1265,7 @@ if (import.meta.vitest) {
 			.build()
 
 		function makeUpdateRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			return Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -1387,7 +1330,7 @@ if (import.meta.vitest) {
 			.build()
 
 		function makeUpsertRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			return Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -1548,21 +1491,22 @@ if (import.meta.vitest) {
 
 		test('upsert-filter-incompatible error from adapter boundary', async () => {
 			const { OrmValidationError } = await import('../schema-validations')
-			const { Adapter: Adapter2 } = await import('../adapter')
 
-			const restrictedAdapter = Adapter2.from<{ table: string }>()
-				.supportedFieldTypes('string', 'number', 'boolean')
-				.queryableOps('eq')
-				.updateOps('set')
-				.queryable({
-					findMany: async () => [],
-					upsertOne: async (_schema, _config, _filter) => {
-						throw new OrmValidationError('upsert-filter-incompatible', 'test', 'upsertOne', [
-							{ cause: 'adapter requires single eq filter on unique column, received complex filter' },
-						])
-					},
-				})
-				.build()
+			const spy = mockInstance()
+			class RestrictedAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string', 'number', 'boolean'] as const
+				readonly queryableOps = ['eq'] as const
+				readonly updateOps = ['set'] as const
+				async findMany() { return [] }
+				async upsertOne(_schema: any, _config: any, _filter: any, _create: any, _ops: any): Promise<Record<string, unknown>> {
+					throw new OrmValidationError('upsert-filter-incompatible', 'test', 'upsertOne', [
+						{ cause: 'adapter requires single eq filter on unique column, received complex filter' },
+					])
+				}
+			}
+			const restrictedAdapter = new (RestrictedAdapter as any)() as InstanceType<typeof RestrictedAdapter>
+			spy.mockRestore()
 
 			const repo = Repo.from(restrictedAdapter)
 				.resolve(() => ({ table: 'test' }))
@@ -1584,59 +1528,46 @@ if (import.meta.vitest) {
 	})
 
 	describe('type-level: upsert gating', () => {
-		test('adapter with queryable.upsertOne enables one().upsert', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string', 'number')
-				.queryableOps('eq')
-				.updateOps('set')
-				.queryable({
-					findMany: async () => [],
-					upsertOne: async () => ({}),
-				})
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _one = _repo.on(_TestSchema).one()
-			expectTypeOf(_one.upsert).toBeFunction()
+		test('adapter with upsertOne enables one().upsert', () => {
+			class WithUpsertAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string', 'number'] as const
+				readonly queryableOps = ['eq'] as const
+				readonly updateOps = ['set'] as const
+				async findMany() { return [] }
+				async upsertOne() { return {} }
+			}
+			type A = WithUpsertAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			expectTypeOf<One['upsert']>().toBeFunction()
 		})
 
-		test('adapter without queryable.upsertOne collapses one().upsert to never', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string', 'number')
-				.queryableOps('eq')
-				.updateOps('set')
-				.queryable({
-					findMany: async () => [],
-				})
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _one = _repo.on(_TestSchema).one()
-			expectTypeOf(_one.upsert).toBeNever()
+		test('adapter without upsertOne collapses one().upsert to never', () => {
+			class NoUpsertAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string', 'number'] as const
+				readonly queryableOps = ['eq'] as const
+				readonly updateOps = ['set'] as const
+				async findMany() { return [] }
+			}
+			type A = NoUpsertAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			expectTypeOf<One['upsert']>().toBeNever()
 		})
 
-		test('adapter without queryable bag collapses one().upsert to never', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string', 'number')
-				.updateOps('set')
-				.crud({ findByPk: async () => null })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
-			const _TestSchema = Schema.from('test')
-				.pk('id', v.string(), () => 'x')
-				.build()
-			const _one = _repo.on(_TestSchema).one()
-			expectTypeOf(_one.upsert).toBeNever()
+		test('adapter without upsertOne (crud-only) collapses one().upsert to never', () => {
+			class CrudOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string', 'number'] as const
+				readonly updateOps = ['set'] as const
+				async findByPk() { return null }
+			}
+			type A = CrudOnlyAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			expectTypeOf<One['upsert']>().toBeNever()
 		})
 	})
 
@@ -1652,7 +1583,7 @@ if (import.meta.vitest) {
 			.build()
 
 		function makeSessionRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			return Repo.from(adapter)
 				.resolve((s) => ({ table: s.name }))
 				.build()
@@ -1778,26 +1709,25 @@ if (import.meta.vitest) {
 	})
 
 	describe('type-level: session gating', () => {
-		test('missing transactional.session collapses repo.session to never', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
+		test('missing session collapses repo.session to never', () => {
+			class NoSessionAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() { return [] }
+			}
+			type A = NoSessionAdapter
+			const _repo = {} as import('./repo').RepoSurface<A>
 			expectTypeOf(_repo.session).toBeNever()
 		})
 
-		test('adapter with transactional.session enables repo.session', () => {
-			const _adapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.transactional({ session: async (fn) => fn() })
-				.build()
-			const _repo = Repo.from(_adapter)
-				.resolve(() => ({}))
-				.build()
+		test('adapter with session enables repo.session', () => {
+			class WithSessionAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				async session<T>(fn: () => Promise<T>): Promise<T> { return fn() }
+			}
+			type A = WithSessionAdapter
+			const _repo = {} as import('./repo').RepoSurface<A>
 			expectTypeOf(_repo.session).toBeFunction()
 		})
 	})
@@ -1805,7 +1735,7 @@ if (import.meta.vitest) {
 	describe('ALS-backed resolve', () => {
 		test('reads inside repo.resolve see the override', async () => {
 			const seenConfigs: unknown[] = []
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)
@@ -1832,7 +1762,7 @@ if (import.meta.vitest) {
 
 		test('reads outside repo.resolve see the default config', async () => {
 			const seenConfigs: unknown[] = []
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)
@@ -1858,7 +1788,7 @@ if (import.meta.vitest) {
 
 		test('two parallel repo.resolve calls do not bleed into each other', async () => {
 			const seenConfigs: unknown[] = []
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)
@@ -1898,7 +1828,7 @@ if (import.meta.vitest) {
 
 		test('overrides survive across awaits inside fn', async () => {
 			const seenConfigs: unknown[] = []
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((s: any, config: any) => {
 				seenConfigs.push(config)
@@ -1925,6 +1855,250 @@ if (import.meta.vitest) {
 			expect(seenConfigs).toHaveLength(2)
 			expect(seenConfigs[0]).toEqual({ table: 'async_test' })
 			expect(seenConfigs[1]).toEqual({ table: 'async_test' })
+		})
+	})
+
+	describe('class-based OrmAdapter with Repo', async () => {
+		const { OrmAdapter } = await import('../orm-adapter')
+		const { FilterGroup } = await import('../filter')
+		const { OrmValidationError } = await import('../schema-validations')
+
+		function makeClassAdapter() {
+			const stores = new Map<string, Map<string, Record<string, unknown>>>()
+			function getStore(name: string) {
+				if (!stores.has(name)) stores.set(name, new Map())
+				return stores.get(name)!
+			}
+
+			class TestClassAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string', 'number'] as const
+				readonly queryableOps = ['eq'] as const
+				readonly updateOps = ['set'] as const
+
+				async findMany(_schema: import('../schema').AnySchema, config: unknown, group: import('../filter').FilterGroup) {
+					const cfg = config as { table: string }
+					const store = getStore(cfg.table)
+					return [...store.values()].filter((doc) => {
+						for (const child of group.children) {
+							if (child instanceof (FilterGroup as any).constructor) continue
+							const f = child as any
+							if (f.op === 'eq' && doc[f.field] !== f.value) return false
+						}
+						return true
+					})
+				}
+
+				async createMany(s: import('../schema').AnySchema, config: unknown, data: Record<string, unknown>[]) {
+					const cfg = config as { table: string }
+					const store = getStore(cfg.table)
+					const pk = s.pkField.name
+					for (const d of data) store.set(String(d[pk]), { ...d })
+					return data.map((d) => ({ ...d }))
+				}
+
+				async updateMany(s: import('../schema').AnySchema, config: unknown, group: import('../filter').FilterGroup, data: Record<string, unknown>) {
+					const rows = await this.findMany(s, config, group)
+					const cfg = config as { table: string }
+					const store = getStore(cfg.table)
+					const pk = s.pkField.name
+					return rows.map((row) => {
+						const updated = { ...row, ...data }
+						store.set(String(updated[pk]), updated)
+						return { ...updated }
+					})
+				}
+
+				async deleteMany(s: import('../schema').AnySchema, config: unknown, group: import('../filter').FilterGroup) {
+					const rows = await this.findMany(s, config, group)
+					const cfg = config as { table: string }
+					const store = getStore(cfg.table)
+					const pk = s.pkField.name
+					for (const row of rows) store.delete(String(row[pk]))
+					return rows
+				}
+			}
+
+			const spy = mockInstance()
+			const adapter = new (TestClassAdapter as any)() as InstanceType<typeof TestClassAdapter>
+			spy.mockRestore()
+			return { adapter, stores }
+		}
+
+		const TestSchema = Schema.from('class_test')
+			.pk('id', v.string(), () => `ct-${Math.random().toString(36).slice(2, 8)}`)
+			.field('name', v.string())
+			.field('age', v.number())
+			.build()
+
+		test('Repo.from(classAdapter).resolve(...).build() creates a working repo', async () => {
+			const { adapter } = makeClassAdapter()
+			const repo = Repo.from(adapter)
+				.resolve((s) => ({ table: s.name }))
+				.build()
+
+			const created = await repo.on(TestSchema).one().create({ name: 'Alice', age: 30 })
+			expect(created.name).toBe('Alice')
+			expect(created.age).toBe(30)
+
+			const found = await repo.on(TestSchema).one().id(created.id).find()
+			expect(found).not.toBeNull()
+			expect(found!.name).toBe('Alice')
+		})
+
+		test('dispatch validator validates config against schemaConfigPipe', async () => {
+			const { adapter } = makeClassAdapter()
+			const repo = Repo.from(adapter)
+				.resolve(() => ({ table: 123 }) as any)
+				.build()
+
+			await expect(
+				repo.on(TestSchema).all().find(),
+			).rejects.toBeInstanceOf(OrmValidationError)
+		})
+
+		test('dispatch validator validates after transforms applied', async () => {
+			const { adapter } = makeClassAdapter()
+			const repo = Repo.from(adapter)
+				.resolve((s) => ({ table: s.name }))
+				.build()
+
+			await expect(
+				repo.resolve(
+					() => ({ table: 42 }) as any,
+					async () => repo.on(TestSchema).all().find(),
+				),
+			).rejects.toBeInstanceOf(OrmValidationError)
+		})
+
+		test('createMany + findMany round-trip works', async () => {
+			const { adapter } = makeClassAdapter()
+			const repo = Repo.from(adapter)
+				.resolve((s) => ({ table: s.name }))
+				.build()
+
+			const created = await repo.on(TestSchema).all().create([
+				{ name: 'Alice', age: 30 },
+				{ name: 'Bob', age: 25 },
+			])
+			expect(created).toHaveLength(2)
+
+			const all = await repo.on(TestSchema).all().find()
+			expect(all).toHaveLength(2)
+		})
+
+		test('update and delete work on class-based adapter', async () => {
+			const { adapter } = makeClassAdapter()
+			const repo = Repo.from(adapter)
+				.resolve((s) => ({ table: s.name }))
+				.build()
+
+			const user = await repo.on(TestSchema).one().create({ name: 'Alice', age: 30 })
+			const updated = await repo.on(TestSchema).one().id(user.id).update({ name: 'Alicia' })
+			expect(updated?.name).toBe('Alicia')
+
+			const deleted = await repo.on(TestSchema).one().id(user.id).delete()
+			expect(deleted?.id).toBe(user.id)
+
+			const found = await repo.on(TestSchema).one().id(user.id).find()
+			expect(found).toBeNull()
+		})
+	})
+
+	describe('type-level: class-based adapter surface narrowing', async () => {
+		const { OrmAdapter } = await import('../orm-adapter')
+
+		test('class-based adapter with findMany enables all().find()', () => {
+			class FindAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+			}
+
+			type A = FindAdapter
+			type S = import('../schema').AnySchema
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<All['find']>().toBeFunction()
+		})
+
+		test('class-based adapter without updateMany narrows out update()', () => {
+			class ReadOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+			}
+
+			type A = ReadOnlyAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<One['update']>().toBeNever()
+			expectTypeOf<All['update']>().toBeNever()
+		})
+
+		test('class-based adapter without deleteMany narrows out delete()', () => {
+			class NoDeletAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() { return [] }
+			}
+
+			type A = NoDeletAdapter
+			type S = import('../schema').AnySchema
+			type One = import('./builders').OneBuilderSurface<S, A>
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<One['delete']>().toBeNever()
+			expectTypeOf<All['delete']>().toBeNever()
+		})
+
+		test('class-based adapter without session narrows out repo.session', () => {
+			class NoSessionAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() { return [] }
+			}
+
+			type A = NoSessionAdapter
+			const _repo = {} as import('./repo').RepoSurface<A>
+			expectTypeOf(_repo.session).toBeNever()
+		})
+
+		test('class-based adapter with session enables repo.session', () => {
+			class WithSessionAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async session<T>(fn: () => Promise<T>): Promise<T> { return fn() }
+			}
+
+			type A = WithSessionAdapter
+			const _repo = {} as import('./repo').RepoSurface<A>
+			expectTypeOf(_repo.session).toBeFunction()
+		})
+
+		test('class-based adapter with raw enables schemaRef.raw', () => {
+			class WithRawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async raw(_s: any, _c: any, _sql: string, _params: unknown[]) { return { rows: [] } }
+			}
+
+			type A = WithRawAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['raw']>().toBeFunction()
+		})
+
+		test('class-based adapter without raw narrows out schemaRef.raw', () => {
+			class NoRawAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() { return [] }
+			}
+
+			type A = NoRawAdapter
+			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
+			expectTypeOf<Ref['raw']>().toBeNever()
 		})
 	})
 }
