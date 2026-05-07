@@ -1,5 +1,7 @@
 import { OrmValidationError } from '../../errors'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
+import type { AggregateOpName } from '../../adapter'
+import type { AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
 
@@ -8,9 +10,7 @@ function mapField(field: string, primaryKey: string): string {
 	return field
 }
 
-function compileFilter(f: Filter, primaryKey: string, nextParam: (v: unknown) => string): string {
-	const field = `"${mapField(f.field, primaryKey)}"`
-
+function compileOps(f: Filter, field: string, nextParam: (v: unknown) => string): string {
 	switch (f.op) {
 		case 'eq':
 			return f.value === null ? `${field} IS NULL` : `${field} = ${nextParam(f.value)}`
@@ -43,16 +43,20 @@ function compileFilter(f: Filter, primaryKey: string, nextParam: (v: unknown) =>
 	}
 }
 
-function compileGroup(group: FilterGroup, primaryKey: string, nextParam: (v: unknown) => string): string | null {
-	const parts = group.children.map((c) => compileChild(c, primaryKey, nextParam)).filter((c): c is string => c !== null)
+function compileFilter(f: Filter, primaryKey: string, nextParam: (v: unknown) => string): string {
+	return compileOps(f, `"${mapField(f.field, primaryKey)}"`, nextParam)
+}
+
+function compileGroup(group: FilterGroup, compileLeaf: (f: Filter) => string): string | null {
+	const parts = group.children.map((c) => compileChild(c, compileLeaf)).filter((c): c is string => c !== null)
 	if (parts.length === 0) return null
 	if (parts.length === 1) return parts[0]
 	return `(${parts.join(group.op === 'or' ? ' OR ' : ' AND ')})`
 }
 
-function compileChild(child: FilterChild, primaryKey: string, nextParam: (v: unknown) => string): string | null {
-	if (child instanceof Filter) return compileFilter(child, primaryKey, nextParam)
-	if (child instanceof FilterGroup) return compileGroup(child, primaryKey, nextParam)
+function compileChild(child: FilterChild, compileLeaf: (f: Filter) => string): string | null {
+	if (child instanceof Filter) return compileLeaf(child)
+	if (child instanceof FilterGroup) return compileGroup(child, compileLeaf)
 	return null
 }
 
@@ -70,8 +74,9 @@ function compilePgFilter(
 	}
 
 	const whereParts: string[] = []
+	const leaf = (f: Filter) => compileFilter(f, primaryKey, nextParam)
 	for (const child of group.children) {
-		const compiled = compileChild(child, primaryKey, nextParam)
+		const compiled = compileChild(child, leaf)
 		if (compiled) whereParts.push(compiled)
 	}
 
@@ -259,6 +264,93 @@ export function extractUpsertConflictColumn(filter: FilterGroup, schemaName: str
 			cause: `PostgreSQL upsert requires a single eq filter on a UNIQUE-indexed column; received ${description}`,
 		},
 	])
+}
+
+function aggFnToSql(fn: AggregateOpName, field: string | undefined, primaryKey: string): string {
+	if (fn === 'count') return 'COUNT(*)'
+	const col = `"${mapField(field!, primaryKey)}"`
+	switch (fn) {
+		case 'countDistinct':
+			return `COUNT(DISTINCT ${col})`
+		case 'sum':
+			return `SUM(${col})`
+		case 'avg':
+			return `AVG(${col})`
+		case 'min':
+			return `MIN(${col})`
+		case 'max':
+			return `MAX(${col})`
+	}
+}
+
+function resolveHavingField(
+	field: string,
+	primaryKey: string,
+	aliasToExpr: Map<string, string>,
+	groupBySet: Set<string>,
+): string {
+	if (aliasToExpr.has(field)) return aliasToExpr.get(field)!
+	if (groupBySet.has(field)) return `"${mapField(field, primaryKey)}"`
+	return `"${field}"`
+}
+
+export function buildAggregateQuery(
+	spec: AggregateSpec,
+	tableName: string,
+	primaryKey: string,
+): { sql: string; params: unknown[] } {
+	const params: unknown[] = []
+	let paramIndex = 1
+
+	function nextParam(value: unknown): string {
+		params.push(value)
+		return `$${paramIndex++}`
+	}
+
+	const selectParts: string[] = []
+	const aliasToExpr = new Map<string, string>()
+
+	for (const agg of spec.aggregates) {
+		const expr = aggFnToSql(agg.fn, agg.field, primaryKey)
+		aliasToExpr.set(agg.alias, expr)
+		selectParts.push(`${expr} AS "${agg.alias}"`)
+	}
+
+	const groupByFields = spec.groupBy.map((f) => `"${mapField(f, primaryKey)}"`)
+	for (const f of spec.groupBy) {
+		selectParts.push(`"${mapField(f, primaryKey)}" AS "${f}"`)
+	}
+
+	let whereClause = ''
+	if (spec.where) {
+		const whereLeaf = (f: Filter) => compileFilter(f, primaryKey, nextParam)
+		const whereParts: string[] = []
+		for (const child of spec.where.children) {
+			const compiled = compileChild(child, whereLeaf)
+			if (compiled) whereParts.push(compiled)
+		}
+		if (whereParts.length > 0) whereClause = `WHERE ${whereParts.join(' AND ')}`
+	}
+
+	const groupByClause = groupByFields.length > 0 ? `GROUP BY ${groupByFields.join(', ')}` : ''
+
+	let havingClause = ''
+	if (spec.having) {
+		const groupBySet = new Set(spec.groupBy)
+		const havingLeaf = (f: Filter) =>
+			compileOps(f, resolveHavingField(f.field, primaryKey, aliasToExpr, groupBySet), nextParam)
+		const havingParts: string[] = []
+		for (const child of spec.having.children) {
+			const compiled = compileChild(child, havingLeaf)
+			if (compiled) havingParts.push(compiled)
+		}
+		if (havingParts.length > 0) havingClause = `HAVING ${havingParts.join(' AND ')}`
+	}
+
+	const sql = `SELECT ${selectParts.join(', ')} FROM "${tableName}" ${whereClause} ${groupByClause} ${havingClause}`
+		.trim()
+		.replace(/\s+/g, ' ')
+	return { sql, params }
 }
 
 if (import.meta.vitest) {
@@ -576,6 +668,181 @@ if (import.meta.vitest) {
 				expect(err.failures[0].cause).toContain('single eq filter')
 				expect(err.failures[0].cause).toContain('UNIQUE-indexed column')
 			}
+		})
+	})
+
+	describe('buildAggregateQuery', () => {
+		test('bare count produces SELECT COUNT(*) AS alias', () => {
+			const { sql, params } = buildAggregateQuery(
+				{ aggregates: [{ fn: 'count', alias: 'total' }], groupBy: [] },
+				'orders',
+				'id',
+			)
+			expect(sql).toBe('SELECT COUNT(*) AS "total" FROM "orders"')
+			expect(params).toEqual([])
+		})
+
+		test('multi-aggregator produces all functions', () => {
+			const { sql, params } = buildAggregateQuery(
+				{
+					aggregates: [
+						{ fn: 'count', alias: 'cnt' },
+						{ fn: 'sum', field: 'amount', alias: 'revenue' },
+						{ fn: 'avg', field: 'amount', alias: 'avgAmt' },
+						{ fn: 'min', field: 'amount', alias: 'lo' },
+						{ fn: 'max', field: 'amount', alias: 'hi' },
+					],
+					groupBy: [],
+				},
+				'orders',
+				'id',
+			)
+			expect(sql).toBe(
+				'SELECT COUNT(*) AS "cnt", SUM("amount") AS "revenue", AVG("amount") AS "avgAmt", MIN("amount") AS "lo", MAX("amount") AS "hi" FROM "orders"',
+			)
+			expect(params).toEqual([])
+		})
+
+		test('countDistinct produces COUNT(DISTINCT col)', () => {
+			const { sql } = buildAggregateQuery(
+				{ aggregates: [{ fn: 'countDistinct', field: 'category', alias: 'unique' }], groupBy: [] },
+				'items',
+				'id',
+			)
+			expect(sql).toBe('SELECT COUNT(DISTINCT "category") AS "unique" FROM "items"')
+		})
+
+		test('single-column groupBy produces GROUP BY clause', () => {
+			const { sql } = buildAggregateQuery(
+				{
+					aggregates: [{ fn: 'count', alias: 'cnt' }],
+					groupBy: ['region'],
+				},
+				'orders',
+				'id',
+			)
+			expect(sql).toBe('SELECT COUNT(*) AS "cnt", "region" AS "region" FROM "orders" GROUP BY "region"')
+		})
+
+		test('multi-column groupBy produces all GROUP BY columns', () => {
+			const { sql } = buildAggregateQuery(
+				{
+					aggregates: [{ fn: 'count', alias: 'cnt' }],
+					groupBy: ['region', 'product'],
+				},
+				'orders',
+				'id',
+			)
+			expect(sql).toBe(
+				'SELECT COUNT(*) AS "cnt", "region" AS "region", "product" AS "product" FROM "orders" GROUP BY "region", "product"',
+			)
+		})
+
+		test('where-only produces WHERE clause with params', () => {
+			const where = FilterGroup.create().eq('status', 'active')
+			const { sql, params } = buildAggregateQuery(
+				{ aggregates: [{ fn: 'count', alias: 'total' }], groupBy: [], where },
+				'orders',
+				'id',
+			)
+			expect(sql).toBe('SELECT COUNT(*) AS "total" FROM "orders" WHERE "status" = $1')
+			expect(params).toEqual(['active'])
+		})
+
+		test('having-only filters on aggregate alias via repeated expression', () => {
+			const having = FilterGroup.create().gt('total', 10)
+			const { sql, params } = buildAggregateQuery(
+				{
+					aggregates: [{ fn: 'count', alias: 'total' }],
+					groupBy: ['region'],
+					having,
+				},
+				'orders',
+				'id',
+			)
+			expect(sql).toBe(
+				'SELECT COUNT(*) AS "total", "region" AS "region" FROM "orders" GROUP BY "region" HAVING COUNT(*) > $1',
+			)
+			expect(params).toEqual([10])
+		})
+
+		test('where + having both produce correct param ordering', () => {
+			const where = FilterGroup.create().eq('status', 'active')
+			const having = FilterGroup.create().gte('revenue', 1000)
+			const { sql, params } = buildAggregateQuery(
+				{
+					aggregates: [{ fn: 'sum', field: 'amount', alias: 'revenue' }],
+					groupBy: ['region'],
+					where,
+					having,
+				},
+				'orders',
+				'id',
+			)
+			expect(sql).toBe(
+				'SELECT SUM("amount") AS "revenue", "region" AS "region" FROM "orders" WHERE "status" = $1 GROUP BY "region" HAVING SUM("amount") >= $2',
+			)
+			expect(params).toEqual(['active', 1000])
+		})
+
+		test('having on groupBy field uses column name directly', () => {
+			const having = FilterGroup.create().eq('region', 'US')
+			const { sql, params } = buildAggregateQuery(
+				{
+					aggregates: [{ fn: 'count', alias: 'cnt' }],
+					groupBy: ['region'],
+					having,
+				},
+				'orders',
+				'id',
+			)
+			expect(sql).toBe(
+				'SELECT COUNT(*) AS "cnt", "region" AS "region" FROM "orders" GROUP BY "region" HAVING "region" = $1',
+			)
+			expect(params).toEqual(['US'])
+		})
+
+		test('field-name mapping: id maps to primaryKey when primaryKey differs', () => {
+			const { sql } = buildAggregateQuery(
+				{
+					aggregates: [{ fn: 'countDistinct', field: 'id', alias: 'uniqueIds' }],
+					groupBy: [],
+				},
+				'users',
+				'user_id',
+			)
+			expect(sql).toBe('SELECT COUNT(DISTINCT "user_id") AS "uniqueIds" FROM "users"')
+		})
+
+		test('groupBy with id field maps to primaryKey', () => {
+			const { sql } = buildAggregateQuery(
+				{
+					aggregates: [{ fn: 'count', alias: 'cnt' }],
+					groupBy: ['id'],
+				},
+				'users',
+				'user_id',
+			)
+			expect(sql).toContain('GROUP BY "user_id"')
+			expect(sql).toContain('"user_id" AS "id"')
+		})
+
+		test('complex having with AND/OR groups', () => {
+			const having = FilterGroup.create().and([
+				(q) => q.gt('cnt', 5),
+				(q) => q.or([(g) => g.eq('region', 'US'), (g) => g.eq('region', 'EU')]),
+			])
+			const { sql, params } = buildAggregateQuery(
+				{
+					aggregates: [{ fn: 'count', alias: 'cnt' }],
+					groupBy: ['region'],
+					having,
+				},
+				'orders',
+				'id',
+			)
+			expect(sql).toContain('HAVING (COUNT(*) > $1 AND ("region" = $2 OR "region" = $3))')
+			expect(params).toEqual([5, 'US', 'EU'])
 		})
 	})
 }

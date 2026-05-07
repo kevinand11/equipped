@@ -4,6 +4,7 @@ import { Pool, type PoolClient } from 'pg'
 import { v } from 'valleyed'
 
 import {
+	buildAggregateQuery,
 	buildCreateQuery,
 	buildDeleteQuery,
 	buildPkUpdateQuery,
@@ -15,7 +16,7 @@ import {
 import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities'
 import type { FilterGroup } from '../../filter'
-import { OrmAdapter } from '../../orm-adapter'
+import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import { flattenOps, type AnyUpdateOp } from '../../updates'
@@ -67,6 +68,7 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 		'notContains',
 	] as const
 	readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
+	readonly aggregateOps = ['count', 'countDistinct', 'sum', 'avg', 'min', 'max'] as const
 
 	readonly pool: Pool
 	#sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
@@ -239,6 +241,33 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 		} catch (error) {
 			if (error instanceof EquippedError) throw error
 			throw new EquippedError('PostgreSQL upsertOne failed', { adapter: 'postgresql', operation: 'upsertOne', table: c.table }, error)
+		}
+	}
+
+	async aggregate(schema: AnySchema, config: unknown, spec: AggregateSpec): Promise<Array<Record<string, unknown>>> {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const tableName = this.#resolveTableName(c)
+			const { sql, params } = buildAggregateQuery(spec, tableName, schema.pkField.name)
+			const result = await this.#getClient().query(sql, params)
+			return result.rows.map((row: Record<string, unknown>) => {
+				const mapped: Record<string, unknown> = {}
+				for (const agg of spec.aggregates) {
+					const val = row[agg.alias]
+					if (agg.fn === 'min' || agg.fn === 'max') {
+						mapped[agg.alias] = val
+					} else {
+						mapped[agg.alias] = typeof val === 'string' ? Number(val) : Number(val ?? 0)
+					}
+				}
+				for (const field of spec.groupBy) {
+					mapped[field] = row[field]
+				}
+				return mapped
+			})
+		} catch (error) {
+			if (error instanceof EquippedError) throw error
+			throw new EquippedError('PostgreSQL aggregate failed', { adapter: 'postgresql', operation: 'aggregate', table: c.table }, error)
 		}
 	}
 
@@ -473,6 +502,130 @@ if (import.meta.vitest) {
 			const adapter = PostgresAdapter.create(testConnectionConfig)
 			expect(adapter.session).toBeDefined()
 			expect(adapter.session).toBeTypeOf('function')
+		})
+
+		test('declares aggregateOps with all six canonical ops', () => {
+			const adapter = PostgresAdapter.create(testConnectionConfig)
+			expect(adapter.aggregateOps).toEqual(['count', 'countDistinct', 'sum', 'avg', 'min', 'max'])
+		})
+
+		test('type-level: aggregateOps is a readonly tuple of all six ops', () => {
+			const _adapter = PostgresAdapter.create(testConnectionConfig)
+			type AggOps = typeof _adapter.aggregateOps
+			expectTypeOf<AggOps>().toEqualTypeOf<
+				readonly ['count', 'countDistinct', 'sum', 'avg', 'min', 'max']
+			>()
+		})
+
+		test('aggregate method forwards spec to pool.query and returns mapped rows', async () => {
+			const { Schema } = await import('../../schema')
+
+			const schema = Schema.from('pg_agg')
+				.pk('id', v.string(), () => 'x')
+				.field('amount', v.number())
+				.field('region', v.string())
+				.build()
+			const adapter = PostgresAdapter.create(testConnectionConfig)
+			let capturedSql: unknown
+			let capturedParams: unknown
+			;(adapter.pool as any).query = async (sql: unknown, params: unknown) => {
+				capturedSql = sql
+				capturedParams = params
+				return { rows: [{ total: '5' }] }
+			}
+			const result = await adapter.aggregate(schema, { table: 'orders' }, {
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: [],
+			})
+			expect(capturedSql).toBe('SELECT COUNT(*) AS "total" FROM "orders"')
+			expect(capturedParams).toEqual([])
+			expect(result).toEqual([{ total: 5 }])
+		})
+
+		test('aggregate converts PG bigint/numeric strings to numbers for count/sum/avg', async () => {
+			const { Schema } = await import('../../schema')
+
+			const schema = Schema.from('pg_agg_types')
+				.pk('id', v.string(), () => 'x')
+				.field('amount', v.number())
+				.build()
+			const adapter = PostgresAdapter.create(testConnectionConfig)
+			;(adapter.pool as any).query = async () => ({
+				rows: [{ cnt: '10', revenue: '250.50', avgAmt: '25.05' }],
+			})
+			const result = await adapter.aggregate(schema, { table: 'orders' }, {
+				aggregates: [
+					{ fn: 'count', alias: 'cnt' },
+					{ fn: 'sum', field: 'amount', alias: 'revenue' },
+					{ fn: 'avg', field: 'amount', alias: 'avgAmt' },
+				],
+				groupBy: [],
+			})
+			expect(result[0].cnt).toBe(10)
+			expect(result[0].revenue).toBe(250.5)
+			expect(result[0].avgAmt).toBe(25.05)
+		})
+
+		test('aggregate preserves original type for min/max', async () => {
+			const { Schema } = await import('../../schema')
+
+			const schema = Schema.from('pg_agg_minmax')
+				.pk('id', v.string(), () => 'x')
+				.field('name', v.string())
+				.build()
+			const adapter = PostgresAdapter.create(testConnectionConfig)
+			;(adapter.pool as any).query = async () => ({
+				rows: [{ lowest: 'Alice', highest: 'Zara' }],
+			})
+			const result = await adapter.aggregate(schema, { table: 'users' }, {
+				aggregates: [
+					{ fn: 'min', field: 'name', alias: 'lowest' },
+					{ fn: 'max', field: 'name', alias: 'highest' },
+				],
+				groupBy: [],
+			})
+			expect(result[0].lowest).toBe('Alice')
+			expect(result[0].highest).toBe('Zara')
+		})
+
+		test('aggregate includes groupBy fields in result rows', async () => {
+			const { Schema } = await import('../../schema')
+
+			const schema = Schema.from('pg_agg_group')
+				.pk('id', v.string(), () => 'x')
+				.field('region', v.string())
+				.build()
+			const adapter = PostgresAdapter.create(testConnectionConfig)
+			;(adapter.pool as any).query = async () => ({
+				rows: [
+					{ cnt: '3', region: 'US' },
+					{ cnt: '2', region: 'EU' },
+				],
+			})
+			const result = await adapter.aggregate(schema, { table: 'orders' }, {
+				aggregates: [{ fn: 'count', alias: 'cnt' }],
+				groupBy: ['region'],
+			})
+			expect(result).toEqual([
+				{ cnt: 3, region: 'US' },
+				{ cnt: 2, region: 'EU' },
+			])
+		})
+
+		test('type-level: Repo.from with PostgresAdapter enables aggregate method', async () => {
+			const { Repo } = await import('../../repo/repo')
+			const { Schema } = await import('../../schema')
+
+			const adapter = PostgresAdapter.create(testConnectionConfig)
+			const repo = Repo.from(adapter)
+				.resolve(() => ({ table: 'test' }))
+				.build()
+			const _TestSchema = Schema.from('test')
+				.pk('id', v.string(), () => 'x')
+				.build()
+
+			const _ref = repo.on(_TestSchema)
+			expectTypeOf(_ref.aggregate).toBeFunction()
 		})
 	})
 }
