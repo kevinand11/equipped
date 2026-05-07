@@ -1,16 +1,17 @@
 import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
 type CtorParams<T> = ConstructorParameters<T & (abstract new (...args: any[]) => any)>
+type BaseCtorParams<T> = T extends abstract new (...args: infer A) => any ? A : never
 
-export function configurable<P extends Pipe<any, any>, Base extends new (...args: any[]) => any>(pipeFn: () => P, base: Base) {
+export function configurable<P extends Pipe<any, any>, Base extends abstract new (...args: any[]) => any>(pipeFn: () => P, base: Base) {
 	let pipe: P | undefined
 
-	abstract class Configurable extends (base as new (...args: any[]) => any) {
+	abstract class Configurable extends (base as unknown as new (...args: any[]) => any) {
 		declare static readonly Config: PipeOutput<P>
 
 		protected readonly config: PipeOutput<P>
 
-		protected constructor(validated: PipeOutput<P>, ...baseArgs: ConstructorParameters<Base>) {
+		protected constructor(validated: PipeOutput<P>, ...baseArgs: BaseCtorParams<Base>) {
 			// eslint-disable-next-line constructor-super
 			super(...baseArgs)
 			this.config = validated
@@ -30,7 +31,7 @@ export function configurable<P extends Pipe<any, any>, Base extends new (...args
 		}
 	}
 
-	return Configurable as unknown as (abstract new (validated: PipeOutput<P>, ...baseArgs: ConstructorParameters<Base>) => InstanceType<Base> & { readonly config: PipeOutput<P> }) & {
+	return Configurable as unknown as (abstract new (validated: PipeOutput<P>, ...baseArgs: BaseCtorParams<Base>) => InstanceType<Base> & { readonly config: PipeOutput<P> }) & {
 		readonly Config: PipeOutput<P>
 		create<This extends Function & { prototype: any }>(
 			this: This,

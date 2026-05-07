@@ -1,25 +1,21 @@
 # MongoDB Adapter
 
-In-tree MongoDB adapter using the `Adapter.from()` builder-chain shape.
+In-tree MongoDB adapter using the class-via-`configurable` shape.
 
 ## Usage
 
 ```ts
-import { createMongoAdapter, type MongoDbRepoConfig } from 'equipped/orm/adapters/mongodb'
+import { MongoDbAdapter } from 'equipped/orm/adapters/mongodb'
 import { Repo } from 'equipped/orm'
 
-const { adapter } = createMongoAdapter({
-  host: 'localhost',
-  port: 27017,
-  username: 'admin',
-  password: 'secret',
-})
+const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017' })
 
 const repo = Repo.from(adapter)
   .resolve((schema) => ({ db: 'myapp', col: schema.name }))
   .build()
 
-await adapter.connect()
+// MongoClient is exposed as a readonly field for change streams, aggregations, etc.
+const client = adapter.client
 ```
 
 ## Capabilities
@@ -29,7 +25,7 @@ await adapter.connect()
 | `supportedFieldTypes` | `string`, `number`, `boolean`, `null`, `object`, `array`, `date` |
 | `queryableOps` | all 13 canonical ops |
 | `updateOps` | `set`, `inc`, `mul`, `min`, `max`, `unset`, `push`, `pull`, `patch` |
-| Bags | `lifecycle`, `crud`, `queryable`, `transactional` |
+| Methods | `connect`, `disconnect`, `findByPk`, `createMany`, `updateByPk`, `deleteByPk`, `raw`, `findMany`, `updateMany`, `deleteMany`, `upsertOne`, `session` |
 
 ## Session nesting behaviour
 
