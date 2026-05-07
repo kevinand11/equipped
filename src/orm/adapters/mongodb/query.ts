@@ -168,16 +168,10 @@ export function compileMongoAggregate(spec: AggregateSpec, primaryKey: string): 
 				accumulators[agg.alias] = { $addToSet: fieldRef }
 				break
 			case 'sum':
-				accumulators[agg.alias] = { $sum: fieldRef }
-				break
 			case 'avg':
-				accumulators[agg.alias] = { $avg: fieldRef }
-				break
 			case 'min':
-				accumulators[agg.alias] = { $min: fieldRef }
-				break
 			case 'max':
-				accumulators[agg.alias] = { $max: fieldRef }
+				accumulators[agg.alias] = { [`$${agg.fn}`]: fieldRef }
 				break
 		}
 	}
