@@ -75,7 +75,7 @@ class RepoBuilder<A extends OrmAdapterLike<any>> {
 }
 
 export type RepoSurface<A extends OrmAdapterLike<any>> = Repo<A> &
-	(HasMethod<A, 'transactional', 'session'> extends true ? {} : { session: never })
+	(HasMethod<A, 'session'> extends true ? {} : { session: never })
 
 if (import.meta.vitest) {
 	const { describe, test, expect, expectTypeOf, vi } = import.meta.vitest
@@ -1919,13 +1919,11 @@ if (import.meta.vitest) {
 				}
 			}
 
-			vi.spyOn(Instance, 'on').mockImplementation(() => {})
+			const spy = mockInstance()
 			const adapter = new (TestClassAdapter as any)() as InstanceType<typeof TestClassAdapter>
-			vi.restoreAllMocks()
+			spy.mockRestore()
 			return { adapter, stores }
 		}
-
-		const { Instance } = await import('../../instance')
 
 		const TestSchema = Schema.from('class_test')
 			.pk('id', v.string(), () => `ct-${Math.random().toString(36).slice(2, 8)}`)

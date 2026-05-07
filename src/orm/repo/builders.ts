@@ -29,7 +29,7 @@ type ReadState<Sel extends string, P extends readonly AnyPreloadDef[] = readonly
 	preloads?: P
 }
 
-export type HasMethod<A, _Bag extends string, Method extends string> =
+export type HasMethod<A, Method extends string> =
 	Method extends keyof A
 		? A[Method] extends (...args: any) => any
 			? true
@@ -38,18 +38,18 @@ export type HasMethod<A, _Bag extends string, Method extends string> =
 
 export type OneBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> =
 	OneBuilder<S, A, Sel, P> &
-	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { update: never }) &
-	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { delete: never }) &
-	(HasMethod<A, 'queryable', 'upsertOne'> extends true ? {} : { upsert: never })
+	(HasMethod<A, 'updateMany'> extends true ? {} : { update: never }) &
+	(HasMethod<A, 'deleteMany'> extends true ? {} : { delete: never }) &
+	(HasMethod<A, 'upsertOne'> extends true ? {} : { upsert: never })
 
 export type AllBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> =
 	AllBuilder<S, A, Sel, P> &
-	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { update: never }) &
-	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { delete: never })
+	(HasMethod<A, 'updateMany'> extends true ? {} : { update: never }) &
+	(HasMethod<A, 'deleteMany'> extends true ? {} : { delete: never })
 
 export type SchemaRefSurface<S extends AnySchema, A = unknown> =
 	Omit<SchemaRef<S, A>, 'raw'> &
-	(HasMethod<A, 'crud', 'raw'> extends true
+	(HasMethod<A, 'raw'> extends true
 		? { raw: <T = InferRawReturn<A>>(...args: InferRawArgs<A>) => Promise<T> }
 		: { raw: never })
 

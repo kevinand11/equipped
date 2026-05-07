@@ -67,54 +67,37 @@ export type SchemaCompatible<A, S extends AnySchema> = A extends { supportedFiel
 	: S
 
 if (import.meta.vitest) {
-	const { describe, test, expectTypeOf, vi } = import.meta.vitest
+	const { describe, test, expectTypeOf } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { Schema } = await import('./schema')
 	const { OrmAdapter } = await import('./orm-adapter')
-	const { Instance } = await import('../instance')
-
-	function mockInstance() {
-		return vi.spyOn(Instance, 'on').mockImplementation(() => {})
-	}
 
 	describe('type-level: InferRawArgs and InferRawReturn', () => {
 		test('InferRawArgs extracts user args from class-based adapter raw signature', () => {
-			const spy = mockInstance()
 			class RawAdapter extends OrmAdapter {
 				readonly schemaConfigPipe = v.object({ table: v.string() })
 				readonly supportedFieldTypes = ['string'] as const
 				async raw(_s: AnySchema, _c: unknown, _sql: string, _params: number[]) { return [42] }
 			}
-			new (RawAdapter as any)()
-			spy.mockRestore()
-
 			type Args = InferRawArgs<RawAdapter>
 			expectTypeOf<Args>().toEqualTypeOf<[sql: string, params: number[]]>()
 		})
 
 		test('InferRawReturn extracts return type from class-based adapter raw signature', () => {
-			const spy = mockInstance()
 			class RawAdapter extends OrmAdapter {
 				readonly schemaConfigPipe = v.object({ table: v.string() })
 				readonly supportedFieldTypes = ['string'] as const
 				async raw(_s: AnySchema, _c: unknown, _sql: string) { return { rows: [] as unknown[] } }
 			}
-			new (RawAdapter as any)()
-			spy.mockRestore()
-
 			type Ret = InferRawReturn<RawAdapter>
 			expectTypeOf<Ret>().toEqualTypeOf<{ rows: unknown[] }>()
 		})
 
 		test('InferRawArgs returns never when adapter has no raw', () => {
-			const spy = mockInstance()
 			class NoRawAdapter extends OrmAdapter {
 				readonly schemaConfigPipe = v.object({ table: v.string() })
 				readonly supportedFieldTypes = ['string'] as const
 			}
-			new (NoRawAdapter as any)()
-			spy.mockRestore()
-
 			type Args = InferRawArgs<NoRawAdapter>
 			expectTypeOf<Args>().toBeNever()
 		})
@@ -122,42 +105,30 @@ if (import.meta.vitest) {
 
 	describe('type-level: SchemaCompatible', () => {
 		test('adapter with empty supportedFieldTypes rejects any schema', () => {
-			const spy = mockInstance()
 			class EmptyAdapter extends OrmAdapter {
 				readonly schemaConfigPipe = v.object({})
 				readonly supportedFieldTypes = [] as const
 			}
-			new (EmptyAdapter as any)()
-			spy.mockRestore()
-
 			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
 			type Result = SchemaCompatible<EmptyAdapter, typeof _TestSchema>
 			expectTypeOf<Result>().toBeNever()
 		})
 
 		test('adapter with matching supportedFieldTypes accepts schema', () => {
-			const spy = mockInstance()
 			class StringAdapter extends OrmAdapter {
 				readonly schemaConfigPipe = v.object({})
 				readonly supportedFieldTypes = ['string'] as const
 			}
-			new (StringAdapter as any)()
-			spy.mockRestore()
-
 			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
 			type Result = SchemaCompatible<StringAdapter, typeof _TestSchema>
 			expectTypeOf<Result>().toEqualTypeOf<typeof _TestSchema>()
 		})
 
 		test('adapter missing required field type rejects schema', () => {
-			const spy = mockInstance()
 			class StringOnlyAdapter extends OrmAdapter {
 				readonly schemaConfigPipe = v.object({})
 				readonly supportedFieldTypes = ['string'] as const
 			}
-			new (StringOnlyAdapter as any)()
-			spy.mockRestore()
-
 			const _SchemaWithNumber = Schema.from('nums').pk('id', v.string(), () => 'x').field('age', v.number()).build()
 			type Result = SchemaCompatible<StringOnlyAdapter, typeof _SchemaWithNumber>
 			expectTypeOf<Result>().toBeNever()
