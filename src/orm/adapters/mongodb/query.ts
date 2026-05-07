@@ -1,4 +1,5 @@
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
+import type { AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import { flattenOps, IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
 
@@ -141,6 +142,61 @@ export function compileMongoUpdate(data: Record<string, unknown>): Record<string
 
 export function compileMongoOps(ops: AnyUpdateOp[]): Record<string, unknown> {
 	return compileMongoUpdate(flattenOps(ops))
+}
+
+export function compileMongoAggregate(spec: AggregateSpec, primaryKey: string): Record<string, unknown>[] {
+	const pipeline: Record<string, unknown>[] = []
+
+	if (spec.where) {
+		const match = compileMongoFilter(spec.where, primaryKey)
+		if (Object.keys(match).length > 0) pipeline.push({ $match: match })
+	}
+
+	const groupId: Record<string, string> | null =
+		spec.groupBy.length > 0
+			? Object.fromEntries(spec.groupBy.map((f) => [f, `$${mapField(f, primaryKey)}`]))
+			: null
+
+	const accumulators: Record<string, unknown> = {}
+	for (const agg of spec.aggregates) {
+		const fieldRef = agg.field ? `$${mapField(agg.field, primaryKey)}` : undefined
+		switch (agg.fn) {
+			case 'count':
+				accumulators[agg.alias] = { $sum: 1 }
+				break
+			case 'countDistinct':
+				accumulators[agg.alias] = { $addToSet: fieldRef }
+				break
+			case 'sum':
+			case 'avg':
+			case 'min':
+			case 'max':
+				accumulators[agg.alias] = { [`$${agg.fn}`]: fieldRef }
+				break
+		}
+	}
+
+	pipeline.push({ $group: { _id: groupId, ...accumulators } })
+
+	const project: Record<string, unknown> = { _id: 0 }
+	for (const f of spec.groupBy) {
+		project[f] = `$_id.${f}`
+	}
+	for (const agg of spec.aggregates) {
+		if (agg.fn === 'countDistinct') {
+			project[agg.alias] = { $size: `$${agg.alias}` }
+		} else {
+			project[agg.alias] = 1
+		}
+	}
+	pipeline.push({ $project: project })
+
+	if (spec.having) {
+		const havingMatch = compileMongoFilter(spec.having, '')
+		if (Object.keys(havingMatch).length > 0) pipeline.push({ $match: havingMatch })
+	}
+
+	return pipeline
 }
 
 if (import.meta.vitest) {
@@ -325,6 +381,239 @@ if (import.meta.vitest) {
 
 		test('empty ops produces empty result', () => {
 			expect(compileMongoOps([])).toEqual({})
+		})
+	})
+
+	describe('compileMongoAggregate', () => {
+		test('bare count produces $group with $sum:1 and $project', () => {
+			const spec: AggregateSpec = {
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: [],
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{ $group: { _id: null, total: { $sum: 1 } } },
+				{ $project: { _id: 0, total: 1 } },
+			])
+		})
+
+		test('multi-aggregator produces all accumulators in $group', () => {
+			const spec: AggregateSpec = {
+				aggregates: [
+					{ fn: 'count', alias: 'total' },
+					{ fn: 'sum', field: 'amount', alias: 'revenue' },
+					{ fn: 'avg', field: 'price', alias: 'avgPrice' },
+				],
+				groupBy: [],
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{
+					$group: {
+						_id: null,
+						total: { $sum: 1 },
+						revenue: { $sum: '$amount' },
+						avgPrice: { $avg: '$price' },
+					},
+				},
+				{ $project: { _id: 0, total: 1, revenue: 1, avgPrice: 1 } },
+			])
+		})
+
+		test('single-column groupBy produces composite _id and $project lift', () => {
+			const spec: AggregateSpec = {
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: ['region'],
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{ $group: { _id: { region: '$region' }, total: { $sum: 1 } } },
+				{ $project: { _id: 0, region: '$_id.region', total: 1 } },
+			])
+		})
+
+		test('multi-column groupBy via composite _id', () => {
+			const spec: AggregateSpec = {
+				aggregates: [{ fn: 'sum', field: 'amount', alias: 'revenue' }],
+				groupBy: ['region', 'year'],
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{
+					$group: {
+						_id: { region: '$region', year: '$year' },
+						revenue: { $sum: '$amount' },
+					},
+				},
+				{
+					$project: {
+						_id: 0,
+						region: '$_id.region',
+						year: '$_id.year',
+						revenue: 1,
+					},
+				},
+			])
+		})
+
+		test('where-only emits $match before $group', () => {
+			const spec: AggregateSpec = {
+				where: FilterGroup.create().eq('active', true),
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: [],
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{ $match: { active: { $eq: true } } },
+				{ $group: { _id: null, total: { $sum: 1 } } },
+				{ $project: { _id: 0, total: 1 } },
+			])
+		})
+
+		test('having-only emits $match after $project', () => {
+			const spec: AggregateSpec = {
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: ['region'],
+				having: FilterGroup.create().gt('total', 5),
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{ $group: { _id: { region: '$region' }, total: { $sum: 1 } } },
+				{ $project: { _id: 0, region: '$_id.region', total: 1 } },
+				{ $match: { total: { $gt: 5 } } },
+			])
+		})
+
+		test('where + having produces both $match stages', () => {
+			const spec: AggregateSpec = {
+				where: FilterGroup.create().eq('active', true),
+				aggregates: [{ fn: 'sum', field: 'amount', alias: 'revenue' }],
+				groupBy: ['region'],
+				having: FilterGroup.create().gte('revenue', 1000),
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{ $match: { active: { $eq: true } } },
+				{
+					$group: {
+						_id: { region: '$region' },
+						revenue: { $sum: '$amount' },
+					},
+				},
+				{ $project: { _id: 0, region: '$_id.region', revenue: 1 } },
+				{ $match: { revenue: { $gte: 1000 } } },
+			])
+		})
+
+		test('countDistinct uses $addToSet in $group and $size in $project', () => {
+			const spec: AggregateSpec = {
+				aggregates: [{ fn: 'countDistinct', field: 'userId', alias: 'uniqueUsers' }],
+				groupBy: [],
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{ $group: { _id: null, uniqueUsers: { $addToSet: '$userId' } } },
+				{ $project: { _id: 0, uniqueUsers: { $size: '$uniqueUsers' } } },
+			])
+		})
+
+		test('min/max produce $min/$max accumulators', () => {
+			const spec: AggregateSpec = {
+				aggregates: [
+					{ fn: 'min', field: 'price', alias: 'lowest' },
+					{ fn: 'max', field: 'price', alias: 'highest' },
+				],
+				groupBy: [],
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{
+					$group: {
+						_id: null,
+						lowest: { $min: '$price' },
+						highest: { $max: '$price' },
+					},
+				},
+				{ $project: { _id: 0, lowest: 1, highest: 1 } },
+			])
+		})
+
+		test('field-name mapping: id field maps to _id when primaryKey is _id', () => {
+			const spec: AggregateSpec = {
+				where: FilterGroup.create().eq('id', 'abc'),
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: ['id'],
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{ $match: { _id: { $eq: 'abc' } } },
+				{ $group: { _id: { id: '$_id' }, total: { $sum: 1 } } },
+				{ $project: { _id: 0, id: '$_id.id', total: 1 } },
+			])
+		})
+
+		test('countDistinct with groupBy combines $addToSet, groupBy lift, and $size', () => {
+			const spec: AggregateSpec = {
+				aggregates: [{ fn: 'countDistinct', field: 'category', alias: 'uniqueCats' }],
+				groupBy: ['region'],
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{
+					$group: {
+						_id: { region: '$region' },
+						uniqueCats: { $addToSet: '$category' },
+					},
+				},
+				{
+					$project: {
+						_id: 0,
+						region: '$_id.region',
+						uniqueCats: { $size: '$uniqueCats' },
+					},
+				},
+			])
+		})
+
+		test('all six aggregators in a single pipeline', () => {
+			const spec: AggregateSpec = {
+				aggregates: [
+					{ fn: 'count', alias: 'total' },
+					{ fn: 'countDistinct', field: 'status', alias: 'uniqueStatuses' },
+					{ fn: 'sum', field: 'amount', alias: 'totalAmount' },
+					{ fn: 'avg', field: 'amount', alias: 'avgAmount' },
+					{ fn: 'min', field: 'amount', alias: 'minAmount' },
+					{ fn: 'max', field: 'amount', alias: 'maxAmount' },
+				],
+				groupBy: ['region'],
+			}
+			const pipeline = compileMongoAggregate(spec, '_id')
+			expect(pipeline).toEqual([
+				{
+					$group: {
+						_id: { region: '$region' },
+						total: { $sum: 1 },
+						uniqueStatuses: { $addToSet: '$status' },
+						totalAmount: { $sum: '$amount' },
+						avgAmount: { $avg: '$amount' },
+						minAmount: { $min: '$amount' },
+						maxAmount: { $max: '$amount' },
+					},
+				},
+				{
+					$project: {
+						_id: 0,
+						region: '$_id.region',
+						total: 1,
+						uniqueStatuses: { $size: '$uniqueStatuses' },
+						totalAmount: 1,
+						avgAmount: 1,
+						minAmount: 1,
+						maxAmount: 1,
+					},
+				},
+			])
+		})
+
+		test('empty where filter is omitted from pipeline', () => {
+			const spec: AggregateSpec = {
+				where: FilterGroup.create(),
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: [],
+			}
+			expect(compileMongoAggregate(spec, '_id')).toEqual([
+				{ $group: { _id: null, total: { $sum: 1 } } },
+				{ $project: { _id: 0, total: 1 } },
+			])
 		})
 	})
 }
