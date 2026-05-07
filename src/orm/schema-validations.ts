@@ -1,6 +1,5 @@
 import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
-import { EquippedError } from '../errors'
 import { OrmValidationError, type OrmValidationFailure } from './errors'
 import type { AnySchemaField, SchemaField } from './fields'
 import { Schema, type AnySchema, type SchemaFields, type SchemaOutput } from './schema'
@@ -191,6 +190,7 @@ export function validateUpsertConflicts(
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { IncOp, MulOp, SetOp, UnsetOp } = await import('./updates')
+	const { EquippedError } = await import('../errors')
 
 	describe('validateCreate', () => {
 		const UserSchema = Schema.from('users')
