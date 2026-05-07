@@ -1,21 +1,19 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { MongoClient, type ClientSession, type MongoClientOptions, type OptionalUnlessRequiredId } from 'mongodb'
-import { v } from 'valleyed'
+import { v, type PipeOutput } from 'valleyed'
 
 import { compileMongoFilter, compileMongoOps, compileMongoQuery, compileMongoUpdate } from './query'
 import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities/configurable'
-import { OrmAdapter } from '../../orm-adapter'
 import type { FilterGroup } from '../../filter'
+import { OrmAdapter } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import type { AnyUpdateOp } from '../../updates'
 
-export type MongoDbRepoConfig = {
-	db: string
-	col: string
-}
+const mongoSchemaConfigPipe = () => v.object({ db: v.string(), col: v.string() })
+export type MongoDbRepoConfig = PipeOutput<ReturnType<typeof mongoSchemaConfigPipe>>
 
 const mongoConnectionPipe = () =>
 	v.object({
@@ -23,7 +21,7 @@ const mongoConnectionPipe = () =>
 	})
 
 export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter) {
-	readonly schemaConfigPipe = v.object({ db: v.string(), col: v.string() })
+	readonly schemaConfigPipe = mongoSchemaConfigPipe()
 
 	readonly queryableOps = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains'] as const
 	readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
