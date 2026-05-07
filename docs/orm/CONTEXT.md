@@ -386,20 +386,21 @@ required.
 ### 3.2 Capability declarations
 
 A **capability declaration** is a literal-typed `readonly` instance field on
-the Adapter that gates ops or field types. There are exactly three plus one
+the Adapter that gates ops or field types. There are exactly four plus one
 required pipe:
 
 | Declaration | Canonical set | Gates |
 |---|---|---|
 | `queryableOps` | filter ops | which filter ops the adapter supports |
 | `updateOps` | update ops | which update ops `update*` and `upsertOne` accept |
+| `aggregateOps` | aggregate ops | which aggregator funcs `aggregate` accepts (§5.8) |
 | `supportedFieldTypes` | field types | which schemas can pair with the adapter |
 | `schemaConfigPipe` | (a valleyed pipe) | the per-call schema config's shape; validated at the Repo→Adapter boundary every query (§6.3) |
 
-`queryableOps`, `updateOps`, and `supportedFieldTypes` default to `readonly []`
-on `OrmAdapter`; subclasses override with `as const` literal arrays to declare
-what they support. `schemaConfigPipe` is **abstract** on `OrmAdapter` — every
-adapter subclass must declare it.
+`queryableOps`, `updateOps`, `aggregateOps`, and `supportedFieldTypes` default
+to `readonly []` on `OrmAdapter`; subclasses override with `as const` literal
+arrays to declare what they support. `schemaConfigPipe` is **abstract** on
+`OrmAdapter` — every adapter subclass must declare it.
 
 `updateOps` is a value-level union of `AnyUpdateOp` variants the adapter
 supports. It is not a capability registry — surface methods like `upsertOne`
@@ -530,11 +531,40 @@ The set is exposed as `type FieldType = 'string' | 'number' | ...` and the
 inference helper `FieldTypeOf<P>` derives a field type from a valleyed pipe's
 output. `SchemaFieldTypes<S>` is the union of all field types in a schema.
 
-### 4.4 Closed-set rule and extensions
+### 4.4 Canonical aggregate-op set
+
+An **aggregate op** is one of:
+
+```
+count · countDistinct · sum · avg · min · max
+```
+
+The **lowercase-verb / camelCase-compound convention**: bare aggregator
+functions are lowercase (`count`, `sum`, `avg`, `min`, `max`); compound
+variants use camelCase (`countDistinct`, never `count_distinct` or
+`countdistinct`). Future additions must respect this. `Sum`, `COUNT`,
+`count_distinct`, `cnt` are all rejected by the convention.
+
+Every member of the canonical aggregate-op set has a corresponding
+`AggregateBuilder` step (§5.8) of the same name. The set is closed (§4.5) —
+adapters subset it via `aggregateOps`. **Out-of-set aggregations** —
+window functions (`row_number`, `rank`, `lag`, `lead`, `dense_rank`),
+statistical aggregates (`stddev_pop`, `stddev_samp`, `variance`,
+`percentile_cont`), set-builder aggregates (`array_agg`, `string_agg`,
+`json_agg`), `FILTER (WHERE ...)` per-aggregate clauses, and grouping sets
+(`ROLLUP`, `CUBE`) — are explicitly out of scope. They go through the
+adapter's `raw` method.
+
+The **alias-required rule**: every aggregator step takes a string literal
+alias as its last argument; the alias is the output key in the result row
+and the once-per-step uniqueness key (§2.3) preventing duplicate output
+columns. There is no auto-aliasing.
+
+### 4.5 Closed-set rule and extensions
 
 **Closed-set rule.** Adapters subset the canonical sets. They cannot add new
-filter ops, update ops, field types, or relation kinds. Custom adapter-specific
-power goes through the adapter's `raw` method only.
+filter ops, update ops, aggregate ops, field types, or relation kinds. Custom
+adapter-specific power goes through the adapter's `raw` method only.
 
 A **canonical-set extension** (adding a new member to one of the canonical
 sets) is a maintainer-side process. The **canonical-extension contract**
@@ -542,16 +572,16 @@ requires:
 
 - (a) the canonical type literal is added to the union;
 - (b) the corresponding method or helper is added (filter ops get FilterGroup
-  methods; update ops get op helpers; field types get
-  FieldTypeOf branches);
+  methods; update ops get op helpers; aggregate ops get AggregateBuilder
+  steps; field types get FieldTypeOf branches);
 - (c) at minimum, the in-memory adapter is updated;
-- (d) all locked rules in §4.1–4.3 are respected (notX-prefix,
-  lowercase-verb, JS-aligned naming, name-parity).
+- (d) all locked rules in §4.1–4.4 are respected (notX-prefix,
+  lowercase-verb, camelCase-compound, JS-aligned naming, name-parity).
 
 A canonical-set extension is a breaking change and requires a major-or-minor
 package version bump per semver.
 
-### 4.5 Out-of-scope field types
+### 4.6 Out-of-scope field types
 
 `'binary'` (Uint8Array / Buffer) and `'bigint'` are explicitly **out-of-scope
 field types**. They are not part of the canonical field-type set and not
@@ -587,6 +617,7 @@ Adapter's declarations:
 | `repo.on(S).one().where(q).update(d)` / `.all().where(q).update(d)` | `queryable.updateMany` declared AND non-empty `updateOps` |
 | `repo.on(S).one().where(q).delete()` / `.all().where(q).delete()` | `queryable.deleteMany` declared |
 | `repo.on(S).one().where(q).upsert(d)` | `queryable.upsertOne` declared |
+| `repo.on(S).aggregate().<aggs>.<groupBy?>.<where?>.<having?>.run()` | `queryable.aggregate` declared AND non-empty `aggregateOps` |
 | `repo.session(fn)` | `transactional.session` declared |
 
 There is no truly "always-on" verb; every verb is gated by something. Verbs
@@ -689,6 +720,187 @@ routes through the same adapter and joins the active tx connection
 automatically. The function passed to `session(fn)` is the **session callback**.
 
 See §8 for the full session vocabulary.
+
+### 5.7 Required-row contract (`.required()`)
+
+The **required-row contract** is the user-opt-in tightening of §13 principle
+#6 (*always-throw-never-silently-drop*) for `OneBuilder`'s nullable verbs. A
+chain **marked required** via `.required()` promises that the eventual
+`find()` / `update()` / `delete()` will produce a row; if none does, the
+framework throws `OrmNotFoundError` instead of returning `null`.
+
+```ts
+const user = await repo.on(UserSchema).one().id('u-abc').required().find()
+// user: User                            — non-null; throws if no row matched
+
+await repo.on(UserSchema).one()
+  .where(q => q.eq(UserSchema.fields.email, 'a@b.com'))
+  .required('user must exist')
+  .update({ name: 'Alice' })             // throws if no row matched
+```
+
+`.required(message?: string)` is a **once-per-chain** modifier on
+`OneBuilder`, free-floating in position like `.where()` / `.select()` /
+`.preload()`. It flips a typestate parameter `Req` on the builder so the
+return types of `find` / `update` / `delete` narrow from `T | null` to `T`.
+`create` and `upsert` ignore it (their return types are unconditionally
+non-null; `.required()` before them is a runtime no-op — see the *required-row
+no-op rule* below).
+
+The optional `message` argument replaces the framework-generated default in
+the thrown error's `message` field. The default is generated from `schema` +
+`operation` + filter shape — single-`eq`-on-PK chains render as
+`"users.findOne: no row matched id=u-abc"`, filter-based chains render the
+filter tree.
+
+The runtime null check fires inside the `OneBuilder` verb, **post-adapter**.
+The executors (`runOneRead`, `runOneUpdate`, `runOneDelete`) keep their
+`T | null` return signatures unchanged; the throw is a builder-level concern.
+
+`OrmNotFoundError extends EquippedError` is the error class:
+
+```ts
+class OrmNotFoundError extends EquippedError {
+  schema: string                                    // schema.name
+  operation: 'findOne' | 'updateOne' | 'deleteOne'  // sibling-consistent with OrmValidationError (§7.5)
+  where: FilterGroup                                // the live FilterGroup that produced no match
+}
+```
+
+Three rules govern the contract:
+
+- **Required-row throw rule.** When `.required()` is on the chain and the
+  verb's adapter call produces no row, the framework throws
+  `OrmNotFoundError` from the builder layer (not from the executor).
+- **Required-row no-op rule.** `.required()` before `create` or `upsert` is a
+  runtime no-op — those verbs already return non-null, so the typestate flip
+  has no effect. Compiles, doesn't throw, doesn't error.
+- **Required-row scope rule.** The `.required()` modifier exists on
+  `OneBuilder` only. There is no `AllBuilder` counterpart; "throw on empty
+  array" is not in the model.
+
+**Default-on-miss rule.** Without `.required()`, the existing silent-drop on
+`update` / `delete` for "no row matched" is preserved by design — the
+required-row contract is purely additive opt-in. Changing the default
+behaviour would be a separate, breaking change.
+
+### 5.8 Aggregation surface
+
+The **aggregation surface** is `repo.on(S).aggregate()` and its chain — a
+sibling cardinality entry verb, peer of `.one()` and `.all()`, terminating
+in `.run()`:
+
+```ts
+// Single-bucket aggregation (no groupBy → returns one object).
+const totals = await repo.on(OrderSchema).aggregate()
+  .count('orders')
+  .sum(OrderSchema.fields.total, 'revenue')
+  .where(q => q.eq(OrderSchema.fields.year, 2026))
+  .run()
+// totals: { orders: number, revenue: number }
+
+// Grouped aggregation (groupBy → returns an array of group rows).
+const byRegion = await repo.on(OrderSchema).aggregate()
+  .count('orders')
+  .sum(OrderSchema.fields.total, 'revenue')
+  .groupBy(OrderSchema.fields.region, OrderSchema.fields.year)
+  .where(q => q.gte(OrderSchema.fields.year, 2024))
+  .having(q => q.gt('revenue', 1000))
+  .run()
+// byRegion: Array<{ orders: number, revenue: number, region: string, year: number }>
+```
+
+Vocabulary:
+
+- An **aggregator step** is a `.count(alias)` / `.countDistinct(field, alias)`
+  / `.sum(field, alias)` / `.avg(field, alias)` / `.min(field, alias)` /
+  `.max(field, alias)` call on the `AggregateBuilder`. Each adds one
+  output column to the result row.
+- The **alias** is the string literal at the aggregator step's last argument
+  position; it becomes the result row's key and is the §2.3 uniqueness-guard
+  key — duplicates are a compile error at the offending call.
+- A **group key** is a schema-`Field` ref passed to `.groupBy(...)`. Group
+  keys flow into the result row alongside the aliases, with their declared
+  schema field types preserved.
+- The **pre-filter** is `.where(q)` — applied to schema rows before
+  aggregation. Same `FilterFactory` and `FilterGroup` (§11) as the rest of
+  the package.
+- The **post-filter** is `.having(q)` — applied to aggregated rows after
+  aggregation. Typed over `(Aliases ∪ GroupKeys)`, not over the schema —
+  the `FilterGroup` runtime class is reused but parameterised over the
+  alias-and-group-key map.
+
+Five rules govern the surface:
+
+- **Aggregation cardinality rule.** The result cardinality is determined by
+  whether `.groupBy(...)` was called. The `AggregateBuilder` carries a
+  `HasGroupBy extends boolean` typestate parameter; `.run()` narrows the
+  return type to `R` when `HasGroupBy = false`, `R[]` when `HasGroupBy = true`.
+  No-`groupBy` aggregations return a single object directly, never a
+  one-element array.
+- **Field-type-per-aggregator rule.** Each aggregator step's field-arg
+  generic is constrained at the type level: `sum` and `avg` accept
+  `Field<'number', ...>` only; `min` and `max` accept
+  `Field<'number' | 'string' | 'date', ...>`; `countDistinct` accepts any
+  `Field`; `count(alias)` takes no field arg. `groupBy` keys must be
+  `Field<'string' | 'number' | 'boolean' | 'date', ...>` — `'object'`,
+  `'array'`, `'null'` are rejected at the type level. Direct parallel to
+  §10.3's update-op field-category constraints.
+- **Pre/post-filter split rule.** `.where(q)` filters schema rows pre-
+  aggregation and is typed over `SchemaFields<S>` — the standard
+  `FilterFactory`. `.having(q)` filters aggregated rows post-aggregation
+  and is typed over the alias-and-group-key map; aggregator aliases are
+  typed by the aggregator's return type (count/countDistinct/sum/avg
+  always `number`; min/max keep the source field's type), group-key
+  aliases keep the schema-declared type. Both are once-per-step.
+- **Terminal-aggregator-required rule.** `.run()` is gated on at least one
+  aggregator step having been called — `.aggregate().run()` with zero
+  aggregators is a compile error (the build-prerequisite mechanism of
+  §2.6, applied to a query-chain terminal instead of `.build()`).
+- **Always-array adapter rule.** The adapter's `aggregate(schema, schemaCfg, spec)`
+  method always returns `Array<Record<string, unknown>>` — even for
+  no-groupBy single-bucket aggregations (length-1 array). The cardinality
+  narrowing to `R | R[]` happens **post-adapter**, in the `AggregateBuilder.run()`
+  method, by reading the `HasGroupBy` typestate. Same architectural shape
+  as the post-adapter throw under the required-row contract (§5.7) — the
+  builder layer does the user-facing return-type adjustment, not the
+  adapter.
+
+The adapter contract:
+
+```ts
+type AggregateSpec = {
+  where?: FilterGroup                                   // pre-filter, schema-typed
+  aggregates: ReadonlyArray<{
+    fn: 'count' | 'countDistinct' | 'sum' | 'avg' | 'min' | 'max'
+    field?: string                                      // logical field name; absent for count
+    alias: string                                       // output key
+  }>
+  groupBy: readonly string[]                            // logical field names
+  having?: FilterGroup                                  // post-filter, alias-map-typed
+}
+
+aggregate?(
+  schema: AnySchema,
+  schemaCfg: SchemaConfig,
+  spec: AggregateSpec,
+): Promise<Array<Record<string, unknown>>>
+```
+
+Validation is single-shot at the Repo-entry boundary via
+`assertNormalisedAggregate(schema, adapter, spec)`. Failures are collected
+under `OrmValidationError` with `kind: 'aggregate'` (§7.5). Specific failure
+flavours — alias collision with a group-key name, undeclared aggregator op,
+field-type mismatch (defense-in-depth for the type-level constraints), having-
+filter referencing an unknown alias — all collapse to the single `'aggregate'`
+kind, with detail in the per-failure carrier.
+
+**Out-of-aggregation-surface escapes.** Window functions, expression-based
+group keys (`GROUP BY lower(name)`), expression-based aggregator inputs
+(`SUM(price * qty)`), arbitrary projection of computed columns, joined
+aggregations, statistical aggregates, and `FILTER (WHERE ...)` per-aggregate
+clauses are all out of the canonical surface. They go through the adapter's
+`raw` method (§5.5).
 
 ---
 
@@ -932,13 +1144,14 @@ classification:
 
 ```ts
 class OrmValidationError extends EquippedError {
-  kind: 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible'
+  kind: 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible' | 'aggregate'
   schema: string
-  operation: 'createOne' | 'createMany' | 'updateOne' | 'updateMany' | 'updateByPk' | 'upsertOne'
+  operation: 'createOne' | 'createMany' | 'updateOne' | 'updateMany' | 'updateByPk' | 'upsertOne' | 'aggregate'
   failures: Array<{
     opIndex?: number
     rowIndex?: number
     field?: string
+    alias?: string                                      // aggregate-only: the offending alias / group-key name
     cause: PipeError
   }>
 }
@@ -947,6 +1160,12 @@ class OrmValidationError extends EquippedError {
 Each entry in `failures` is a **failure entry**. The `kind` field is the
 **error kind**. Users catch `OrmValidationError` for boundary-specific
 handling, or `EquippedError` for any package-thrown error.
+
+`OrmValidationError` is the error class for **Repo-entry boundary** throws
+(input-shape failures caught before any adapter call). For **post-adapter**
+"no row matched" throws under the required-row contract, see
+`OrmNotFoundError` in §5.7 — a sibling `EquippedError` subclass with its own
+carrier shape. Both classes live under `src/orm/errors/`.
 
 ### 7.6 Validation pipelines
 
