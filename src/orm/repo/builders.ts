@@ -247,11 +247,7 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	#withQuery(queryOverride: Partial<{ orderBy: OrderBy[]; limit: number; offset: number }>) {
 		return new AllBuilder<S, A, Sel, P>(
 			this._context,
-			this._readState({
-				where: this._where.clone(),
-				select: this._select as readonly Sel[] | undefined,
-				preloads: this._preloads,
-			}),
+			this._readState(),
 			{
 				orderBy: queryOverride.orderBy ?? [...this.#orderBy],
 				limit: queryOverride.limit ?? this.#limit,

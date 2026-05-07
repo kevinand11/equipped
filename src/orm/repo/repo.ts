@@ -819,6 +819,19 @@ if (import.meta.vitest) {
 	})
 
 	describe('type-level: method gating via class-based adapter', () => {
+		test('adapter with findMany enables all().find()', () => {
+			class FindAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+			}
+			type A = FindAdapter
+			type S = import('../schema').AnySchema
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<All['find']>().toBeFunction()
+		})
+
 		test('missing updateMany collapses one().update and all().update to never', () => {
 			class ReadOnlyAdapter extends OrmAdapter {
 				readonly schemaConfigPipe = v.object({})
@@ -2005,100 +2018,4 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('type-level: class-based adapter surface narrowing', async () => {
-		const { OrmAdapter } = await import('../orm-adapter')
-
-		test('class-based adapter with findMany enables all().find()', () => {
-			class FindAdapter extends OrmAdapter {
-				readonly schemaConfigPipe = v.object({ table: v.string() })
-				readonly supportedFieldTypes = ['string'] as const
-				readonly queryableOps = ['eq'] as const
-				async findMany() { return [] }
-			}
-
-			type A = FindAdapter
-			type S = import('../schema').AnySchema
-			type All = import('./builders').AllBuilderSurface<S, A>
-			expectTypeOf<All['find']>().toBeFunction()
-		})
-
-		test('class-based adapter without updateMany narrows out update()', () => {
-			class ReadOnlyAdapter extends OrmAdapter {
-				readonly schemaConfigPipe = v.object({ table: v.string() })
-				readonly supportedFieldTypes = ['string'] as const
-				readonly queryableOps = ['eq'] as const
-				async findMany() { return [] }
-			}
-
-			type A = ReadOnlyAdapter
-			type S = import('../schema').AnySchema
-			type One = import('./builders').OneBuilderSurface<S, A>
-			type All = import('./builders').AllBuilderSurface<S, A>
-			expectTypeOf<One['update']>().toBeNever()
-			expectTypeOf<All['update']>().toBeNever()
-		})
-
-		test('class-based adapter without deleteMany narrows out delete()', () => {
-			class NoDeletAdapter extends OrmAdapter {
-				readonly schemaConfigPipe = v.object({ table: v.string() })
-				readonly supportedFieldTypes = ['string'] as const
-				async findMany() { return [] }
-			}
-
-			type A = NoDeletAdapter
-			type S = import('../schema').AnySchema
-			type One = import('./builders').OneBuilderSurface<S, A>
-			type All = import('./builders').AllBuilderSurface<S, A>
-			expectTypeOf<One['delete']>().toBeNever()
-			expectTypeOf<All['delete']>().toBeNever()
-		})
-
-		test('class-based adapter without session narrows out repo.session', () => {
-			class NoSessionAdapter extends OrmAdapter {
-				readonly schemaConfigPipe = v.object({ table: v.string() })
-				readonly supportedFieldTypes = ['string'] as const
-				async findMany() { return [] }
-			}
-
-			type A = NoSessionAdapter
-			const _repo = {} as import('./repo').RepoSurface<A>
-			expectTypeOf(_repo.session).toBeNever()
-		})
-
-		test('class-based adapter with session enables repo.session', () => {
-			class WithSessionAdapter extends OrmAdapter {
-				readonly schemaConfigPipe = v.object({ table: v.string() })
-				readonly supportedFieldTypes = ['string'] as const
-				async session<T>(fn: () => Promise<T>): Promise<T> { return fn() }
-			}
-
-			type A = WithSessionAdapter
-			const _repo = {} as import('./repo').RepoSurface<A>
-			expectTypeOf(_repo.session).toBeFunction()
-		})
-
-		test('class-based adapter with raw enables schemaRef.raw', () => {
-			class WithRawAdapter extends OrmAdapter {
-				readonly schemaConfigPipe = v.object({ table: v.string() })
-				readonly supportedFieldTypes = ['string'] as const
-				async raw(_s: any, _c: any, _sql: string, _params: unknown[]) { return { rows: [] } }
-			}
-
-			type A = WithRawAdapter
-			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
-			expectTypeOf<Ref['raw']>().toBeFunction()
-		})
-
-		test('class-based adapter without raw narrows out schemaRef.raw', () => {
-			class NoRawAdapter extends OrmAdapter {
-				readonly schemaConfigPipe = v.object({ table: v.string() })
-				readonly supportedFieldTypes = ['string'] as const
-				async findMany() { return [] }
-			}
-
-			type A = NoRawAdapter
-			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
-			expectTypeOf<Ref['raw']>().toBeNever()
-		})
-	})
 }
