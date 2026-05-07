@@ -10,9 +10,7 @@ function mapField(field: string, primaryKey: string): string {
 	return field
 }
 
-function compileFilter(f: Filter, primaryKey: string, nextParam: (v: unknown) => string): string {
-	const field = `"${mapField(f.field, primaryKey)}"`
-
+function compileOps(f: Filter, field: string, nextParam: (v: unknown) => string): string {
 	switch (f.op) {
 		case 'eq':
 			return f.value === null ? `${field} IS NULL` : `${field} = ${nextParam(f.value)}`
@@ -45,16 +43,20 @@ function compileFilter(f: Filter, primaryKey: string, nextParam: (v: unknown) =>
 	}
 }
 
-function compileGroup(group: FilterGroup, primaryKey: string, nextParam: (v: unknown) => string): string | null {
-	const parts = group.children.map((c) => compileChild(c, primaryKey, nextParam)).filter((c): c is string => c !== null)
+function compileFilter(f: Filter, primaryKey: string, nextParam: (v: unknown) => string): string {
+	return compileOps(f, `"${mapField(f.field, primaryKey)}"`, nextParam)
+}
+
+function compileGroup(group: FilterGroup, compileLeaf: (f: Filter) => string): string | null {
+	const parts = group.children.map((c) => compileChild(c, compileLeaf)).filter((c): c is string => c !== null)
 	if (parts.length === 0) return null
 	if (parts.length === 1) return parts[0]
 	return `(${parts.join(group.op === 'or' ? ' OR ' : ' AND ')})`
 }
 
-function compileChild(child: FilterChild, primaryKey: string, nextParam: (v: unknown) => string): string | null {
-	if (child instanceof Filter) return compileFilter(child, primaryKey, nextParam)
-	if (child instanceof FilterGroup) return compileGroup(child, primaryKey, nextParam)
+function compileChild(child: FilterChild, compileLeaf: (f: Filter) => string): string | null {
+	if (child instanceof Filter) return compileLeaf(child)
+	if (child instanceof FilterGroup) return compileGroup(child, compileLeaf)
 	return null
 }
 
@@ -72,8 +74,9 @@ function compilePgFilter(
 	}
 
 	const whereParts: string[] = []
+	const leaf = (f: Filter) => compileFilter(f, primaryKey, nextParam)
 	for (const child of group.children) {
-		const compiled = compileChild(child, primaryKey, nextParam)
+		const compiled = compileChild(child, leaf)
 		if (compiled) whereParts.push(compiled)
 	}
 
@@ -265,9 +268,10 @@ export function extractUpsertConflictColumn(filter: FilterGroup, schemaName: str
 
 function aggFnToSql(fn: AggregateOpName, field: string | undefined, primaryKey: string): string {
 	if (fn === 'count') return 'COUNT(*)'
-	if (fn === 'countDistinct') return `COUNT(DISTINCT "${mapField(field!, primaryKey)}")`
 	const col = `"${mapField(field!, primaryKey)}"`
 	switch (fn) {
+		case 'countDistinct':
+			return `COUNT(DISTINCT ${col})`
 		case 'sum':
 			return `SUM(${col})`
 		case 'avg':
@@ -279,66 +283,15 @@ function aggFnToSql(fn: AggregateOpName, field: string | undefined, primaryKey: 
 	}
 }
 
-function compileHavingFilter(
-	f: Filter,
+function resolveHavingField(
+	field: string,
 	primaryKey: string,
 	aliasToExpr: Map<string, string>,
 	groupBySet: Set<string>,
-	nextParam: (v: unknown) => string,
 ): string {
-	const field = aliasToExpr.has(f.field)
-		? aliasToExpr.get(f.field)!
-		: groupBySet.has(f.field)
-			? `"${mapField(f.field, primaryKey)}"`
-			: `"${f.field}"`
-
-	switch (f.op) {
-		case 'eq':
-			return f.value === null ? `${field} IS NULL` : `${field} = ${nextParam(f.value)}`
-		case 'ne':
-			return f.value === null ? `${field} IS NOT NULL` : `${field} != ${nextParam(f.value)}`
-		case 'gt':
-			return `${field} > ${nextParam(f.value)}`
-		case 'gte':
-			return `${field} >= ${nextParam(f.value)}`
-		case 'lt':
-			return `${field} < ${nextParam(f.value)}`
-		case 'lte':
-			return `${field} <= ${nextParam(f.value)}`
-		case 'in':
-			return `${field} = ANY(${nextParam(f.value)})`
-		case 'notIn':
-			return `NOT (${field} = ANY(${nextParam(f.value)}))`
-		default:
-			return `${field} = ${nextParam(f.value)}`
-	}
-}
-
-function compileHavingGroup(
-	group: FilterGroup,
-	primaryKey: string,
-	aliasToExpr: Map<string, string>,
-	groupBySet: Set<string>,
-	nextParam: (v: unknown) => string,
-): string | null {
-	const parts = group.children
-		.map((c) => compileHavingChild(c, primaryKey, aliasToExpr, groupBySet, nextParam))
-		.filter((c): c is string => c !== null)
-	if (parts.length === 0) return null
-	if (parts.length === 1) return parts[0]
-	return `(${parts.join(group.op === 'or' ? ' OR ' : ' AND ')})`
-}
-
-function compileHavingChild(
-	child: FilterChild,
-	primaryKey: string,
-	aliasToExpr: Map<string, string>,
-	groupBySet: Set<string>,
-	nextParam: (v: unknown) => string,
-): string | null {
-	if (child instanceof Filter) return compileHavingFilter(child, primaryKey, aliasToExpr, groupBySet, nextParam)
-	if (child instanceof FilterGroup) return compileHavingGroup(child, primaryKey, aliasToExpr, groupBySet, nextParam)
-	return null
+	if (aliasToExpr.has(field)) return aliasToExpr.get(field)!
+	if (groupBySet.has(field)) return `"${mapField(field, primaryKey)}"`
+	return `"${field}"`
 }
 
 export function buildAggregateQuery(
@@ -370,9 +323,10 @@ export function buildAggregateQuery(
 
 	let whereClause = ''
 	if (spec.where) {
+		const whereLeaf = (f: Filter) => compileFilter(f, primaryKey, nextParam)
 		const whereParts: string[] = []
 		for (const child of spec.where.children) {
-			const compiled = compileChild(child, primaryKey, nextParam)
+			const compiled = compileChild(child, whereLeaf)
 			if (compiled) whereParts.push(compiled)
 		}
 		if (whereParts.length > 0) whereClause = `WHERE ${whereParts.join(' AND ')}`
@@ -383,9 +337,11 @@ export function buildAggregateQuery(
 	let havingClause = ''
 	if (spec.having) {
 		const groupBySet = new Set(spec.groupBy)
+		const havingLeaf = (f: Filter) =>
+			compileOps(f, resolveHavingField(f.field, primaryKey, aliasToExpr, groupBySet), nextParam)
 		const havingParts: string[] = []
 		for (const child of spec.having.children) {
-			const compiled = compileHavingChild(child, primaryKey, aliasToExpr, groupBySet, nextParam)
+			const compiled = compileChild(child, havingLeaf)
 			if (compiled) havingParts.push(compiled)
 		}
 		if (havingParts.length > 0) havingClause = `HAVING ${havingParts.join(' AND ')}`
