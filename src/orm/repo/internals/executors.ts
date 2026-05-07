@@ -1,6 +1,7 @@
 import { planSelection } from './computeds'
 import type { SelectedWithPreloads } from './types'
-import { assertNormalisedFilter, type FilterGroup } from '../../filter'
+import { assertNormalisedAggregate, assertNormalisedFilter, type FilterGroup } from '../../filter'
+import type { AggregateSpec } from '../../orm-adapter'
 import type { OrderBy } from '../../query'
 import type { AnyPreloadDef } from '../../relations'
 import type { AnySchema } from '../../schema'
@@ -132,4 +133,12 @@ export async function runAllDelete<S extends AnySchema, Sel extends string, P ex
 	assertNormalisedFilter(context.schema, state.where)
 	const rows = await context.use.deleteMany(state.where)
 	return context.shapeRows(state.select, state.preloads, rows)
+}
+
+export async function runAggregate<S extends AnySchema>(
+	context: SchemaContext<S>,
+	spec: AggregateSpec,
+): Promise<Array<Record<string, unknown>>> {
+	assertNormalisedAggregate(context.schema, context.use, spec)
+	return context.use.aggregate(spec)
 }
