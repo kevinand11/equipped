@@ -156,7 +156,7 @@ async function resolvePreload(
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { createInMemoryAdapter } = await import('../../adapters/in-memory')
+	const { InMemoryAdapter } = await import('../../adapters/in-memory')
 	const { Relations } = await import('../../relations')
 	const { Repo } = await import('../repo')
 	const { Schema } = await import('../../schema')
@@ -244,7 +244,7 @@ if (import.meta.vitest) {
 		const FRels = Relations.from(FSchema).hasMany('gs', GSchema.fields.fId).build()
 
 		function makeRepo() {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			return Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
 		}
 
@@ -376,7 +376,7 @@ if (import.meta.vitest) {
 
 		test('N+1 avoidance: N parents + children loaded in 2 queries, not N+1', async () => {
 			const { vi } = await import('vitest')
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			let queryCount = 0
 			const origUse = adapter.use.bind(adapter)
 			;(adapter as any).use = vi.fn((schema: any, config: any) => {

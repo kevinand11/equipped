@@ -3,6 +3,7 @@ export type Candidate = {
 	title: string
 	body: string
 	labels: string[]
+	state: IssueState
 }
 
 export type ResumeState =
@@ -13,10 +14,5 @@ export type ResumeState =
 	| { kind: 'implement' }
 
 export type IssueState = 'OPEN' | 'CLOSED'
-
-export type SandboxResult = {
-	commits: Array<{ sha: string }>
-	iterations: unknown[]
-}
 
 export type ProcessOutcome = 'done' | 'no-work' | 'partial'

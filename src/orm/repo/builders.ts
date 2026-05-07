@@ -29,22 +29,27 @@ type ReadState<Sel extends string, P extends readonly AnyPreloadDef[] = readonly
 	preloads?: P
 }
 
-export type HasMethod<A, Bag extends string, Method extends string> = A extends Record<Bag, Record<Method, (...args: any) => any>> ? true : false
+export type HasMethod<A, Method extends string> =
+	Method extends keyof A
+		? A[Method] extends (...args: any) => any
+			? true
+			: false
+		: false
 
 export type OneBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> =
 	OneBuilder<S, A, Sel, P> &
-	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { update: never }) &
-	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { delete: never }) &
-	(HasMethod<A, 'queryable', 'upsertOne'> extends true ? {} : { upsert: never })
+	(HasMethod<A, 'updateMany'> extends true ? {} : { update: never }) &
+	(HasMethod<A, 'deleteMany'> extends true ? {} : { delete: never }) &
+	(HasMethod<A, 'upsertOne'> extends true ? {} : { upsert: never })
 
 export type AllBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> =
 	AllBuilder<S, A, Sel, P> &
-	(HasMethod<A, 'queryable', 'updateMany'> extends true ? {} : { update: never }) &
-	(HasMethod<A, 'queryable', 'deleteMany'> extends true ? {} : { delete: never })
+	(HasMethod<A, 'updateMany'> extends true ? {} : { update: never }) &
+	(HasMethod<A, 'deleteMany'> extends true ? {} : { delete: never })
 
 export type SchemaRefSurface<S extends AnySchema, A = unknown> =
 	Omit<SchemaRef<S, A>, 'raw'> &
-	(HasMethod<A, 'crud', 'raw'> extends true
+	(HasMethod<A, 'raw'> extends true
 		? { raw: <T = InferRawReturn<A>>(...args: InferRawArgs<A>) => Promise<T> }
 		: { raw: never })
 
@@ -166,14 +171,7 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	}
 
 	protected _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(next: ReadState<NewSel, NewP>) {
-		return new OneBuilder<S, A, NewSel, NewP>(
-			this._context,
-			this._readState({
-				where: next.where,
-				select: next.select,
-				preloads: next.preloads,
-			}),
-		) as any
+		return new OneBuilder<S, A, NewSel, NewP>(this._context, this._readState(next)) as any
 	}
 
 	create(data: SchemaCreateInput<S>) {
@@ -251,51 +249,31 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	}
 
 	protected _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(next: ReadState<NewSel, NewP>) {
-		return new AllBuilder<S, A, NewSel, NewP>(
-			this._context,
-			this._readState({
-				where: next.where,
-				select: next.select,
-				preloads: next.preloads,
-			}),
-			this.#queryState(),
-		) as any
+		return new AllBuilder<S, A, NewSel, NewP>(this._context, this._readState(next), this.#queryState()) as any
 	}
 
 	orderBy(field: string | AnyField, direction: 'asc' | 'desc' = 'asc') {
-		return new AllBuilder<S, A, Sel, P>(
-			this._context,
-			this._readState({
-				where: this._where.clone(),
-				select: this._select as readonly Sel[] | undefined,
-				preloads: this._preloads,
-			}),
-			{ orderBy: [...this.#orderBy, new OrderBy(field, direction)], limit: this.#limit, offset: this.#offset },
-		) as this
+		return new AllBuilder<S, A, Sel, P>(this._context, this._readState(), {
+			orderBy: [...this.#orderBy, new OrderBy(field, direction)],
+			limit: this.#limit,
+			offset: this.#offset,
+		}) as this
 	}
 
 	limit(limit: number) {
-		return new AllBuilder<S, A, Sel, P>(
-			this._context,
-			this._readState({
-				where: this._where.clone(),
-				select: this._select as readonly Sel[] | undefined,
-				preloads: this._preloads,
-			}),
-			{ orderBy: [...this.#orderBy], limit, offset: this.#offset },
-		) as this
+		return new AllBuilder<S, A, Sel, P>(this._context, this._readState(), {
+			orderBy: [...this.#orderBy],
+			limit,
+			offset: this.#offset,
+		}) as this
 	}
 
 	offset(offset: number) {
-		return new AllBuilder<S, A, Sel, P>(
-			this._context,
-			this._readState({
-				where: this._where.clone(),
-				select: this._select as readonly Sel[] | undefined,
-				preloads: this._preloads,
-			}),
-			{ orderBy: [...this.#orderBy], limit: this.#limit, offset },
-		) as this
+		return new AllBuilder<S, A, Sel, P>(this._context, this._readState(), {
+			orderBy: [...this.#orderBy],
+			limit: this.#limit,
+			offset,
+		}) as this
 	}
 
 	create(data: SchemaCreateInput<S>[]) {
@@ -344,14 +322,14 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 if (import.meta.vitest) {
 	const { describe, test, expect, beforeEach } = import.meta.vitest
 	const { v } = await import('valleyed')
-	const { createInMemoryAdapter } = await import('../adapters/in-memory')
+	const { InMemoryAdapter } = await import('../adapters/in-memory')
 	const { Repo } = await import('./repo')
 	const { Schema } = await import('../schema')
 
 	describe('builders', () => {
 		let repo: any
 		beforeEach(() => {
-			const { adapter } = createInMemoryAdapter()
+			const adapter = InMemoryAdapter.create({})
 			repo = Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
 		})
 

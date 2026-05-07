@@ -179,3 +179,11 @@ integration, custom event listeners, and reactive patterns.
 
 No granular access control on individual fields. Missing: permission-based
 field filtering, role-based access, and security policies.
+
+## Rework db audits
+
+Grill into db audits for missing functionality
+
+## Stop using v.assert
+
+v.validate returns a success shape or error shape instead of throwing which is slower cos it has to gather context for stack trace

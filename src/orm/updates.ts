@@ -368,37 +368,38 @@ if (import.meta.vitest) {
 
 	describe('type-level: per-op gating via UpdateOp<S, A>', () => {
 		test('undeclared ops resolve to never', async () => {
-			const { Adapter } = await import('./adapter')
-			const _limitedAdapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string', 'number')
-				.updateOps('set', 'inc')
-				.crud({ findByPk: async () => null })
-				.build()
+			const { OrmAdapter } = await import('./orm-adapter')
+			class LimitedAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string', 'number'] as const
+				readonly updateOps = ['set', 'inc'] as const
+			}
 
-			type Limited = UpdateOp<typeof TestSchema, typeof _limitedAdapter>
+			type Limited = UpdateOp<typeof TestSchema, LimitedAdapter>
 			expectTypeOf<Limited>().toEqualTypeOf<SetOp | IncOp>()
 		})
 
 		test('adapter with no updateOps resolves all variants to never', async () => {
-			const { Adapter } = await import('./adapter')
-			const _noOpsAdapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string')
-				.crud({ findByPk: async () => null })
-				.build()
+			const { OrmAdapter } = await import('./orm-adapter')
+			class NoOpsAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly updateOps = [] as const
+			}
 
-			type NoOps = UpdateOp<typeof TestSchema, typeof _noOpsAdapter>
+			type NoOps = UpdateOp<typeof TestSchema, NoOpsAdapter>
 			expectTypeOf<NoOps>().toBeNever()
 		})
 
 		test('adapter with all updateOps includes all variants', async () => {
-			const { Adapter } = await import('./adapter')
-			const _fullAdapter = Adapter.from<unknown>()
-				.supportedFieldTypes('string', 'number')
-				.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
-				.crud({ findByPk: async () => null })
-				.build()
+			const { OrmAdapter } = await import('./orm-adapter')
+			class FullAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string', 'number'] as const
+				readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
+			}
 
-			type Full = UpdateOp<typeof TestSchema, typeof _fullAdapter>
+			type Full = UpdateOp<typeof TestSchema, FullAdapter>
 			type Expected =
 				| SetOp
 				| IncOp

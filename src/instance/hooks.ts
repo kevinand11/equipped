@@ -1,8 +1,7 @@
 export type HookEvent = 'setup' | 'start' | 'close'
 export type HookCb = Promise<unknown | void> | (() => void | unknown | Promise<void | unknown>)
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-export type ClassRef = Function & { prototype: any }
+export type ClassRef = Function & { prototype: unknown }
 export type HookOptions = {
 	class?: ClassRef
 	after?: ClassRef[]

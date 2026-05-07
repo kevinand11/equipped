@@ -1,6 +1,7 @@
 import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
 type CtorParams<T> = ConstructorParameters<T & (abstract new (...args: any[]) => any)>
+type BaseCtorParams<T> = T extends abstract new (...args: infer A) => any ? A : never
 
 export function configurable<P extends Pipe<any, any>, Base extends abstract new (...args: any[]) => any>(pipeFn: () => P, base: Base) {
 	let pipe: P | undefined
@@ -10,7 +11,7 @@ export function configurable<P extends Pipe<any, any>, Base extends abstract new
 
 		protected readonly config: PipeOutput<P>
 
-		protected constructor(validated: PipeOutput<P>, ...baseArgs: ConstructorParameters<Base>) {
+		protected constructor(validated: PipeOutput<P>, ...baseArgs: BaseCtorParams<Base>) {
 			// eslint-disable-next-line constructor-super
 			super(...baseArgs)
 			this.config = validated
@@ -30,28 +31,13 @@ export function configurable<P extends Pipe<any, any>, Base extends abstract new
 		}
 	}
 
-	return Configurable as unknown as (abstract new (validated: PipeOutput<P>, ...baseArgs: ConstructorParameters<Base>) => InstanceType<Base> & { readonly config: PipeOutput<P> }) & {
+	return Configurable as unknown as (abstract new (validated: PipeOutput<P>, ...baseArgs: BaseCtorParams<Base>) => InstanceType<Base> & { readonly config: PipeOutput<P> }) & {
 		readonly Config: PipeOutput<P>
 		create<This extends Function & { prototype: any }>(
 			this: This,
 			input: PipeInput<P>,
 			...args: CtorParams<This> extends [PipeOutput<P>, ...infer R] ? R : never
 		): This['prototype']
-	}
-}
-
-/** @deprecated Use class-based `configurable` instead. Will be removed when server adapters migrate. */
-export function configurableFn<P extends Pipe<any, any>, T, Args extends ReadonlyArray<any>>(
-	pipeFn: () => P,
-	fn: (config: PipeOutput<P>, ...args: Args) => T,
-): { create: (config: PipeInput<P>, ...args: Args) => T } {
-	const pipe = pipeFn()
-	v.compile(pipe)
-	return {
-		create: (config: PipeInput<P>, ...args: Args) => {
-			const validated = v.assert(pipe, config)
-			return fn(validated, ...args)
-		},
 	}
 }
 

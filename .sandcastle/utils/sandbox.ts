@@ -1,6 +1,7 @@
 import * as sandcastle from '@ai-hero/sandcastle'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 
+import { SandboxRunResult } from '@ai-hero/sandcastle'
 import {
 	ADDRESSER_MAX_ITERATIONS,
 	copyToWorktree,
@@ -9,12 +10,12 @@ import {
 	IMPLEMENTER_MAX_ITERATIONS,
 	REVIEWER_MAX_ITERATIONS,
 } from './config.ts'
-import type { Candidate, SandboxResult } from './types.ts'
+import type { Candidate } from './types.ts'
 
-export const exitedCleanly = (result: SandboxResult, capIterations: number): boolean =>
-	result.iterations.length < capIterations
+export const exitedCleanly = (result: SandboxRunResult, capIterations: number): boolean =>
+	capIterations <= 1 || result.iterations.length < capIterations
 
-export async function runImplementerInFreshSandbox(candidate: Candidate, branch: string): Promise<SandboxResult> {
+export async function runImplementerInFreshSandbox(candidate: Candidate, branch: string) {
 	const sandbox = await sandcastle.createSandbox({
 		branch,
 		sandbox: docker(),
@@ -32,13 +33,13 @@ export async function runImplementerInFreshSandbox(candidate: Candidate, branch:
 				ISSUE_TITLE: candidate.title,
 				BRANCH: branch,
 			},
-		}) as SandboxResult
+		})
 	} finally {
 		await sandbox.close()
 	}
 }
 
-export async function runReviewerInFreshSandbox(candidate: Candidate, branch: string): Promise<SandboxResult> {
+export async function runReviewerInFreshSandbox(candidate: Candidate, branch: string) {
 	const sandbox = await sandcastle.createSandbox({
 		branch,
 		sandbox: docker(),
@@ -55,17 +56,13 @@ export async function runReviewerInFreshSandbox(candidate: Candidate, branch: st
 				BRANCH: branch,
 				FEATURE_BRANCH,
 			},
-		}) as SandboxResult
+		})
 	} finally {
 		await sandbox.close()
 	}
 }
 
-export async function runAddresserInFreshSandbox(
-	candidate: Candidate,
-	branch: string,
-	prNumber: number,
-): Promise<SandboxResult> {
+export async function runAddresserInFreshSandbox(candidate: Candidate, branch: string, prNumber: number) {
 	const sandbox = await sandcastle.createSandbox({
 		branch,
 		sandbox: docker(),
@@ -82,7 +79,7 @@ export async function runAddresserInFreshSandbox(
 				PR_NUMBER: String(prNumber),
 				BRANCH: branch,
 			},
-		}) as SandboxResult
+		})
 	} finally {
 		await sandbox.close()
 	}
