@@ -31,7 +31,6 @@ export type PostgresqlConnectionConfig = {
 	username: string
 	password: string
 	database: string
-	ssl?: boolean
 }
 
 const postgresqlConnectionPipe = () =>
@@ -276,19 +275,30 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 }
 
 if (import.meta.vitest) {
-	const { describe, test, expect, expectTypeOf, vi } = import.meta.vitest
+	const { describe, test, expect, expectTypeOf, vi, beforeEach, afterEach } = import.meta.vitest
+
+	const testConnectionConfig = {
+		host: 'localhost',
+		port: 5432,
+		username: 'test',
+		password: 'test',
+		database: 'testdb',
+	} as const
 
 	describe('PostgresAdapter: class-via-configurable shape', () => {
-		test('PostgresAdapter.create returns instance with correct capability declarations', async () => {
-			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
+		let onSpy: ReturnType<typeof vi.spyOn>
 
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+		beforeEach(async () => {
+			const { Instance } = await import('../../../instance')
+			onSpy = vi.spyOn(Instance, 'on').mockImplementation(() => {})
+		})
+
+		afterEach(() => {
+			onSpy.mockRestore()
+		})
+
+		test('PostgresAdapter.create returns instance with correct capability declarations', () => {
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 
 			expect(adapter.supportedFieldTypes).toEqual([
 				'string', 'number', 'boolean', 'null', 'object', 'array', 'date',
@@ -299,81 +309,36 @@ if (import.meta.vitest) {
 			expect(adapter.updateOps).toEqual([
 				'set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch',
 			])
-
-			onSpy.mockRestore()
 		})
 
-		test('PostgresAdapter.create validates connection config', async () => {
-			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
-
+		test('PostgresAdapter.create validates connection config', () => {
 			expect(() => PostgresAdapter.create({ host: 123, port: 'bad' } as any)).toThrow()
-
-			onSpy.mockRestore()
 		})
 
-		test('pool is exposed as a readonly instance field', async () => {
-			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
-
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+		test('pool is exposed as a readonly instance field', () => {
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 
 			expect(adapter.pool).toBeInstanceOf(Pool)
-
-			onSpy.mockRestore()
 		})
 
-		test('schemaConfigPipe is declared as readonly with table-name shape', async () => {
-			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
-
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+		test('schemaConfigPipe is declared as readonly with table-name shape', () => {
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 
 			expect(adapter.schemaConfigPipe).toBeDefined()
-
-			onSpy.mockRestore()
 		})
 
-		test('auto-wires Instance hooks for connect and disconnect', async () => {
-			const { Instance: Inst } = await import('../../../instance')
-			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
-
-			PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+		test('auto-wires Instance hooks for connect and disconnect', () => {
+			PostgresAdapter.create(testConnectionConfig)
 
 			expect(onSpy).toHaveBeenCalledWith('start', expect.any(Function), expect.objectContaining({ class: PostgresAdapter }))
 			expect(onSpy).toHaveBeenCalledWith('close', expect.any(Function), expect.objectContaining({ class: PostgresAdapter }))
-
-			onSpy.mockRestore()
 		})
 
 		test('adapter.use returns OrmUse-shaped object', async () => {
-			const { Instance: Inst } = await import('../../../instance')
-			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Schema } = await import('../../schema')
 
 			const schema = Schema.from('test').pk('id', v.string(), () => 'x').build()
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 			const use = adapter.use(schema, { table: 'test' })
 
 			expect(use.findMany).toBeTypeOf('function')
@@ -386,20 +351,10 @@ if (import.meta.vitest) {
 			expect(use.deleteOne).toBeTypeOf('function')
 			expect(use.deleteMany).toBeTypeOf('function')
 			expect(use.raw).toBeTypeOf('function')
-
-			onSpy.mockRestore()
 		})
 
-		test('type-level: capability declarations use as const', async () => {
-			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
-
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+		test('type-level: capability declarations use as const', () => {
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 
 			type Ops = typeof adapter.updateOps
 			expectTypeOf<Ops>().toEqualTypeOf<
@@ -415,23 +370,13 @@ if (import.meta.vitest) {
 			expectTypeOf<QOps>().toEqualTypeOf<
 				readonly ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains']
 			>()
-
-			onSpy.mockRestore()
 		})
 
 		test('type-level: Repo.from with PostgresAdapter enables all builder methods', async () => {
-			const { Instance: Inst } = await import('../../../instance')
-			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Repo } = await import('../../repo/repo')
 			const { Schema } = await import('../../schema')
 
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
 			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
 
@@ -449,67 +394,37 @@ if (import.meta.vitest) {
 			expectTypeOf(_all.delete).toBeFunction()
 			expectTypeOf(_ref.raw).toBeFunction()
 			expectTypeOf(repo.session).toBeFunction()
-
-			onSpy.mockRestore()
 		})
 
 		test('type-level: raw arg-tuple infers (command: string, params?: unknown[]) from PostgresAdapter', async () => {
-			const { Instance: Inst } = await import('../../../instance')
-			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Repo } = await import('../../repo/repo')
 			const { Schema } = await import('../../schema')
 
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
 			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
 			const _ref = repo.on(_TestSchema)
 
 			expectTypeOf(_ref.raw).parameters.toEqualTypeOf<[command: string, params?: unknown[]]>()
-
-			onSpy.mockRestore()
 		})
 
 		test('type-level: per-call <T> override narrows PostgresAdapter raw return type', async () => {
-			const { Instance: Inst } = await import('../../../instance')
-			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Repo } = await import('../../repo/repo')
 			const { Schema } = await import('../../schema')
 
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
 			const _TestSchema = Schema.from('test').pk('id', v.string(), () => 'x').build()
 			const _ref = repo.on(_TestSchema)
 
 			expectTypeOf(_ref.raw<{ id: string }[]>).returns.toEqualTypeOf<Promise<{ id: string }[]>>()
-
-			onSpy.mockRestore()
 		})
 
 		test('raw forwards (command, params) to pool.query at runtime', async () => {
-			const { Instance: Inst } = await import('../../../instance')
-			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Schema } = await import('../../schema')
 
 			const schema = Schema.from('pg_raw').pk('id', v.string(), () => 'x').build()
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 			let capturedCommand: unknown
 			let capturedParams: unknown
 			const mockResult = { rows: [{ id: '1' }], rowCount: 1 }
@@ -522,23 +437,13 @@ if (import.meta.vitest) {
 			expect(capturedCommand).toBe('SELECT * FROM users WHERE id = $1')
 			expect(capturedParams).toEqual(['abc'])
 			expect(result).toBe(mockResult)
-
-			onSpy.mockRestore()
 		})
 
 		test('raw defaults params to [] when omitted', async () => {
-			const { Instance: Inst } = await import('../../../instance')
-			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Schema } = await import('../../schema')
 
 			const schema = Schema.from('pg_raw2').pk('id', v.string(), () => 'x').build()
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 			let capturedParams: unknown
 			;(adapter.pool as any).query = async (_cmd: unknown, params: unknown) => {
 				capturedParams = params
@@ -546,24 +451,12 @@ if (import.meta.vitest) {
 			}
 			await adapter.use(schema, { table: 'users' }).raw('SELECT 1')
 			expect(capturedParams).toEqual([])
-
-			onSpy.mockRestore()
 		})
 
-		test('session method is exposed on the adapter', async () => {
-			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
-
-			const adapter = PostgresAdapter.create({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
+		test('session method is exposed on the adapter', () => {
+			const adapter = PostgresAdapter.create(testConnectionConfig)
 			expect(adapter.session).toBeDefined()
 			expect(adapter.session).toBeTypeOf('function')
-
-			onSpy.mockRestore()
 		})
 	})
 }
