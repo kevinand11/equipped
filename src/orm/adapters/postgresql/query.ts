@@ -1,6 +1,6 @@
+import type { AggregateOpName } from '../../adapter'
 import { OrmValidationError } from '../../errors'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
-import type { AggregateOpName } from '../../adapter'
 import type { AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
@@ -47,8 +47,12 @@ function compileFilter(f: Filter, primaryKey: string, nextParam: (v: unknown) =>
 	return compileOps(f, `"${mapField(f.field, primaryKey)}"`, nextParam)
 }
 
+function compileChildren(group: FilterGroup, compileLeaf: (f: Filter) => string): string[] {
+	return group.children.map((c) => compileChild(c, compileLeaf)).filter((c): c is string => c !== null)
+}
+
 function compileGroup(group: FilterGroup, compileLeaf: (f: Filter) => string): string | null {
-	const parts = group.children.map((c) => compileChild(c, compileLeaf)).filter((c): c is string => c !== null)
+	const parts = compileChildren(group, compileLeaf)
 	if (parts.length === 0) return null
 	if (parts.length === 1) return parts[0]
 	return `(${parts.join(group.op === 'or' ? ' OR ' : ' AND ')})`
@@ -73,12 +77,8 @@ function compilePgFilter(
 		return `$${paramIndex++}`
 	}
 
-	const whereParts: string[] = []
 	const leaf = (f: Filter) => compileFilter(f, primaryKey, nextParam)
-	for (const child of group.children) {
-		const compiled = compileChild(child, leaf)
-		if (compiled) whereParts.push(compiled)
-	}
+	const whereParts = compileChildren(group, leaf)
 
 	const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : ''
 	return { whereClause, params, nextParamIndex: paramIndex }
@@ -316,19 +316,17 @@ export function buildAggregateQuery(
 		selectParts.push(`${expr} AS "${agg.alias}"`)
 	}
 
-	const groupByFields = spec.groupBy.map((f) => `"${mapField(f, primaryKey)}"`)
+	const groupByFields: string[] = []
 	for (const f of spec.groupBy) {
-		selectParts.push(`"${mapField(f, primaryKey)}" AS "${f}"`)
+		const col = `"${mapField(f, primaryKey)}"`
+		groupByFields.push(col)
+		selectParts.push(`${col} AS "${f}"`)
 	}
 
 	let whereClause = ''
 	if (spec.where) {
 		const whereLeaf = (f: Filter) => compileFilter(f, primaryKey, nextParam)
-		const whereParts: string[] = []
-		for (const child of spec.where.children) {
-			const compiled = compileChild(child, whereLeaf)
-			if (compiled) whereParts.push(compiled)
-		}
+		const whereParts = compileChildren(spec.where, whereLeaf)
 		if (whereParts.length > 0) whereClause = `WHERE ${whereParts.join(' AND ')}`
 	}
 
@@ -339,11 +337,7 @@ export function buildAggregateQuery(
 		const groupBySet = new Set(spec.groupBy)
 		const havingLeaf = (f: Filter) =>
 			compileOps(f, resolveHavingField(f.field, primaryKey, aliasToExpr, groupBySet), nextParam)
-		const havingParts: string[] = []
-		for (const child of spec.having.children) {
-			const compiled = compileChild(child, havingLeaf)
-			if (compiled) havingParts.push(compiled)
-		}
+		const havingParts = compileChildren(spec.having, havingLeaf)
 		if (havingParts.length > 0) havingClause = `HAVING ${havingParts.join(' AND ')}`
 	}
 

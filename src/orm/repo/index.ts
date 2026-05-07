@@ -1,4 +1,5 @@
 export {
+	AggregateBuilder,
 	AllBuilder,
 	type AllBuilderSurface,
 	OneBuilder,
