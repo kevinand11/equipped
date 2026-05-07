@@ -49,17 +49,15 @@ export type AllBuilderSurface<S extends AnySchema, A = unknown, Sel extends stri
 	(HasMethod<A, 'updateMany'> extends true ? {} : { update: never }) &
 	(HasMethod<A, 'deleteMany'> extends true ? {} : { delete: never })
 
-type HasNonEmptyAggregateOps<A> = A extends { aggregateOps: readonly [infer _First, ...infer _Rest] } ? true : false
+type HasNonEmptyAggregateOps<A> = A extends { aggregateOps: readonly [any, ...any[]] } ? true : false
 
 export type SchemaRefSurface<S extends AnySchema, A = unknown> =
 	Omit<SchemaRef<S, A>, 'raw' | 'aggregate'> &
 	(HasMethod<A, 'raw'> extends true
 		? { raw: <T = InferRawReturn<A>>(...args: InferRawArgs<A>) => Promise<T> }
 		: { raw: never }) &
-	(HasMethod<A, 'aggregate'> extends true
-		? HasNonEmptyAggregateOps<A> extends true
-			? { aggregate: SchemaRef<S, A>['aggregate'] }
-			: { aggregate: never }
+	([HasMethod<A, 'aggregate'>, HasNonEmptyAggregateOps<A>] extends [true, true]
+		? { aggregate: SchemaRef<S, A>['aggregate'] }
 		: { aggregate: never })
 
 type ReadBuilderFor<TBuilder, S extends AnySchema, A, Sel extends string, P extends readonly AnyPreloadDef[]> = TBuilder extends {
