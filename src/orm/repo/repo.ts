@@ -560,7 +560,7 @@ if (import.meta.vitest) {
 			})
 
 			test('createOne throws OrmValidationError with kind validation and field populated', async () => {
-				const { OrmValidationError } = await import('../schema-validations')
+				const { OrmValidationError } = await import('../errors')
 				const repo = makeRepo()
 				try {
 					await repo.on(UserSchema).one().create({ email: 123 as any, name: 'Bad' })
@@ -591,7 +591,7 @@ if (import.meta.vitest) {
 			})
 
 			test('createMany collects all failures with rowIndex and throws single OrmValidationError', async () => {
-				const { OrmValidationError } = await import('../schema-validations')
+				const { OrmValidationError } = await import('../errors')
 				const repo = makeRepo()
 				try {
 					await repo.on(UserSchema).all().create([
@@ -1255,7 +1255,7 @@ if (import.meta.vitest) {
 		})
 
 		test('unknown field in filter throws OrmValidationError at boundary', async () => {
-			const { OrmValidationError: OrmValErr } = await import('../schema-validations')
+			const { OrmValidationError: OrmValErr } = await import('../errors')
 			const { repo } = makeE2eRepo()
 			await seedData(repo)
 			await expect(
@@ -1403,7 +1403,7 @@ if (import.meta.vitest) {
 
 		test('create-vs-op conflict throws OrmValidationError with kind conflicting-ops', async () => {
 			const { IncOp } = await import('../updates')
-			const { OrmValidationError } = await import('../schema-validations')
+			const { OrmValidationError } = await import('../errors')
 			const repo = makeUpsertRepo()
 
 			try {
@@ -1490,7 +1490,7 @@ if (import.meta.vitest) {
 		})
 
 		test('validates create payload and throws OrmValidationError on invalid', async () => {
-			const { OrmValidationError } = await import('../schema-validations')
+			const { OrmValidationError } = await import('../errors')
 			const repo = makeUpsertRepo()
 
 			await expect(
@@ -1503,7 +1503,7 @@ if (import.meta.vitest) {
 		})
 
 		test('upsert-filter-incompatible error from adapter boundary', async () => {
-			const { OrmValidationError } = await import('../schema-validations')
+			const { OrmValidationError } = await import('../errors')
 
 			const spy = mockInstance()
 			class RestrictedAdapter extends OrmAdapter {
@@ -1874,7 +1874,7 @@ if (import.meta.vitest) {
 	describe('class-based OrmAdapter with Repo', async () => {
 		const { OrmAdapter } = await import('../orm-adapter')
 		const { FilterGroup } = await import('../filter')
-		const { OrmValidationError } = await import('../schema-validations')
+		const { OrmValidationError } = await import('../errors')
 
 		function makeClassAdapter() {
 			const stores = new Map<string, Map<string, Record<string, unknown>>>()

@@ -1,8 +1,8 @@
 import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
 import { EquippedError } from '../errors'
-import type { AnySchemaField, SchemaField } from './fields'
 import { OrmValidationError, type OrmValidationFailure } from './errors'
+import type { AnySchemaField, SchemaField } from './fields'
 import { Schema, type AnySchema, type SchemaFields, type SchemaOutput } from './schema'
 import { SetOp, isUpdateOp, opTouchedFields, type AnyUpdateOp } from './updates'
 import type { Prettify } from './utils'
@@ -97,8 +97,6 @@ export function validateUpdate<S extends AnySchema>(s: S, data: Record<string, u
 	const validated = v.assert(v.object(pipes), data) as Record<string, unknown>
 	return { ...validated, ...ops } as SchemaUpdateOutput<S>
 }
-
-export { OrmValidationError, type OrmValidationErrorKind, type OrmValidationFailure } from './errors'
 
 export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[], operation = 'updateByPk'): AnyUpdateOp[] {
 	const touched = new Map<string, number[]>()

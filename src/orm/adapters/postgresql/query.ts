@@ -1,6 +1,6 @@
+import { OrmValidationError } from '../../errors'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import type { QueryOptions } from '../../query'
-import { OrmValidationError } from '../../errors'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, UnsetOp } from '../../updates'
 
 function mapField(field: string, primaryKey: string): string {
@@ -266,7 +266,7 @@ if (import.meta.vitest) {
 	const { FilterGroup } = await import('../../filter')
 	const { OrderBy } = await import('../../query')
 	const { IncOp, MulOp, MinOp, MaxOp, UnsetOp, PushOp, PullOp, PatchOp, SetOp, flattenOps } = await import('../../updates')
-	const { OrmValidationError } = await import('../../schema-validations')
+	const { OrmValidationError } = await import('../../errors')
 
 	describe('compilePgFilter', () => {
 		test('empty filter group compiles to empty WHERE clause', () => {
