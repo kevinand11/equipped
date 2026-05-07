@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { Pool, type PoolClient } from 'pg'
+import { v } from 'valleyed'
 
 import {
 	buildDeleteQuery,
@@ -12,8 +13,9 @@ import {
 	extractUpsertConflictColumn,
 } from './query'
 import { EquippedError } from '../../../errors'
-import { Adapter } from '../../adapter'
+import { configurable } from '../../../utilities'
 import type { FilterGroup } from '../../filter'
+import { OrmAdapter } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import { flattenOps, type AnyUpdateOp } from '../../updates'
@@ -32,225 +34,255 @@ export type PostgresqlConnectionConfig = {
 	ssl?: boolean
 }
 
-const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
-
-export function createPostgresAdapter(connectionConfig: PostgresqlConnectionConfig) {
-	const pool = new Pool({
-		host: connectionConfig.host,
-		port: connectionConfig.port,
-		user: connectionConfig.username,
-		password: connectionConfig.password,
-		database: connectionConfig.database,
-		ssl: connectionConfig.ssl ? { rejectUnauthorized: false } : false,
+const postgresqlConnectionPipe = () =>
+	v.object({
+		host: v.string(),
+		port: v.number(),
+		username: v.string(),
+		password: v.string(),
+		database: v.string(),
 	})
 
-	function getClient() {
-		return sessionStore.getStore() ?? pool
+const sessionStore = new AsyncLocalStorage<PoolClient | undefined>()
+
+export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmAdapter as unknown as new () => OrmAdapter) {
+	readonly schemaConfigPipe = v.object({
+		schema: v.optional(v.string()),
+		table: v.string(),
+	})
+
+	readonly supportedFieldTypes = ['string', 'number', 'boolean', 'null', 'object', 'array', 'date'] as const
+	readonly queryableOps = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains'] as const
+	readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
+
+	readonly pool: Pool
+
+	protected constructor(config: typeof PostgresAdapter.Config, ssl = false) {
+		super(config)
+		this.pool = new Pool({
+			host: config.host,
+			port: config.port,
+			user: config.username,
+			password: config.password,
+			database: config.database,
+			ssl: ssl ? { rejectUnauthorized: false } : false,
+		})
 	}
 
-	function resolveTableName(config: PostgresqlRepoConfig) {
+	#getClient() {
+		return sessionStore.getStore() ?? this.pool
+	}
+
+	#resolveTableName(config: PostgresqlRepoConfig) {
 		return config.schema && config.schema !== 'public' ? `${config.schema}.${config.table}` : config.table
 	}
 
-	const adapter = Adapter.from<PostgresqlRepoConfig>()
-		.supportedFieldTypes('string', 'number', 'boolean', 'null', 'object', 'array', 'date')
-		.queryableOps('eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains')
-		.updateOps('set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch')
-		.lifecycle({
-			connect: async () => {},
-			disconnect: async () => {
-				try {
-					await pool.end()
-				} catch (error) {
-					throw new EquippedError('Failed to disconnect PostgreSQL pool', { adapter: 'postgresql' }, error)
-				}
-			},
-		})
-		.crud({
-			findByPk: async (schema, config, pk) => {
-				try {
-					const tableName = resolveTableName(config)
-					const pkName = schema.pkField.name
-					const result = await getClient().query(`SELECT * FROM "${tableName}" WHERE "${pkName}" = $1`, [pk])
-					return result.rows[0] ?? null
-				} catch (error) {
-					throw new EquippedError(
-						'PostgreSQL findByPk failed',
-						{ adapter: 'postgresql', operation: 'findByPk', table: config.table },
-						error,
-					)
-				}
-			},
-			createMany: async (_schema, config, data) => {
-				try {
-					const tableName = resolveTableName(config)
-					const client = getClient()
-					const results: Record<string, unknown>[] = []
-					for (const doc of data) {
-						const { sql, params } = buildCreateQuery(tableName, doc)
-						const result = await client.query(sql, params)
-						results.push(result.rows[0])
-					}
-					return results
-				} catch (error) {
-					throw new EquippedError(
-						'PostgreSQL createMany failed',
-						{ adapter: 'postgresql', operation: 'createMany', table: config.table },
-						error,
-					)
-				}
-			},
-			updateByPk: async (schema, config, pk, ops) => {
-				try {
-					const tableName = resolveTableName(config)
-					const pkName = schema.pkField.name
-					const data = flattenOps(ops)
-					if (Object.keys(data).length === 0) {
-						const result = await getClient().query(`SELECT * FROM "${tableName}" WHERE "${pkName}" = $1`, [pk])
-						return result.rows[0] ?? null
-					}
-					const { sql, params } = buildPkUpdateQuery(tableName, pkName, pk, data)
-					const result = await getClient().query(sql, params)
-					return result.rows[0] ?? null
-				} catch (error) {
-					throw new EquippedError(
-						'PostgreSQL updateByPk failed',
-						{ adapter: 'postgresql', operation: 'updateByPk', table: config.table },
-						error,
-					)
-				}
-			},
-			deleteByPk: async (schema, config, pk) => {
-				try {
-					const tableName = resolveTableName(config)
-					const pkName = schema.pkField.name
-					const result = await getClient().query(`DELETE FROM "${tableName}" WHERE "${pkName}" = $1 RETURNING *`, [pk])
-					return result.rows[0] ?? null
-				} catch (error) {
-					throw new EquippedError(
-						'PostgreSQL deleteByPk failed',
-						{ adapter: 'postgresql', operation: 'deleteByPk', table: config.table },
-						error,
-					)
-				}
-			},
-			raw: async (_schema: AnySchema, config: PostgresqlRepoConfig, command: string, params: unknown[] = []) => {
-				try {
-					const result = await getClient().query(command, params)
-					return result
-				} catch (error) {
-					if (error instanceof EquippedError) throw error
-					throw new EquippedError(
-						'PostgreSQL raw failed',
-						{ adapter: 'postgresql', operation: 'raw', table: config.table },
-						error,
-					)
-				}
-			},
-		})
-		.queryable({
-			findMany: async (schema: AnySchema, config: PostgresqlRepoConfig, filter: FilterGroup, options?: QueryOptions) => {
-				try {
-					const tableName = resolveTableName(config)
-					const { sql, params } = buildSelectQuery(filter, options, tableName, schema.pkField.name)
-					const result = await getClient().query(sql, params)
-					return result.rows
-				} catch (error) {
-					throw new EquippedError(
-						'PostgreSQL findMany failed',
-						{ adapter: 'postgresql', operation: 'findMany', table: config.table },
-						error,
-					)
-				}
-			},
-			updateMany: async (schema: AnySchema, config: PostgresqlRepoConfig, filter: FilterGroup, data: Record<string, unknown>) => {
-				try {
-					const tableName = resolveTableName(config)
-					const { sql, params } = buildUpdateQuery(filter, tableName, schema.pkField.name, data)
-					const result = await getClient().query(sql, params)
-					return result.rows
-				} catch (error) {
-					throw new EquippedError(
-						'PostgreSQL updateMany failed',
-						{ adapter: 'postgresql', operation: 'updateMany', table: config.table },
-						error,
-					)
-				}
-			},
-			deleteMany: async (schema: AnySchema, config: PostgresqlRepoConfig, filter: FilterGroup) => {
-				try {
-					const tableName = resolveTableName(config)
-					const { sql, params } = buildDeleteQuery(filter, tableName, schema.pkField.name)
-					const result = await getClient().query(sql, params)
-					return result.rows
-				} catch (error) {
-					throw new EquippedError(
-						'PostgreSQL deleteMany failed',
-						{ adapter: 'postgresql', operation: 'deleteMany', table: config.table },
-						error,
-					)
-				}
-			},
-			upsertOne: async (
-				schema: AnySchema,
-				config: PostgresqlRepoConfig,
-				filter: FilterGroup,
-				create: Record<string, unknown>,
-				ops: AnyUpdateOp[],
-			) => {
-				try {
-					const tableName = resolveTableName(config)
-					const conflictColumn = extractUpsertConflictColumn(filter, schema.name)
-					const data = ops.length > 0 ? flattenOps(ops) : {}
-					const { sql, params } = buildUpsertQuery(tableName, conflictColumn, schema.pkField.name, create, data)
-					const result = await getClient().query(sql, params)
-					return result.rows[0]
-				} catch (error) {
-					if (error instanceof EquippedError) throw error
-					throw new EquippedError(
-						'PostgreSQL upsertOne failed',
-						{ adapter: 'postgresql', operation: 'upsertOne', table: config.table },
-						error,
-					)
-				}
-			},
-		})
-		.transactional({
-			session: async <T>(fn: () => Promise<T>): Promise<T> => {
-				if (sessionStore.getStore()) return fn()
-				let client: PoolClient | undefined
-				try {
-					client = await pool.connect()
-					await client.query('BEGIN')
-					const result = await sessionStore.run(client, fn)
-					await client.query('COMMIT')
-					return result
-				} catch (error) {
-					if (client) {
-						try {
-							await client.query('ROLLBACK')
-						} catch {
-							// ignore rollback errors and report original failure
-						}
-					}
-					if (error instanceof EquippedError) throw error
-					throw new EquippedError('PostgreSQL session failed', { adapter: 'postgresql', operation: 'session' }, error)
-				} finally {
-					client?.release()
-				}
-			},
-		})
-		.build()
+	async connect() {}
 
-	return { adapter, pool }
+	async disconnect() {
+		try {
+			await this.pool.end()
+		} catch (error) {
+			throw new EquippedError('Failed to disconnect PostgreSQL pool', { adapter: 'postgresql' }, error)
+		}
+	}
+
+	async findByPk(schema: AnySchema, config: unknown, pk: unknown) {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const tableName = this.#resolveTableName(c)
+			const pkName = schema.pkField.name
+			const result = await this.#getClient().query(`SELECT * FROM "${tableName}" WHERE "${pkName}" = $1`, [pk])
+			return result.rows[0] ?? null
+		} catch (error) {
+			throw new EquippedError(
+				'PostgreSQL findByPk failed',
+				{ adapter: 'postgresql', operation: 'findByPk', table: c.table },
+				error,
+			)
+		}
+	}
+
+	async createMany(_schema: AnySchema, config: unknown, data: Record<string, unknown>[]) {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const tableName = this.#resolveTableName(c)
+			const client = this.#getClient()
+			const results: Record<string, unknown>[] = []
+			for (const doc of data) {
+				const { sql, params } = buildCreateQuery(tableName, doc)
+				const result = await client.query(sql, params)
+				results.push(result.rows[0])
+			}
+			return results
+		} catch (error) {
+			throw new EquippedError(
+				'PostgreSQL createMany failed',
+				{ adapter: 'postgresql', operation: 'createMany', table: c.table },
+				error,
+			)
+		}
+	}
+
+	async updateByPk(schema: AnySchema, config: unknown, pk: unknown, ops: AnyUpdateOp[]) {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const tableName = this.#resolveTableName(c)
+			const pkName = schema.pkField.name
+			const data = flattenOps(ops)
+			if (Object.keys(data).length === 0) {
+				const result = await this.#getClient().query(`SELECT * FROM "${tableName}" WHERE "${pkName}" = $1`, [pk])
+				return result.rows[0] ?? null
+			}
+			const { sql, params } = buildPkUpdateQuery(tableName, pkName, pk, data)
+			const result = await this.#getClient().query(sql, params)
+			return result.rows[0] ?? null
+		} catch (error) {
+			throw new EquippedError(
+				'PostgreSQL updateByPk failed',
+				{ adapter: 'postgresql', operation: 'updateByPk', table: c.table },
+				error,
+			)
+		}
+	}
+
+	async deleteByPk(schema: AnySchema, config: unknown, pk: unknown) {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const tableName = this.#resolveTableName(c)
+			const pkName = schema.pkField.name
+			const result = await this.#getClient().query(`DELETE FROM "${tableName}" WHERE "${pkName}" = $1 RETURNING *`, [pk])
+			return result.rows[0] ?? null
+		} catch (error) {
+			throw new EquippedError(
+				'PostgreSQL deleteByPk failed',
+				{ adapter: 'postgresql', operation: 'deleteByPk', table: c.table },
+				error,
+			)
+		}
+	}
+
+	async raw(_schema: AnySchema, config: unknown, command: string, params: unknown[] = []) {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const result = await this.#getClient().query(command, params)
+			return result
+		} catch (error) {
+			if (error instanceof EquippedError) throw error
+			throw new EquippedError(
+				'PostgreSQL raw failed',
+				{ adapter: 'postgresql', operation: 'raw', table: c.table },
+				error,
+			)
+		}
+	}
+
+	async findMany(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions) {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const tableName = this.#resolveTableName(c)
+			const { sql, params } = buildSelectQuery(filter, options, tableName, schema.pkField.name)
+			const result = await this.#getClient().query(sql, params)
+			return result.rows
+		} catch (error) {
+			throw new EquippedError(
+				'PostgreSQL findMany failed',
+				{ adapter: 'postgresql', operation: 'findMany', table: c.table },
+				error,
+			)
+		}
+	}
+
+	async updateMany(schema: AnySchema, config: unknown, filter: FilterGroup, data: Record<string, unknown>) {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const tableName = this.#resolveTableName(c)
+			const { sql, params } = buildUpdateQuery(filter, tableName, schema.pkField.name, data)
+			const result = await this.#getClient().query(sql, params)
+			return result.rows
+		} catch (error) {
+			throw new EquippedError(
+				'PostgreSQL updateMany failed',
+				{ adapter: 'postgresql', operation: 'updateMany', table: c.table },
+				error,
+			)
+		}
+	}
+
+	async deleteMany(schema: AnySchema, config: unknown, filter: FilterGroup) {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const tableName = this.#resolveTableName(c)
+			const { sql, params } = buildDeleteQuery(filter, tableName, schema.pkField.name)
+			const result = await this.#getClient().query(sql, params)
+			return result.rows
+		} catch (error) {
+			throw new EquippedError(
+				'PostgreSQL deleteMany failed',
+				{ adapter: 'postgresql', operation: 'deleteMany', table: c.table },
+				error,
+			)
+		}
+	}
+
+	async upsertOne(
+		schema: AnySchema,
+		config: unknown,
+		filter: FilterGroup,
+		create: Record<string, unknown>,
+		ops: AnyUpdateOp[],
+	) {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const tableName = this.#resolveTableName(c)
+			const conflictColumn = extractUpsertConflictColumn(filter, schema.name)
+			const data = ops.length > 0 ? flattenOps(ops) : {}
+			const { sql, params } = buildUpsertQuery(tableName, conflictColumn, schema.pkField.name, create, data)
+			const result = await this.#getClient().query(sql, params)
+			return result.rows[0]
+		} catch (error) {
+			if (error instanceof EquippedError) throw error
+			throw new EquippedError(
+				'PostgreSQL upsertOne failed',
+				{ adapter: 'postgresql', operation: 'upsertOne', table: c.table },
+				error,
+			)
+		}
+	}
+
+	async session<T>(fn: () => Promise<T>): Promise<T> {
+		if (sessionStore.getStore()) return fn()
+		let client: PoolClient | undefined
+		try {
+			client = await this.pool.connect()
+			await client.query('BEGIN')
+			const result = await sessionStore.run(client, fn)
+			await client.query('COMMIT')
+			return result
+		} catch (error) {
+			if (client) {
+				try {
+					await client.query('ROLLBACK')
+				} catch {
+					// ignore rollback errors and report original failure
+				}
+			}
+			if (error instanceof EquippedError) throw error
+			throw new EquippedError('PostgreSQL session failed', { adapter: 'postgresql', operation: 'session' }, error)
+		} finally {
+			client?.release()
+		}
+	}
 }
 
 if (import.meta.vitest) {
-	const { describe, test, expect, expectTypeOf } = import.meta.vitest
+	const { describe, test, expect, expectTypeOf, vi } = import.meta.vitest
 
-	describe('postgresql adapter: Adapter.from shape', () => {
-		test('createPostgresAdapter returns adapter with correct capability declarations', () => {
-			const { adapter } = createPostgresAdapter({
+	describe('PostgresAdapter: class-via-configurable shape', () => {
+		test('PostgresAdapter.create returns instance with correct capability declarations', async () => {
+			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
+
+			const adapter = PostgresAdapter.create({
 				host: 'localhost',
 				port: 5432,
 				username: 'test',
@@ -267,10 +299,22 @@ if (import.meta.vitest) {
 			expect(adapter.updateOps).toEqual([
 				'set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch',
 			])
+
+			onSpy.mockRestore()
 		})
 
-		test('adapter exposes lifecycle, crud, queryable, and transactional bags', () => {
-			const { adapter } = createPostgresAdapter({
+		test('PostgresAdapter.create validates connection config', async () => {
+			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
+
+			expect(() => PostgresAdapter.create({ host: 123, port: 'bad' } as any)).toThrow()
+
+			onSpy.mockRestore()
+		})
+
+		test('pool is exposed as a readonly instance field', async () => {
+			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
+
+			const adapter = PostgresAdapter.create({
 				host: 'localhost',
 				port: 5432,
 				username: 'test',
@@ -278,32 +322,52 @@ if (import.meta.vitest) {
 				database: 'testdb',
 			})
 
-			expect(adapter.lifecycle).toBeDefined()
-			expect(adapter.lifecycle!.connect).toBeTypeOf('function')
-			expect(adapter.lifecycle!.disconnect).toBeTypeOf('function')
+			expect(adapter.pool).toBeInstanceOf(Pool)
 
-			expect(adapter.crud).toBeDefined()
-			expect(adapter.crud!.findByPk).toBeTypeOf('function')
-			expect(adapter.crud!.createMany).toBeTypeOf('function')
-			expect(adapter.crud!.updateByPk).toBeTypeOf('function')
-			expect(adapter.crud!.deleteByPk).toBeTypeOf('function')
-			expect(adapter.crud!.raw).toBeTypeOf('function')
+			onSpy.mockRestore()
+		})
 
-			expect(adapter.queryable).toBeDefined()
-			expect(adapter.queryable!.findMany).toBeTypeOf('function')
-			expect(adapter.queryable!.updateMany).toBeTypeOf('function')
-			expect(adapter.queryable!.deleteMany).toBeTypeOf('function')
-			expect(adapter.queryable!.upsertOne).toBeTypeOf('function')
+		test('schemaConfigPipe is declared as readonly with table-name shape', async () => {
+			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
 
-			expect(adapter.transactional).toBeDefined()
-			expect(adapter.transactional!.session).toBeTypeOf('function')
+			const adapter = PostgresAdapter.create({
+				host: 'localhost',
+				port: 5432,
+				username: 'test',
+				password: 'test',
+				database: 'testdb',
+			})
+
+			expect(adapter.schemaConfigPipe).toBeDefined()
+
+			onSpy.mockRestore()
+		})
+
+		test('auto-wires Instance hooks for connect and disconnect', async () => {
+			const { Instance: Inst } = await import('../../../instance')
+			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
+
+			PostgresAdapter.create({
+				host: 'localhost',
+				port: 5432,
+				username: 'test',
+				password: 'test',
+				database: 'testdb',
+			})
+
+			expect(onSpy).toHaveBeenCalledWith('start', expect.any(Function), expect.objectContaining({ class: PostgresAdapter }))
+			expect(onSpy).toHaveBeenCalledWith('close', expect.any(Function), expect.objectContaining({ class: PostgresAdapter }))
+
+			onSpy.mockRestore()
 		})
 
 		test('adapter.use returns OrmUse-shaped object', async () => {
+			const { Instance: Inst } = await import('../../../instance')
+			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Schema } = await import('../../schema')
-			const { v } = await import('valleyed')
+
 			const schema = Schema.from('test').pk('id', v.string(), () => 'x').build()
-			const { adapter } = createPostgresAdapter({
+			const adapter = PostgresAdapter.create({
 				host: 'localhost',
 				port: 5432,
 				username: 'test',
@@ -322,55 +386,46 @@ if (import.meta.vitest) {
 			expect(use.deleteOne).toBeTypeOf('function')
 			expect(use.deleteMany).toBeTypeOf('function')
 			expect(use.raw).toBeTypeOf('function')
+
+			onSpy.mockRestore()
 		})
 
-		test('type-level: adapter declares all 9 canonical update ops', () => {
-			const { adapter: _adapter } = createPostgresAdapter({
+		test('type-level: capability declarations use as const', async () => {
+			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
+
+			const adapter = PostgresAdapter.create({
 				host: 'localhost',
 				port: 5432,
 				username: 'test',
 				password: 'test',
 				database: 'testdb',
 			})
-			type Ops = typeof _adapter.updateOps
+
+			type Ops = typeof adapter.updateOps
 			expectTypeOf<Ops>().toEqualTypeOf<
 				readonly ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch']
 			>()
-		})
 
-		test('type-level: adapter declares all 7 field types', () => {
-			const { adapter: _adapter } = createPostgresAdapter({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
-			type Types = typeof _adapter.supportedFieldTypes
+			type Types = typeof adapter.supportedFieldTypes
 			expectTypeOf<Types>().toEqualTypeOf<
 				readonly ['string', 'number', 'boolean', 'null', 'object', 'array', 'date']
 			>()
-		})
 
-		test('type-level: adapter declares all 13 queryable ops including like', () => {
-			const { adapter: _adapter } = createPostgresAdapter({
-				host: 'localhost',
-				port: 5432,
-				username: 'test',
-				password: 'test',
-				database: 'testdb',
-			})
-			type Ops = typeof _adapter.queryableOps
-			expectTypeOf<Ops>().toEqualTypeOf<
+			type QOps = typeof adapter.queryableOps
+			expectTypeOf<QOps>().toEqualTypeOf<
 				readonly ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains']
 			>()
+
+			onSpy.mockRestore()
 		})
 
-		test('type-level: Repo.from with postgres adapter enables all builder methods', async () => {
+		test('type-level: Repo.from with PostgresAdapter enables all builder methods', async () => {
+			const { Instance: Inst } = await import('../../../instance')
+			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Repo } = await import('../../repo/repo')
 			const { Schema } = await import('../../schema')
-			const { v } = await import('valleyed')
-			const { adapter } = createPostgresAdapter({
+
+			const adapter = PostgresAdapter.create({
 				host: 'localhost',
 				port: 5432,
 				username: 'test',
@@ -394,13 +449,17 @@ if (import.meta.vitest) {
 			expectTypeOf(_all.delete).toBeFunction()
 			expectTypeOf(_ref.raw).toBeFunction()
 			expectTypeOf(repo.session).toBeFunction()
+
+			onSpy.mockRestore()
 		})
 
-		test('type-level: raw arg-tuple infers (command: string, params?: unknown[]) from PG adapter', async () => {
+		test('type-level: raw arg-tuple infers (command: string, params?: unknown[]) from PostgresAdapter', async () => {
+			const { Instance: Inst } = await import('../../../instance')
+			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Repo } = await import('../../repo/repo')
 			const { Schema } = await import('../../schema')
-			const { v } = await import('valleyed')
-			const { adapter } = createPostgresAdapter({
+
+			const adapter = PostgresAdapter.create({
 				host: 'localhost',
 				port: 5432,
 				username: 'test',
@@ -412,13 +471,17 @@ if (import.meta.vitest) {
 			const _ref = repo.on(_TestSchema)
 
 			expectTypeOf(_ref.raw).parameters.toEqualTypeOf<[command: string, params?: unknown[]]>()
+
+			onSpy.mockRestore()
 		})
 
-		test('type-level: per-call <T> override narrows PG raw return type', async () => {
+		test('type-level: per-call <T> override narrows PostgresAdapter raw return type', async () => {
+			const { Instance: Inst } = await import('../../../instance')
+			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Repo } = await import('../../repo/repo')
 			const { Schema } = await import('../../schema')
-			const { v } = await import('valleyed')
-			const { adapter } = createPostgresAdapter({
+
+			const adapter = PostgresAdapter.create({
 				host: 'localhost',
 				port: 5432,
 				username: 'test',
@@ -430,13 +493,17 @@ if (import.meta.vitest) {
 			const _ref = repo.on(_TestSchema)
 
 			expectTypeOf(_ref.raw<{ id: string }[]>).returns.toEqualTypeOf<Promise<{ id: string }[]>>()
+
+			onSpy.mockRestore()
 		})
 
 		test('raw forwards (command, params) to pool.query at runtime', async () => {
+			const { Instance: Inst } = await import('../../../instance')
+			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Schema } = await import('../../schema')
-			const { v } = await import('valleyed')
+
 			const schema = Schema.from('pg_raw').pk('id', v.string(), () => 'x').build()
-			const { adapter, pool } = createPostgresAdapter({
+			const adapter = PostgresAdapter.create({
 				host: 'localhost',
 				port: 5432,
 				username: 'test',
@@ -446,7 +513,7 @@ if (import.meta.vitest) {
 			let capturedCommand: unknown
 			let capturedParams: unknown
 			const mockResult = { rows: [{ id: '1' }], rowCount: 1 }
-			;(pool as any).query = async (cmd: unknown, params: unknown) => {
+			;(adapter.pool as any).query = async (cmd: unknown, params: unknown) => {
 				capturedCommand = cmd
 				capturedParams = params
 				return mockResult
@@ -455,13 +522,17 @@ if (import.meta.vitest) {
 			expect(capturedCommand).toBe('SELECT * FROM users WHERE id = $1')
 			expect(capturedParams).toEqual(['abc'])
 			expect(result).toBe(mockResult)
+
+			onSpy.mockRestore()
 		})
 
 		test('raw defaults params to [] when omitted', async () => {
+			const { Instance: Inst } = await import('../../../instance')
+			const onSpy = vi.spyOn(Inst, 'on').mockImplementation(() => {})
 			const { Schema } = await import('../../schema')
-			const { v } = await import('valleyed')
+
 			const schema = Schema.from('pg_raw2').pk('id', v.string(), () => 'x').build()
-			const { adapter, pool } = createPostgresAdapter({
+			const adapter = PostgresAdapter.create({
 				host: 'localhost',
 				port: 5432,
 				username: 'test',
@@ -469,23 +540,30 @@ if (import.meta.vitest) {
 				database: 'testdb',
 			})
 			let capturedParams: unknown
-			;(pool as any).query = async (_cmd: unknown, params: unknown) => {
+			;(adapter.pool as any).query = async (_cmd: unknown, params: unknown) => {
 				capturedParams = params
 				return { rows: [] }
 			}
 			await adapter.use(schema, { table: 'users' }).raw('SELECT 1')
 			expect(capturedParams).toEqual([])
+
+			onSpy.mockRestore()
 		})
 
-		test('nested session returns callback without starting new transaction', () => {
-			const { adapter } = createPostgresAdapter({
+		test('session method is exposed on the adapter', async () => {
+			const onSpy = vi.spyOn((await import('../../../instance')).Instance, 'on').mockImplementation(() => {})
+
+			const adapter = PostgresAdapter.create({
 				host: 'localhost',
 				port: 5432,
 				username: 'test',
 				password: 'test',
 				database: 'testdb',
 			})
-			expect(adapter.transactional!.session).toBeDefined()
+			expect(adapter.session).toBeDefined()
+			expect(adapter.session).toBeTypeOf('function')
+
+			onSpy.mockRestore()
 		})
 	})
 }
