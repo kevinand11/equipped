@@ -4,7 +4,7 @@ import { v } from 'valleyed'
 
 import { configurable } from '../../../utilities/configurable'
 import type { FilterGroup } from '../../filter'
-import { OrmAdapter } from '../../orm-adapter'
+import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import type { AnyUpdateOp } from '../../updates'
@@ -25,6 +25,7 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 	readonly supportedFieldTypes = this.#inMemory.supportedFieldTypes
 	readonly queryableOps = this.#inMemory.queryableOps
 	readonly updateOps = this.#inMemory.updateOps
+	readonly aggregateOps = this.#inMemory.aggregateOps
 
 	#writeQueue: Promise<void> = Promise.resolve()
 
@@ -125,6 +126,10 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 		const result = await this.#inMemory.upsertOne(schema, config, filter, create, ops)
 		await this.#persistToDisk()
 		return result
+	}
+
+	async aggregate(schema: AnySchema, config: unknown, spec: AggregateSpec) {
+		return this.#inMemory.aggregate(schema, config, spec)
 	}
 
 	async session<T>(fn: () => Promise<T>): Promise<T> {
@@ -402,6 +407,138 @@ if (import.meta.vitest) {
 			const files = await readdir(tmpDir)
 			const tmpFiles = files.filter((f) => f.includes('.tmp.'))
 			expect(tmpFiles).toHaveLength(0)
+		})
+	})
+
+	describe('json adapter — aggregate delegation', () => {
+		const orderSchema = Schema.from('orders')
+			.pk('id', v.string(), () => 'o')
+			.field('amount', v.number())
+			.field('region', v.string())
+			.build()
+
+		const orderSeed = [
+			{ id: 'o1', amount: 100, region: 'us' },
+			{ id: 'o2', amount: 200, region: 'eu' },
+			{ id: 'o3', amount: 150, region: 'us' },
+		]
+
+		async function makeSeededAdapter() {
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+			const use = adapter.use(orderSchema, { table: 'orders' })
+			await use.createMany(orderSeed)
+			return adapter
+		}
+
+		test('aggregateOps matches in-memory adapter', () => {
+			const json = JsonAdapter.create({ filePath })
+			const inMem = InMemoryAdapter.create({})
+			expect(json.aggregateOps).toEqual(inMem.aggregateOps)
+			expect(json.aggregateOps).toEqual(['count', 'countDistinct', 'sum', 'avg', 'min', 'max'])
+		})
+
+		test('count returns identical result to in-memory', async () => {
+			const adapter = await makeSeededAdapter()
+			const result = await adapter.aggregate(orderSchema, { table: 'orders' }, {
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: [],
+			})
+			expect(result).toEqual([{ total: 3 }])
+			await adapter.disconnect()
+		})
+
+		test('countDistinct returns identical result to in-memory', async () => {
+			const adapter = await makeSeededAdapter()
+			const result = await adapter.aggregate(orderSchema, { table: 'orders' }, {
+				aggregates: [{ fn: 'countDistinct', field: 'region', alias: 'uniqueRegions' }],
+				groupBy: [],
+			})
+			expect(result).toEqual([{ uniqueRegions: 2 }])
+			await adapter.disconnect()
+		})
+
+		test('sum, avg, min, max return identical results to in-memory', async () => {
+			const adapter = await makeSeededAdapter()
+			const result = await adapter.aggregate(orderSchema, { table: 'orders' }, {
+				aggregates: [
+					{ fn: 'sum', field: 'amount', alias: 'totalAmount' },
+					{ fn: 'avg', field: 'amount', alias: 'avgAmount' },
+					{ fn: 'min', field: 'amount', alias: 'minAmount' },
+					{ fn: 'max', field: 'amount', alias: 'maxAmount' },
+				],
+				groupBy: [],
+			})
+			expect(result).toEqual([{ totalAmount: 450, avgAmount: 150, minAmount: 100, maxAmount: 200 }])
+			await adapter.disconnect()
+		})
+
+		test('groupBy returns identical results to in-memory', async () => {
+			const adapter = await makeSeededAdapter()
+			const result = await adapter.aggregate(orderSchema, { table: 'orders' }, {
+				aggregates: [
+					{ fn: 'count', alias: 'cnt' },
+					{ fn: 'sum', field: 'amount', alias: 'total' },
+				],
+				groupBy: ['region'],
+			})
+			const sorted = result.sort((a, b) => String(a.region).localeCompare(String(b.region)))
+			expect(sorted).toEqual([
+				{ region: 'eu', cnt: 1, total: 200 },
+				{ region: 'us', cnt: 2, total: 250 },
+			])
+			await adapter.disconnect()
+		})
+
+		test('where pre-filter returns identical results to in-memory', async () => {
+			const adapter = await makeSeededAdapter()
+			const result = await adapter.aggregate(orderSchema, { table: 'orders' }, {
+				where: FilterGroup.create().gt('amount', 100),
+				aggregates: [{ fn: 'count', alias: 'cnt' }],
+				groupBy: [],
+			})
+			expect(result).toEqual([{ cnt: 2 }])
+			await adapter.disconnect()
+		})
+
+		test('having post-filter returns identical results to in-memory', async () => {
+			const adapter = await makeSeededAdapter()
+			const result = await adapter.aggregate(orderSchema, { table: 'orders' }, {
+				aggregates: [{ fn: 'count', alias: 'cnt' }],
+				groupBy: ['region'],
+				having: FilterGroup.create().gt('cnt', 1),
+			})
+			expect(result).toEqual([{ region: 'us', cnt: 2 }])
+			await adapter.disconnect()
+		})
+
+		test('aggregate delegates to same in-memory instance used by CRUD', async () => {
+			const schema = Schema.from('items')
+				.pk('id', v.string(), () => 'i')
+				.field('val', v.number())
+				.build()
+
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+			const use = adapter.use(schema, { table: 'items' })
+
+			await use.createMany([
+				{ id: 'i1', val: 10 },
+				{ id: 'i2', val: 20 },
+			])
+
+			const spec: AggregateSpec = {
+				aggregates: [{ fn: 'sum', field: 'val', alias: 'total' }],
+				groupBy: [],
+			}
+			const result = await adapter.aggregate(schema, { table: 'items' }, spec)
+			expect(result).toEqual([{ total: 30 }])
+
+			await use.createOne({ id: 'i3', val: 30 })
+			const result2 = await adapter.aggregate(schema, { table: 'items' }, spec)
+			expect(result2).toEqual([{ total: 60 }])
+
+			await adapter.disconnect()
 		})
 	})
 

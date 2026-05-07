@@ -362,7 +362,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		const results: Record<string, unknown>[] = []
 		for (const [, groupRows] of groups) {
 			const result: Record<string, unknown> = {}
-			if (spec.groupBy.length > 0 && groupRows.length > 0) {
+			if (spec.groupBy.length > 0) {
 				for (const field of spec.groupBy) {
 					result[field] = groupRows[0][field]
 				}
