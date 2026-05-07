@@ -49,8 +49,7 @@ which can drift across runs.
 | `ready-for-agent` | Human (triage) | This issue is agent-territory; pick it up | Orchestrator, on 0-commit clean exit |
 | `needs-revision` | Human (PR reviewer) | Run the addresser on this PR | Orchestrator, after addresser run |
 
-The orchestrator does **not** use any other labels for state tracking. There
-is no `in-pr`, no `sandcastle:attempts/N`, no `needs-human`. The orchestrator
+The orchestrator does **not** use any other labels for state tracking. It
 infers state from PR existence + draft state + branch ahead-count.
 
 ## Per-issue state machine

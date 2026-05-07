@@ -20,22 +20,17 @@ Edit the right-hand column to match whatever vocabulary you actually use.
 
 | Label             | Applied by | Meaning                                                                                                                                                                                                                                                |
 | ----------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `feature/<slug>`  | Maintainer | Target feature branch the issue's PR will be opened against. Each `ready-for-agent` issue must carry exactly one `feature/*` label or the loop halts.                                                                                                  |
-| `in-pr`           | Sandcastle | A Sandcastle PR for this issue is open and awaiting human review. Auto-applied on PR creation; human-removed only if the PR is closed without merge.                                                                                                   |
 | `needs-revision`  | Reviewer   | Reviewer wants Sandcastle to take another pass at this PR — applied on the PR (not the issue) after leaving review comments. GitHub blocks PR authors from formally requesting changes on their own PR, so this label is the trigger. Sandcastle removes it after pushing a fix; re-apply for further iterations. |
 
 ### Lifecycle
 
 1. Issue starts at `needs-triage`.
-2. Maintainer evaluates; when AFK-ready, applies `ready-for-agent` and exactly one `feature/<slug>` label naming the target branch.
-3. A dev runs the loop scoped to a specific feature: `npm run sandcastle -- feature/<slug>` (or with a custom iteration cap, `npm run sandcastle -- feature/<slug> --max-iterations 5`). The feature arg is required; the loop refuses to start without it. Multiple devs can run loops in parallel for different features without colliding.
-4. Sandcastle's planner picks up issues matching `label:ready-for-agent label:"feature/<slug>" -label:in-pr` on its next iteration.
-5. After implementation + review, Sandcastle pushes a branch and opens a PR targeting the feature branch, then auto-applies `in-pr` so subsequent iterations skip the issue.
-6. A human reviews the PR. Merging closes the issue (PR body uses `Closes #<id>`). To request changes, the reviewer leaves comments on the PR and applies the `needs-revision` label — this triggers Sandcastle's Phase 0 addresser on the next iteration of any loop scoped to the same feature. Sandcastle removes the label after pushing a fix; re-apply it for additional rounds.
+2. Maintainer evaluates; when AFK-ready, applies `ready-for-agent`. The issue should be a sub-issue of a PRD whose integration branch (`prds-issue-<N>`) already exists on origin.
+3. A dev runs the sandcastle loop scoped to a specific PRD. Multiple devs can run loops in parallel for different PRDs without colliding.
+4. Sandcastle picks up open sub-issues of the scoped PRD that carry `ready-for-agent`, skipping any with unresolved `Depends on` / `Blocked by` trailers, on its next iteration.
+5. After implementation + review, Sandcastle pushes `sandcastle/issue-<N>` and opens a draft PR targeting the PRD's integration branch.
+6. A human reviews the PR. Merging it merges the slice into the integration branch; the PRD ships to `main` as one squash when every slice has landed. To request changes, the reviewer leaves comments on the PR and applies the `needs-revision` label — Sandcastle's addresser picks it up on the next iteration. Sandcastle removes the label after pushing a fix; re-apply for additional rounds.
 
 ### Notes for maintainers
 
-- `feature/<slug>` labels must correspond to feature branches that already exist on origin. Sandcastle does not auto-create feature branches — see `.sandcastle/main.ts` for the validation check that halts the loop on missing branches.
-- An issue with two or more `feature/*` labels halts the loop. Resolve ambiguity before running.
-- Removing `in-pr` from a closed-without-merge issue causes Sandcastle to re-pick it on the next iteration. If you don't want a re-attempt, close the issue too.
 - Issue-to-issue dependencies are declared as `Depends on #N` / `Blocked by #N` trailers in the issue body. The host resolver runs before the planner each iteration: dependents whose deps aren't all closed get skipped (logged to console); missing references and cycles hard-fail the loop. See [`docs/agents/issue-tracker.md`](./issue-tracker.md#declaring-dependencies-between-issues) for the full convention.
