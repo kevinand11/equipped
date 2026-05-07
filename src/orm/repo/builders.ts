@@ -1,6 +1,7 @@
 import type { InferRawArgs, InferRawReturn } from '../adapter'
 import type { OrmUse } from '../adapters/base'
 import type { AnyField } from '../fields'
+import { OrmNotFoundError } from '../errors'
 import { FilterGroup, type FilterFactory } from '../filter'
 import { OrderBy } from '../query'
 import type { AnyPreloadDef } from '../relations'
@@ -21,6 +22,7 @@ import {
 import { resolvePreloads } from './internals/preloads'
 import type { SelectedWithPreloads } from './internals/types'
 
+type MaybeNull<T, Req extends boolean> = Req extends true ? T : T | null
 type SchemaPrimaryKeyValue<S extends AnySchema> = SchemaOutput<S>[S['pkField']['name'] & keyof SchemaOutput<S>]
 export type UpsertInput<S extends AnySchema> = { create: SchemaCreateInput<S> } | { create: SchemaCreateInput<S>; update: SchemaUpdateInput<S> }
 type ReadState<Sel extends string, P extends readonly AnyPreloadDef[] = readonly AnyPreloadDef[]> = {
@@ -36,8 +38,8 @@ export type HasMethod<A, Method extends string> =
 			: false
 		: false
 
-export type OneBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> =
-	OneBuilder<S, A, Sel, P> &
+export type OneBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = [], Req extends boolean = false> =
+	OneBuilder<S, A, Sel, P, Req> &
 	(HasMethod<A, 'updateMany'> extends true ? {} : { update: never }) &
 	(HasMethod<A, 'deleteMany'> extends true ? {} : { delete: never }) &
 	(HasMethod<A, 'upsertOne'> extends true ? {} : { upsert: never })
@@ -55,11 +57,14 @@ export type SchemaRefSurface<S extends AnySchema, A = unknown> =
 
 type ReadBuilderFor<TBuilder, S extends AnySchema, A, Sel extends string, P extends readonly AnyPreloadDef[]> = TBuilder extends {
 	_builderKind: 'one'
+	_req: true
 }
-	? OneBuilderSurface<S, A, Sel, P>
-	: TBuilder extends { _builderKind: 'all' }
-		? AllBuilderSurface<S, A, Sel, P>
-		: never
+	? OneBuilderSurface<S, A, Sel, P, true>
+	: TBuilder extends { _builderKind: 'one' }
+		? OneBuilderSurface<S, A, Sel, P, false>
+		: TBuilder extends { _builderKind: 'all' }
+			? AllBuilderSurface<S, A, Sel, P>
+			: never
 
 export class SchemaContext<S extends AnySchema> {
 	constructor(
@@ -158,8 +163,18 @@ export class SchemaRef<S extends AnySchema, A = unknown> {
 	}
 }
 
-export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> extends ReadSelectState<S, A, Sel, P> {
+export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = [], Req extends boolean = false> extends ReadSelectState<S, A, Sel, P> {
 	declare readonly _builderKind: 'one'
+	declare readonly _req: Req
+
+	protected _required: boolean
+	protected _requiredMessage: string | undefined
+
+	constructor(context: SchemaContext<S>, state?: ReadState<Sel, P>, reqState?: { required: boolean; message?: string }) {
+		super(context, state)
+		this._required = reqState?.required ?? false
+		this._requiredMessage = reqState?.message
+	}
 
 	id(value: SchemaPrimaryKeyValue<S>): this {
 		const nextGroup = this._where.clone().eq(this._context.schema.pkField, value)
@@ -170,8 +185,12 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 		}) as this
 	}
 
+	required(this: OneBuilder<S, A, Sel, P, false>, message?: string): OneBuilderSurface<S, A, Sel, P, true> {
+		return new OneBuilder<S, A, Sel, P, true>(this._context, this._readState(), { required: true, message }) as OneBuilderSurface<S, A, Sel, P, true>
+	}
+
 	protected _clone<NewSel extends string, NewP extends readonly AnyPreloadDef[]>(next: ReadState<NewSel, NewP>) {
-		return new OneBuilder<S, A, NewSel, NewP>(this._context, this._readState(next)) as any
+		return new OneBuilder<S, A, NewSel, NewP, Req>(this._context, this._readState(next), { required: this._required, message: this._requiredMessage }) as any
 	}
 
 	create(data: SchemaCreateInput<S>) {
@@ -185,8 +204,8 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 		)
 	}
 
-	update(data: SchemaUpdateInput<S>) {
-		return runOneUpdate(
+	async update(data: SchemaUpdateInput<S>): Promise<MaybeNull<SelectedWithPreloads<S, Sel, P>, Req>> {
+		const result = await runOneUpdate(
 			this._context,
 			{
 				where: this._where,
@@ -195,6 +214,10 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 			},
 			data,
 		)
+		if (this._required && result === null) {
+			throw new OrmNotFoundError({ schema: this._context.schema.name, operation: 'updateOne', where: this._where, message: this._requiredMessage })
+		}
+		return result as any
 	}
 
 	upsert(data: UpsertInput<S>) {
@@ -209,20 +232,28 @@ export class OneBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 		)
 	}
 
-	delete() {
-		return runOneDelete(this._context, {
+	async delete(): Promise<MaybeNull<SelectedWithPreloads<S, Sel, P>, Req>> {
+		const result = await runOneDelete(this._context, {
 			where: this._where,
 			select: this._select,
 			preloads: this._preloads,
 		})
+		if (this._required && result === null) {
+			throw new OrmNotFoundError({ schema: this._context.schema.name, operation: 'deleteOne', where: this._where, message: this._requiredMessage })
+		}
+		return result as any
 	}
 
-	find() {
-		return runOneRead(this._context, {
+	async find(): Promise<MaybeNull<SelectedWithPreloads<S, Sel, P>, Req>> {
+		const result = await runOneRead(this._context, {
 			where: this._where,
 			select: this._select,
 			preloads: this._preloads,
 		})
+		if (this._required && result === null) {
+			throw new OrmNotFoundError({ schema: this._context.schema.name, operation: 'findOne', where: this._where, message: this._requiredMessage })
+		}
+		return result as any
 	}
 }
 
@@ -395,6 +426,201 @@ if (import.meta.vitest) {
 
 			const all = await repo.on(UserSchema).all().orderBy('name', 'asc').find()
 			expect(all.map((r) => r.name)).toEqual(['A Updated', 'B Updated'])
+		})
+	})
+
+	describe('.required() modifier', () => {
+		const UserSchema = Schema.from('users')
+			.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2, 8)}`)
+			.field('email', v.string())
+			.field('name', v.string())
+			.build()
+
+		let repo: any
+		beforeEach(() => {
+			const adapter = InMemoryAdapter.create({})
+			repo = Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
+		})
+
+		describe('type narrowing', () => {
+			type IsExact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+			type TestA = { findOne: (...a: any[]) => any; createOne: (...a: any[]) => any; createMany: (...a: any[]) => any; updateMany: (...a: any[]) => any; deleteMany: (...a: any[]) => any; upsertOne: (...a: any[]) => any; findMany: (...a: any[]) => any; deleteOne: (...a: any[]) => any; updateOne: (...a: any[]) => any }
+			type S = typeof UserSchema
+			type Result = import('./internals/types').SelectedWithPreloads<S, never, []>
+			type NameOnly = import('./internals/types').SelectedWithPreloads<S, 'name', []>
+
+			test('find() returns T | null without .required()', () => {
+				type R = ReturnType<OneBuilderSurface<S, TestA, never, [], false>['find']>
+				const _: IsExact<R, Promise<Result | null>> = true
+				void _
+			})
+
+			test('find() returns T with .required()', () => {
+				type R = ReturnType<OneBuilderSurface<S, TestA, never, [], true>['find']>
+				const _: IsExact<R, Promise<Result>> = true
+				void _
+			})
+
+			test('update() returns T with .required()', () => {
+				type R = ReturnType<OneBuilderSurface<S, TestA, never, [], true>['update']>
+				const _: IsExact<R, Promise<Result>> = true
+				void _
+			})
+
+			test('delete() returns T with .required()', () => {
+				type R = ReturnType<OneBuilderSurface<S, TestA, never, [], true>['delete']>
+				const _: IsExact<R, Promise<Result>> = true
+				void _
+			})
+
+			test('create() return type unchanged regardless of Req', () => {
+				type WithReq = ReturnType<OneBuilderSurface<S, TestA, never, [], true>['create']>
+				type WithoutReq = ReturnType<OneBuilderSurface<S, TestA, never, [], false>['create']>
+				const _: IsExact<WithReq, WithoutReq> = true
+				void _
+			})
+
+			test('.required() preserves Req through select()', () => {
+				type R = ReturnType<OneBuilderSurface<S, TestA, 'name', [], true>['find']>
+				const _: IsExact<R, Promise<NameOnly>> = true
+				void _
+			})
+
+			test('.required() once-per-step: Req=true surface has uncallable required()', () => {
+				type ReqBuilder = OneBuilderSurface<S, TestA, never, [], true>
+				type RequiredMethod = ReqBuilder['required']
+				type ThisParam = ThisParameterType<RequiredMethod>
+				type _check = ThisParam extends OneBuilder<S, TestA, never, [], false> ? true : false
+				const _: _check = true
+				void _
+			})
+		})
+
+		describe('runtime throw behaviour', () => {
+			test('.required().find() throws OrmNotFoundError when no row matched', async () => {
+				await expect(
+					repo.on(UserSchema).one().required().id('nonexistent').find(),
+				).rejects.toThrow(OrmNotFoundError)
+			})
+
+			test('.required().update() throws OrmNotFoundError when no row matched', async () => {
+				await expect(
+					repo.on(UserSchema).one().required().id('nonexistent').update({ name: 'X' }),
+				).rejects.toThrow(OrmNotFoundError)
+			})
+
+			test('.required().delete() throws OrmNotFoundError when no row matched', async () => {
+				await expect(
+					repo.on(UserSchema).one().required().id('nonexistent').delete(),
+				).rejects.toThrow(OrmNotFoundError)
+			})
+
+			test('thrown error carries schema, operation, and where', async () => {
+				try {
+					await repo.on(UserSchema).one().required().id('u-abc').find()
+					expect.unreachable('should have thrown')
+				} catch (e) {
+					expect(e).toBeInstanceOf(OrmNotFoundError)
+					const err = e as InstanceType<typeof OrmNotFoundError>
+					expect(err.schema).toBe('users')
+					expect(err.operation).toBe('findOne')
+					expect(err.where).toBeInstanceOf(FilterGroup)
+				}
+			})
+
+			test('update throws with operation updateOne', async () => {
+				try {
+					await repo.on(UserSchema).one().required().id('u-abc').update({ name: 'X' })
+					expect.unreachable('should have thrown')
+				} catch (e) {
+					expect((e as any).operation).toBe('updateOne')
+				}
+			})
+
+			test('delete throws with operation deleteOne', async () => {
+				try {
+					await repo.on(UserSchema).one().required().id('u-abc').delete()
+					expect.unreachable('should have thrown')
+				} catch (e) {
+					expect((e as any).operation).toBe('deleteOne')
+				}
+			})
+		})
+
+		describe('no throw when row exists', () => {
+			test('.required().find() returns the row when found', async () => {
+				const created = await repo.on(UserSchema).one().create({ email: 'a@b.com', name: 'A' })
+				const found = await repo.on(UserSchema).one().required().id(created.id).find()
+				expect(found.name).toBe('A')
+			})
+
+			test('.required().update() returns the updated row', async () => {
+				const created = await repo.on(UserSchema).one().create({ email: 'a@b.com', name: 'A' })
+				const updated = await repo.on(UserSchema).one().required().id(created.id).update({ name: 'B' })
+				expect(updated.name).toBe('B')
+			})
+
+			test('.required().delete() returns the deleted row', async () => {
+				const created = await repo.on(UserSchema).one().create({ email: 'a@b.com', name: 'A' })
+				const deleted = await repo.on(UserSchema).one().required().id(created.id).delete()
+				expect(deleted.name).toBe('A')
+			})
+		})
+
+		describe('custom message', () => {
+			test('.required(message) uses custom message on throw', async () => {
+				try {
+					await repo.on(UserSchema).one().required('user must exist').id('u-abc').find()
+					expect.unreachable('should have thrown')
+				} catch (e) {
+					expect((e as any).message).toBe('user must exist')
+				}
+			})
+
+			test('default message for PK-keyed chain', async () => {
+				try {
+					await repo.on(UserSchema).one().required().id('u-abc').find()
+					expect.unreachable('should have thrown')
+				} catch (e) {
+					expect((e as any).message).toBe('users.findOne: no row matched id=u-abc')
+				}
+			})
+		})
+
+		describe('default behaviour preserved', () => {
+			test('find() returns null without .required()', async () => {
+				const result = await repo.on(UserSchema).one().id('nonexistent').find()
+				expect(result).toBeNull()
+			})
+
+			test('update() returns null without .required()', async () => {
+				const result = await repo.on(UserSchema).one().id('nonexistent').update({ name: 'X' })
+				expect(result).toBeNull()
+			})
+
+			test('delete() returns null without .required()', async () => {
+				const result = await repo.on(UserSchema).one().id('nonexistent').delete()
+				expect(result).toBeNull()
+			})
+		})
+
+		describe('runtime no-op for create/upsert', () => {
+			test('.required() before create() returns the created row', async () => {
+				const created = await repo.on(UserSchema).one().required().create({ email: 'x@y.com', name: 'X' })
+				expect(created.email).toBe('x@y.com')
+				expect(created.name).toBe('X')
+			})
+
+			test('.required() before upsert() returns the upserted row', async () => {
+				const upserted = await repo
+					.on(UserSchema)
+					.one()
+					.required()
+					.where((q: any) => q.eq('email', 'x@y.com'))
+					.upsert({ create: { email: 'x@y.com', name: 'X' } })
+				expect(upserted.email).toBe('x@y.com')
+				expect(upserted.name).toBe('X')
+			})
 		})
 	})
 }
