@@ -1,14 +1,16 @@
-import type { InferRawArgs, InferRawReturn } from '../adapter'
+import type { AggregateOpName, InferRawArgs, InferRawReturn } from '../adapter'
 import type { OrmUse } from '../adapters/base'
 import { OrmNotFoundError, type OrmNotFoundOperation } from '../errors'
 import type { AnyField } from '../fields'
 import { FilterGroup, type FilterFactory } from '../filter'
+import type { AggregateSpec } from '../orm-adapter'
 import { OrderBy } from '../query'
 import type { AnyPreloadDef } from '../relations'
 import type { AnySchema, SchemaOutput } from '../schema'
 import type { SchemaCreateInput, SchemaUpdateInput } from '../schema-validations'
 import { applyComputedSelection, planSelection } from './internals/computeds'
 import {
+	runAggregate,
 	runAllCreate,
 	runAllDelete,
 	runAllRead,
@@ -161,8 +163,8 @@ export class SchemaRef<S extends AnySchema, A = unknown> {
 		return new AllBuilder<S, A, never, []>(this.#context) as AllBuilderSurface<S, A, never, []>
 	}
 
-	aggregate() {
-		throw new Error('AggregateBuilder not yet implemented')
+	aggregate(): AggregateBuilder<S, A, {}, false> {
+		return new AggregateBuilder<S, A, {}, false>(this.#context)
 	}
 
 	raw(...args: any[]) {
@@ -358,6 +360,54 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 			limit: this.#limit,
 			offset: this.#offset,
 		})
+	}
+}
+
+type AggregateEntry = { fn: AggregateOpName; alias: string; field?: string }
+
+export class AggregateBuilder<S extends AnySchema, A = unknown, Aggs = {}, HasGroupBy extends boolean = false> {
+	readonly #context: SchemaContext<S>
+	readonly #where: FilterGroup
+	readonly #aggregates: readonly AggregateEntry[]
+
+	constructor(
+		context: SchemaContext<S>,
+		state?: { where?: FilterGroup; aggregates?: readonly AggregateEntry[] },
+	) {
+		this.#context = context
+		this.#where = state?.where ? state.where.clone() : FilterGroup.create()
+		this.#aggregates = state?.aggregates ?? []
+	}
+
+	where(factory: FilterFactory): AggregateBuilder<S, A, Aggs, HasGroupBy> {
+		const nextGroup = factory(this.#where.clone())
+		return new AggregateBuilder<S, A, Aggs, HasGroupBy>(this.#context, {
+			where: nextGroup,
+			aggregates: this.#aggregates,
+		})
+	}
+
+	count<K extends string>(
+		...[alias]: K extends keyof Aggs ? [never] : [alias: K]
+	): AggregateBuilder<S, A, Aggs & Record<K, number>, HasGroupBy> {
+		return new AggregateBuilder<S, A, Aggs & Record<K, number>, HasGroupBy>(this.#context, {
+			where: this.#where,
+			aggregates: [...this.#aggregates, { fn: 'count', alias: alias as string }],
+		})
+	}
+
+	async run(
+		..._: [keyof Aggs] extends [never] ? [never] : []
+	): Promise<HasGroupBy extends true ? Aggs[] : Aggs> {
+		const spec: AggregateSpec = {
+			aggregates: this.#aggregates,
+			groupBy: [],
+		}
+		if (this.#where.children.length > 0) {
+			spec.where = this.#where
+		}
+		const rows = await runAggregate(this.#context, spec)
+		return rows[0] as any
 	}
 }
 

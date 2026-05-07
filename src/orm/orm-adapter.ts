@@ -101,6 +101,8 @@ export abstract class OrmAdapter {
 			},
 			deleteMany: (filter) => self.deleteMany?.(schema, config, filter) ?? Promise.resolve([]),
 			raw: (...args: any[]) => self.raw?.(schema, config, ...args) ?? Promise.reject(new Error('raw not implemented')),
+			aggregate: (spec) => self.aggregate?.(schema, config, spec) ?? Promise.reject(new Error('aggregate not implemented')),
+			aggregateOps: self.aggregateOps ?? [],
 		}
 		return use
 	}

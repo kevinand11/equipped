@@ -82,6 +82,7 @@ if (import.meta.vitest) {
 	const { v } = await import('valleyed')
 	const { InMemoryAdapter } = await import('../adapters/in-memory')
 	const { OrmAdapter } = await import('../orm-adapter')
+	const { OrmValidationError } = await import('../errors')
 	const { Instance } = await import('../../instance')
 	const { Relations } = await import('../relations')
 	const { Schema } = await import('../schema')
@@ -1038,6 +1039,57 @@ if (import.meta.vitest) {
 			type A = DefaultAdapter
 			type Ref = import('./builders').SchemaRefSurface<import('../schema').AnySchema, A>
 			expectTypeOf<Ref['aggregate']>().toBeNever()
+		})
+	})
+
+	describe('type-level: AggregateBuilder', () => {
+		class AggAdapter extends OrmAdapter {
+			readonly schemaConfigPipe = v.object({})
+			readonly supportedFieldTypes = ['string', 'number'] as const
+			readonly aggregateOps = ['count'] as const
+			async aggregate() { return [] }
+		}
+		const _S = Schema.from('items')
+			.pk('id', v.string(), () => 'x')
+			.field('name', v.string())
+			.field('amount', v.number())
+			.build()
+		type S = typeof _S
+		type A = AggAdapter
+		type Builder = import('./builders').AggregateBuilder<S, A, {}, false>
+
+		test('.count(alias) adds alias to result type as number', () => {
+			type AfterCount = ReturnType<Builder['count']>
+			type Result = Awaited<ReturnType<AfterCount['run']>>
+			expectTypeOf<Result>().toHaveProperty('total')
+		})
+
+		test('duplicate alias: "a" extends keyof Aggs triggers never guard', () => {
+			type AggsWithA = { a: number }
+			type DuplicateGuard = 'a' extends keyof AggsWithA ? [never] : [alias: 'a']
+			expectTypeOf<DuplicateGuard>().toEqualTypeOf<[never]>()
+		})
+
+		test('.run() on empty Aggs requires never arg (compile error gate)', () => {
+			type RunParams = Parameters<Builder['run']>
+			expectTypeOf<RunParams>().toEqualTypeOf<[never]>()
+		})
+
+		test('.run() on non-empty Aggs takes no args', () => {
+			type WithCount = import('./builders').AggregateBuilder<S, A, { total: number }, false>
+			type RunParams = Parameters<WithCount['run']>
+			expectTypeOf<RunParams>().toEqualTypeOf<[]>()
+		})
+
+		test('.run() returns single object when HasGroupBy = false', () => {
+			type WithCount = import('./builders').AggregateBuilder<S, A, { total: number }, false>
+			type Result = Awaited<ReturnType<WithCount['run']>>
+			expectTypeOf<Result>().toEqualTypeOf<{ total: number }>()
+		})
+
+		test('clone-on-step: .where() returns a new builder', () => {
+			type After = ReturnType<Builder['where']>
+			expectTypeOf<After>().toMatchTypeOf<Builder>()
 		})
 	})
 
@@ -2073,6 +2125,86 @@ if (import.meta.vitest) {
 
 			const found = await repo.on(TestSchema).one().id(user.id).find()
 			expect(found).toBeNull()
+		})
+	})
+
+	describe('repo.on().aggregate() end-to-end', () => {
+		const OrderSchema = Schema.from('orders')
+			.pk('id', v.string(), () => `o-${Math.random().toString(36).slice(2, 8)}`)
+			.field('product', v.string())
+			.field('amount', v.number())
+			.field('region', v.string())
+			.build()
+
+		function makeAggRepo() {
+			const adapter = InMemoryAdapter.create({})
+			const repo = Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
+			return { repo, adapter }
+		}
+
+		async function seedOrders(repo: any) {
+			await repo.on(OrderSchema).all().create([
+				{ product: 'Widget', amount: 10, region: 'US' },
+				{ product: 'Gadget', amount: 20, region: 'EU' },
+				{ product: 'Widget', amount: 30, region: 'US' },
+				{ product: 'Gadget', amount: 40, region: 'EU' },
+				{ product: 'Widget', amount: 50, region: 'US' },
+			])
+		}
+
+		test('count returns total row count', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo.on(OrderSchema).aggregate().count('total').run()
+			expect(result).toEqual({ total: 5 })
+		})
+
+		test('count with where filter returns filtered count', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.where((q) => q.eq('region', 'US'))
+				.count('total')
+				.run()
+			expect(result).toEqual({ total: 3 })
+		})
+
+		test('count on empty result returns zero', async () => {
+			const { repo } = makeAggRepo()
+			const result = await repo.on(OrderSchema).aggregate().count('total').run()
+			expect(result).toEqual({ total: 0 })
+		})
+
+		test('clone-on-step: base builder is not mutated by fan-out', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const base = repo.on(OrderSchema).aggregate().count('a')
+			const withFilter = base.where((q) => q.eq('region', 'US'))
+			const resultAll = await base.count('b').run()
+			const resultFiltered = await withFilter.count('c').run()
+			expect(resultAll.a).toBe(5)
+			expect(resultFiltered.a).toBe(3)
+		})
+
+		test('where before count produces correct result', async () => {
+			const { repo } = makeAggRepo()
+			await seedOrders(repo)
+			const result = await repo
+				.on(OrderSchema)
+				.aggregate()
+				.count('total')
+				.where((q) => q.eq('product', 'Gadget'))
+				.run()
+			expect(result).toEqual({ total: 2 })
+		})
+
+		test('boundary validation rejects unknown field in where filter', async () => {
+			const { repo } = makeAggRepo()
+			await expect(
+				repo.on(OrderSchema).aggregate().count('total').where((q) => q.eq('nonexistent', 'x')).run(),
+			).rejects.toThrow(OrmValidationError)
 		})
 	})
 

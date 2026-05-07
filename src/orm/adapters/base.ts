@@ -1,4 +1,5 @@
 import type { FilterGroup } from '../filter'
+import type { AggregateSpec } from '../orm-adapter'
 import type { QueryOptions } from '../query'
 import type { AnySchema } from '../schema'
 import type { AnyUpdateOp } from '../updates'
@@ -14,6 +15,8 @@ export type OrmUse = {
 	deleteOne: (filter: FilterGroup) => Promise<Record<string, unknown> | null>
 	deleteMany: (filter: FilterGroup) => Promise<Record<string, unknown>[]>
 	raw: (...args: any[]) => Promise<any>
+	aggregate: (spec: AggregateSpec) => Promise<Array<Record<string, unknown>>>
+	aggregateOps: readonly string[]
 }
 
 export type OrmAdapterLike<Config = unknown> = {

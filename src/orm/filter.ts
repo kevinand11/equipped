@@ -123,6 +123,34 @@ export type GatedFilterFactory<DeclaredOps extends readonly FilterOpName[]> = (
 	q: GatedFilterGroup<DeclaredOps>,
 ) => GatedFilterGroup<DeclaredOps>
 
+export function assertNormalisedAggregate(schema: AnySchema, adapter: { aggregateOps: readonly string[] }, spec: import('./orm-adapter').AggregateSpec): void {
+	const failures: import('./errors').OrmValidationFailure[] = []
+
+	if (spec.aggregates.length === 0) {
+		failures.push({ cause: 'At least one aggregator step is required' })
+	}
+
+	const seenAliases = new Set<string>()
+	for (const agg of spec.aggregates) {
+		if (seenAliases.has(agg.alias)) {
+			failures.push({ alias: agg.alias, cause: `Duplicate alias "${agg.alias}"` })
+		}
+		seenAliases.add(agg.alias)
+
+		if (!adapter.aggregateOps.includes(agg.fn)) {
+			failures.push({ alias: agg.alias, cause: `Undeclared aggregate op "${agg.fn}"` })
+		}
+	}
+
+	if (failures.length > 0) {
+		throw new OrmValidationError('aggregate', schema.name, 'aggregate', failures)
+	}
+
+	if (spec.where) {
+		assertNormalisedFilter(schema, spec.where)
+	}
+}
+
 export function assertNormalisedFilter(schema: AnySchema, group: FilterGroup): void {
 	const allFields = schema.fields as Record<string, unknown>
 	const fieldNames = new Set(Object.keys(allFields))
@@ -422,6 +450,84 @@ if (import.meta.vitest) {
 				(q) => q.or([(inner) => inner.eq('nonexistent', 'val')]),
 			])
 			expect(() => assertNormalisedFilter(UserSchema, g)).toThrow(OrmValidationError)
+		})
+	})
+
+	describe('assertNormalisedAggregate', () => {
+		const adapter = { aggregateOps: ['count'] as readonly string[] }
+
+		test('passes for valid count aggregate', () => {
+			const spec = { aggregates: [{ fn: 'count' as const, alias: 'total' }], groupBy: [] }
+			expect(() => assertNormalisedAggregate(UserSchema, adapter, spec)).not.toThrow()
+		})
+
+		test('rejects empty aggregator list', () => {
+			const spec = { aggregates: [], groupBy: [] }
+			expect(() => assertNormalisedAggregate(UserSchema, adapter, spec)).toThrow(OrmValidationError)
+			try {
+				assertNormalisedAggregate(UserSchema, adapter, spec)
+				expect.unreachable()
+			} catch (e) {
+				expect((e as OrmValidationError).kind).toBe('aggregate')
+			}
+		})
+
+		test('rejects undeclared aggregate op', () => {
+			const spec = { aggregates: [{ fn: 'sum' as const, alias: 'total', field: 'age' }], groupBy: [] }
+			expect(() => assertNormalisedAggregate(UserSchema, adapter, spec)).toThrow(OrmValidationError)
+			try {
+				assertNormalisedAggregate(UserSchema, adapter, spec)
+				expect.unreachable()
+			} catch (e) {
+				const err = e as OrmValidationError
+				expect(err.kind).toBe('aggregate')
+				expect(err.failures[0].alias).toBe('total')
+				expect(err.failures[0].cause).toContain('Undeclared')
+			}
+		})
+
+		test('rejects duplicate aliases', () => {
+			const spec = {
+				aggregates: [
+					{ fn: 'count' as const, alias: 'total' },
+					{ fn: 'count' as const, alias: 'total' },
+				],
+				groupBy: [],
+			}
+			expect(() => assertNormalisedAggregate(UserSchema, adapter, spec)).toThrow(OrmValidationError)
+			try {
+				assertNormalisedAggregate(UserSchema, adapter, spec)
+				expect.unreachable()
+			} catch (e) {
+				const err = e as OrmValidationError
+				expect(err.failures.some((f) => f.alias === 'total')).toBe(true)
+			}
+		})
+
+		test('validates where filter against schema', () => {
+			const spec = {
+				aggregates: [{ fn: 'count' as const, alias: 'total' }],
+				groupBy: [],
+				where: FilterGroup.create().eq('unknownField', 42),
+			}
+			expect(() => assertNormalisedAggregate(UserSchema, adapter, spec)).toThrow(OrmValidationError)
+		})
+
+		test('collects multiple failures', () => {
+			const spec = {
+				aggregates: [
+					{ fn: 'sum' as const, alias: 'x', field: 'age' },
+					{ fn: 'avg' as const, alias: 'x', field: 'age' },
+				],
+				groupBy: [],
+			}
+			try {
+				assertNormalisedAggregate(UserSchema, adapter, spec)
+				expect.unreachable()
+			} catch (e) {
+				const err = e as OrmValidationError
+				expect(err.failures.length).toBeGreaterThanOrEqual(2)
+			}
 		})
 	})
 }

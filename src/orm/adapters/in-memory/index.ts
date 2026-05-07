@@ -4,7 +4,7 @@ import { v, differ } from 'valleyed'
 
 import { configurable } from '../../../utilities/configurable'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
-import { OrmAdapter } from '../../orm-adapter'
+import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
@@ -224,6 +224,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	readonly supportedFieldTypes = ['string', 'number', 'boolean', 'null', 'object', 'array', 'date'] as const
 	readonly queryableOps = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'exists', 'notExists', 'contains', 'notContains'] as const
 	readonly updateOps = ['set', 'inc', 'mul', 'min', 'max', 'unset', 'push', 'pull', 'patch'] as const
+	readonly aggregateOps = ['count'] as const
 
 	readonly stores = new Map<string, Map<string, Record<string, unknown>>>()
 
@@ -337,6 +338,21 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		const result = ops.length > 0 ? applyOps(base, ops) : base
 		store.set(String(result[pk]), result)
 		return clone(result)
+	}
+
+	async aggregate(schema: AnySchema, config: unknown, spec: AggregateSpec): Promise<Array<Record<string, unknown>>> {
+		const store = this.#resolveStore(schema, config)
+		let rows = [...store.values()]
+		if (spec.where) {
+			rows = rows.filter((doc) => matchesFilter(doc, spec.where!))
+		}
+		const result: Record<string, unknown> = {}
+		for (const agg of spec.aggregates) {
+			if (agg.fn === 'count') {
+				result[agg.alias] = rows.length
+			}
+		}
+		return [result]
 	}
 
 	async session<T>(fn: () => Promise<T>): Promise<T> {
@@ -482,6 +498,62 @@ if (import.meta.vitest) {
 			expect(onSpy).not.toHaveBeenCalled()
 
 			onSpy.mockRestore()
+		})
+
+		test('declares aggregateOps with count', () => {
+			const adapter = InMemoryAdapter.create({})
+			expect(adapter.aggregateOps).toEqual(['count'])
+		})
+
+		test('aggregate count returns correct total', async () => {
+			const schema = Schema.from('items')
+				.pk('id', v.string(), () => `i-${Math.random().toString(36).slice(2, 8)}`)
+				.field('category', v.string())
+				.build()
+			const adapter = InMemoryAdapter.create({})
+			const use = adapter.use(schema, { table: 'items' })
+			await use.createMany([
+				{ id: 'i1', category: 'A' },
+				{ id: 'i2', category: 'B' },
+				{ id: 'i3', category: 'A' },
+			])
+			const result = await adapter.aggregate(schema, { table: 'items' }, {
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: [],
+			})
+			expect(result).toEqual([{ total: 3 }])
+		})
+
+		test('aggregate count with where filter', async () => {
+			const schema = Schema.from('items')
+				.pk('id', v.string(), () => `i-${Math.random().toString(36).slice(2, 8)}`)
+				.field('category', v.string())
+				.build()
+			const adapter = InMemoryAdapter.create({})
+			const use = adapter.use(schema, { table: 'items' })
+			await use.createMany([
+				{ id: 'i1', category: 'A' },
+				{ id: 'i2', category: 'B' },
+				{ id: 'i3', category: 'A' },
+			])
+			const result = await adapter.aggregate(schema, { table: 'items' }, {
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: [],
+				where: FilterGroup.create().eq('category', 'A'),
+			})
+			expect(result).toEqual([{ total: 2 }])
+		})
+
+		test('aggregate count on empty store returns zero', async () => {
+			const schema = Schema.from('items')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const adapter = InMemoryAdapter.create({})
+			const result = await adapter.aggregate(schema, { table: 'items' }, {
+				aggregates: [{ fn: 'count', alias: 'total' }],
+				groupBy: [],
+			})
+			expect(result).toEqual([{ total: 0 }])
 		})
 	})
 }
