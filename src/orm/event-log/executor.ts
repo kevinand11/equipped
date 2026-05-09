@@ -2,9 +2,9 @@ import { ulid } from 'ulid'
 import { v } from 'valleyed'
 
 import { OrmValidationError } from '../errors'
-import type { Repo } from '../repo/repo'
 import type { EventContext, HandlerDef } from './registry'
 import { EventLogSchema } from './schema'
+import type { Repo } from '../repo/repo'
 
 export async function fire<R>(
 	repo: Repo<any>,
@@ -24,13 +24,14 @@ export async function fire<R>(
 		const at = ctx?.at ?? new Date()
 		const ts = at.getTime()
 		const key = ulid(ts)
+		const by = ctx?.by ?? null
 
 		await repo.on(EventLogSchema).one().create({
 			key,
 			name,
 			ts,
 			body: validated.value,
-			by: ctx?.by ?? null,
+			by,
 		})
 
 		const evCtx: EventContext = {
@@ -38,7 +39,7 @@ export async function fire<R>(
 			name,
 			ts,
 			body: validated.value,
-			by: ctx?.by ?? null,
+			by,
 			at,
 			firstRun: true,
 		}

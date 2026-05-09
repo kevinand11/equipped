@@ -2,12 +2,12 @@ import { EquippedError } from '../../errors'
 
 export class OrmReplayError extends EquippedError {
 	readonly key: string
-	readonly name: string
+	readonly eventName: string
 
 	constructor(opts: { key: string; name: string; cause: unknown }) {
 		super(`EventLog replay failed on event ${opts.name} (key=${opts.key})`, { key: opts.key, name: opts.name }, opts.cause)
 		this.key = opts.key
-		this.name = opts.name
+		this.eventName = opts.name
 	}
 }
 
@@ -18,11 +18,11 @@ if (import.meta.vitest) {
 	const { OrmNotFoundError } = await import('./not-found')
 
 	describe('OrmReplayError', () => {
-		test('stores key, name, and cause on the instance', () => {
+		test('stores key, eventName, and cause on the instance', () => {
 			const cause = new Error('handler blew up')
 			const err = new OrmReplayError({ key: 'evt-123', name: 'user.signup', cause })
 			expect(err.key).toBe('evt-123')
-			expect(err.name).toBe('user.signup')
+			expect(err.eventName).toBe('user.signup')
 			expect(err.cause).toBe(cause)
 		})
 
