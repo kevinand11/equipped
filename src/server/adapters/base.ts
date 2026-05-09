@@ -245,7 +245,7 @@ export abstract class Server {
 			if (def.type === 'response') {
 				const pipeRecords = errorsSchemas.concat({ status: defaultStatusCode, contentType, pipe })
 				responsePipeDefs[def.key] = v.any().pipe((input) => {
-					const p = pipeRecords.find((r) => r.status === status)?.pipe
+					const p = pipeRecords.find((rec) => rec.status === status)?.pipe
 					if (!p) throw PipeError.root(`schema not defined for status code: ${status}`, input)
 					const r = v.validate(p, input)
 					if (!r.valid) throw r.error

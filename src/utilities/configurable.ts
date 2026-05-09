@@ -22,8 +22,7 @@ export function configurable<P extends Pipe<any, any>, Base extends abstract new
 		): This['prototype'] {
 			const r = v.validate(pipe, input)
 			if (!r.valid) throw r.error
-			const validated = r.value
-			return new (this as any)(validated, ...args) as This['prototype']
+			return new (this as any)(r.value, ...args) as This['prototype']
 		}
 	}
 
