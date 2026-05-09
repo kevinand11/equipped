@@ -1,6 +1,6 @@
 import { OrmValidationError, type OrmValidationFailure } from '../errors/validation'
 import type { OrmAdapter } from '../orm-adapter'
-import type { AnyMigration, AnyChange } from './types'
+import type { AnyMigration } from './types'
 
 export function assertNormalisedChanges(adapter: OrmAdapter, migrations: ReadonlyArray<AnyMigration>): void {
 	const failures: OrmValidationFailure[] = []
@@ -17,8 +17,7 @@ export function assertNormalisedChanges(adapter: OrmAdapter, migrations: Readonl
 		}
 		seenIds.add(m.id)
 
-		for (let i = 0; i < m.changes.length; i++) {
-			const change = m.changes[i] as AnyChange
+		for (const change of m.changes) {
 			if (change.kind === 'execute') continue
 
 			if (change.kind === 'addIndex') {
@@ -29,8 +28,7 @@ export function assertNormalisedChanges(adapter: OrmAdapter, migrations: Readonl
 					failures.push({ field: 'on', cause: 'addIndex.on must be non-empty' })
 				}
 
-				const methodName = 'applyAddIndex'
-				if (typeof (adapter as any)[methodName] !== 'function') {
+				if (typeof (adapter as any).applyAddIndex !== 'function') {
 					failures.push({ cause: `adapter does not support change kind '${change.kind}'` })
 				}
 			}

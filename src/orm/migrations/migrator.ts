@@ -1,11 +1,11 @@
-import { OrmMigrationError } from '../errors/migration'
 import type { OrmAdapterLike } from '../adapters/base'
+import { OrmMigrationError } from '../errors/migration'
 import type { OrmAdapter } from '../orm-adapter'
-import type { Repo } from '../repo/repo'
 import { applyChange } from './apply'
 import { computePending } from './pending'
 import type { AnyChange, AnyMigration, Migration } from './types'
 import { assertNormalisedChanges } from './validate'
+import type { Repo } from '../repo/repo'
 
 type RunResult = { ran: string[]; skipped: string[] }
 

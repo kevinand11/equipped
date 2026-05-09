@@ -1,6 +1,6 @@
+import type { OrmAdapterLike } from '../adapters/base'
 import type { OrmAdapter } from '../orm-adapter'
 import type { Repo } from '../repo/repo'
-import type { OrmAdapterLike } from '../adapters/base'
 
 export type FieldSpec<A extends OrmAdapter> = {
 	name: string

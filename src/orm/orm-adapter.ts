@@ -5,9 +5,9 @@ import { Instance, type ClassRef } from '../instance'
 import type { AggregateOpName, FieldTypeName, FilterOpName, UpdateOpName } from './adapter'
 import type { OrmUse } from './adapters/base'
 import { FilterGroup } from './filter'
+import type { AddIndexChange } from './migrations/types'
 import type { QueryOptions } from './query'
 import type { AnySchema } from './schema'
-import type { AddIndexChange } from './migrations/types'
 import type { AnyUpdateOp } from './updates'
 
 export type AggregateSpec = {

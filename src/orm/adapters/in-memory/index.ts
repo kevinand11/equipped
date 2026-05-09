@@ -268,12 +268,12 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 			this.stores.set(name, store)
 		}
 		this.migrations.clear()
-		for (const [k, v] of snap.migrations.entries()) {
-			this.migrations.set(k, v)
+		for (const [k, val] of snap.migrations.entries()) {
+			this.migrations.set(k, val)
 		}
 		this.indexes.clear()
-		for (const [k, v] of snap.indexes.entries()) {
-			this.indexes.set(k, v)
+		for (const [k, val] of snap.indexes.entries()) {
+			this.indexes.set(k, val)
 		}
 	}
 

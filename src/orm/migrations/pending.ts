@@ -1,5 +1,5 @@
-import { OrmMigrationError } from '../errors/migration'
 import type { AnyMigration } from './types'
+import { OrmMigrationError } from '../errors/migration'
 
 export function computePending(
 	declared: ReadonlyArray<AnyMigration>,

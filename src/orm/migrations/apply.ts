@@ -1,7 +1,7 @@
-import type { OrmAdapter } from '../orm-adapter'
-import type { Repo } from '../repo/repo'
 import type { OrmAdapterLike } from '../adapters/base'
+import type { OrmAdapter } from '../orm-adapter'
 import type { AnyChange } from './types'
+import type { Repo } from '../repo/repo'
 
 export async function applyChange(adapter: OrmAdapter, repo: Repo<OrmAdapterLike<any>>, change: AnyChange): Promise<void> {
 	if (change.kind === 'execute') {
@@ -9,7 +9,7 @@ export async function applyChange(adapter: OrmAdapter, repo: Repo<OrmAdapterLike
 		return
 	}
 
-	const methodName = `apply${change.kind[0].toUpperCase()}${change.kind.slice(1)}` as const
+	const methodName = `apply${change.kind[0].toUpperCase()}${change.kind.slice(1)}`
 	const method = (adapter as any)[methodName]
 	if (typeof method !== 'function') {
 		throw new Error(`Adapter does not support change kind '${change.kind}'`)
