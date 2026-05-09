@@ -2,6 +2,7 @@ import type { Pipe, PipeInput } from 'valleyed'
 
 import { fire } from './executor'
 import { HandlerRegistry, type FireFn, type HandlerDef } from './registry'
+import { replay, rerun } from './walker'
 import type { OrmAdapterLike } from '../adapters/base'
 import type { Repo } from '../repo/repo'
 
@@ -23,6 +24,14 @@ export class EventLog<A extends OrmAdapterLike<any>> {
 		this.#registry.register(name, def)
 		return (payload: PipeInput<P>, ctx?: { by?: string; at?: Date }) =>
 			fire<R>(this.#repo as Repo<any>, name, def, payload, ctx)
+	}
+
+	replay(opts?: { from?: Date }): Promise<void> {
+		return replay(this.#repo as Repo<any>, this.#registry, opts)
+	}
+
+	rerun(key: string): Promise<void> {
+		return rerun(this.#repo as Repo<any>, this.#registry, key)
 	}
 
 	static from<A extends OrmAdapterLike<any>>(repo: Repo<A>): EventLogBuilder<A> {
@@ -172,6 +181,75 @@ if (import.meta.vitest) {
 			expect(captured.at).toEqual(at)
 			expect(captured.ts).toBe(at.getTime())
 			expect(captured.body).toEqual({ val: 99 })
+		})
+
+		test('end-to-end: register → fire → replay flow', async () => {
+			const repo = makeRepo()
+			const log = EventLog.from(repo).build()
+			const replayedPayloads: unknown[] = []
+
+			const fireEvent = log.handler('order.placed', {
+				pipe: v.object({ item: v.string() }),
+				handle: async (payload, ctx) => {
+					if (!ctx.firstRun) replayedPayloads.push(payload)
+				},
+			})
+
+			await fireEvent({ item: 'A' }, { at: new Date('2025-01-02') })
+			await fireEvent({ item: 'B' }, { at: new Date('2025-01-01') })
+
+			await log.replay()
+
+			expect(replayedPayloads).toEqual([{ item: 'B' }, { item: 'A' }])
+		})
+
+		test('rerun re-executes a single event with firstRun: false', async () => {
+			const repo = makeRepo()
+			const log = EventLog.from(repo).build()
+			let rerunCtx: any
+
+			const fireEvent = log.handler('test', {
+				pipe: v.object({ val: v.number() }),
+				handle: async (_payload, ctx) => {
+					if (!ctx.firstRun) rerunCtx = ctx
+				},
+			})
+
+			await fireEvent({ val: 7 }, { by: 'admin' })
+
+			const rows = await repo.on(EventLogSchema).all().find()
+			await log.rerun(rows[0].key)
+
+			expect(rerunCtx).toBeDefined()
+			expect(rerunCtx.firstRun).toBe(false)
+			expect(rerunCtx.body).toEqual({ val: 7 })
+			expect(rerunCtx.by).toBe('admin')
+		})
+
+		test('repo.session(() => log.replay()) makes replay atomic — failure rolls back all', async () => {
+			const repo = makeRepo()
+			const log = EventLog.from(repo).build()
+
+			const fireEvent = log.handler('user.create', {
+				pipe: v.object({ email: v.string(), fail: v.boolean() }),
+				handle: async (payload, ctx) => {
+					await repo.on(UserSchema).one().create({ email: payload.email })
+					if (!ctx.firstRun && payload.fail) throw new Error('replay boom')
+				},
+			})
+
+			await fireEvent({ email: 'alice@test.com', fail: false }, { at: new Date('2025-01-01') })
+			await fireEvent({ email: 'bob@test.com', fail: true }, { at: new Date('2025-01-02') })
+
+			const usersBefore = await repo.on(UserSchema).all().find()
+			expect(usersBefore).toHaveLength(2)
+
+			await expect(
+				repo.session(() => log.replay()),
+			).rejects.toThrow()
+
+			const usersAfter = await repo.on(UserSchema).all().find()
+			expect(usersAfter).toHaveLength(2)
 		})
 
 		test('end-to-end: fire persists row + handler-side writes atomically', async () => {
