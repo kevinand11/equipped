@@ -34,20 +34,8 @@ export class EventLog<A extends OrmAdapterLike<any>> {
 		return rerun(this.#repo as Repo<any>, this.#registry, key)
 	}
 
-	static from<A extends OrmAdapterLike<any>>(repo: Repo<A>): EventLogBuilder<A> {
-		return new EventLogBuilder(repo)
-	}
-}
-
-class EventLogBuilder<A extends OrmAdapterLike<any>> {
-	readonly #repo: Repo<A>
-
-	constructor(repo: Repo<A>) {
-		this.#repo = repo
-	}
-
-	build(): EventLog<A> {
-		return new EventLog(this.#repo, new HandlerRegistry())
+	static from<A extends OrmAdapterLike<any>>(repo: Repo<A>) {
+		return { build: () => new EventLog(repo, new HandlerRegistry()) }
 	}
 }
 
