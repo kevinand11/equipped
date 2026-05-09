@@ -1,7 +1,8 @@
 import type { Prettify as ValleyedPrettify } from 'valleyed'
 
 import type { ComputedField, Field, SchemaField } from './fields'
-import type { OrderBy, QueryGroup, Where } from './query'
+import type { Filter, FilterGroup } from './filter'
+import type { OrderBy } from './query-options'
 import type { AnyRelDef } from './relations'
 import type { Schema } from './schema'
 import type { AnyUpdateOp } from './updates'
@@ -12,8 +13,8 @@ type AnyOrmClass =
 	| ComputedField<any, any, any>
 	| Schema<any, any, any>
 	| AnyRelDef
-	| Where
-	| QueryGroup
+	| Filter
+	| FilterGroup
 	| OrderBy
 	| AnyUpdateOp
 

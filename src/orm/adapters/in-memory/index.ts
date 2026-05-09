@@ -5,7 +5,7 @@ import { v, differ } from 'valleyed'
 import { configurable } from '../../../utilities/configurable'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query'
+import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
 
@@ -430,7 +430,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { FilterGroup } = await import('../../filter')
-	const { OrderBy } = await import('../../query')
+	const { OrderBy } = await import('../../query-options')
 	const { Schema } = await import('../../schema')
 	const { IncOp, PatchOp, PullOp, PushOp } = await import('../../updates')
 

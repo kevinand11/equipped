@@ -5,7 +5,7 @@ import { Instance, type ClassRef } from '../instance'
 import type { AggregateOpName, FieldTypeName, FilterOpName, UpdateOpName } from './adapter'
 import type { OrmUse } from './adapters/base'
 import { FilterGroup } from './filter'
-import type { QueryOptions } from './query'
+import type { QueryOptions } from './query-options'
 import type { AnySchema } from './schema'
 import type { AnyUpdateOp } from './updates'
 
