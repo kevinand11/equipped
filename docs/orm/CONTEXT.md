@@ -211,6 +211,20 @@ Vocabulary:
   `Relations` is a singular noun in plural form; capitalise when ambiguous.
 - The collective term for "things produced by `.from(...).build()`" is
   **definition**.
+- **Cross-schema field-set composition is a userland pattern.** Schemas
+  that share field sets (timestamps, tenant ids, soft-delete columns) are
+  expressed as a userland factory function that takes a name and returns
+  a partially-built `SchemaBuilder`, e.g.
+  `withCommonFields(name) => Schema.from(name).pk(...).field('createdAt', ...).field('updatedAt', ...)`,
+  consumed as `withCommonFields('users').field('email', v.string()).build()`.
+  The library ships **no** Mixin artifact, no `.use(fieldSet)` builder
+  step, and no other composition primitive — the typed accumulator on
+  `SchemaBuilder` flows through factory-function returns naturally, and
+  every alternative shape considered (fifth artifact, `.use()` step,
+  plain transformer fn) added vocabulary or typing surface for what is
+  morally a typed dict of fields. See ADR
+  `2026-05-09-event-log-rework.md` for the full discussion (the
+  composition concern surfaced as a sub-thread there).
 
 ---
 
@@ -1804,3 +1818,199 @@ rejected. The bar for promotion is concrete, not speculative.
 | 13 | **Two-phase commit / distributed tx / sagas** | XA, 2PC, saga primitives out of scope. Single-DB transactions only. | None. |
 | 14 | **Session options** | `session(fn, options)` overload not supported (covers isolation, retry, deadlock, nesting). | None for retry/deadlock; `raw('BEGIN ISOLATION LEVEL ...')` for isolation. |
 | 15 | **Query-level isolation** | No `isolation` arg on `session()`. Each adapter uses its DB's default. | `raw('BEGIN ISOLATION LEVEL ...')` or adapter-specific session config. |
+
+---
+
+## 15. EventLog (event-sourcing log)
+
+`EventLog` is a typed write-ahead log of named operations, persisted via the
+orm's `Repo` and replay-able. Lives at `src/orm/event-log/`. Replaces the
+legacy `src/audit/EventAudit` (deleted). See ADR
+`2026-05-09-event-log-rework.md` for the full design rationale.
+
+### 15.1 Construction
+
+`EventLog` is constructed via the builder-chain rule (§2.2):
+
+```ts
+const log = EventLog.from(repo).build()
+```
+
+`EventLog.from(repo)` takes a `Repo` instance positional. `.build()` is the
+terminal step. There are no other builder steps today; `EventLog` exists
+solely to host the post-build handler registry.
+
+### 15.2 EventLogSchema (library-owned)
+
+The library owns a fixed `EventLogSchema` exported from
+`src/orm/event-log/schema.ts`:
+
+```ts
+const EventLogSchema = Schema.from('event_log')
+  .pk('key', v.string())                                // time-sortable id
+  .field('name', v.string())                            // handler name
+  .field('ts', v.number())                              // ms timestamp
+  .field('body', v.object({}).passthrough())            // validated payload
+  .field('by', v.optional(v.string()))                  // who fired (nullable)
+  .build()
+```
+
+Users wire `EventLogSchema` into their `Repo`'s resolver alongside their own
+schemas. The library does not pick a table/collection name — the user's
+resolver does.
+
+### 15.3 Handler registry
+
+Handlers register **post-build** on the live `EventLog` instance. Each
+`log.handler(name, def)` call returns a typed `fire` function for that one
+handler:
+
+```ts
+const fireUserSignup = log.handler('user.signup', {
+  pipe: v.object({ email: v.string(), name: v.string() }),
+  handle: async (payload, evCtx) => {
+    await repo.on(UserSchema).one().create({
+      ...payload,
+      createdAt: evCtx.at.getTime(),    // see §15.6 replay determinism
+    })
+  },
+})
+
+await fireUserSignup({ email: 'a@b.com', name: 'Alice' }, { by: 'admin-42' })
+```
+
+Vocabulary:
+
+- A **handler def** is `{ pipe, handle }`. There is no `sync`/`async`
+  callback split — async post-processing is `src/jobs/`'s job.
+- The **fire fn** is what `log.handler(name, def)` returns. Its input type
+  is `PipeInput<def.pipe>`; its second arg is a partial `EventContext`
+  (`{ by?, at? }` — caller supplies these; the library fills the rest).
+- The **handler name** is the string passed to `log.handler(...)` — used
+  as the `EventLogSchema.name` value persisted to the row, and as the
+  registry key on replay.
+- A handler may be registered at most once per `name`; duplicate
+  registration throws.
+
+### 15.4 EventContext
+
+The `EventContext` is the second arg passed to `handle`:
+
+```ts
+type EventContext = {
+  key: string                  // the event row's PK
+  name: string                 // the handler name
+  ts: number                   // ms timestamp the row was persisted with
+  body: unknown                // the validated payload (same as handle's first arg)
+  by: string | null            // who fired
+  at: Date                     // ts as a Date — convenience
+  firstRun: boolean            // true on initial fire; false during replay/rerun
+}
+```
+
+**`firstRun`** is the only way for a handler to distinguish first-run from
+replay. Handlers that have one-shot side effects (sending an email,
+charging a card, calling a non-idempotent external API) gate them on
+`firstRun`. Forgetting to gate is a documented footgun: replay re-fires
+those side effects.
+
+### 15.5 Fire semantics — atomic in one session
+
+`fire(payload, ctx)` runs in a single `repo.session()`:
+
+1. Validate `payload` against the handler's `pipe` (Repo-entry boundary,
+   §7).
+2. Persist a new `EventLogSchema` row (`createOne`).
+3. Run `handle(validatedPayload, evCtx)` with `firstRun: true`.
+4. Commit the session.
+
+If any step throws, the entire session rolls back — **the event row is not
+persisted**, and no side effects landed. Replay will not see the failed
+event because it was never persisted. This is the intended semantics:
+replay is for re-deriving state from successful events, not for retrying
+failed handlers.
+
+### 15.6 Replay-determinism rule (handler-side discipline)
+
+**Replay-determinism rule.** Field generators that produce non-deterministic
+values (`onCreate: () => Date.now()`, `onCreate: () => crypto.randomUUID()`)
+will produce different values on first-run vs. replay. Rows persisted from
+inside an EventLog handler that rely on such generators will *diverge across
+replay* — `createdAt` will differ, PKs will differ, downstream lookups will
+break.
+
+The library does **not** introduce a `GeneratorContext`, a `repo.with()`
+scope, or any other context-flow mechanism to fix this. The rule is
+handler-side discipline:
+
+- **Time-derived values**: thread `evCtx.at.getTime()` (or `evCtx.ts`) into
+  the create payload explicitly. Schema-level `onCreate: () => Date.now()`
+  is fine for non-EventLog use; the explicit payload field overrides it
+  during EventLog calls.
+- **Identity-derived values**: thread `evCtx.by` into the payload. Same
+  override pattern.
+- **Randomness / PKs**: derive deterministically from `evCtx.key` (e.g.
+  `crypto.createHash('sha256').update(evCtx.key + 'salt').digest('hex')`),
+  or supply PKs in the payload directly, or accept that replay will mint
+  fresh PKs.
+
+The library makes the failure mode loud (timestamps and PKs visibly diverge
+on replay), debuggable in tests, but does not enforce determinism. See ADR
+`2026-05-09-event-log-rework.md` for why every alternative
+(library-driven generator-context with various subsets of `now`/`by`/`id`)
+was rejected.
+
+### 15.7 Replay
+
+`log.replay({ from?: Date })` walks `EventLogSchema` rows ordered by `ts`
+ascending and re-runs each one's handler with `firstRun: false`. `from`
+filters the starting point.
+
+`log.rerun(key: string)` re-runs a single event by its `key`.
+
+Both run **per-event sessions**: each event's handler executes inside its
+own `repo.session(...)`. Failure on event N rolls back N alone; events
+1..N−1 are durably applied; events N+1.. are not attempted.
+
+**Replay-stop-on-failure rule.** On the first event that throws, replay
+throws an `OrmReplayError` (sibling of `OrmValidationError`,
+`OrmNotFoundError`) carrying:
+
+```ts
+class OrmReplayError extends EquippedError {
+  key: string                   // the offending event's key
+  name: string                  // the handler name
+  cause: unknown                // the original throw
+}
+```
+
+The caller fixes the issue and re-runs `replay({ from:
+new Date(lastSuccessTs + 1) })` to continue. There is no skip-and-continue
+mode and no caller-supplied error handler.
+
+A caller wanting **atomic replay** (all-or-nothing across events) wraps the
+call: `await repo.session(() => log.replay())` — this composes naturally
+with §8.4 (adapter-defines-nesting) since the per-event sessions delegate
+to the adapter inside the outer session.
+
+### 15.8 What's not in the model
+
+- **No async post-processing.** The legacy `def.async` callback and the
+  `setInterval`-backed batch queue are deleted. Async work belongs in
+  `src/jobs/`.
+- **No library-driven replay determinism.** `GeneratorContext`,
+  `repo.with()`, ALS-backed scope for generator inputs — all rejected.
+  Determinism is handler-side discipline (§15.6).
+- **No library-level event versioning.** Single handler per name; pipe
+  shape changes that reject old persisted bodies throw loudly at replay
+  time. Users encode version in `body` via discriminated-union pipes if
+  they need to.
+- **No bulk fire.** `fire(payload)` is one event per call. Bulk goes
+  through `repo.session(() => Promise.all([fire(p1), fire(p2), ...]))` if
+  the user wants atomicity.
+- **No automatic retry.** Replay-stop-on-failure means caller fixes the
+  bug and re-runs. There is no exponential backoff, no `maxAttempts`, no
+  failure queue.
+- **No cross-EventLog dependencies.** A package may construct multiple
+  `EventLog` instances (e.g. one per Repo); the library does not order
+  them or coordinate their replays.

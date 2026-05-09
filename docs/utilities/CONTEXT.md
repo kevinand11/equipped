@@ -198,6 +198,30 @@ have a validated config and want to construct without re-validating, you
 still go through `static create`; the second validation is a microsecond
 cost in exchange for the discipline.
 
+### 3.6 No-`v.assert` rule (package-wide)
+
+**No-`v.assert` rule.** `v.assert(pipe, value)` is banned across the
+package. Inside `static create` the inherited implementation uses
+`v.validate` and throws on failure; leaf authors invoke neither directly.
+Outside this construction path, callers use `v.validate(pipe, value)` and
+branch on the `.valid` discriminant to throw a context-specific error
+class:
+
+```ts
+const r = v.validate(pipe, value)
+if (!r.valid) throw new <SubsystemError>(r.error)
+// use r.value
+```
+
+Rationale: throwing forces stack-frame capture even when the validation
+failure is immediately reformatted into a structured error class
+(`OrmValidationError`, `EquippedError`, etc.). The inline branch keeps the
+throw opt-in per call site, lets each subsystem name its own error class
+with its own carrier shape, and surfaces the validation flow in code
+rather than hiding it behind an `assert` helper. Enforcement is
+**convention only** — no lint rule. New code should not introduce
+`v.assert` calls; existing call sites migrate as they're touched.
+
 ---
 
 ## 4. What's not in the model
