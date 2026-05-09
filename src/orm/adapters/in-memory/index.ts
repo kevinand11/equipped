@@ -4,7 +4,7 @@ import { v, differ } from 'valleyed'
 
 import { configurable } from '../../../utilities/configurable'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
-import type { AddIndexChange } from '../../migrations/types'
+import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, AnyFieldSpec, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
@@ -17,8 +17,26 @@ export type InMemoryRepoConfig = {
 	prefix?: string
 }
 
+type MigrationRecord = { id: string; appliedAt: number }
+type TableMeta = { pk: { name: string; type: string }; fields: Map<string, AnyFieldSpec> }
+type IndexMeta = { table: string; on: readonly string[]; unique: boolean }
+type ForeignKeyMeta = { table: string; on: string; references: { table: string; column: string }; onDelete?: string; onUpdate?: string }
+
+type Snapshot = {
+	stores: Map<string, Map<string, Record<string, unknown>>>
+	migrations: Map<string, MigrationRecord>
+	indexes: Map<string, IndexMeta>
+	tables: Map<string, TableMeta>
+	foreignKeys: Map<string, ForeignKeyMeta>
+}
+
 function clone<T>(value: T): T {
 	return structuredClone(value)
+}
+
+const replaceMap = <K, V>(target: Map<K, V>, source: Map<K, V>) => {
+	target.clear()
+	for (const [k, v] of source.entries()) target.set(k, v)
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -228,8 +246,10 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	readonly aggregateOps = ['count', 'countDistinct', 'sum', 'avg', 'min', 'max'] as const
 
 	readonly stores = new Map<string, Map<string, Record<string, unknown>>>()
-	readonly migrations = new Map<string, { id: string; appliedAt: number }>()
-	readonly indexes = new Map<string, { table: string; on: readonly string[]; unique: boolean }>()
+	readonly migrations = new Map<string, MigrationRecord>()
+	readonly indexes = new Map<string, IndexMeta>()
+	readonly tables = new Map<string, TableMeta>()
+	readonly foreignKeys = new Map<string, ForeignKeyMeta>()
 
 	#migrationLock: Promise<void> = Promise.resolve()
 
@@ -246,7 +266,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		return this.#getStore(resolveConfigName(schema, config as InMemoryRepoConfig))
 	}
 
-	#snapshot() {
+	#snapshot(): Snapshot {
 		const stores = new Map<string, Map<string, Record<string, unknown>>>()
 		for (const [name, store] of this.stores.entries()) {
 			const storeCopy = new Map<string, Record<string, unknown>>()
@@ -257,26 +277,20 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		}
 		const migrations = new Map(this.migrations)
 		const indexes = new Map(this.indexes)
-		return { stores, migrations, indexes }
+		const tables = new Map<string, TableMeta>()
+		for (const [name, meta] of this.tables.entries()) {
+			tables.set(name, { pk: { ...meta.pk }, fields: new Map(meta.fields) })
+		}
+		const foreignKeys = new Map(this.foreignKeys)
+		return { stores, migrations, indexes, tables, foreignKeys }
 	}
 
-	#restore(snap: {
-		stores: Map<string, Map<string, Record<string, unknown>>>
-		migrations: Map<string, { id: string; appliedAt: number }>
-		indexes: Map<string, { table: string; on: readonly string[]; unique: boolean }>
-	}) {
-		this.stores.clear()
-		for (const [name, store] of snap.stores.entries()) {
-			this.stores.set(name, store)
-		}
-		this.migrations.clear()
-		for (const [k, val] of snap.migrations.entries()) {
-			this.migrations.set(k, val)
-		}
-		this.indexes.clear()
-		for (const [k, val] of snap.indexes.entries()) {
-			this.indexes.set(k, val)
-		}
+	#restore(snap: Snapshot) {
+		replaceMap(this.stores, snap.stores)
+		replaceMap(this.migrations, snap.migrations)
+		replaceMap(this.indexes, snap.indexes)
+		replaceMap(this.tables, snap.tables)
+		replaceMap(this.foreignKeys, snap.foreignKeys)
 	}
 
 	async findByPk(schema: AnySchema, config: unknown, pk: unknown) {
@@ -442,9 +456,81 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		this.migrations.set(id, { id, appliedAt })
 	}
 
+	async applyCreateTable(change: CreateTableChange<any>): Promise<void> {
+		const fields = new Map<string, AnyFieldSpec>()
+		for (const f of change.fields) {
+			fields.set(f.name, { ...f })
+		}
+		this.tables.set(change.name, { pk: { name: change.pk.name, type: change.pk.type }, fields })
+	}
+
+	async applyDropTable(change: DropTableChange): Promise<void> {
+		this.tables.delete(change.name)
+	}
+
+	async applyAddField(change: AddFieldChange<any>): Promise<void> {
+		const table = this.tables.get(change.table)
+		if (table) {
+			table.fields.set(change.field.name, { ...change.field })
+		}
+	}
+
+	async applyDropField(change: DropFieldChange): Promise<void> {
+		const table = this.tables.get(change.table)
+		if (table) {
+			table.fields.delete(change.name)
+		}
+	}
+
+	async applyModifyField(change: ModifyFieldChange<any>): Promise<void> {
+		const table = this.tables.get(change.table)
+		if (table) {
+			table.fields.delete(change.name)
+			table.fields.set(change.to.name, { ...change.to })
+		}
+	}
+
+	async applyRenameTable(change: RenameTableChange): Promise<void> {
+		const table = this.tables.get(change.from)
+		if (table) {
+			this.tables.delete(change.from)
+			this.tables.set(change.to, table)
+		}
+	}
+
+	async applyRenameField(change: RenameFieldChange): Promise<void> {
+		const table = this.tables.get(change.table)
+		if (table) {
+			const field = table.fields.get(change.from)
+			if (field) {
+				table.fields.delete(change.from)
+				table.fields.set(change.to, { ...field, name: change.to })
+			}
+		}
+	}
+
 	async applyAddIndex(change: AddIndexChange): Promise<void> {
 		const indexName = change.name ?? `${change.table}_${change.on.join('_')}_idx`
 		this.indexes.set(indexName, { table: change.table, on: change.on, unique: change.unique ?? false })
+	}
+
+	async applyDropIndex(change: DropIndexChange): Promise<void> {
+		this.indexes.delete(change.name)
+	}
+
+	async applyAddForeignKey(change: AddForeignKeyChange): Promise<void> {
+		const fkName = change.name ?? `${change.table}_${change.on}_fk`
+		this.foreignKeys.set(fkName, {
+			table: change.table,
+			on: change.on,
+			references: { table: change.references.table, column: change.references.column },
+			onDelete: change.onDelete,
+			onUpdate: change.onUpdate,
+		})
+	}
+
+	async applyDropForeignKey(change: DropForeignKeyChange): Promise<void> {
+		this.foreignKeys.delete(change.name)
 	}
 
 	async acquireMigrationLock<T>(fn: () => Promise<T>): Promise<T> {

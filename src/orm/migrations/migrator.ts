@@ -281,6 +281,187 @@ if (import.meta.vitest) {
 			expect(order).toEqual(['0001', '0002'])
 		})
 
+		test('createTable migration creates table metadata', async () => {
+			const { adapter, repo } = makeEnv()
+			const m: Migration<typeof adapter> = {
+				id: '0001-create-users',
+				changes: [{
+					kind: 'createTable',
+					name: 'users',
+					pk: { name: 'id', type: 'string' },
+					fields: [
+						{ name: 'email', type: 'string', unique: true },
+						{ name: 'age', type: 'number', nullable: true },
+					],
+				}],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+
+			expect(adapter.tables.has('users')).toBe(true)
+			const table = adapter.tables.get('users')!
+			expect(table.pk).toEqual({ name: 'id', type: 'string' })
+			expect(table.fields.size).toBe(2)
+			expect(table.fields.get('email')).toEqual({ name: 'email', type: 'string', unique: true })
+			expect(table.fields.get('age')).toEqual({ name: 'age', type: 'number', nullable: true })
+		})
+
+		test('dropTable migration removes table metadata', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.applyCreateTable({ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [] })
+			const m: Migration<typeof adapter> = {
+				id: '0001-drop-users',
+				changes: [{ kind: 'dropTable', name: 'users' }],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+			expect(adapter.tables.has('users')).toBe(false)
+		})
+
+		test('addField migration adds field to existing table', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.applyCreateTable({ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [] })
+			const m: Migration<typeof adapter> = {
+				id: '0001-add-email',
+				changes: [{ kind: 'addField', table: 'users', field: { name: 'email', type: 'string' } }],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+			expect(adapter.tables.get('users')!.fields.has('email')).toBe(true)
+		})
+
+		test('dropField migration removes field from table', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.applyCreateTable({ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [{ name: 'email', type: 'string' }] })
+			const m: Migration<typeof adapter> = {
+				id: '0001-drop-email',
+				changes: [{ kind: 'dropField', table: 'users', name: 'email' }],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+			expect(adapter.tables.get('users')!.fields.has('email')).toBe(false)
+		})
+
+		test('modifyField migration updates field spec', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.applyCreateTable({ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [{ name: 'age', type: 'string' }] })
+			const m: Migration<typeof adapter> = {
+				id: '0001-modify-age',
+				changes: [{ kind: 'modifyField', table: 'users', name: 'age', to: { name: 'age', type: 'number', nullable: true } }],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+			expect(adapter.tables.get('users')!.fields.get('age')).toEqual({ name: 'age', type: 'number', nullable: true })
+		})
+
+		test('renameTable migration renames the table key', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.applyCreateTable({ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [] })
+			const m: Migration<typeof adapter> = {
+				id: '0001-rename-users',
+				changes: [{ kind: 'renameTable', from: 'users', to: 'accounts' }],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+			expect(adapter.tables.has('users')).toBe(false)
+			expect(adapter.tables.has('accounts')).toBe(true)
+		})
+
+		test('renameField migration renames a field', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.applyCreateTable({ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [{ name: 'name', type: 'string' }] })
+			const m: Migration<typeof adapter> = {
+				id: '0001-rename-name',
+				changes: [{ kind: 'renameField', table: 'users', from: 'name', to: 'fullName' }],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+			expect(adapter.tables.get('users')!.fields.has('name')).toBe(false)
+			expect(adapter.tables.get('users')!.fields.has('fullName')).toBe(true)
+			expect(adapter.tables.get('users')!.fields.get('fullName')!.name).toBe('fullName')
+		})
+
+		test('dropIndex migration removes an index', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.applyAddIndex({ kind: 'addIndex', table: 'users', on: ['email'], name: 'users_email_idx' })
+			const m: Migration<typeof adapter> = {
+				id: '0001-drop-idx',
+				changes: [{ kind: 'dropIndex', name: 'users_email_idx' }],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+			expect(adapter.indexes.has('users_email_idx')).toBe(false)
+		})
+
+		test('addForeignKey migration creates a FK entry', async () => {
+			const { adapter, repo } = makeEnv()
+			const m: Migration<typeof adapter> = {
+				id: '0001-add-fk',
+				changes: [{ kind: 'addForeignKey', table: 'posts', on: 'authorId', references: { table: 'users', column: 'id' } }],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+			expect(adapter.foreignKeys.has('posts_authorId_fk')).toBe(true)
+			const fk = adapter.foreignKeys.get('posts_authorId_fk')!
+			expect(fk.table).toBe('posts')
+			expect(fk.on).toBe('authorId')
+			expect(fk.references).toEqual({ table: 'users', column: 'id' })
+		})
+
+		test('dropForeignKey migration removes a FK entry', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.applyAddForeignKey({ kind: 'addForeignKey', table: 'posts', on: 'authorId', references: { table: 'users', column: 'id' }, name: 'posts_authorId_fk' })
+			const m: Migration<typeof adapter> = {
+				id: '0001-drop-fk',
+				changes: [{ kind: 'dropForeignKey', table: 'posts', name: 'posts_authorId_fk' }],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+			expect(adapter.foreignKeys.has('posts_authorId_fk')).toBe(false)
+		})
+
+		test('full lifecycle: create table, add fields, indexes, FKs, then rename and drop', async () => {
+			const { adapter, repo } = makeEnv()
+			const migrations: Migration<typeof adapter>[] = [
+				{
+					id: '0001-create',
+					changes: [
+						{ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [{ name: 'email', type: 'string' }] },
+						{ kind: 'createTable', name: 'posts', pk: { name: 'id', type: 'string' }, fields: [{ name: 'title', type: 'string' }, { name: 'authorId', type: 'string' }] },
+						{ kind: 'addIndex', table: 'users', on: ['email'], unique: true },
+						{ kind: 'addForeignKey', table: 'posts', on: 'authorId', references: { table: 'users', column: 'id' } },
+					],
+				},
+				{
+					id: '0002-evolve',
+					changes: [
+						{ kind: 'addField', table: 'users', field: { name: 'age', type: 'number', nullable: true } },
+						{ kind: 'renameField', table: 'users', from: 'email', to: 'emailAddress' },
+						{ kind: 'renameTable', from: 'posts', to: 'articles' },
+					],
+				},
+				{
+					id: '0003-cleanup',
+					changes: [
+						{ kind: 'dropField', table: 'users', name: 'age' },
+						{ kind: 'dropForeignKey', table: 'posts', name: 'posts_authorId_fk' },
+						{ kind: 'dropIndex', name: 'users_email_idx' },
+						{ kind: 'dropTable', name: 'articles' },
+					],
+				},
+			]
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			const result = await migrator.up()
+			expect(result.ran).toEqual(['0001-create', '0002-evolve', '0003-cleanup'])
+
+			expect(adapter.tables.has('users')).toBe(true)
+			expect(adapter.tables.get('users')!.fields.has('emailAddress')).toBe(true)
+			expect(adapter.tables.get('users')!.fields.has('age')).toBe(false)
+			expect(adapter.tables.has('articles')).toBe(false)
+			expect(adapter.indexes.has('users_email_idx')).toBe(false)
+			expect(adapter.foreignKeys.has('posts_authorId_fk')).toBe(false)
+		})
+
 		test('tx:true migration that throws rolls back both user effects and tracker row', async () => {
 			const { adapter, repo } = makeEnv()
 			const m: Migration<typeof adapter> = {
