@@ -5,7 +5,7 @@ import { v } from 'valleyed'
 import { configurable } from '../../../utilities/configurable'
 import type { FilterGroup } from '../../filter'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query'
+import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import type { AnyUpdateOp } from '../../updates'
 import { InMemoryAdapter, type InMemoryRepoConfig } from '../in-memory'
@@ -144,7 +144,7 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 if (import.meta.vitest) {
 	const { describe, test, expect, beforeEach, afterEach } = import.meta.vitest
 	const { FilterGroup } = await import('../../filter')
-	const { OrderBy } = await import('../../query')
+	const { OrderBy } = await import('../../query-options')
 	const { Schema } = await import('../../schema')
 	const { IncOp, PatchOp, PullOp, PushOp } = await import('../../updates')
 	const { v } = await import('valleyed')

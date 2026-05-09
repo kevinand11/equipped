@@ -397,6 +397,9 @@ mocks, REST-API adapters) have no meaningful connect/disconnect — leaving
 `connect`/`disconnect` unimplemented is silent and structural; no no-op stubs
 required.
 
+`findMany`'s `options?` parameter is typed `QueryOptions<Sel>`, defined in
+`query-options.ts`.
+
 ### 3.2 Capability declarations
 
 A **capability declaration** is a literal-typed `readonly` instance field on
@@ -1566,6 +1569,9 @@ handing it to the adapter.
   `field`, `op`, `value`. The class is named `Filter`.
 - The **filter tree** is the whole tree (a top-level `FilterGroup` with all
   its branches and leaves).
+- `OrderBy` and `QueryOptions` (the query-shape types passed to adapter
+  methods alongside the filter) live in a peer Module `query-options.ts`,
+  distinct from the filter-tree Module `filter.ts`.
 
 ### 11.2 FilterFactory callback
 

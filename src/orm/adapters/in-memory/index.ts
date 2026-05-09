@@ -6,7 +6,7 @@ import { configurable } from '../../../utilities/configurable'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, AnyFieldSpec, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query'
+import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
 
@@ -250,6 +250,8 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	readonly indexes = new Map<string, IndexMeta>()
 	readonly tables = new Map<string, TableMeta>()
 	readonly foreignKeys = new Map<string, ForeignKeyMeta>()
+
+	#migrationLock: Promise<void> = Promise.resolve()
 
 	protected constructor(config: typeof InMemoryAdapter.Config) {
 		super(config)
@@ -531,6 +533,19 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		this.foreignKeys.delete(change.name)
 	}
 
+	async acquireMigrationLock<T>(fn: () => Promise<T>): Promise<T> {
+		let release!: () => void
+		const next = new Promise<void>((r) => { release = r })
+		const prev = this.#migrationLock
+		this.#migrationLock = next
+		await prev
+		try {
+			return await fn()
+		} finally {
+			release()
+		}
+	}
+
 	async session<T>(fn: () => Promise<T>): Promise<T> {
 		if (sessionActiveStore.getStore()) return fn()
 		const snap = this.#snapshot()
@@ -546,7 +561,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { FilterGroup } = await import('../../filter')
-	const { OrderBy } = await import('../../query')
+	const { OrderBy } = await import('../../query-options')
 	const { Schema } = await import('../../schema')
 	const { IncOp, PatchOp, PullOp, PushOp } = await import('../../updates')
 

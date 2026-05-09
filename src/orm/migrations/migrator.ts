@@ -9,15 +9,26 @@ import type { Repo } from '../repo/repo'
 
 type RunResult = { ran: string[]; skipped: string[] }
 
+type HasAcquireMigrationLock<A> =
+	'acquireMigrationLock' extends keyof A
+		? A['acquireMigrationLock'] extends (...args: any) => any ? true : false
+		: false
+
+type WithoutLockStep<A extends OrmAdapterLike<any>> = HasAcquireMigrationLock<A> extends true
+	? {}
+	: { withoutLock(): { build(): Migrator<A> } }
+
 export class Migrator<A extends OrmAdapterLike<any>> {
 	readonly #repo: Repo<A>
 	readonly #adapter: OrmAdapter
 	readonly #migrations: ReadonlyArray<Migration<A>>
+	readonly #withoutLock: boolean
 
-	constructor(repo: Repo<A>, adapter: OrmAdapter, migrations: ReadonlyArray<Migration<A>>) {
+	constructor(repo: Repo<A>, adapter: OrmAdapter, migrations: ReadonlyArray<Migration<A>>, withoutLock = false) {
 		this.#repo = repo
 		this.#adapter = adapter
 		this.#migrations = migrations
+		this.#withoutLock = withoutLock
 	}
 
 	async up(): Promise<RunResult> {
@@ -28,9 +39,22 @@ export class Migrator<A extends OrmAdapterLike<any>> {
 			throw new OrmMigrationError({ id: '', phase: 'record', cause: 'adapter does not implement recordMigration' })
 		}
 
+		const useLock = !this.#withoutLock && typeof this.#adapter.acquireMigrationLock === 'function'
+		if (useLock) {
+			try {
+				return await this.#adapter.acquireMigrationLock!(() => this.#runPending())
+			} catch (err) {
+				if (err instanceof OrmMigrationError) throw err
+				throw new OrmMigrationError({ id: '', phase: 'lock', cause: err })
+			}
+		}
+		return this.#runPending()
+	}
+
+	async #runPending(): Promise<RunResult> {
 		let applied: { id: string; appliedAt: number }[]
 		try {
-			applied = await this.#adapter.loadMigrations()
+			applied = await this.#adapter.loadMigrations!()
 		} catch (err) {
 			throw new OrmMigrationError({ id: '', phase: 'load', cause: err })
 		}
@@ -80,14 +104,22 @@ export class Migrator<A extends OrmAdapterLike<any>> {
 						assertNormalisedChanges(adapter, migrations as any)
 						return new Migrator(repo, adapter, migrations)
 					},
-				}
+					withoutLock() {
+						return {
+							build(): Migrator<A> {
+								assertNormalisedChanges(adapter, migrations as any)
+								return new Migrator(repo, adapter, migrations, true)
+							},
+						}
+					},
+				} as { build(): Migrator<A> } & WithoutLockStep<A>
 			},
 		}
 	}
 }
 
 if (import.meta.vitest) {
-	const { describe, test, expect } = import.meta.vitest
+	const { describe, test, expect, expectTypeOf } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { InMemoryAdapter } = await import('../adapters/in-memory')
 	const { Schema } = await import('../schema')
@@ -428,6 +460,175 @@ if (import.meta.vitest) {
 			expect(adapter.tables.has('articles')).toBe(false)
 			expect(adapter.indexes.has('users_email_idx')).toBe(false)
 			expect(adapter.foreignKeys.has('posts_authorId_fk')).toBe(false)
+		})
+
+		test('tx:true migration that throws rolls back both user effects and tracker row', async () => {
+			const { adapter, repo } = makeEnv()
+			const m: Migration<typeof adapter> = {
+				id: '0001-will-fail',
+				changes: [
+					{ kind: 'addIndex', table: 'users', on: ['email'] },
+					{
+						kind: 'execute',
+						up: async (r) => {
+							await r.on(UserSchema).one().create({ id: 'partial', email: 'fail@test.com' })
+							throw new Error('mid-migration boom')
+						},
+					},
+				],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await expect(migrator.up()).rejects.toThrow(OrmMigrationError)
+
+			const recorded = await adapter.loadMigrations()
+			expect(recorded).toHaveLength(0)
+			expect(adapter.indexes.size).toBe(0)
+			const row = await repo.on(UserSchema).one().id('partial').find()
+			expect(row).toBeNull()
+		})
+
+		test('tx:false migration that throws leaves partial state durable', async () => {
+			const { adapter, repo } = makeEnv()
+			const m: Migration<typeof adapter> = {
+				id: '0001-no-tx',
+				tx: false,
+				changes: [
+					{ kind: 'addIndex', table: 'users', on: ['email'] },
+					{
+						kind: 'execute',
+						up: async (r) => {
+							await r.on(UserSchema).one().create({ id: 'durable', email: 'stay@test.com' })
+							throw new Error('partial failure')
+						},
+					},
+				],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await expect(migrator.up()).rejects.toThrow(OrmMigrationError)
+
+			const recorded = await adapter.loadMigrations()
+			expect(recorded).toHaveLength(0)
+			expect(adapter.indexes.has('users_email_idx')).toBe(true)
+			const row = await repo.on(UserSchema).one().id('durable').find()
+			expect(row).not.toBeNull()
+			expect(row!.email).toBe('stay@test.com')
+		})
+
+		test('atomic-across-migrations: outer repo.session() wraps all in one tx', async () => {
+			const { adapter, repo } = makeEnv()
+			const m1: Migration<typeof adapter> = {
+				id: '0001',
+				changes: [{ kind: 'addIndex', table: 'users', on: ['email'] }],
+			}
+			const m2: Migration<typeof adapter> = {
+				id: '0002',
+				changes: [{
+					kind: 'execute',
+					up: async () => { throw new Error('fail in m2') },
+				}],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m1, m2]).build()
+			await expect(
+				repo.session(() => migrator.up()),
+			).rejects.toThrow()
+
+			const recorded = await adapter.loadMigrations()
+			expect(recorded).toHaveLength(0)
+			expect(adapter.indexes.size).toBe(0)
+		})
+
+		test('simultaneous up() calls serialize via acquireMigrationLock', async () => {
+			const { adapter, repo } = makeEnv()
+			const order: string[] = []
+			let resolveGate!: () => void
+			const gate = new Promise<void>((r) => { resolveGate = r })
+
+			const migrations: Migration<typeof adapter>[] = [
+				{
+					id: '0001',
+					changes: [{
+						kind: 'execute',
+						up: async () => {
+							order.push('0001-start')
+							await gate
+							order.push('0001-end')
+						},
+					}],
+				},
+				{
+					id: '0002',
+					changes: [{
+						kind: 'execute',
+						up: async () => { order.push('0002') },
+					}],
+				},
+			]
+
+			const migrator1 = Migrator.from(repo, adapter).migrations(migrations).build()
+			const migrator2 = Migrator.from(repo, adapter).migrations(migrations).build()
+
+			const p1 = migrator1.up()
+			const p2 = migrator2.up()
+
+			await new Promise((r) => setTimeout(r, 10))
+			expect(order).toEqual(['0001-start'])
+
+			resolveGate()
+			await Promise.all([p1, p2])
+
+			expect(order).toEqual(['0001-start', '0001-end', '0002'])
+		})
+
+		test('tx:false retries cleanly from scratch after failure', async () => {
+			const { adapter, repo } = makeEnv()
+			let callCount = 0
+			const m: Migration<typeof adapter> = {
+				id: '0001-retry',
+				tx: false,
+				changes: [{
+					kind: 'execute',
+					up: async (r) => {
+						callCount++
+						if (callCount === 1) {
+							await r.on(UserSchema).one().create({ id: 'partial', email: 'p@test.com' })
+							throw new Error('first attempt fails')
+						}
+						await r.on(UserSchema).one().create({ id: 'complete', email: 'c@test.com' })
+					},
+				}],
+			}
+
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await expect(migrator.up()).rejects.toThrow(OrmMigrationError)
+			expect(callCount).toBe(1)
+
+			const migrator2 = Migrator.from(repo, adapter).migrations([m]).build()
+			const result = await migrator2.up()
+			expect(result.ran).toEqual(['0001-retry'])
+			expect(callCount).toBe(2)
+		})
+
+		test('type-level: withoutLock() rejected when adapter declares acquireMigrationLock', () => {
+			const { adapter, repo } = makeEnv()
+			const step = Migrator.from(repo, adapter).migrations([])
+			expectTypeOf(step).toHaveProperty('build')
+			expectTypeOf(step).not.toHaveProperty('withoutLock')
+		})
+
+		test('type-level: withoutLock() accepted when adapter lacks acquireMigrationLock', async () => {
+			const { OrmAdapter } = await import('../orm-adapter')
+			class NoLockAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async loadMigrations() { return [] }
+				async recordMigration() {}
+				async session<T>(fn: () => Promise<T>): Promise<T> { return fn() }
+			}
+			const nlAdapter = new (NoLockAdapter as any)() as NoLockAdapter
+			const nlRepo = new Repo({ adapter: nlAdapter, resolve: (s) => ({ table: s.name }) })
+			const step = Migrator.from(nlRepo, nlAdapter).migrations([])
+			expectTypeOf(step).toHaveProperty('build')
+			expectTypeOf(step).toHaveProperty('withoutLock')
 		})
 	})
 }

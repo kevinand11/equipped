@@ -6,7 +6,7 @@ import type { AggregateOpName, FieldTypeName, FilterOpName, UpdateOpName } from 
 import type { OrmUse } from './adapters/base'
 import { FilterGroup } from './filter'
 import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from './migrations/types'
-import type { QueryOptions } from './query'
+import type { QueryOptions } from './query-options'
 import type { AnySchema } from './schema'
 import type { AnyUpdateOp } from './updates'
 
@@ -51,6 +51,7 @@ export abstract class OrmAdapter {
 
 	loadMigrations?(): Promise<{ id: string; appliedAt: number }[]>
 	recordMigration?(id: string, appliedAt: number): Promise<void>
+	acquireMigrationLock?<T>(fn: () => Promise<T>): Promise<T>
 	applyCreateTable?(change: CreateTableChange<any>): Promise<void>
 	applyDropTable?(change: DropTableChange): Promise<void>
 	applyAddField?(change: AddFieldChange<any>): Promise<void>

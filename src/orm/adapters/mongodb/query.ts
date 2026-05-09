@@ -1,6 +1,6 @@
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import type { AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query'
+import type { QueryOptions } from '../../query-options'
 import { flattenOps, IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
 
 type MongoFilter = Record<string, unknown>
@@ -202,7 +202,7 @@ export function compileMongoAggregate(spec: AggregateSpec, primaryKey: string): 
 if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { FilterGroup } = await import('../../filter')
-	const { OrderBy } = await import('../../query')
+	const { OrderBy } = await import('../../query-options')
 
 	describe('compileMongoFilter', () => {
 		test('empty filter group compiles to empty object', () => {
