@@ -2,12 +2,13 @@ import type { OrmAdapterLike } from '../adapters/base'
 import { OrmMigrationError } from '../errors/migration'
 import type { OrmAdapter } from '../orm-adapter'
 import { applyChange } from './apply'
-import { computePending } from './pending'
+import { computePending, type PendingOpts } from './pending'
 import type { AnyChange, AnyMigration, Migration } from './types'
 import { assertNormalisedChanges } from './validate'
 import type { Repo } from '../repo/repo'
 
 type RunResult = { ran: string[]; skipped: string[] }
+export type StatusEntry = { id: string; applied: boolean; appliedAt?: number }
 
 type HasAcquireMigrationLock<A> =
 	'acquireMigrationLock' extends keyof A
@@ -31,7 +32,7 @@ export class Migrator<A extends OrmAdapterLike<any>> {
 		this.#withoutLock = withoutLock
 	}
 
-	async up(): Promise<RunResult> {
+	async up(opts?: PendingOpts): Promise<RunResult> {
 		if (typeof this.#adapter.loadMigrations !== 'function') {
 			throw new OrmMigrationError({ id: '', phase: 'load', cause: 'adapter does not implement loadMigrations' })
 		}
@@ -42,16 +43,39 @@ export class Migrator<A extends OrmAdapterLike<any>> {
 		const useLock = !this.#withoutLock && typeof this.#adapter.acquireMigrationLock === 'function'
 		if (useLock) {
 			try {
-				return await this.#adapter.acquireMigrationLock!(() => this.#runPending())
+				return await this.#adapter.acquireMigrationLock!(() => this.#runPending(opts))
 			} catch (err) {
 				if (err instanceof OrmMigrationError) throw err
 				throw new OrmMigrationError({ id: '', phase: 'lock', cause: err })
 			}
 		}
-		return this.#runPending()
+		return this.#runPending(opts)
 	}
 
-	async #runPending(): Promise<RunResult> {
+	async status(): Promise<StatusEntry[]> {
+		if (typeof this.#adapter.loadMigrations !== 'function') {
+			throw new OrmMigrationError({ id: '', phase: 'load', cause: 'adapter does not implement loadMigrations' })
+		}
+		const applied = await this.#adapter.loadMigrations!()
+		const appliedMap = new Map(applied.map((a) => [a.id, a.appliedAt]))
+		const sorted = [...this.#migrations].sort((a, b) => a.id.localeCompare(b.id))
+		return sorted.map((m) => {
+			const appliedAt = appliedMap.get(m.id)
+			if (appliedAt !== undefined) return { id: m.id, applied: true as const, appliedAt }
+			return { id: m.id, applied: false as const }
+		})
+	}
+
+	async dry(opts?: PendingOpts): Promise<{ would: string[] }> {
+		if (typeof this.#adapter.loadMigrations !== 'function') {
+			throw new OrmMigrationError({ id: '', phase: 'load', cause: 'adapter does not implement loadMigrations' })
+		}
+		const applied = await this.#adapter.loadMigrations!()
+		const { pending } = computePending(this.#migrations as unknown as ReadonlyArray<AnyMigration>, applied, opts)
+		return { would: pending.map((m) => m.id) }
+	}
+
+	async #runPending(opts?: PendingOpts): Promise<RunResult> {
 		let applied: { id: string; appliedAt: number }[]
 		try {
 			applied = await this.#adapter.loadMigrations!()
@@ -59,7 +83,7 @@ export class Migrator<A extends OrmAdapterLike<any>> {
 			throw new OrmMigrationError({ id: '', phase: 'load', cause: err })
 		}
 
-		const { pending, skipped } = computePending(this.#migrations as unknown as ReadonlyArray<AnyMigration>, applied)
+		const { pending, skipped } = computePending(this.#migrations as unknown as ReadonlyArray<AnyMigration>, applied, opts)
 		const ran: string[] = []
 
 		for (const m of pending) {
@@ -629,6 +653,175 @@ if (import.meta.vitest) {
 			const step = Migrator.from(nlRepo, nlAdapter).migrations([])
 			expectTypeOf(step).toHaveProperty('build')
 			expectTypeOf(step).toHaveProperty('withoutLock')
+		})
+
+		test('up({ to }) runs only migrations up to and including the target', async () => {
+			const { adapter, repo } = makeEnv()
+			const order: string[] = []
+			const migrations: Migration<typeof adapter>[] = [
+				{ id: 'm-001', changes: [{ kind: 'execute', up: async () => { order.push('m-001') } }] },
+				{ id: 'm-002', changes: [{ kind: 'execute', up: async () => { order.push('m-002') } }] },
+				{ id: 'm-003', changes: [{ kind: 'execute', up: async () => { order.push('m-003') } }] },
+			]
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			const result = await migrator.up({ to: 'm-002' })
+			expect(result.ran).toEqual(['m-001', 'm-002'])
+			expect(order).toEqual(['m-001', 'm-002'])
+		})
+
+		test('up({ to }) is a no-op when target already applied', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.recordMigration('m-001', Date.now())
+			await adapter.recordMigration('m-002', Date.now())
+			const migrations: Migration<typeof adapter>[] = [
+				{ id: 'm-001', changes: [] },
+				{ id: 'm-002', changes: [] },
+				{ id: 'm-003', changes: [] },
+			]
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			const result = await migrator.up({ to: 'm-002' })
+			expect(result.ran).toEqual([])
+		})
+
+		test('up({ to: unknown }) throws OrmMigrationError before any side effect', async () => {
+			const { adapter, repo } = makeEnv()
+			let executed = false
+			const migrations: Migration<typeof adapter>[] = [
+				{ id: 'm-001', changes: [{ kind: 'execute', up: async () => { executed = true } }] },
+			]
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			await expect(migrator.up({ to: 'unknown' })).rejects.toThrow(OrmMigrationError)
+			expect(executed).toBe(false)
+			try {
+				await Migrator.from(repo, adapter).migrations(migrations).build().up({ to: 'unknown' })
+			} catch (err: any) {
+				expect(err.phase).toBe('load')
+			}
+		})
+
+		test('up({ steps: 1 }) runs exactly 1 pending migration', async () => {
+			const { adapter, repo } = makeEnv()
+			const migrations: Migration<typeof adapter>[] = [
+				{ id: '0001', changes: [{ kind: 'addIndex', table: 'users', on: ['email'] }] },
+				{ id: '0002', changes: [{ kind: 'addIndex', table: 'users', on: ['id'] }] },
+				{ id: '0003', changes: [{ kind: 'addIndex', table: 'users', on: ['email', 'id'] }] },
+			]
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			const result = await migrator.up({ steps: 1 })
+			expect(result.ran).toEqual(['0001'])
+			expect(adapter.indexes.size).toBe(1)
+		})
+
+		test('status() returns sorted entries with correct applied/pending flags', async () => {
+			const { adapter, repo } = makeEnv()
+			const now = Date.now()
+			await adapter.recordMigration('0002', now)
+			const migrations: Migration<typeof adapter>[] = [
+				{ id: '0003', changes: [] },
+				{ id: '0001', changes: [] },
+				{ id: '0002', changes: [] },
+			]
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			const entries = await migrator.status()
+			expect(entries).toEqual([
+				{ id: '0001', applied: false },
+				{ id: '0002', applied: true, appliedAt: now },
+				{ id: '0003', applied: false },
+			])
+		})
+
+		test('dry() returns the same plan up() would execute, without executing', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.recordMigration('0001', Date.now())
+			let executed = false
+			const migrations: Migration<typeof adapter>[] = [
+				{ id: '0001', changes: [] },
+				{ id: '0002', changes: [{ kind: 'execute', up: async () => { executed = true } }] },
+				{ id: '0003', changes: [] },
+			]
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			const plan = await migrator.dry()
+			expect(plan).toEqual({ would: ['0002', '0003'] })
+			expect(executed).toBe(false)
+		})
+
+		test('dry(opts) respects to/steps', async () => {
+			const { adapter, repo } = makeEnv()
+			const migrations: Migration<typeof adapter>[] = [
+				{ id: '0001', changes: [] },
+				{ id: '0002', changes: [] },
+				{ id: '0003', changes: [] },
+			]
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			expect(await migrator.dry({ to: '0002' })).toEqual({ would: ['0001', '0002'] })
+			expect(await migrator.dry({ steps: 1 })).toEqual({ would: ['0001'] })
+		})
+
+		test('orphan migration in tracker throws OrmMigrationError with phase load', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.recordMigration('ghost-001', Date.now())
+			const migrations: Migration<typeof adapter>[] = [
+				{ id: '0001', changes: [] },
+			]
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			try {
+				await migrator.up()
+				expect.unreachable('should have thrown')
+			} catch (err: any) {
+				expect(err).toBeInstanceOf(OrmMigrationError)
+				expect(err.phase).toBe('load')
+				expect(err.cause).toContain('ghost-001')
+			}
+		})
+
+		test('failing user code throws OrmMigrationError with phase user', async () => {
+			const { adapter, repo } = makeEnv()
+			const m: Migration<typeof adapter> = {
+				id: '0001',
+				changes: [{ kind: 'execute', up: async () => { throw new Error('user boom') } }],
+			}
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			try {
+				await migrator.up()
+				expect.unreachable('should have thrown')
+			} catch (err: any) {
+				expect(err).toBeInstanceOf(OrmMigrationError)
+				expect(err.phase).toBe('user')
+				expect(err.id).toBe('0001')
+			}
+		})
+
+		test('failing recordMigration throws OrmMigrationError with phase record', async () => {
+			const { adapter, repo } = makeEnv()
+			const origRecord = adapter.recordMigration.bind(adapter)
+			adapter.recordMigration = async (id: string, at: number) => {
+				if (id === '0001') throw new Error('record boom')
+				return origRecord(id, at)
+			}
+			const m: Migration<typeof adapter> = { id: '0001', changes: [] }
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			try {
+				await migrator.up()
+				expect.unreachable('should have thrown')
+			} catch (err: any) {
+				expect(err).toBeInstanceOf(OrmMigrationError)
+				expect(err.phase).toBe('record')
+				expect(err.id).toBe('0001')
+			}
+		})
+
+		test('failing acquireMigrationLock throws OrmMigrationError with phase lock', async () => {
+			const { adapter, repo } = makeEnv()
+			adapter.acquireMigrationLock = async () => { throw new Error('lock boom') }
+			const m: Migration<typeof adapter> = { id: '0001', changes: [] }
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			try {
+				await migrator.up()
+				expect.unreachable('should have thrown')
+			} catch (err: any) {
+				expect(err).toBeInstanceOf(OrmMigrationError)
+				expect(err.phase).toBe('lock')
+			}
 		})
 	})
 }
