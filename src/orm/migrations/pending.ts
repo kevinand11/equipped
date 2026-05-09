@@ -1,9 +1,12 @@
 import type { AnyMigration } from './types'
 import { OrmMigrationError } from '../errors/migration'
 
+export type PendingOpts = { to?: string; steps?: number }
+
 export function computePending(
 	declared: ReadonlyArray<AnyMigration>,
 	applied: ReadonlyArray<{ id: string; appliedAt: number }>,
+	opts?: PendingOpts,
 ): { pending: AnyMigration[]; skipped: string[] } {
 	const appliedIds = new Set(applied.map((a) => a.id))
 	const declaredIds = new Set(declared.map((d) => d.id))
@@ -27,6 +30,23 @@ export function computePending(
 		} else {
 			pending.push(m)
 		}
+	}
+
+	if (opts?.to !== undefined) {
+		const toIdx = pending.findIndex((m) => m.id === opts.to)
+		if (toIdx === -1) {
+			if (appliedIds.has(opts.to)) return { pending: [], skipped }
+			throw new OrmMigrationError({
+				id: opts.to,
+				phase: 'load',
+				cause: `unknown migration id: ${opts.to}`,
+			})
+		}
+		pending.splice(toIdx + 1)
+	}
+
+	if (opts?.steps !== undefined) {
+		pending.splice(opts.steps)
 	}
 
 	return { pending, skipped }
@@ -87,6 +107,57 @@ if (import.meta.vitest) {
 			]
 			const result = computePending(declared, [])
 			expect(result.pending.map((m) => m.id)).toEqual(['a', 'b', 'c'])
+		})
+
+		test('to: returns pending up to and including the named id', () => {
+			const declared = [
+				{ id: '0001', changes: [] },
+				{ id: '0002', changes: [] },
+				{ id: '0003', changes: [] },
+			]
+			const result = computePending(declared, [], { to: '0002' })
+			expect(result.pending.map((m) => m.id)).toEqual(['0001', '0002'])
+		})
+
+		test('to: no-op when target id already applied', () => {
+			const declared = [
+				{ id: '0001', changes: [] },
+				{ id: '0002', changes: [] },
+				{ id: '0003', changes: [] },
+			]
+			const applied = [{ id: '0001', appliedAt: 1 }, { id: '0002', appliedAt: 2 }]
+			const result = computePending(declared, applied, { to: '0002' })
+			expect(result.pending).toEqual([])
+		})
+
+		test('to: throws on unknown id', () => {
+			const declared = [{ id: '0001', changes: [] }]
+			expect(() => computePending(declared, [], { to: 'unknown' })).toThrow(OrmMigrationError)
+			try {
+				computePending(declared, [], { to: 'unknown' })
+			} catch (err: any) {
+				expect(err.phase).toBe('load')
+				expect(err.id).toBe('unknown')
+			}
+		})
+
+		test('steps: returns the first N pending', () => {
+			const declared = [
+				{ id: '0001', changes: [] },
+				{ id: '0002', changes: [] },
+				{ id: '0003', changes: [] },
+			]
+			const result = computePending(declared, [], { steps: 1 })
+			expect(result.pending.map((m) => m.id)).toEqual(['0001'])
+		})
+
+		test('steps: returns all pending when N exceeds count', () => {
+			const declared = [
+				{ id: '0001', changes: [] },
+				{ id: '0002', changes: [] },
+			]
+			const result = computePending(declared, [], { steps: 5 })
+			expect(result.pending.map((m) => m.id)).toEqual(['0001', '0002'])
 		})
 	})
 }
