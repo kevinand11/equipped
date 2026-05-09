@@ -231,6 +231,8 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	readonly migrations = new Map<string, { id: string; appliedAt: number }>()
 	readonly indexes = new Map<string, { table: string; on: readonly string[]; unique: boolean }>()
 
+	#migrationLock: Promise<void> = Promise.resolve()
+
 	protected constructor(config: typeof InMemoryAdapter.Config) {
 		super(config)
 	}
@@ -443,6 +445,19 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	async applyAddIndex(change: AddIndexChange): Promise<void> {
 		const indexName = change.name ?? `${change.table}_${change.on.join('_')}_idx`
 		this.indexes.set(indexName, { table: change.table, on: change.on, unique: change.unique ?? false })
+	}
+
+	async acquireMigrationLock<T>(fn: () => Promise<T>): Promise<T> {
+		let release!: () => void
+		const next = new Promise<void>((r) => { release = r })
+		const prev = this.#migrationLock
+		this.#migrationLock = next
+		await prev
+		try {
+			return await fn()
+		} finally {
+			release()
+		}
 	}
 
 	async session<T>(fn: () => Promise<T>): Promise<T> {
