@@ -51,6 +51,7 @@ export abstract class OrmAdapter {
 
 	loadMigrations?(): Promise<{ id: string; appliedAt: number }[]>
 	recordMigration?(id: string, appliedAt: number): Promise<void>
+	acquireMigrationLock?<T>(fn: () => Promise<T>): Promise<T>
 	applyAddIndex?(change: AddIndexChange): Promise<void>
 
 	protected onFatalError(err: unknown): never {
