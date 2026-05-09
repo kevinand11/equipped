@@ -79,7 +79,13 @@ export function applyComputedSelection(
 				}
 				depInput[dep] = row[dep]
 			}
-			enriched[computeName] = v.assert(def.pipe, def.compute(depInput))
+			const r = v.validate(def.pipe, def.compute(depInput))
+			if (!r.valid) throw new EquippedError('Computed field validation failed', {
+				schema: schema.name,
+				computedField: computeName,
+				cause: r.error,
+			})
+			enriched[computeName] = r.value
 		}
 
 		if (!plan.requestedSelect) return enriched

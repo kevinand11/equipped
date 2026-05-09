@@ -247,7 +247,9 @@ export abstract class Server {
 				responsePipeDefs[def.key] = v.any().pipe((input) => {
 					const p = pipeRecords.find((r) => r.status === status)?.pipe
 					if (!p) throw PipeError.root(`schema not defined for status code: ${status}`, input)
-					return v.assert(p, input)
+					const r = v.validate(p, input)
+					if (!r.valid) throw r.error
+					return r.value
 				})
 				jsonSchema.response[def.key as keyof typeof jsonSchema.response] = pipeRecords.map((record) => ({
 					status: record.status,
