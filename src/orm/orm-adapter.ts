@@ -5,6 +5,7 @@ import { Instance, type ClassRef } from '../instance'
 import type { AggregateOpName, FieldTypeName, FilterOpName, UpdateOpName } from './adapter'
 import type { OrmUse } from './adapters/base'
 import { FilterGroup } from './filter'
+import type { DiscoveredSchema } from './migrations/introspection-types'
 import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from './migrations/types'
 import type { QueryOptions } from './query-options'
 import type { AnySchema } from './schema'
@@ -63,6 +64,7 @@ export abstract class OrmAdapter {
 	applyDropIndex?(change: DropIndexChange): Promise<void>
 	applyAddForeignKey?(change: AddForeignKeyChange): Promise<void>
 	applyDropForeignKey?(change: DropForeignKeyChange): Promise<void>
+	introspect?(): Promise<DiscoveredSchema[]>
 
 	protected onFatalError(err: unknown): never {
 		const wrapped = err instanceof EquippedError ? err : new EquippedError('OrmAdapter fatal error', {}, err)
