@@ -59,11 +59,11 @@ export class Migrator<A extends OrmAdapterLike<any>> {
 		const applied = await this.#adapter.loadMigrations!()
 		const appliedMap = new Map(applied.map((a) => [a.id, a.appliedAt]))
 		const sorted = [...this.#migrations].sort((a, b) => a.id.localeCompare(b.id))
-		return sorted.map((m) => ({
-			id: m.id,
-			applied: appliedMap.has(m.id),
-			...(appliedMap.has(m.id) ? { appliedAt: appliedMap.get(m.id) } : {}),
-		}))
+		return sorted.map((m) => {
+			const appliedAt = appliedMap.get(m.id)
+			if (appliedAt !== undefined) return { id: m.id, applied: true as const, appliedAt }
+			return { id: m.id, applied: false as const }
+		})
 	}
 
 	async dry(opts?: PendingOpts): Promise<{ would: string[] }> {
