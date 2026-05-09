@@ -4,6 +4,7 @@ import { v, differ } from 'valleyed'
 
 import { configurable } from '../../../utilities/configurable'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
+import type { AddIndexChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
@@ -227,6 +228,8 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	readonly aggregateOps = ['count', 'countDistinct', 'sum', 'avg', 'min', 'max'] as const
 
 	readonly stores = new Map<string, Map<string, Record<string, unknown>>>()
+	readonly migrations = new Map<string, { id: string; appliedAt: number }>()
+	readonly indexes = new Map<string, { table: string; on: readonly string[]; unique: boolean }>()
 
 	protected constructor(config: typeof InMemoryAdapter.Config) {
 		super(config)
@@ -242,21 +245,35 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 	}
 
 	#snapshot() {
-		const snap = new Map<string, Map<string, Record<string, unknown>>>()
+		const stores = new Map<string, Map<string, Record<string, unknown>>>()
 		for (const [name, store] of this.stores.entries()) {
 			const storeCopy = new Map<string, Record<string, unknown>>()
 			for (const [id, doc] of store.entries()) {
 				storeCopy.set(id, clone(doc))
 			}
-			snap.set(name, storeCopy)
+			stores.set(name, storeCopy)
 		}
-		return snap
+		const migrations = new Map(this.migrations)
+		const indexes = new Map(this.indexes)
+		return { stores, migrations, indexes }
 	}
 
-	#restore(snap: Map<string, Map<string, Record<string, unknown>>>) {
+	#restore(snap: {
+		stores: Map<string, Map<string, Record<string, unknown>>>
+		migrations: Map<string, { id: string; appliedAt: number }>
+		indexes: Map<string, { table: string; on: readonly string[]; unique: boolean }>
+	}) {
 		this.stores.clear()
-		for (const [name, store] of snap.entries()) {
+		for (const [name, store] of snap.stores.entries()) {
 			this.stores.set(name, store)
+		}
+		this.migrations.clear()
+		for (const [k, val] of snap.migrations.entries()) {
+			this.migrations.set(k, val)
+		}
+		this.indexes.clear()
+		for (const [k, val] of snap.indexes.entries()) {
+			this.indexes.set(k, val)
 		}
 	}
 
@@ -413,6 +430,19 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 			return results.filter((r) => matchesFilter(r, having))
 		}
 		return results
+	}
+
+	async loadMigrations(): Promise<{ id: string; appliedAt: number }[]> {
+		return [...this.migrations.values()].map((m) => ({ id: m.id, appliedAt: m.appliedAt }))
+	}
+
+	async recordMigration(id: string, appliedAt: number): Promise<void> {
+		this.migrations.set(id, { id, appliedAt })
+	}
+
+	async applyAddIndex(change: AddIndexChange): Promise<void> {
+		const indexName = change.name ?? `${change.table}_${change.on.join('_')}_idx`
+		this.indexes.set(indexName, { table: change.table, on: change.on, unique: change.unique ?? false })
 	}
 
 	async session<T>(fn: () => Promise<T>): Promise<T> {
