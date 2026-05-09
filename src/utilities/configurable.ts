@@ -20,8 +20,9 @@ export function configurable<P extends Pipe<any, any>, Base extends abstract new
 			input: ConditionalObjectKeys<PipeInput<P>>,
 			...args: CtorParams<This> extends [PipeOutput<P>, ...infer R] ? R : never
 		): This['prototype'] {
-			const validated = v.assert(pipe, input)
-			return new (this as any)(validated, ...args) as This['prototype']
+			const r = v.validate(pipe, input)
+			if (!r.valid) throw r.error
+			return new (this as any)(r.value, ...args) as This['prototype']
 		}
 	}
 

@@ -93,7 +93,9 @@ export function validateUpdate<S extends AnySchema>(s: S, data: Record<string, u
 		if (!(key in data) && entry.onUpdate) pipes[key] = v.defaults(entry.pipe, entry.onUpdate())
 	}
 
-	const validated = v.assert(v.object(pipes), data) as Record<string, unknown>
+	const r = v.validate(v.object(pipes), data)
+	if (!r.valid) throw new OrmValidationError('validation', s.name, 'updateByPk', [{ cause: r.error }])
+	const validated = r.value as Record<string, unknown>
 	return { ...validated, ...ops } as SchemaUpdateOutput<S>
 }
 
@@ -135,10 +137,9 @@ export function validateUpdateOps(schema: AnySchema, ops: AnyUpdateOp[], operati
 			for (const [key, value] of Object.entries(op.values)) {
 				const fieldDef = schema.fields[key] as AnySchemaField | undefined
 				if (!fieldDef) continue
-				try {
-					v.assert(fieldDef.pipe, value)
-				} catch (cause) {
-					failures.push({ opIndex: i, field: key, cause })
+				const r = v.validate(fieldDef.pipe, value)
+				if (!r.valid) {
+					failures.push({ opIndex: i, field: key, cause: r.error })
 				}
 			}
 		}
@@ -160,11 +161,9 @@ export function composeSchemaConfig(
 	for (const transform of transforms) {
 		config = transform(config, schema)
 	}
-	try {
-		return v.assert(pipe, config)
-	} catch (cause) {
-		throw new OrmValidationError('validation', schema.name, 'schemaConfig', [{ cause }])
-	}
+	const r = v.validate(pipe, config)
+	if (!r.valid) throw new OrmValidationError('validation', schema.name, 'schemaConfig', [{ cause: r.error }])
+	return r.value
 }
 
 export function validateUpsertConflicts(
