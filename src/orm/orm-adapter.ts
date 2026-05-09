@@ -6,7 +6,7 @@ import type { AggregateOpName, FieldTypeName, FilterOpName, UpdateOpName } from 
 import type { OrmUse } from './adapters/base'
 import { FilterGroup } from './filter'
 import type { AddIndexChange } from './migrations/types'
-import type { QueryOptions } from './query'
+import type { QueryOptions } from './query-options'
 import type { AnySchema } from './schema'
 import type { AnyUpdateOp } from './updates'
 

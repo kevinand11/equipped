@@ -17,7 +17,7 @@ import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities'
 import type { FilterGroup } from '../../filter'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query'
+import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import { flattenOps, type AnyUpdateOp } from '../../updates'
 

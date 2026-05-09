@@ -8,7 +8,7 @@ import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities/configurable'
 import type { FilterGroup } from '../../filter'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query'
+import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import type { AnyUpdateOp } from '../../updates'
 
