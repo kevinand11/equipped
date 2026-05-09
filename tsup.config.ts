@@ -3,7 +3,6 @@ import { defineConfig, Options } from 'tsup'
 
 const entry = [
 	'src/index.ts',
-	'src/audit/index.ts',
 	'src/cache/index.ts',
 	'src/cache/adapters/in-memory/index.ts',
 	'src/cache/adapters/redis/index.ts',

@@ -1787,6 +1787,7 @@ criterion: a rule earns a place here if it crosses three or more sections.
 | 8 | **Adapter-owned tx propagation rule** | Tx-context propagation lives entirely inside the adapter, not in the framework. (§8.2) |
 | 9 | **Schema relations-agnosticism rule** | Schemas contain no relational information. All relational concerns live in the Relations artifact. (§9.6) |
 | 10 | **Single-Repo rule** | A Repo handles all schemas it can compatibility-narrow against. No registry, no per-Repo derivation, no per-schema typed Repos. (§6.7) |
+| 11 | **Forward-only migrations rule** | The `Migrator` runs migrations forward only. There is no `down()`, no auto-inverse, no reversibility metadata in the `Change` algebra. Mistakes are corrected by writing additional forward migrations or by manual recovery. (§16) |
 
 ---
 
@@ -1818,6 +1819,8 @@ rejected. The bar for promotion is concrete, not speculative.
 | 13 | **Two-phase commit / distributed tx / sagas** | XA, 2PC, saga primitives out of scope. Single-DB transactions only. | None. |
 | 14 | **Session options** | `session(fn, options)` overload not supported (covers isolation, retry, deadlock, nesting). | None for retry/deadlock; `raw('BEGIN ISOLATION LEVEL ...')` for isolation. |
 | 15 | **Query-level isolation** | No `isolation` arg on `session()`. Each adapter uses its DB's default. | `raw('BEGIN ISOLATION LEVEL ...')` or adapter-specific session config. |
+| 16 | **Migration rollback (`down()`)** | The migrations runtime is forward-only by design (§16). No auto-inverse, no `from:` payloads, no reversibility metadata. | Write a new forward fix-it migration; for local dev, manually delete the tracker row from the adapter's storage. |
+| 17 | **Migration codegen long-tail** | The §16.11 codegen ships in v1 but is intentionally narrow: no auto-rename detection, no auto-FK derivation from `Relations`, no file emission, no long-tail Change variants (CHECK constraints, partial indexes, GIN/GIST/TTL/text), no historical-snapshot drift detection. | Post-edit the codegen's returned `Change[]` to use `renameField`/`renameTable`; hand-author FK Changes when Relations change; serialize the returned `Migration<A>` to a file in user code; use `execute` for long-tail features. |
 
 ---
 
@@ -2014,3 +2017,627 @@ to the adapter inside the outer session.
 - **No cross-EventLog dependencies.** A package may construct multiple
   `EventLog` instances (e.g. one per Repo); the library does not order
   them or coordinate their replays.
+
+---
+
+## 16. Migrations
+
+The migrations subsystem is a typed, capability-gated, **forward-only**
+runner for evolving the underlying database. A migration is a typed
+description of a set of `Change`s; the `Migrator` walks pending migrations
+in order, holds a cluster-safe lock, wraps each in a tx (where the adapter
+supports one), and records each as applied via the adapter's storage
+capability. There is no `down()`. The runtime is **A** in the C-hybrid
+scope; codegen ("B") is deferred — see `docs/orm/TODO.md`. See ADR
+`2026-05-09-migrations-runtime.md` for the decision tree.
+
+### 16.1 Migration unit
+
+A **migration** is a plain typed object — *not* a builder-chain artifact.
+§1.5 precedent (no 5th declarative artifact for things that are morally
+typed dicts of fields) applies; the once-per-step uniqueness guard buys
+nothing here.
+
+```ts
+type Migration<A extends OrmAdapter> = {
+  id: string                                       // unique, lex-sortable
+  changes: ReadonlyArray<ChangeFor<A>>
+  tx?: boolean                                     // default true
+}
+```
+
+Vocabulary:
+
+- The **migration id** is a non-empty string the user picks. Lex order is
+  execution order. Convention is timestamp-prefix (`20260509120000-add-users`)
+  or counter (`0001-add-users`); the framework enforces neither — only
+  *unique within a Migrator's `.migrations(...)` array*.
+- The **changes array** is the migration's body. Empty arrays are allowed
+  (no-op baseline migrations).
+- The **tx flag** opts out of the per-migration session wrap — needed for
+  ops that can't run inside a tx (PG `CREATE INDEX CONCURRENTLY`, `ALTER
+  TYPE ADD VALUE`, large data backfills). Default `true`.
+
+### 16.2 Change algebra (the canonical change-variant set)
+
+A **change** is one entry in a migration's `changes` array. The
+**`Change` algebra** is a closed discriminated union (closed-set rule
+§4.4) with **12 variants**:
+
+```ts
+type Change<A extends OrmAdapter> =
+  | { kind: 'createTable'; name: string; pk: { name; type: A['supportedFieldTypes'][number] }; fields: FieldSpec<A>[] }
+  | { kind: 'dropTable'; name: string }
+  | { kind: 'addField'; table: string; field: FieldSpec<A> }
+  | { kind: 'dropField'; table: string; name: string }
+  | { kind: 'modifyField'; table: string; name: string; to: FieldSpec<A> }
+  | { kind: 'renameTable'; from: string; to: string }
+  | { kind: 'renameField'; table: string; from: string; to: string }
+  | { kind: 'addIndex'; table: string; on: ReadonlyArray<string>; unique?: boolean; name?: string }
+  | { kind: 'dropIndex'; name: string }
+  | { kind: 'addForeignKey'; table; on: string; references: { table; column }; onDelete?; onUpdate?; name? }
+  | { kind: 'dropForeignKey'; table: string; name: string }
+  | { kind: 'execute'; up: (repo: Repo) => Promise<void> }
+
+type FieldSpec<A extends OrmAdapter> = {
+  name: string
+  type: A['supportedFieldTypes'][number]            // §4.3 canonical set, narrowed per adapter
+  nullable?: boolean                                // default false
+  default?: string | number | boolean | null        // DB-side literal only
+  unique?: boolean
+}
+```
+
+Vocabulary:
+
+- A **declarative change** is any non-`execute` variant. Rendered by the
+  adapter's per-variant `apply*` method.
+- The **execute escape** is the `execute` variant. Universal — every
+  adapter that ships migrations supports it (it just runs `change.up(repo)`,
+  no adapter method needed).
+- A **logical name** in `Change` (`table`, `field.name`, `on[*]`,
+  `references.column`) is the schema-declared name. Adapter does
+  physical mapping (same convention as §11.4 filter logical names).
+- **Long-tail features** — partial indexes, functional indexes, GIN/GIST,
+  TTL, text indexes, CHECK constraints, triggers, views, sequences,
+  composite PKs/FKs — are explicitly out of the canonical algebra. They
+  go through `execute` with raw SQL/driver calls. No-emulation rule
+  (§13 #2) applies.
+
+The **lowest-common-denominator rule**: each variant's payload contains
+only what every adapter in the canonical set can render natively.
+Richer features are escape-hatch territory (`execute`).
+
+The **canonical change-variant set** is closed (§4.4). Adapters subset
+the set via the structural-inference rule (§16.4); they cannot extend it.
+Extension is a maintainer-side process with the canonical-extension
+contract (variant added to union, per-adapter renderer added, in-memory
+adapter updated, semver bumped).
+
+### 16.3 Migrator artifact
+
+The **Migrator** is constructed via the builder-chain rule (§2.2). It is
+the only verb-bearing entity in this subsystem.
+
+```ts
+const migrator = Migrator.from(repo)
+  .migrations([m1, m2, m3])                        // explicit array; lex-sorted by id; dupes throw
+  .withoutLock?()                                  // optional opt-out; only allowed when adapter lacks acquireMigrationLock
+  .build()
+```
+
+`.build()` prerequisites (per §2.6):
+- `.migrations(...)` was called (empty array is allowed).
+
+Migration registration is **explicit-array-only**. There is no filesystem
+discovery (`fs.readdir` breaks edge runtimes) and no post-build
+registration (EventLog-style `migrator.migration(id, def)` adds ceremony
+without payoff — there's no per-migration return value to import).
+
+The **`withoutLock` opt-out rule**: the builder step is a compile error
+unless the adapter doesn't declare `acquireMigrationLock`. Calling it
+when the adapter *does* declare locking is a type-system rejection —
+locking is the cluster-safety primitive and silently disabling it would
+violate §13 #6 always-throw-never-silently-drop.
+
+### 16.4 Adapter surface for migrations
+
+The adapter declares two flat capability groups (§3.1):
+
+**Migration storage methods** (verb-first prefix):
+
+| Method | Required? | Purpose |
+|---|---|---|
+| `loadMigrations()` | yes (for any migrations) | returns applied `[{ id, appliedAt }]` |
+| `recordMigration(id, appliedAt)` | yes | marks one migration as applied |
+| `acquireMigrationLock<T>(fn)` | optional | wraps `fn` in cluster-safe lock; signature mirrors `session(fn)` (§8.1) |
+
+There is no `forgetMigration` — forward-only, no automatic un-record.
+Local-dev recovery is manual (delete the tracker row directly).
+
+**Per-variant `apply*` methods** (one per declarative `Change` kind):
+
+```ts
+class PgAdapter extends configurable(pgConnPipe, OrmAdapter) {
+  // ... existing methods
+
+  // migration storage
+  async loadMigrations(): Promise<{ id: string; appliedAt: number }[]>
+  async recordMigration(id: string, appliedAt: number): Promise<void>
+  async acquireMigrationLock<T>(fn: () => Promise<T>): Promise<T>
+
+  // declarative variant renderers (full SQL set: 11 methods)
+  async applyCreateTable(change: CreateTableChange): Promise<void>
+  async applyDropTable(change: DropTableChange): Promise<void>
+  async applyAddField(change: AddFieldChange): Promise<void>
+  async applyDropField(change: DropFieldChange): Promise<void>
+  async applyModifyField(change: ModifyFieldChange): Promise<void>
+  async applyRenameTable(change: RenameTableChange): Promise<void>
+  async applyRenameField(change: RenameFieldChange): Promise<void>
+  async applyAddIndex(change: AddIndexChange): Promise<void>
+  async applyDropIndex(change: DropIndexChange): Promise<void>
+  async applyAddForeignKey(change: AddForeignKeyChange): Promise<void>
+  async applyDropForeignKey(change: DropForeignKeyChange): Promise<void>
+}
+
+class MongoAdapter extends configurable(mongoConnPipe, OrmAdapter) {
+  // mongo subset
+  async loadMigrations(): Promise<{ id; appliedAt }[]>
+  async recordMigration(id, appliedAt): Promise<void>
+  // no acquireMigrationLock — Mongo session has no advisory-lock equivalent
+  async applyAddIndex(change): Promise<void>
+  async applyDropIndex(change): Promise<void>
+  // no applyCreateTable etc — Mongo is schemaless
+}
+```
+
+The **structural-inference rule for migrations**: which `Change` variants
+the adapter supports is read off `keyof InstanceType<A>` filtered to
+`apply${Capitalize<Kind>}`. There is no `migrationOps` capability array —
+that would be redundant with method presence (per the §3.3 rule
+"presence on the class is the declaration"). Op-list arrays
+(`queryableOps`, `updateOps`, `aggregateOps`) only earn their keep when a
+single method handles many ops; here it's one method per variant, so
+structural inference is sufficient.
+
+The **type derivation** is:
+
+```ts
+type ApplyMethodKey<A> = Extract<keyof A, `apply${string}`>
+type KindFromMethod<M> = M extends `apply${infer K}` ? Uncapitalize<K> : never
+type ChangeKindFor<A> = KindFromMethod<ApplyMethodKey<A>> | 'execute'
+type ChangeFor<A> = Extract<Change, { kind: ChangeKindFor<A> }>
+```
+
+User puts `{ kind: 'addField' }` in a Mongo migration → TS error 2322 at
+the offending Change literal. Type-system-is-the-contract (§13 #4) at
+work.
+
+The **adapter-owned storage rule**: each adapter owns its tracker table's
+name, schema, and physical layout. PG might use a single `equipped_migrations`
+table with `id` + `applied_at` columns; Mongo might use a sentinel
+collection; Firebase might use a single doc with an applied-id list. The
+shape is the adapter's choice and is documented in the adapter's README.
+The framework only sees the typed `{ id, appliedAt }` payload returned by
+`loadMigrations`.
+
+### 16.5 Migrator runtime API
+
+```ts
+type RunResult = { ran: string[]; skipped: string[] }              // ids run + ids already-applied skipped
+type StatusEntry = { id: string; applied: boolean; appliedAt?: number }
+type DryResult = { would: string[] }
+
+migrator.up(opts?: { to?: string; steps?: number }): Promise<RunResult>
+migrator.status(): Promise<StatusEntry[]>                          // sorted by id (lex), pending and applied interleaved
+migrator.dry(opts?: { to?: string; steps?: number }): Promise<DryResult>
+```
+
+`.up()` defaults to all-pending. `{ to }` runs up to (and including) a
+specific id; `{ steps }` runs exactly N pending migrations. `.dry(...)`
+takes the same options and returns the plan without executing — useful in
+CI before applying.
+
+`.status()` returns one entry per migration in the user's array, sorted
+lex by `id`. Pending migrations have `applied: false` and no `appliedAt`;
+applied ones have `applied: true` and the recorded timestamp.
+
+The **id-targeting rules**:
+- `up({ to: id })` where `id` is unknown to the user's array → throw
+  `OrmMigrationError({ phase: 'load', cause: 'unknown id' })` before
+  lock acquired.
+- `up({ to: id })` where `id` is already applied → no-op for that id;
+  still walks pending migrations between current state and `id`.
+- `up()` when nothing is pending → no-op, returns `{ ran: [], skipped: [...] }`.
+
+### 16.6 Lock + tx wrapping
+
+The runtime applies one **cluster-safe lock** for the entire run plus
+**per-migration tx**:
+
+```ts
+await adapter.acquireMigrationLock(async () => {
+  for (const m of pending) {
+    const wrap = (m.tx !== false && hasSession)
+      ? (fn) => repo.session(fn)
+      : (fn) => fn()
+
+    await wrap(async () => {
+      for (const c of m.changes) await applyChange(adapter, repo, c)
+      await adapter.recordMigration(m.id, Date.now())
+    })
+  }
+})
+```
+
+The **one-lock-per-run rule**: lock acquired once at run start, released
+at run end. Cheaper than per-migration locks (Mongo sentinel-doc style is
+expensive per acquire) and equally cluster-safe — another node hitting
+the lock waits until the entire run completes, which is the desired
+behaviour.
+
+The **per-migration tx rule**: each migration gets its own
+`repo.session(...)` (when the adapter declares `transactional.session`
+and `m.tx !== false`). Failure at migration N rolls back N alone;
+migrations 1..N-1 stay durably applied. Matches industry standard
+(Knex/Sequelize/Ecto) and supports partial-deploy retry workflows.
+
+The **record-in-tx rule**: `recordMigration(id, ts)` runs inside the same
+`repo.session(...)` as the user's changes. A failed `change` rolls back
+both the user's effects AND the tracker row. There is no half-state
+where user code committed but the tracker didn't (or vice versa) for
+`tx: true` migrations.
+
+The **`tx: false` partial-apply footgun**: when `tx: false` is set and
+the migration partially succeeds before throwing, the user's effects are
+durable but the tracker row was not written. Re-running `.up()` retries
+the same migration from scratch. Authors of `tx: false` migrations
+should make them idempotent (which they often must be anyway — `CREATE
+INDEX CONCURRENTLY`, `ALTER TYPE ADD VALUE`).
+
+The **atomic-across-migrations escape** (mirrors §15.7 atomic-replay):
+```ts
+await repo.session(() => migrator.up())
+```
+Wraps the entire run in one outer tx (per §8.4 adapter-defines-nesting).
+Default behaviour stays per-migration; this is opt-in for callers who
+need all-or-nothing.
+
+### 16.7 Failure semantics
+
+The **migration-stop-on-failure rule**: on the first migration that
+throws, the runtime throws `OrmMigrationError` carrying the failed id
+and the failure phase. Already-applied migrations remain durably applied
+(the tx rolled back the failed migration's effects + tracker row). The
+caller fixes the underlying issue and re-invokes `.up()` to resume from
+the same point.
+
+`OrmMigrationError extends EquippedError` is the error class:
+
+```ts
+class OrmMigrationError extends EquippedError {
+  id: string                                                       // failed migration's id
+  phase: 'lock' | 'load' | 'session' | 'user' | 'record'           // where it threw
+  cause: unknown                                                   // original throw
+}
+```
+
+`phase` discriminates failure location:
+- `'lock'` — `acquireMigrationLock` threw (cluster contention, network)
+- `'load'` — `loadMigrations` threw, OR an orphan id was detected, OR
+  `up({ to })` named an unknown id
+- `'session'` — `repo.session(...)` open/commit failed
+- `'user'` — `change.up(repo)` (for `execute`) or an `apply*` method threw
+- `'record'` — `recordMigration` threw after user code succeeded
+  (the awkward case for `tx: false`)
+
+Lives at `src/orm/errors/OrmMigrationError.ts` alongside
+`OrmValidationError`, `OrmNotFoundError`, `OrmReplayError`.
+
+The **orphan-migration rule**: if `loadMigrations()` returns an `id` not
+present in the user's `.migrations([...])` array, the framework throws
+`OrmMigrationError({ phase: 'load', cause: 'orphan migrations: [...]' })`
+on every `.up()` invocation as a pre-flight check (§13 #6
+always-throw-never-silently-drop). Orphans signal something went wrong
+(deleted file, botched cherry-pick, manual edit) — loud failure forces
+investigation before applying more changes. The user reconciles by
+adding the orphan back to the array, OR manually deleting the orphan
+tracker row from the adapter's storage.
+
+### 16.8 Validation flow
+
+Validation runs once at `Migrator.from(repo).migrations(arr).build()` —
+the **validate-once rule** (§7.1) applies to migrations too. The
+**`assertNormalisedChanges` function** walks every Change in every
+Migration and enforces:
+
+| # | Invariant | Enforced or inverted |
+|---|---|---|
+| A | **id-non-empty invariant** | enforced (every Migration has non-empty `id` string) |
+| B | **id-uniqueness invariant** | enforced (no two Migrations share an `id`) |
+| C | **field-type-supported invariant** | enforced (every `FieldSpec.type` ∈ `adapter.supportedFieldTypes`) — defense-in-depth for the compile-time §13 #4 guard |
+| D | **field-name-uniqueness invariant** | enforced (within a single `createTable.fields[]` no duplicate `name`; `pk.name` not in `fields[]`) |
+| E | **logical-name-non-empty invariant** | enforced (table/column/index names non-empty) |
+| F | **non-empty-on invariant** | enforced (`addIndex.on` and `addForeignKey.on` non-empty) |
+| G | **adapter-supports-variant invariant** | enforced (adapter has the corresponding `apply*` method) — defense-in-depth for the compile-time structural narrowing |
+| H | **changes-non-empty invariant** | inverted (a Migration with `changes: []` is allowed — no-op baseline migration) |
+| I | **collect-all rule** | enforced (per §7.5) — accumulate all failures, throw single `OrmValidationError` with `kind: 'changes'` |
+
+Add `'changes'` to `OrmValidationError.kind` (§7.5). The failure entry
+shape extends with `migrationId` and `changeIndex`:
+
+```ts
+class OrmValidationError extends EquippedError {
+  kind: ... | 'changes'
+  failures: Array<{
+    migrationId?: string                                            // new — which migration's change failed
+    changeIndex?: number                                            // new — index in the migration's changes[]
+    field?: string
+    cause: PipeError | string
+  }>
+}
+```
+
+### 16.9 Cross-cutting interactions
+
+- **`repo.resolve(transform, fn)` wrapping `migrator.up()`.** The config
+  transform applies to every query inside `up()` — including `apply*`
+  method calls if the adapter routes through `this.config`. Tenant-aware
+  migrations ARE expressible via `repo.resolve` wrap, but at the
+  conceptual level `Change.name` is a literal DB name; tenant prefixing
+  belongs to the resolver, not the algebra.
+- **`repo.session(...)` wrapping `migrator.up()`** — see §16.6
+  atomic-across-migrations escape.
+- **EventLog interactions** — none. Migrations and the EventLog (§15) are
+  orthogonal subsystems sharing only the `OrmValidationError` error
+  family.
+- **`repo.on(EquippedMigrationsSchema)`** — does NOT exist. Migration
+  storage is adapter-owned (§16.4), not piggybacked on a library-owned
+  Schema like `EventLogSchema`. The asymmetry with §15.2 is deliberate:
+  EventLog rows are domain-meaningful entries the user may want to query
+  via the orm; migration tracker rows are pure plumbing and stay
+  invisible.
+
+### 16.10 What's not in the model
+
+- **No `down()`.** Forward-only. No auto-inverse, no reversibility
+  metadata in the algebra. Recovery is "ship a forward fix-it
+  migration" or manually delete the tracker row for local-dev
+  rollback. See §13 cross-cutting principles for the
+  forward-only-migrations rule and §14 for the rollback out-of-scope
+  entry.
+- **No CLI in v1.** Programmatic only. Same precedent as
+  `EventLog.replay()` (§15.7). User wraps `migrator.up()` in their
+  own script (`bun migrate.ts`). CLI may ship as a thin layer in a
+  follow-up.
+- **No filesystem migration discovery.** Edge-runtime safety. Userland
+  helpers can produce arrays from disk if needed.
+- **No post-build migration registration** (`migrator.migration(id, def)`).
+  Adds ceremony without payoff — there's no per-migration return value
+  to import.
+- **No retry / skip / configurable error handler.** Stop-on-first-failure
+  with explicit re-invocation (mirrors §15.7's replay-stop-on-failure).
+  Skip-and-continue silently leaves a hole in the migration history —
+  exactly the §13 #6 always-throw-never-silently-drop violation.
+- **No `markApplied` / `markUnapplied` escape hatches** in v1.
+  Adapter-owned tracker tables keep recovery adapter-specific by
+  construction. Users who need to remove a tracker row do so directly
+  via the adapter's documented storage shape.
+- **No drift detection.** The runtime trusts user-supplied `Change`
+  payloads. If the live DB diverges from the migration sequence
+  (manual edits, restores from backup, partially-rolled-back changes),
+  the next `.up()` may fail loud (`apply*` errors) but doesn't
+  proactively detect drift. Drift detection is a B (codegen) concern
+  — see `docs/orm/TODO.md`.
+### 16.11 Migration codegen ("B" in the C-hybrid scope)
+
+The codegen subsystem produces a `ReadonlyArray<ChangeFor<A>>` from a
+diff between the user's declared Schemas (the **target state**) and the
+live DB (the **current state** recovered via the adapter's
+`introspect()` capability). It is the second half of the C-hybrid scope
+(§16.1's runtime is the first); both ship in v1.
+
+The **MigrationCodegen artifact** is constructed via the builder-chain
+rule (§2.2):
+
+```ts
+const codegen = MigrationCodegen.from(repo)
+  .target([UserSchema, PostSchema, …])           // declared schemas = desired state
+  .build()
+```
+
+`.build()` prerequisite (per §2.6): `.target(...)` was called.
+
+The **codegen capability gate** narrows `MigrationCodegen.from(repo)` at
+the type level — adapter without `introspect?()` declared resolves to a
+type error at the `.from(...)` call. Symmetric with §5.3
+`SchemaCompatible<A, S>`:
+
+```ts
+type IntrospectableAdapter<A extends OrmAdapter> =
+  A extends { introspect(): Promise<DiscoveredSchema[]> } ? A : never
+
+class MigrationCodegen {
+  static from<A extends OrmAdapter>(
+    repo: Repo<IntrospectableAdapter<A>>,
+  ): MigrationCodegenBuilder<A>
+}
+```
+
+### 16.12 Codegen runtime API
+
+```ts
+codegen.diff(): Promise<ReadonlyArray<ChangeFor<A>> | null>      // null = no diff
+codegen.discover(): Promise<ReadonlyArray<DiscoveredSchema>>     // raw introspection result
+```
+
+`codegen.diff()` returns the `Change[]` that, when applied via the
+runtime, would bring the DB from `current` to `target`. `null` means the
+DB already matches target. The user wraps the result with their own
+`id` to produce a `Migration<A>`:
+
+```ts
+const changes = await codegen.diff()
+if (!changes) { console.log('no changes'); return }
+const migration: Migration<typeof adapter> = {
+  id: '20260509-add-nickname',                   // user-supplied
+  changes,
+}
+// User serializes `migration` to a file, holds in memory, etc.
+```
+
+The **no-auto-id rule**: codegen does not generate an `id`.
+Id-conventions (timestamp prefix vs counter vs slug) are user-domain.
+Picking a default in the library invites either acceptance or
+override-at-every-call — friction either way. Symmetric with the
+no-file-emission decision (§16.13).
+
+### 16.13 What codegen does NOT do (deliberate omissions)
+
+- **No file emission.** Codegen returns objects, not file paths. Filesystem
+  serialization is userland — same constraint as the programmatic-only
+  Migrator API (§16.5). Edge runtimes (Workers, Deno) can't `fs.writeFile`,
+  and filename conventions (timestamp vs slug vs counter) are
+  user-specific.
+- **No auto-rename detection.** Diff matches by literal name only.
+  Renames surface as `dropField` + `addField` pairs (or
+  `dropTable` + `createTable`). User post-edits the returned `Change[]`
+  to use `renameField` / `renameTable` if intended. Heuristic
+  rename detection (name+type matching) is rejected because false
+  positives are catastrophic — replacing `firstName: string` with
+  `lastName: string` would silently misread as a rename.
+- **No auto-FK derivation from Relations.** The `Relations` artifact
+  (§9) lives separately from Schemas. v1 codegen reads only Schemas
+  and ignores Relations. Users add `addForeignKey` / `dropForeignKey`
+  Changes manually when their Relations change. Future enhancement
+  (post-v1): walk Relations alongside Schemas.
+- **No long-tail variant emission.** Codegen emits only the §16.2 LCD
+  Change variants. CHECK constraints, partial indexes, functional
+  indexes, GIN/GIST/TTL/text indexes, server-default expressions
+  (`gen_random_uuid()`) all stay in `execute` escape territory — same
+  closed-set rule (§4.4) the runtime obeys.
+- **No drift detection beyond the natural diff.** v1 codegen produces a
+  diff *current → target*; if the DB has drifted from a prior migration
+  history, the diff reflects current state, not the drift. User reviews
+  the emitted Changes and accepts/rejects. Drift detection that
+  compares historical `from:` snapshots against the live DB is
+  explicitly out of scope (and the runtime is forward-only, so `from:`
+  payloads don't exist anyway).
+
+### 16.14 DiscoveredSchema and adapter introspection
+
+Introspection returns one **DiscoveredSchema** per top-level container
+(table for SQL, collection for Mongo) the adapter finds in the live DB:
+
+```ts
+type DiscoveredField = {
+  name: string
+  type: FieldType                                // §4.3 canonical set
+  nullable: boolean
+  default?: string | number | boolean | null     // primitive only
+  unique?: boolean
+}
+
+type DiscoveredIndex = {
+  name: string                                   // adapter-derived if originally auto-named
+  on: ReadonlyArray<string>
+  unique: boolean
+}
+
+type DiscoveredForeignKey = {
+  name: string
+  on: string                                     // single column FK only — composite §14 #1
+  references: { table: string; column: string }
+  onDelete?: 'cascade' | 'restrict' | 'setNull' | 'noAction'
+  onUpdate?: 'cascade' | 'restrict' | 'setNull' | 'noAction'
+}
+
+type DiscoveredSchema = {
+  name: string
+  pk?: { name: string; type: FieldType }         // absent for Mongo, etc.
+  fields: ReadonlyArray<DiscoveredField>          // empty for Mongo
+  indexes: ReadonlyArray<DiscoveredIndex>
+  foreignKeys: ReadonlyArray<DiscoveredForeignKey>  // empty for Mongo
+}
+```
+
+The **single shared descriptor rule**: one `DiscoveredSchema` type
+serves every adapter. Mongo populates only `name` + `indexes`; the
+empty arrays for `fields`/`foreignKeys` and absent `pk` are honest
+about Mongo's schemaless storage. Per-adapter descriptor types were
+rejected — they'd double the surface for marginal precision since
+`DiscoveredIndex` is identical across adapters.
+
+The **Mongo-introspection rule** (referenced from §16.13): the Mongo
+adapter's `introspect()` returns descriptors with `fields: []`,
+`pk: undefined`, `foreignKeys: []`. Diff against Mongo therefore never
+emits `createTable` / `addField` / `dropField` / `modifyField` /
+`addForeignKey` / `dropForeignKey` — only `addIndex` / `dropIndex` are
+produced. Field-level migrations on Mongo go through `execute` (data
+backfills, `$set` / `$unset` operations).
+
+The **introspection-error-loud rule**: when the adapter's
+`introspect()` encounters a DB column type that doesn't map to the
+canonical `FieldType` set (§4.3) — e.g. PG `bytea` (binary, §4.6
+out-of-scope) — it throws `OrmIntrospectionError` immediately rather
+than silently excluding the column. Silent skip would produce a
+partial descriptor that the diff treats as ground truth, generating
+Changes that fail at apply time. §13 #6 always-throw-never-silently-drop.
+
+```ts
+class OrmIntrospectionError extends EquippedError {
+  adapter: string
+  table: string                                  // the offending table/collection name
+  cause: unknown                                 // unrecognized DB type, or driver error
+}
+```
+
+Sibling of `OrmValidationError`, `OrmNotFoundError`, `OrmReplayError`,
+`OrmMigrationError` under `src/orm/errors/`.
+
+### 16.15 Diff algorithm
+
+The **diff function** is pure — same `(adapter, target, current)`
+inputs always produce the same `Change[]` output:
+
+```ts
+function diffSchemas<A extends OrmAdapter>(
+  adapter: A,
+  target: ReadonlyArray<AnySchema>,
+  current: ReadonlyArray<DiscoveredSchema>,
+): ReadonlyArray<ChangeFor<A>>
+```
+
+Reads `adapter` only to know which `Change` kinds are supported (per
+§16.4 structural narrowing). No DB calls.
+
+The **name-based-matching rule**: tables/columns/indexes/FKs match by
+literal name only. Anything in `target` but not `current` → "add"
+Change; anything in `current` but not `target` → "drop" Change; same
+name with differing payload → "modify" or surfaces as
+`drop` + `add` (e.g. index-shape change). Renames are NOT auto-detected
+(per §16.13).
+
+The **fixed-canonical-emission-order rule**: emitted Changes are
+ordered to respect dependencies:
+
+```
+dropForeignKey  →  dropIndex  →  dropField  →  dropTable
+renameTable     →  renameField                                 (rare; only if user post-edits)
+createTable     →  addField   →  modifyField
+addIndex        →  addForeignKey
+```
+
+This handles ~99% of cases. Self-referencing FKs and circular
+inter-table dependencies are rare; for those, the user re-orders the
+emitted Changes manually before constructing the Migration.
+Topological sort is explicitly out of v1 scope — implementable later if
+real-world cases surface.
+
+The **adapter-aware filtering rule**: the diff function reads the
+adapter's `apply*` method presence (§16.4 structural narrowing) and
+filters its output to Change kinds the adapter supports. Mongo-targeting
+diff never emits `addField` even when target schemas have fields the
+descriptor doesn't see. Symmetric with the runtime's per-variant
+narrowing — the same closed-set rule (§4.4) applies to codegen output
+as to authored `Migration.changes`.

@@ -1,7 +1,7 @@
-import { OrmReplayError } from '../errors/replay'
-import type { Repo } from '../repo/repo'
 import type { EventContext, HandlerDef, HandlerRegistry } from './registry'
 import { EventLogSchema } from './schema'
+import { OrmReplayError } from '../errors/replay'
+import type { Repo } from '../repo/repo'
 
 const executeReplay = async (
 	repo: Repo<any>,

@@ -42,8 +42,31 @@ hooks for entire entities. Missing: ORM-wide subscribers, per-model callbacks
 
 ## Migrations
 
-No migration tooling for schema evolution. Missing: migration files, up/down
-scripts, schema diffing, and CLI for managing database schema changes.
+Both the runtime ("A") and the codegen ("B") of the migrations subsystem
+are designed and locked as of 2026-05-09 — see `docs/orm/CONTEXT.md`
+§16 for the canonical reference and ADRs
+`2026-05-09-migrations-runtime.md` + `2026-05-09-migrations-codegen.md`
+for the decision trees. Implementation slice still pending (no
+`src/orm/migrations/` yet).
+
+Documented post-v1 enhancements (out of scope until real user need
+surfaces, per §14 revisit policy):
+
+- **Auto-FK derivation from Relations.** v1 codegen ignores the
+  `Relations` artifact (§9). Post-v1, walk Relations alongside Schemas
+  to auto-emit `addForeignKey` / `dropForeignKey` Changes when Relations
+  change.
+- **CLI layer.** v1 is programmatic-only; a thin `equipped migrate
+  up/status` CLI on top of `Migrator.up()` etc. is a separate slice if
+  user demand surfaces.
+- **Topological sort for emission order.** v1 uses fixed canonical
+  order (drops → renames → creates → adds). Self-referencing FKs and
+  circular inter-table dependencies need manual reordering today;
+  topological sort is implementable when real cases surface.
+- **Historical-snapshot drift detection.** v1 codegen produces a diff
+  *current → target* without comparing against a migration-history
+  snapshot. Post-v1, optionally replay migration history into an
+  in-memory shape and detect drift between expected and actual.
 
 ## Soft Deletes
 
