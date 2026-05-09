@@ -18,29 +18,26 @@ const EMISSION_ORDER: AnyChange['kind'][] = [
 	'addForeignKey',
 ]
 
-function adapterSupports(adapter: OrmAdapter, kind: AnyChange['kind']): boolean {
-	if (kind === 'execute') return true
-	const method = `apply${kind.charAt(0).toUpperCase()}${kind.slice(1)}` as keyof OrmAdapter
-	return typeof (adapter as any)[method] === 'function'
-}
-
-function fieldsEqual(target: { name: string; type: FieldTypeName; nullable?: boolean; default?: string | number | boolean | null; unique?: boolean }, discovered: DiscoveredField): boolean {
-	if (target.type !== discovered.type) return false
-	if ((target.nullable ?? false) !== discovered.nullable) return false
-	if (target.default !== discovered.default) {
-		if (target.default === undefined && discovered.default === undefined) { /* same */ }
-		else return false
-	}
-	if ((target.unique ?? false) !== (discovered.unique ?? false)) return false
-	return true
-}
-
 type SchemaFieldInfo = {
 	name: string
 	type: FieldTypeName
 	nullable?: boolean
 	default?: string | number | boolean | null
 	unique?: boolean
+}
+
+function adapterSupports(adapter: OrmAdapter, kind: AnyChange['kind']): boolean {
+	if (kind === 'execute') return true
+	const method = `apply${kind.charAt(0).toUpperCase()}${kind.slice(1)}` as keyof OrmAdapter
+	return typeof (adapter as any)[method] === 'function'
+}
+
+function fieldsEqual(target: SchemaFieldInfo, discovered: DiscoveredField): boolean {
+	if (target.type !== discovered.type) return false
+	if ((target.nullable ?? false) !== discovered.nullable) return false
+	if (target.default !== discovered.default) return false
+	if ((target.unique ?? false) !== (discovered.unique ?? false)) return false
+	return true
 }
 
 function extractSchemaInfo(schema: AnySchema): {
@@ -62,16 +59,13 @@ function extractSchemaInfo(schema: AnySchema): {
 	return { name: schema.name, pk: { name: pkField.name, type: pkType }, fields }
 }
 
+const KNOWN_FIELD_TYPES: ReadonlySet<string> = new Set<FieldTypeName>(['string', 'number', 'boolean', 'array', 'object', 'date'])
+
 function inferFieldType(pipe: any): FieldTypeName {
 	if (!pipe) return 'string'
 	const schema = typeof pipe.schema === 'function' ? pipe.schema() : undefined
 	if (schema?.type) {
-		if (schema.type === 'string') return 'string'
-		if (schema.type === 'number') return 'number'
-		if (schema.type === 'boolean') return 'boolean'
-		if (schema.type === 'array') return 'array'
-		if (schema.type === 'object') return 'object'
-		if (schema.type === 'date') return 'date'
+		if (KNOWN_FIELD_TYPES.has(schema.type)) return schema.type as FieldTypeName
 		return 'string'
 	}
 	const std = pipe['~standard']
@@ -146,7 +140,6 @@ export function diffSchemas(
 				changes.push({ kind: 'modifyField', table: info.name, name: tField.name, to: { name: tField.name, type: tField.type, ...(tField.nullable ? { nullable: true } : {}) } })
 			}
 		}
-
 	}
 
 	return changes

@@ -4,6 +4,7 @@ import { v, differ } from 'valleyed'
 
 import { configurable } from '../../../utilities/configurable'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
+import type { FieldTypeName } from '../../adapter'
 import type { DiscoveredSchema } from '../../migrations/introspection-types'
 import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, AnyFieldSpec, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
@@ -539,7 +540,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		for (const [name, meta] of this.tables.entries()) {
 			const fields = [...meta.fields.values()].map((f) => ({
 				name: f.name,
-				type: f.type as DiscoveredSchema['pk'] extends undefined ? never : NonNullable<DiscoveredSchema['pk']>['type'],
+				type: f.type as FieldTypeName,
 				nullable: f.nullable ?? false,
 				...(f.default !== undefined ? { default: f.default } : {}),
 				...(f.unique ? { unique: true } : {}),
@@ -558,7 +559,7 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 				}))
 			schemas.push({
 				name,
-				pk: { name: meta.pk.name, type: meta.pk.type as NonNullable<DiscoveredSchema['pk']>['type'] },
+				pk: { name: meta.pk.name, type: meta.pk.type as FieldTypeName },
 				fields,
 				indexes,
 				foreignKeys,
