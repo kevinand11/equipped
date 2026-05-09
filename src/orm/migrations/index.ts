@@ -1,2 +1,2 @@
 export { Migrator } from './migrator'
-export type { AddIndexChange, ExecuteChange, Change, AnyChange, ChangeFor, ChangeKindFor, ApplyMethodKey, KindFromMethod, FieldSpec, Migration, AnyMigration } from './types'
+export type { CreateTableChange, DropTableChange, AddFieldChange, DropFieldChange, ModifyFieldChange, RenameTableChange, RenameFieldChange, AddIndexChange, DropIndexChange, AddForeignKeyChange, DropForeignKeyChange, ExecuteChange, Change, AnyChange, AnyFieldSpec, ChangeFor, ChangeKindFor, ApplyMethodKey, KindFromMethod, FieldSpec, Migration, AnyMigration } from './types'

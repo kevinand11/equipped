@@ -5,7 +5,7 @@ import { Instance, type ClassRef } from '../instance'
 import type { AggregateOpName, FieldTypeName, FilterOpName, UpdateOpName } from './adapter'
 import type { OrmUse } from './adapters/base'
 import { FilterGroup } from './filter'
-import type { AddIndexChange } from './migrations/types'
+import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from './migrations/types'
 import type { QueryOptions } from './query'
 import type { AnySchema } from './schema'
 import type { AnyUpdateOp } from './updates'
@@ -51,7 +51,17 @@ export abstract class OrmAdapter {
 
 	loadMigrations?(): Promise<{ id: string; appliedAt: number }[]>
 	recordMigration?(id: string, appliedAt: number): Promise<void>
+	applyCreateTable?(change: CreateTableChange<any>): Promise<void>
+	applyDropTable?(change: DropTableChange): Promise<void>
+	applyAddField?(change: AddFieldChange<any>): Promise<void>
+	applyDropField?(change: DropFieldChange): Promise<void>
+	applyModifyField?(change: ModifyFieldChange<any>): Promise<void>
+	applyRenameTable?(change: RenameTableChange): Promise<void>
+	applyRenameField?(change: RenameFieldChange): Promise<void>
 	applyAddIndex?(change: AddIndexChange): Promise<void>
+	applyDropIndex?(change: DropIndexChange): Promise<void>
+	applyAddForeignKey?(change: AddForeignKeyChange): Promise<void>
+	applyDropForeignKey?(change: DropForeignKeyChange): Promise<void>
 
 	protected onFatalError(err: unknown): never {
 		const wrapped = err instanceof EquippedError ? err : new EquippedError('OrmAdapter fatal error', {}, err)
