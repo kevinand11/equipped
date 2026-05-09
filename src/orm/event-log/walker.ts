@@ -1,52 +1,13 @@
 import { OrmReplayError } from '../errors/replay'
-import type { EventContext } from './registry'
-import type { HandlerRegistry } from './registry'
-import { EventLogSchema } from './schema'
 import type { Repo } from '../repo/repo'
+import type { EventContext, HandlerDef, HandlerRegistry } from './registry'
+import { EventLogSchema } from './schema'
 
-export async function replay(
+const executeReplay = async (
 	repo: Repo<any>,
-	registry: HandlerRegistry,
-	opts?: { from?: Date },
-): Promise<void> {
-	let query = repo.on(EventLogSchema).all().orderBy('ts', 'asc')
-	if (opts?.from) {
-		query = query.where((q) => q.gte('ts', opts.from!.getTime()))
-	}
-	const rows = await query.find()
-
-	for (const row of rows) {
-		const def = registry.get(row.name)
-		const evCtx: EventContext = {
-			key: row.key,
-			name: row.name,
-			ts: row.ts,
-			body: row.body,
-			by: row.by,
-			at: new Date(row.ts),
-			firstRun: false,
-		}
-		try {
-			await repo.session(async () => {
-				await def.handle(row.body, evCtx)
-			})
-		} catch (cause) {
-			throw new OrmReplayError({ key: row.key, name: row.name, cause })
-		}
-	}
-}
-
-export async function rerun(
-	repo: Repo<any>,
-	registry: HandlerRegistry,
-	key: string,
-): Promise<void> {
-	const row = await repo.on(EventLogSchema).one().id(key).find()
-	if (!row) {
-		throw new OrmReplayError({ key, name: 'unknown', cause: new Error(`Event with key "${key}" not found`) })
-	}
-
-	const def = registry.get(row.name)
+	def: HandlerDef,
+	row: { key: string; name: string; ts: number; body: unknown; by: string | null },
+): Promise<void> => {
 	const evCtx: EventContext = {
 		key: row.key,
 		name: row.name,
@@ -63,6 +24,34 @@ export async function rerun(
 	} catch (cause) {
 		throw new OrmReplayError({ key: row.key, name: row.name, cause })
 	}
+}
+
+export async function replay(
+	repo: Repo<any>,
+	registry: HandlerRegistry,
+	opts?: { from?: Date },
+): Promise<void> {
+	let query = repo.on(EventLogSchema).all().orderBy('ts', 'asc')
+	if (opts?.from) {
+		query = query.where((q) => q.gte('ts', opts.from!.getTime()))
+	}
+	const rows = await query.find()
+
+	for (const row of rows) {
+		await executeReplay(repo, registry.get(row.name), row)
+	}
+}
+
+export async function rerun(
+	repo: Repo<any>,
+	registry: HandlerRegistry,
+	key: string,
+): Promise<void> {
+	const row = await repo.on(EventLogSchema).one().id(key).find()
+	if (!row) {
+		throw new OrmReplayError({ key, name: 'unknown', cause: new Error(`Event with key "${key}" not found`) })
+	}
+	await executeReplay(repo, registry.get(row.name), row)
 }
 
 if (import.meta.vitest) {
