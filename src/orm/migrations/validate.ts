@@ -28,7 +28,7 @@ export function assertNormalisedChanges(adapter: OrmAdapter, migrations: Readonl
 					failures.push({ field: 'on', cause: 'addIndex.on must be non-empty' })
 				}
 
-				if (typeof (adapter as any).applyAddIndex !== 'function') {
+				if (typeof adapter.applyAddIndex !== 'function') {
 					failures.push({ cause: `adapter does not support change kind '${change.kind}'` })
 				}
 			}
