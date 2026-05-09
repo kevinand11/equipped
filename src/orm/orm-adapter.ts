@@ -5,6 +5,7 @@ import { Instance, type ClassRef } from '../instance'
 import type { AggregateOpName, FieldTypeName, FilterOpName, UpdateOpName } from './adapter'
 import type { OrmUse } from './adapters/base'
 import { FilterGroup } from './filter'
+import type { AddIndexChange } from './migrations/types'
 import type { QueryOptions } from './query'
 import type { AnySchema } from './schema'
 import type { AnyUpdateOp } from './updates'
@@ -47,6 +48,10 @@ export abstract class OrmAdapter {
 	): Promise<Record<string, unknown>>
 	aggregate?(schema: AnySchema, config: unknown, spec: AggregateSpec): Promise<Array<Record<string, unknown>>>
 	session?<T>(fn: () => Promise<T>): Promise<T>
+
+	loadMigrations?(): Promise<{ id: string; appliedAt: number }[]>
+	recordMigration?(id: string, appliedAt: number): Promise<void>
+	applyAddIndex?(change: AddIndexChange): Promise<void>
 
 	protected onFatalError(err: unknown): never {
 		const wrapped = err instanceof EquippedError ? err : new EquippedError('OrmAdapter fatal error', {}, err)

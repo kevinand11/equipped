@@ -1,6 +1,6 @@
 import { EquippedError } from '../../errors'
 
-export type OrmValidationErrorKind = 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible' | 'aggregate'
+export type OrmValidationErrorKind = 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible' | 'aggregate' | 'changes'
 
 export type OrmValidationFailure = {
 	opIndex?: number
@@ -64,6 +64,7 @@ if (import.meta.vitest) {
 			'empty-group',
 			'undeclared-op',
 			'upsert-filter-incompatible',
+			'changes',
 		] as const)('kind %s still works', (kind) => {
 			const err = new OrmValidationError(kind, 'users', 'createOne', [])
 			expect(err.kind).toBe(kind)
