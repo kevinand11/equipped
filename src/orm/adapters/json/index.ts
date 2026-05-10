@@ -5,7 +5,7 @@ import { v } from 'valleyed'
 import { configurable } from '../../../utilities/configurable'
 import type { FilterGroup } from '../../filter'
 import type { DiscoveredSchema } from '../../migrations/introspection-types'
-import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
+import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, AnyFieldSpec, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
@@ -112,10 +112,10 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 		this.#inMemory.tables.clear()
 		if (data['__tables'] && typeof data['__tables'] === 'object') {
 			for (const [name, meta] of Object.entries(data['__tables'] as Record<string, any>)) {
-				const fields = new Map<string, { name: string; type: string; nullable?: boolean; default?: string | number | boolean | null; unique?: boolean }>()
+				const fields = new Map<string, AnyFieldSpec>()
 				if (meta.fields) {
-					for (const [, fspec] of Object.entries(meta.fields as Record<string, any>)) {
-						fields.set((fspec as any).name, fspec as any)
+					for (const [fieldName, fspec] of Object.entries(meta.fields as Record<string, AnyFieldSpec>)) {
+						fields.set(fieldName, fspec)
 					}
 				}
 				this.#inMemory.tables.set(name, { pk: meta.pk, fields })
