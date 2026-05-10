@@ -1,3 +1,6 @@
+export * from './codegen'
+export * from './diff'
+export * from './introspection-types'
 export * from './migrator'
 export * from './pending'
 export * from './types'

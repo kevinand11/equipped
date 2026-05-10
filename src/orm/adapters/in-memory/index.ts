@@ -4,6 +4,8 @@ import { v, differ } from 'valleyed'
 
 import { configurable } from '../../../utilities/configurable'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
+import type { FieldTypeName } from '../../adapter'
+import type { DiscoveredSchema } from '../../migrations/introspection-types'
 import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, AnyFieldSpec, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query-options'
@@ -531,6 +533,39 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 
 	async applyDropForeignKey(change: DropForeignKeyChange): Promise<void> {
 		this.foreignKeys.delete(change.name)
+	}
+
+	async introspect(): Promise<DiscoveredSchema[]> {
+		const schemas: DiscoveredSchema[] = []
+		for (const [name, meta] of this.tables.entries()) {
+			const fields = [...meta.fields.values()].map((f) => ({
+				name: f.name,
+				type: f.type as FieldTypeName,
+				nullable: f.nullable ?? false,
+				...(f.default !== undefined ? { default: f.default } : {}),
+				...(f.unique ? { unique: true } : {}),
+			}))
+			const indexes = [...this.indexes.entries()]
+				.filter(([, idx]) => idx.table === name)
+				.map(([idxName, idx]) => ({ name: idxName, on: idx.on, unique: idx.unique }))
+			const foreignKeys = [...this.foreignKeys.entries()]
+				.filter(([, fk]) => fk.table === name)
+				.map(([fkName, fk]) => ({
+					name: fkName,
+					on: fk.on,
+					references: { table: fk.references.table, column: fk.references.column },
+					...(fk.onDelete ? { onDelete: fk.onDelete as 'cascade' | 'restrict' | 'setNull' | 'noAction' } : {}),
+					...(fk.onUpdate ? { onUpdate: fk.onUpdate as 'cascade' | 'restrict' | 'setNull' | 'noAction' } : {}),
+				}))
+			schemas.push({
+				name,
+				pk: { name: meta.pk.name, type: meta.pk.type as FieldTypeName },
+				fields,
+				indexes,
+				foreignKeys,
+			})
+		}
+		return schemas
 	}
 
 	async acquireMigrationLock<T>(fn: () => Promise<T>): Promise<T> {
