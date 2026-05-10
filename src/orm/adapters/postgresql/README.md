@@ -67,3 +67,61 @@ repo.on(Schema).one().upsert({ create })                                        
 ```
 
 The adapter does not validate that the filter field has a UNIQUE index — that responsibility lies with the database schema design. Without a unique constraint on the conflict column, the `ON CONFLICT` clause will fail at the database level.
+
+## Migrations
+
+The PostgreSQL adapter implements the full migrations capability surface:
+
+### Migration tracker table
+
+Applied migrations are stored in a table named `equipped_migrations` (created automatically on first `loadMigrations()` call):
+
+```sql
+CREATE TABLE IF NOT EXISTS equipped_migrations (
+  id text PRIMARY KEY,
+  applied_at bigint NOT NULL
+)
+```
+
+### Cluster-safe lock
+
+`acquireMigrationLock(fn)` uses PostgreSQL advisory locks (`pg_advisory_lock` / `pg_advisory_unlock`) with a fixed lock key derived from the package name. This serialises concurrent migration runs across all connections in the cluster.
+
+### Declarative change support
+
+All 11 `apply*` methods are implemented:
+
+| Method | SQL generated |
+|--------|--------------|
+| `applyCreateTable` | `CREATE TABLE` with typed columns |
+| `applyDropTable` | `DROP TABLE` |
+| `applyAddField` | `ALTER TABLE ADD COLUMN` |
+| `applyDropField` | `ALTER TABLE DROP COLUMN` |
+| `applyModifyField` | `ALTER COLUMN TYPE/NULL/DEFAULT` (multiple statements) |
+| `applyRenameTable` | `ALTER TABLE RENAME TO` |
+| `applyRenameField` | `ALTER TABLE RENAME COLUMN` |
+| `applyAddIndex` | `CREATE [UNIQUE] INDEX` |
+| `applyDropIndex` | `DROP INDEX` |
+| `applyAddForeignKey` | `ALTER TABLE ADD CONSTRAINT ... FOREIGN KEY` |
+| `applyDropForeignKey` | `ALTER TABLE DROP CONSTRAINT` |
+
+### Type mapping
+
+| FieldType | PostgreSQL type |
+|-----------|----------------|
+| `string` | `text` |
+| `number` | `double precision` |
+| `boolean` | `boolean` |
+| `date` | `timestamptz` |
+| `null` | `text` |
+| `object` | `jsonb` |
+| `array` | `jsonb` |
+
+### Auto-derived names
+
+- **Index**: `idx_<table>_<col1>_<col2>[_unique]` (when `change.name` is absent)
+- **Foreign key**: `fk_<table>_<column>` (when `change.name` is absent)
+
+### Introspection
+
+`introspect()` queries `information_schema.columns`, `information_schema.table_constraints`, and `pg_indexes` to build `DiscoveredSchema[]`. Throws `OrmIntrospectionError` on columns with unsupported PostgreSQL types (e.g. `bytea`, `bigint`).

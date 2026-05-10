@@ -15,7 +15,22 @@ import {
 } from './query'
 import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities'
+import type { FieldTypeName } from '../../adapter'
 import type { FilterGroup } from '../../filter'
+import type { DiscoveredSchema } from '../../migrations/introspection-types'
+import type {
+	AddFieldChange,
+	AddForeignKeyChange,
+	AddIndexChange,
+	CreateTableChange,
+	DropFieldChange,
+	DropForeignKeyChange,
+	DropIndexChange,
+	DropTableChange,
+	ModifyFieldChange,
+	RenameFieldChange,
+	RenameTableChange,
+} from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
@@ -44,6 +59,41 @@ const postgresqlConnectionPipe = () =>
 		database: v.string(),
 		ssl: v.defaults(v.boolean(), false),
 	})
+
+const TRACKER_TABLE = 'equipped_migrations'
+const ADVISORY_LOCK_KEY = 3_735_928_559
+
+const FIELD_TYPE_TO_PG: Record<string, string> = {
+	string: 'text',
+	number: 'double precision',
+	boolean: 'boolean',
+	date: 'timestamptz',
+	null: 'text',
+	object: 'jsonb',
+	array: 'jsonb',
+}
+
+const PG_TO_FIELD_TYPE: Record<string, FieldTypeName> = {
+	text: 'string',
+	'character varying': 'string',
+	varchar: 'string',
+	char: 'string',
+	character: 'string',
+	'double precision': 'number',
+	real: 'number',
+	integer: 'number',
+	smallint: 'number',
+	numeric: 'number',
+	decimal: 'number',
+	boolean: 'boolean',
+	'timestamp with time zone': 'date',
+	'timestamp without time zone': 'date',
+	timestamptz: 'date',
+	timestamp: 'date',
+	date: 'date',
+	jsonb: 'object',
+	json: 'object',
+}
 
 export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmAdapter) {
 	readonly schemaConfigPipe = v.object({
@@ -269,6 +319,279 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 			if (error instanceof EquippedError) throw error
 			throw new EquippedError('PostgreSQL aggregate failed', { adapter: 'postgresql', operation: 'aggregate', table: c.table }, error)
 		}
+	}
+
+	async loadMigrations(): Promise<{ id: string; appliedAt: number }[]> {
+		const client = this.#getClient()
+		await client.query(`
+			CREATE TABLE IF NOT EXISTS "${TRACKER_TABLE}" (
+				id text PRIMARY KEY,
+				applied_at bigint NOT NULL
+			)
+		`)
+		const result = await client.query(`SELECT id, applied_at FROM "${TRACKER_TABLE}"`)
+		return result.rows.map((row: any) => ({ id: row.id, appliedAt: Number(row.applied_at) }))
+	}
+
+	async recordMigration(id: string, appliedAt: number): Promise<void> {
+		const client = this.#getClient()
+		await client.query(`INSERT INTO "${TRACKER_TABLE}" (id, applied_at) VALUES ($1, $2)`, [id, appliedAt])
+	}
+
+	async acquireMigrationLock<T>(fn: () => Promise<T>): Promise<T> {
+		const client = this.#getClient()
+		await client.query(`SELECT pg_advisory_lock($1)`, [ADVISORY_LOCK_KEY])
+		try {
+			return await fn()
+		} finally {
+			await client.query(`SELECT pg_advisory_unlock($1)`, [ADVISORY_LOCK_KEY])
+		}
+	}
+
+	async applyCreateTable(change: CreateTableChange<any>): Promise<void> {
+		const pkType = FIELD_TYPE_TO_PG[change.pk.type] ?? 'text'
+		const cols = [`"${change.pk.name}" ${pkType} PRIMARY KEY`]
+		for (const f of change.fields) {
+			cols.push(this.#renderColumnDef(f))
+		}
+		await this.#getClient().query(`CREATE TABLE "${change.name}" (${cols.join(', ')})`)
+	}
+
+	async applyDropTable(change: DropTableChange): Promise<void> {
+		await this.#getClient().query(`DROP TABLE "${change.name}"`)
+	}
+
+	async applyAddField(change: AddFieldChange<any>): Promise<void> {
+		const colDef = this.#renderColumnDef(change.field)
+		await this.#getClient().query(`ALTER TABLE "${change.table}" ADD COLUMN ${colDef}`)
+	}
+
+	async applyDropField(change: DropFieldChange): Promise<void> {
+		await this.#getClient().query(`ALTER TABLE "${change.table}" DROP COLUMN "${change.name}"`)
+	}
+
+	async applyModifyField(change: ModifyFieldChange<any>): Promise<void> {
+		const client = this.#getClient()
+		const table = `"${change.table}"`
+		const col = `"${change.name}"`
+		const newType = FIELD_TYPE_TO_PG[change.to.type] ?? 'text'
+		await client.query(`ALTER TABLE ${table} ALTER COLUMN ${col} TYPE ${newType} USING ${col}::${newType}`)
+		if (change.to.nullable) {
+			await client.query(`ALTER TABLE ${table} ALTER COLUMN ${col} DROP NOT NULL`)
+		} else {
+			await client.query(`ALTER TABLE ${table} ALTER COLUMN ${col} SET NOT NULL`)
+		}
+		if (change.to.default !== undefined) {
+			await client.query(`ALTER TABLE ${table} ALTER COLUMN ${col} SET DEFAULT ${this.#renderDefault(change.to.default)}`)
+		} else {
+			await client.query(`ALTER TABLE ${table} ALTER COLUMN ${col} DROP DEFAULT`)
+		}
+		if (change.to.name !== change.name) {
+			await client.query(`ALTER TABLE ${table} RENAME COLUMN ${col} TO "${change.to.name}"`)
+		}
+	}
+
+	async applyRenameTable(change: RenameTableChange): Promise<void> {
+		await this.#getClient().query(`ALTER TABLE "${change.from}" RENAME TO "${change.to}"`)
+	}
+
+	async applyRenameField(change: RenameFieldChange): Promise<void> {
+		await this.#getClient().query(`ALTER TABLE "${change.table}" RENAME COLUMN "${change.from}" TO "${change.to}"`)
+	}
+
+	async applyAddIndex(change: AddIndexChange): Promise<void> {
+		const name = change.name ?? this.#deriveIndexName(change.table, change.on as string[], change.unique)
+		const unique = change.unique ? 'UNIQUE ' : ''
+		const cols = (change.on as string[]).map((c) => `"${c}"`).join(', ')
+		await this.#getClient().query(`CREATE ${unique}INDEX "${name}" ON "${change.table}" (${cols})`)
+	}
+
+	async applyDropIndex(change: DropIndexChange): Promise<void> {
+		await this.#getClient().query(`DROP INDEX "${change.name}"`)
+	}
+
+	async applyAddForeignKey(change: AddForeignKeyChange): Promise<void> {
+		const name = change.name ?? `fk_${change.table}_${change.on}`
+		let sql = `ALTER TABLE "${change.table}" ADD CONSTRAINT "${name}" FOREIGN KEY ("${change.on}") REFERENCES "${change.references.table}" ("${change.references.column}")`
+		if (change.onDelete) sql += ` ON DELETE ${this.#renderFkAction(change.onDelete)}`
+		if (change.onUpdate) sql += ` ON UPDATE ${this.#renderFkAction(change.onUpdate)}`
+		await this.#getClient().query(sql)
+	}
+
+	async applyDropForeignKey(change: DropForeignKeyChange): Promise<void> {
+		await this.#getClient().query(`ALTER TABLE "${change.table}" DROP CONSTRAINT "${change.name}"`)
+	}
+
+	async introspect(): Promise<DiscoveredSchema[]> {
+		const { OrmIntrospectionError } = await import('../../errors/introspection')
+		const client = this.#getClient()
+
+		const tablesResult = await client.query(`
+			SELECT table_name FROM information_schema.tables
+			WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name != $1
+		`, [TRACKER_TABLE])
+
+		const schemas: DiscoveredSchema[] = []
+
+		for (const tableRow of tablesResult.rows) {
+			const tableName = tableRow.table_name
+
+			const colsResult = await client.query(`
+				SELECT column_name, data_type, is_nullable, column_default
+				FROM information_schema.columns
+				WHERE table_schema = 'public' AND table_name = $1
+				ORDER BY ordinal_position
+			`, [tableName])
+
+			const pkResult = await client.query(`
+				SELECT kcu.column_name
+				FROM information_schema.table_constraints tc
+				JOIN information_schema.key_column_usage kcu
+					ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+				WHERE tc.table_schema = 'public' AND tc.table_name = $1 AND tc.constraint_type = 'PRIMARY KEY'
+			`, [tableName])
+
+			const pkColName = pkResult.rows[0]?.column_name as string | undefined
+
+			const uniqueResult = await client.query(`
+				SELECT kcu.column_name
+				FROM information_schema.table_constraints tc
+				JOIN information_schema.key_column_usage kcu
+					ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+				WHERE tc.table_schema = 'public' AND tc.table_name = $1 AND tc.constraint_type = 'UNIQUE'
+			`, [tableName])
+			const uniqueCols = new Set(uniqueResult.rows.map((r: any) => r.column_name))
+
+			let pk: { name: string; type: FieldTypeName } | undefined
+			const fields: { name: string; type: FieldTypeName; nullable: boolean; default?: string | number | boolean | null; unique?: boolean }[] = []
+
+			for (const col of colsResult.rows) {
+				const pgType = (col.data_type as string).toLowerCase()
+				const fieldType = PG_TO_FIELD_TYPE[pgType]
+				if (!fieldType) {
+					throw new OrmIntrospectionError({ adapter: 'postgresql', table: tableName, cause: `Unsupported column type '${pgType}' on column '${col.column_name}'` })
+				}
+
+				if (col.column_name === pkColName) {
+					pk = { name: col.column_name, type: fieldType }
+					continue
+				}
+
+				const nullable = col.is_nullable === 'YES'
+				const raw = col.column_default as string | null
+				const def = this.#parseDefault(raw)
+
+				fields.push({
+					name: col.column_name,
+					type: fieldType,
+					nullable,
+					...(def !== undefined ? { default: def } : {}),
+					...(uniqueCols.has(col.column_name) ? { unique: true } : {}),
+				})
+			}
+
+			const idxResult = await client.query(`
+				SELECT indexname, indexdef
+				FROM pg_indexes
+				WHERE schemaname = 'public' AND tablename = $1
+			`, [tableName])
+
+			const indexes: { name: string; on: readonly string[]; unique: boolean }[] = []
+			for (const idx of idxResult.rows) {
+				const idxName = idx.indexname as string
+				const idxDef = idx.indexdef as string
+				if (idxDef.includes('PRIMARY KEY') || idxName.endsWith('_pkey')) continue
+				const unique = idxDef.toUpperCase().includes('UNIQUE')
+				const colMatch = idxDef.match(/\(([^)]+)\)/)
+				const cols = colMatch ? colMatch[1].split(',').map((c: string) => c.trim().replace(/"/g, '')) : []
+				indexes.push({ name: idxName, on: cols, unique })
+			}
+
+			const fkResult = await client.query(`
+				SELECT
+					tc.constraint_name,
+					kcu.column_name,
+					ccu.table_name AS foreign_table_name,
+					ccu.column_name AS foreign_column_name,
+					rc.delete_rule,
+					rc.update_rule
+				FROM information_schema.table_constraints tc
+				JOIN information_schema.key_column_usage kcu
+					ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+				JOIN information_schema.constraint_column_usage ccu
+					ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+				JOIN information_schema.referential_constraints rc
+					ON tc.constraint_name = rc.constraint_name AND tc.table_schema = rc.constraint_schema
+				WHERE tc.table_schema = 'public' AND tc.table_name = $1 AND tc.constraint_type = 'FOREIGN KEY'
+			`, [tableName])
+
+			const foreignKeys: { name: string; on: string; references: { table: string; column: string }; onDelete?: 'cascade' | 'restrict' | 'setNull' | 'noAction'; onUpdate?: 'cascade' | 'restrict' | 'setNull' | 'noAction' }[] = []
+			for (const fk of fkResult.rows) {
+				foreignKeys.push({
+					name: fk.constraint_name,
+					on: fk.column_name,
+					references: { table: fk.foreign_table_name, column: fk.foreign_column_name },
+					...(fk.delete_rule && fk.delete_rule !== 'NO ACTION' ? { onDelete: this.#parseFkAction(fk.delete_rule) } : {}),
+					...(fk.update_rule && fk.update_rule !== 'NO ACTION' ? { onUpdate: this.#parseFkAction(fk.update_rule) } : {}),
+				})
+			}
+
+			schemas.push({ name: tableName, pk, fields, indexes, foreignKeys })
+		}
+
+		return schemas
+	}
+
+	#renderColumnDef(f: { name: string; type: string; nullable?: boolean; default?: string | number | boolean | null; unique?: boolean }): string {
+		const pgType = FIELD_TYPE_TO_PG[f.type] ?? 'text'
+		let def = `"${f.name}" ${pgType}`
+		if (!f.nullable) def += ' NOT NULL'
+		if (f.default !== undefined) def += ` DEFAULT ${this.#renderDefault(f.default)}`
+		if (f.unique) def += ' UNIQUE'
+		return def
+	}
+
+	#renderDefault(val: string | number | boolean | null | undefined): string {
+		if (val === null) return 'NULL'
+		if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`
+		if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE'
+		return String(val)
+	}
+
+	#deriveIndexName(table: string, cols: string[], unique?: boolean): string {
+		const base = `idx_${table}_${cols.join('_')}`
+		return unique ? `${base}_unique` : base
+	}
+
+	#renderFkAction(action: string): string {
+		switch (action.toLowerCase()) {
+			case 'cascade': return 'CASCADE'
+			case 'restrict': return 'RESTRICT'
+			case 'setnull': return 'SET NULL'
+			case 'noaction': return 'NO ACTION'
+			default: return 'NO ACTION'
+		}
+	}
+
+	#parseFkAction(rule: string): 'cascade' | 'restrict' | 'setNull' | 'noAction' {
+		switch (rule.toUpperCase()) {
+			case 'CASCADE': return 'cascade'
+			case 'RESTRICT': return 'restrict'
+			case 'SET NULL': return 'setNull'
+			default: return 'noAction'
+		}
+	}
+
+	#parseDefault(raw: string | null): string | number | boolean | null | undefined {
+		if (raw === null || raw === undefined) return undefined
+		if (raw === 'NULL' || raw === 'NULL::text') return null
+		if (raw === 'true' || raw === 'TRUE') return true
+		if (raw === 'false' || raw === 'FALSE') return false
+		const numMatch = raw.match(/^(-?\d+(?:\.\d+)?)$/)
+		if (numMatch) return Number(numMatch[1])
+		const strMatch = raw.match(/^'(.*)'(?:::.*)?$/)
+		if (strMatch) return strMatch[1].replace(/''/g, "'")
+		return undefined
 	}
 
 	async session<T>(fn: () => Promise<T>): Promise<T> {
@@ -626,6 +949,443 @@ if (import.meta.vitest) {
 
 			const _ref = repo.on(_TestSchema)
 			expectTypeOf(_ref.aggregate).toBeFunction()
+		})
+	})
+
+	describe('PostgresAdapter: migration methods', () => {
+		let onSpy: ReturnType<typeof vi.spyOn>
+		let adapter: PostgresAdapter
+		let queries: { sql: string; params?: unknown[] }[]
+
+		beforeEach(async () => {
+			const { Instance } = await import('../../../instance')
+			onSpy = vi.spyOn(Instance, 'on').mockImplementation(() => {})
+			adapter = PostgresAdapter.create(testConnectionConfig)
+			queries = []
+			;(adapter.pool as any).query = async (sql: string, params?: unknown[]) => {
+				queries.push({ sql, params })
+				return { rows: [] }
+			}
+		})
+
+		afterEach(() => {
+			onSpy.mockRestore()
+		})
+
+		test('loadMigrations creates tracker table then selects rows', async () => {
+			;(adapter.pool as any).query = async (sql: string, params?: unknown[]) => {
+				queries.push({ sql, params })
+				if (sql.includes('SELECT id')) {
+					return { rows: [{ id: '0001', applied_at: '1700000000000' }] }
+				}
+				return { rows: [] }
+			}
+			const result = await adapter.loadMigrations()
+			expect(queries).toHaveLength(2)
+			expect(queries[0].sql).toContain('CREATE TABLE IF NOT EXISTS')
+			expect(queries[0].sql).toContain('equipped_migrations')
+			expect(queries[1].sql).toContain('SELECT id, applied_at')
+			expect(result).toEqual([{ id: '0001', appliedAt: 1700000000000 }])
+		})
+
+		test('recordMigration inserts into tracker table', async () => {
+			await adapter.recordMigration('0001-init', 1700000000000)
+			expect(queries).toHaveLength(1)
+			expect(queries[0].sql).toContain('INSERT INTO')
+			expect(queries[0].sql).toContain('equipped_migrations')
+			expect(queries[0].params).toEqual(['0001-init', 1700000000000])
+		})
+
+		test('acquireMigrationLock wraps fn with pg_advisory_lock/unlock', async () => {
+			const result = await adapter.acquireMigrationLock(async () => {
+				queries.push({ sql: 'USER_FN' })
+				return 42
+			})
+			expect(result).toBe(42)
+			expect(queries[0].sql).toContain('pg_advisory_lock')
+			expect(queries[1].sql).toBe('USER_FN')
+			expect(queries[2].sql).toContain('pg_advisory_unlock')
+		})
+
+		test('acquireMigrationLock unlocks even on error', async () => {
+			await expect(adapter.acquireMigrationLock(async () => {
+				throw new Error('boom')
+			})).rejects.toThrow('boom')
+			expect(queries[0].sql).toContain('pg_advisory_lock')
+			expect(queries[1].sql).toContain('pg_advisory_unlock')
+		})
+
+		test('applyCreateTable generates correct DDL', async () => {
+			await adapter.applyCreateTable({
+				kind: 'createTable',
+				name: 'users',
+				pk: { name: 'id', type: 'string' },
+				fields: [
+					{ name: 'email', type: 'string', unique: true },
+					{ name: 'age', type: 'number', nullable: true },
+					{ name: 'active', type: 'boolean', default: true },
+				],
+			})
+			expect(queries).toHaveLength(1)
+			const sql = queries[0].sql
+			expect(sql).toContain('CREATE TABLE "users"')
+			expect(sql).toContain('"id" text PRIMARY KEY')
+			expect(sql).toContain('"email" text NOT NULL UNIQUE')
+			expect(sql).toContain('"age" double precision')
+			expect(sql).not.toContain('"age" double precision NOT NULL')
+			expect(sql).toContain('"active" boolean NOT NULL DEFAULT TRUE')
+		})
+
+		test('applyDropTable generates DROP TABLE', async () => {
+			await adapter.applyDropTable({ kind: 'dropTable', name: 'users' })
+			expect(queries[0].sql).toBe('DROP TABLE "users"')
+		})
+
+		test('applyAddField generates ALTER TABLE ADD COLUMN', async () => {
+			await adapter.applyAddField({
+				kind: 'addField',
+				table: 'users',
+				field: { name: 'bio', type: 'string', nullable: true, default: 'none' },
+			})
+			expect(queries[0].sql).toContain('ALTER TABLE "users" ADD COLUMN')
+			expect(queries[0].sql).toContain('"bio" text')
+			expect(queries[0].sql).not.toContain('NOT NULL')
+			expect(queries[0].sql).toContain("DEFAULT 'none'")
+		})
+
+		test('applyDropField generates ALTER TABLE DROP COLUMN', async () => {
+			await adapter.applyDropField({ kind: 'dropField', table: 'users', name: 'bio' })
+			expect(queries[0].sql).toBe('ALTER TABLE "users" DROP COLUMN "bio"')
+		})
+
+		test('applyModifyField generates ALTER COLUMN statements for type, nullable, default', async () => {
+			await adapter.applyModifyField({
+				kind: 'modifyField',
+				table: 'users',
+				name: 'age',
+				to: { name: 'age', type: 'string', nullable: true, default: null },
+			})
+			expect(queries[0].sql).toContain('ALTER COLUMN "age" TYPE text')
+			expect(queries[1].sql).toContain('DROP NOT NULL')
+			expect(queries[2].sql).toContain('SET DEFAULT NULL')
+		})
+
+		test('applyModifyField renames column when to.name differs', async () => {
+			await adapter.applyModifyField({
+				kind: 'modifyField',
+				table: 'users',
+				name: 'age',
+				to: { name: 'years', type: 'number' },
+			})
+			const renameSql = queries.find((q) => q.sql.includes('RENAME COLUMN'))
+			expect(renameSql).toBeDefined()
+			expect(renameSql!.sql).toContain('RENAME COLUMN "age" TO "years"')
+		})
+
+		test('applyRenameTable generates ALTER TABLE RENAME', async () => {
+			await adapter.applyRenameTable({ kind: 'renameTable', from: 'users', to: 'accounts' })
+			expect(queries[0].sql).toBe('ALTER TABLE "users" RENAME TO "accounts"')
+		})
+
+		test('applyRenameField generates ALTER TABLE RENAME COLUMN', async () => {
+			await adapter.applyRenameField({ kind: 'renameField', table: 'users', from: 'name', to: 'fullName' })
+			expect(queries[0].sql).toBe('ALTER TABLE "users" RENAME COLUMN "name" TO "fullName"')
+		})
+
+		test('applyAddIndex generates CREATE INDEX with auto-derived name', async () => {
+			await adapter.applyAddIndex({ kind: 'addIndex', table: 'users', on: ['email'] })
+			expect(queries[0].sql).toBe('CREATE INDEX "idx_users_email" ON "users" ("email")')
+		})
+
+		test('applyAddIndex generates CREATE UNIQUE INDEX with explicit name', async () => {
+			await adapter.applyAddIndex({ kind: 'addIndex', table: 'users', on: ['email'], unique: true, name: 'my_idx' })
+			expect(queries[0].sql).toBe('CREATE UNIQUE INDEX "my_idx" ON "users" ("email")')
+		})
+
+		test('applyAddIndex auto-derives unique suffix when unique and no name', async () => {
+			await adapter.applyAddIndex({ kind: 'addIndex', table: 'posts', on: ['author', 'title'], unique: true })
+			expect(queries[0].sql).toBe('CREATE UNIQUE INDEX "idx_posts_author_title_unique" ON "posts" ("author", "title")')
+		})
+
+		test('applyDropIndex generates DROP INDEX', async () => {
+			await adapter.applyDropIndex({ kind: 'dropIndex', name: 'idx_users_email' })
+			expect(queries[0].sql).toBe('DROP INDEX "idx_users_email"')
+		})
+
+		test('applyAddForeignKey generates ALTER TABLE ADD CONSTRAINT with auto-derived name', async () => {
+			await adapter.applyAddForeignKey({
+				kind: 'addForeignKey',
+				table: 'posts',
+				on: 'authorId',
+				references: { table: 'users', column: 'id' },
+				onDelete: 'cascade',
+				onUpdate: 'setNull',
+			})
+			const sql = queries[0].sql
+			expect(sql).toContain('ALTER TABLE "posts" ADD CONSTRAINT "fk_posts_authorId"')
+			expect(sql).toContain('FOREIGN KEY ("authorId") REFERENCES "users" ("id")')
+			expect(sql).toContain('ON DELETE CASCADE')
+			expect(sql).toContain('ON UPDATE SET NULL')
+		})
+
+		test('applyAddForeignKey uses explicit name when provided', async () => {
+			await adapter.applyAddForeignKey({
+				kind: 'addForeignKey',
+				table: 'posts',
+				on: 'authorId',
+				references: { table: 'users', column: 'id' },
+				name: 'custom_fk',
+			})
+			expect(queries[0].sql).toContain('ADD CONSTRAINT "custom_fk"')
+		})
+
+		test('applyDropForeignKey generates ALTER TABLE DROP CONSTRAINT', async () => {
+			await adapter.applyDropForeignKey({ kind: 'dropForeignKey', table: 'posts', name: 'fk_posts_authorId' })
+			expect(queries[0].sql).toBe('ALTER TABLE "posts" DROP CONSTRAINT "fk_posts_authorId"')
+		})
+
+		test('introspect queries information_schema and builds DiscoveredSchema[]', async () => {
+			;(adapter.pool as any).query = async (sql: string, params?: unknown[]) => {
+				queries.push({ sql, params })
+				if (sql.includes('information_schema.tables')) {
+					return { rows: [{ table_name: 'users' }] }
+				}
+				if (sql.includes('information_schema.columns')) {
+					return {
+						rows: [
+							{ column_name: 'id', data_type: 'text', is_nullable: 'NO', column_default: null },
+							{ column_name: 'email', data_type: 'character varying', is_nullable: 'NO', column_default: null },
+							{ column_name: 'age', data_type: 'integer', is_nullable: 'YES', column_default: '25' },
+						],
+					}
+				}
+				if (sql.includes('PRIMARY KEY')) {
+					return { rows: [{ column_name: 'id' }] }
+				}
+				if (sql.includes("constraint_type = 'UNIQUE'")) {
+					return { rows: [{ column_name: 'email' }] }
+				}
+				if (sql.includes('pg_indexes')) {
+					return { rows: [{ indexname: 'users_email_idx', indexdef: 'CREATE UNIQUE INDEX users_email_idx ON public.users USING btree (email)' }] }
+				}
+				if (sql.includes("constraint_type = 'FOREIGN KEY'")) {
+					return { rows: [] }
+				}
+				return { rows: [] }
+			}
+			const schemas = await adapter.introspect()
+			expect(schemas).toHaveLength(1)
+			const s = schemas[0]
+			expect(s.name).toBe('users')
+			expect(s.pk).toEqual({ name: 'id', type: 'string' })
+			expect(s.fields).toEqual([
+				{ name: 'email', type: 'string', nullable: false, unique: true },
+				{ name: 'age', type: 'number', nullable: true, default: 25 },
+			])
+			expect(s.indexes).toEqual([{ name: 'users_email_idx', on: ['email'], unique: true }])
+			expect(s.foreignKeys).toEqual([])
+		})
+
+		test('introspect throws OrmIntrospectionError on unsupported PG type', async () => {
+			const { OrmIntrospectionError } = await import('../../errors/introspection')
+			;(adapter.pool as any).query = async (sql: string) => {
+				if (sql.includes('information_schema.tables')) {
+					return { rows: [{ table_name: 'files' }] }
+				}
+				if (sql.includes('information_schema.columns')) {
+					return {
+						rows: [
+							{ column_name: 'id', data_type: 'text', is_nullable: 'NO', column_default: null },
+							{ column_name: 'data', data_type: 'bytea', is_nullable: 'YES', column_default: null },
+						],
+					}
+				}
+				if (sql.includes('PRIMARY KEY')) {
+					return { rows: [{ column_name: 'id' }] }
+				}
+				if (sql.includes("constraint_type = 'UNIQUE'")) {
+					return { rows: [] }
+				}
+				return { rows: [] }
+			}
+			await expect(adapter.introspect()).rejects.toThrow(OrmIntrospectionError)
+			try {
+				await adapter.introspect()
+			} catch (err: any) {
+				expect(err.adapter).toBe('postgresql')
+				expect(err.table).toBe('files')
+				expect(err.cause).toContain('bytea')
+			}
+		})
+
+		test('introspect parses foreign keys with cascade actions', async () => {
+			;(adapter.pool as any).query = async (sql: string) => {
+				if (sql.includes('information_schema.tables')) {
+					return { rows: [{ table_name: 'posts' }] }
+				}
+				if (sql.includes('information_schema.columns')) {
+					return {
+						rows: [
+							{ column_name: 'id', data_type: 'text', is_nullable: 'NO', column_default: null },
+							{ column_name: 'author_id', data_type: 'text', is_nullable: 'NO', column_default: null },
+						],
+					}
+				}
+				if (sql.includes('PRIMARY KEY')) {
+					return { rows: [{ column_name: 'id' }] }
+				}
+				if (sql.includes("constraint_type = 'UNIQUE'")) {
+					return { rows: [] }
+				}
+				if (sql.includes('pg_indexes')) {
+					return { rows: [] }
+				}
+				if (sql.includes("constraint_type = 'FOREIGN KEY'")) {
+					return {
+						rows: [{
+							constraint_name: 'fk_posts_author_id',
+							column_name: 'author_id',
+							foreign_table_name: 'users',
+							foreign_column_name: 'id',
+							delete_rule: 'CASCADE',
+							update_rule: 'SET NULL',
+						}],
+					}
+				}
+				return { rows: [] }
+			}
+			const schemas = await adapter.introspect()
+			expect(schemas[0].foreignKeys).toEqual([{
+				name: 'fk_posts_author_id',
+				on: 'author_id',
+				references: { table: 'users', column: 'id' },
+				onDelete: 'cascade',
+				onUpdate: 'setNull',
+			}])
+		})
+
+		test('introspect excludes tracker table from results', async () => {
+			;(adapter.pool as any).query = async (sql: string, params?: unknown[]) => {
+				if (sql.includes('information_schema.tables')) {
+					expect(params).toContain('equipped_migrations')
+					return { rows: [] }
+				}
+				return { rows: [] }
+			}
+			const schemas = await adapter.introspect()
+			expect(schemas).toEqual([])
+		})
+
+		test('type-level: PostgresAdapter declares all migration methods', () => {
+			expectTypeOf(adapter.loadMigrations).toBeFunction()
+			expectTypeOf(adapter.recordMigration).toBeFunction()
+			expectTypeOf(adapter.acquireMigrationLock).toBeFunction()
+			expectTypeOf(adapter.applyCreateTable).toBeFunction()
+			expectTypeOf(adapter.applyDropTable).toBeFunction()
+			expectTypeOf(adapter.applyAddField).toBeFunction()
+			expectTypeOf(adapter.applyDropField).toBeFunction()
+			expectTypeOf(adapter.applyModifyField).toBeFunction()
+			expectTypeOf(adapter.applyRenameTable).toBeFunction()
+			expectTypeOf(adapter.applyRenameField).toBeFunction()
+			expectTypeOf(adapter.applyAddIndex).toBeFunction()
+			expectTypeOf(adapter.applyDropIndex).toBeFunction()
+			expectTypeOf(adapter.applyAddForeignKey).toBeFunction()
+			expectTypeOf(adapter.applyDropForeignKey).toBeFunction()
+			expectTypeOf(adapter.introspect).toBeFunction()
+		})
+
+		test('type-level: Migrator.from rejects withoutLock for PostgresAdapter', async () => {
+			const { Repo } = await import('../../repo/repo')
+			const { Migrator } = await import('../../migrations/migrator')
+			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
+			const step = Migrator.from(repo, adapter).migrations([])
+			expectTypeOf(step).toHaveProperty('build')
+			expectTypeOf(step).not.toHaveProperty('withoutLock')
+		})
+
+		test('applyCreateTable maps all field types to correct PG types', async () => {
+			await adapter.applyCreateTable({
+				kind: 'createTable',
+				name: 'all_types',
+				pk: { name: 'id', type: 'string' },
+				fields: [
+					{ name: 'f_num', type: 'number' },
+					{ name: 'f_bool', type: 'boolean' },
+					{ name: 'f_date', type: 'date' },
+					{ name: 'f_null', type: 'null' },
+					{ name: 'f_obj', type: 'object' },
+					{ name: 'f_arr', type: 'array' },
+				],
+			})
+			const sql = queries[0].sql
+			expect(sql).toContain('"f_num" double precision NOT NULL')
+			expect(sql).toContain('"f_bool" boolean NOT NULL')
+			expect(sql).toContain('"f_date" timestamptz NOT NULL')
+			expect(sql).toContain('"f_null" text NOT NULL')
+			expect(sql).toContain('"f_obj" jsonb NOT NULL')
+			expect(sql).toContain('"f_arr" jsonb NOT NULL')
+		})
+
+		test('applyModifyField sets NOT NULL when nullable is falsy', async () => {
+			await adapter.applyModifyField({
+				kind: 'modifyField',
+				table: 'users',
+				name: 'email',
+				to: { name: 'email', type: 'string' },
+			})
+			expect(queries[1].sql).toContain('SET NOT NULL')
+		})
+
+		test('applyModifyField drops default when to.default is undefined', async () => {
+			await adapter.applyModifyField({
+				kind: 'modifyField',
+				table: 'users',
+				name: 'age',
+				to: { name: 'age', type: 'number' },
+			})
+			expect(queries[2].sql).toContain('DROP DEFAULT')
+		})
+
+		test('applyAddField with string default escapes single quotes', async () => {
+			await adapter.applyAddField({
+				kind: 'addField',
+				table: 'users',
+				field: { name: 'bio', type: 'string', default: "it's" },
+			})
+			expect(queries[0].sql).toContain("DEFAULT 'it''s'")
+		})
+
+		test('end-to-end: Migrator.from(repo, adapter) wires up correctly', async () => {
+			const { Repo } = await import('../../repo/repo')
+			const { Migrator } = await import('../../migrations/migrator')
+			const { Schema } = await import('../../schema')
+
+			Schema.from('users').pk('id', v.string(), () => 'x').field('email', v.string()).build()
+			const repo = Repo.from(adapter).resolve(() => ({ table: 'test' })).build()
+
+			let loadCalls = 0
+			const mockClient = {
+				query: async (sql: string, _params?: unknown[]) => {
+					if (sql.includes('pg_advisory_lock') || sql.includes('pg_advisory_unlock')) return { rows: [] }
+					if (sql.includes('CREATE TABLE IF NOT EXISTS')) return { rows: [] }
+					if (sql.includes('SELECT id, applied_at')) { loadCalls++; return { rows: [] } }
+					if (sql.includes('INSERT INTO')) return { rows: [] }
+					if (sql.includes('CREATE TABLE')) return { rows: [] }
+					if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] }
+					return { rows: [] }
+				},
+				release: () => {},
+			}
+			;(adapter.pool as any).query = mockClient.query
+			;(adapter.pool as any).connect = async () => mockClient
+
+			const migrator = Migrator.from(repo, adapter).migrations([
+				{ id: '0001', changes: [{ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [{ name: 'email', type: 'string' }] }] },
+			]).build()
+
+			const result = await migrator.up()
+			expect(result.ran).toEqual(['0001'])
+			expect(loadCalls).toBe(1)
 		})
 	})
 }
