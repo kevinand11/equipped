@@ -7,6 +7,8 @@ import { compileMongoAggregate, compileMongoFilter, compileMongoOps, compileMong
 import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities/configurable'
 import type { FilterGroup } from '../../filter'
+import type { DiscoveredSchema } from '../../migrations/introspection-types'
+import type { AddIndexChange, DropIndexChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
@@ -19,6 +21,8 @@ const mongoConnectionPipe = () =>
 	v.object({
 		uri: v.string(),
 	})
+
+const MIGRATION_TRACKER_COLLECTION = 'equipped_migrations'
 
 export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter) {
 	readonly schemaConfigPipe = mongoSchemaConfigPipe()
@@ -288,6 +292,64 @@ export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter
 			throw new EquippedError('MongoDB session failed', { adapter: 'mongodb', operation: 'session' }, error)
 		}
 	}
+
+	async loadMigrations(): Promise<{ id: string; appliedAt: number }[]> {
+		const db = this.client.db()
+		const docs = await db.collection(MIGRATION_TRACKER_COLLECTION).find({}).toArray()
+		return docs.map((d) => ({ id: String(d._id), appliedAt: d.appliedAt as number }))
+	}
+
+	async recordMigration(id: string, appliedAt: number): Promise<void> {
+		const db = this.client.db()
+		await db.collection(MIGRATION_TRACKER_COLLECTION).insertOne({ _id: id as any, appliedAt })
+	}
+
+	async applyAddIndex(change: AddIndexChange): Promise<void> {
+		const db = this.client.db()
+		const fields: Record<string, 1> = {}
+		for (const f of change.on) {
+			fields[f] = 1
+		}
+		const name = change.name ?? `${change.table}_${change.on.join('_')}_idx`
+		await db.collection(change.table).createIndex(fields, { unique: change.unique ?? false, name })
+	}
+
+	async applyDropIndex(change: DropIndexChange): Promise<void> {
+		const db = this.client.db()
+		const collections = await db.listCollections().toArray()
+		for (const col of collections) {
+			const indexes = await db.collection(col.name).listIndexes().toArray()
+			if (indexes.some((idx) => idx.name === change.name)) {
+				await db.collection(col.name).dropIndex(change.name)
+				return
+			}
+		}
+	}
+
+	async introspect(): Promise<DiscoveredSchema[]> {
+		const db = this.client.db()
+		const collections = await db.listCollections().toArray()
+		const schemas: DiscoveredSchema[] = []
+		for (const col of collections) {
+			if (col.name === MIGRATION_TRACKER_COLLECTION) continue
+			const rawIndexes = await db.collection(col.name).listIndexes().toArray()
+			const indexes = rawIndexes
+				.filter((idx) => idx.name !== '_id_')
+				.map((idx) => ({
+					name: idx.name as string,
+					on: Object.keys(idx.key as Record<string, unknown>) as ReadonlyArray<string>,
+					unique: !!(idx.unique),
+				}))
+			schemas.push({
+				name: col.name,
+				pk: undefined,
+				fields: [],
+				indexes,
+				foreignKeys: [],
+			})
+		}
+		return schemas
+	}
 }
 
 if (import.meta.vitest) {
@@ -534,6 +596,342 @@ if (import.meta.vitest) {
 			expect(onSpy).toHaveBeenCalledWith('close', expect.any(Function), expect.objectContaining({ class: MongoDbAdapter }))
 
 			onSpy.mockRestore()
+		})
+	})
+
+	describe('MongoDbAdapter: migrations', () => {
+		function mockMongoDb(adapter: MongoDbAdapter) {
+			const state = {
+				migrations: new Map<string, { _id: string; appliedAt: number }>(),
+				collections: new Map<string, { indexes: Array<{ name: string; key: Record<string, number>; unique?: boolean }> }>(),
+			}
+
+			const getCol = (name: string) => {
+				if (!state.collections.has(name)) {
+					state.collections.set(name, { indexes: [] })
+				}
+				return state.collections.get(name)!
+			}
+
+			;(adapter.client as any).db = () => ({
+				collection: (name: string) => {
+					if (name === MIGRATION_TRACKER_COLLECTION) {
+						return {
+							find: () => ({ toArray: async () => [...state.migrations.values()] }),
+							insertOne: async (doc: { _id: string; appliedAt: number }) => {
+								state.migrations.set(doc._id, doc)
+							},
+						}
+					}
+					const col = getCol(name)
+					return {
+						createIndex: async (fields: Record<string, number>, opts: { unique?: boolean; name: string }) => {
+							col.indexes.push({ name: opts.name, key: fields, unique: opts.unique })
+						},
+						dropIndex: async (indexName: string) => {
+							col.indexes = col.indexes.filter((i) => i.name !== indexName)
+						},
+						listIndexes: () => ({
+							toArray: async () => [
+								{ name: '_id_', key: { _id: 1 } },
+								...col.indexes,
+							],
+						}),
+					}
+				},
+				listCollections: () => ({
+					toArray: async () => [...state.collections.keys()].map((name) => ({ name })),
+				}),
+			})
+
+			return state
+		}
+
+		test('loadMigrations reads from equipped_migrations collection', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+			state.migrations.set('0001', { _id: '0001', appliedAt: 1000 })
+			state.migrations.set('0002', { _id: '0002', appliedAt: 2000 })
+
+			const result = await adapter.loadMigrations()
+			expect(result).toEqual([
+				{ id: '0001', appliedAt: 1000 },
+				{ id: '0002', appliedAt: 2000 },
+			])
+		})
+
+		test('loadMigrations returns empty array when no migrations exist', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			mockMongoDb(adapter)
+
+			const result = await adapter.loadMigrations()
+			expect(result).toEqual([])
+		})
+
+		test('recordMigration inserts into equipped_migrations with _id', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+
+			await adapter.recordMigration('0001', 1234)
+
+			expect(state.migrations.has('0001')).toBe(true)
+			expect(state.migrations.get('0001')).toEqual({ _id: '0001', appliedAt: 1234 })
+		})
+
+		test('applyAddIndex creates index with specified name and fields', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+
+			await adapter.applyAddIndex({ kind: 'addIndex', table: 'users', on: ['email'], unique: true, name: 'users_email_unique' })
+
+			const col = state.collections.get('users')!
+			expect(col.indexes).toHaveLength(1)
+			expect(col.indexes[0]).toEqual({ name: 'users_email_unique', key: { email: 1 }, unique: true })
+		})
+
+		test('applyAddIndex auto-derives name when absent', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+
+			await adapter.applyAddIndex({ kind: 'addIndex', table: 'users', on: ['email'] })
+
+			const col = state.collections.get('users')!
+			expect(col.indexes[0].name).toBe('users_email_idx')
+		})
+
+		test('applyAddIndex auto-derived compound index name', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+
+			await adapter.applyAddIndex({ kind: 'addIndex', table: 'orders', on: ['userId', 'createdAt'] })
+
+			const col = state.collections.get('orders')!
+			expect(col.indexes[0].name).toBe('orders_userId_createdAt_idx')
+			expect(col.indexes[0].key).toEqual({ userId: 1, createdAt: 1 })
+		})
+
+		test('applyDropIndex finds and drops index by scanning collections', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+			state.collections.set('users', { indexes: [{ name: 'users_email_idx', key: { email: 1 }, unique: true }] })
+
+			await adapter.applyDropIndex({ kind: 'dropIndex', name: 'users_email_idx' })
+
+			expect(state.collections.get('users')!.indexes).toHaveLength(0)
+		})
+
+		test('applyDropIndex is a no-op when index not found', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			mockMongoDb(adapter)
+
+			await adapter.applyDropIndex({ kind: 'dropIndex', name: 'nonexistent_idx' })
+		})
+
+		test('introspect returns DiscoveredSchema with empty fields, pk, and foreignKeys', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+			state.collections.set('users', { indexes: [] })
+			state.collections.set('posts', { indexes: [] })
+
+			const schemas = await adapter.introspect()
+
+			expect(schemas).toHaveLength(2)
+			for (const s of schemas) {
+				expect(s.pk).toBeUndefined()
+				expect(s.fields).toEqual([])
+				expect(s.foreignKeys).toEqual([])
+			}
+		})
+
+		test('introspect skips _id_ index', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+			state.collections.set('users', { indexes: [{ name: 'users_email_idx', key: { email: 1 }, unique: false }] })
+
+			const schemas = await adapter.introspect()
+
+			expect(schemas).toHaveLength(1)
+			expect(schemas[0].indexes).toHaveLength(1)
+			expect(schemas[0].indexes[0].name).toBe('users_email_idx')
+		})
+
+		test('introspect skips tracker collection', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+			state.collections.set('users', { indexes: [] })
+			state.collections.set(MIGRATION_TRACKER_COLLECTION, { indexes: [] })
+
+			const schemas = await adapter.introspect()
+
+			expect(schemas).toHaveLength(1)
+			expect(schemas[0].name).toBe('users')
+		})
+
+		test('introspect maps index keys to on array and unique flag', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+			state.collections.set('orders', {
+				indexes: [
+					{ name: 'orders_userId_createdAt_idx', key: { userId: 1, createdAt: 1 }, unique: false },
+					{ name: 'orders_email_unique', key: { email: 1 }, unique: true },
+				],
+			})
+
+			const schemas = await adapter.introspect()
+
+			expect(schemas[0].indexes).toEqual([
+				{ name: 'orders_userId_createdAt_idx', on: ['userId', 'createdAt'], unique: false },
+				{ name: 'orders_email_unique', on: ['email'], unique: true },
+			])
+		})
+
+		test('adapter does not implement acquireMigrationLock', () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			expect((adapter as any).acquireMigrationLock).toBeUndefined()
+		})
+
+		test('adapter does not implement DDL apply methods', () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			expect((adapter as any).applyCreateTable).toBeUndefined()
+			expect((adapter as any).applyDropTable).toBeUndefined()
+			expect((adapter as any).applyAddField).toBeUndefined()
+			expect((adapter as any).applyDropField).toBeUndefined()
+			expect((adapter as any).applyModifyField).toBeUndefined()
+			expect((adapter as any).applyRenameTable).toBeUndefined()
+			expect((adapter as any).applyRenameField).toBeUndefined()
+			expect((adapter as any).applyAddForeignKey).toBeUndefined()
+			expect((adapter as any).applyDropForeignKey).toBeUndefined()
+		})
+
+		test('type-level: ChangeFor<MongoDbAdapter> excludes DDL variants', () => {
+			type Changes = import('../../migrations/types').ChangeFor<MongoDbAdapter>
+
+			expectTypeOf<Extract<Changes, { kind: 'addIndex' }>>().not.toBeNever()
+			expectTypeOf<Extract<Changes, { kind: 'dropIndex' }>>().not.toBeNever()
+			expectTypeOf<Extract<Changes, { kind: 'execute' }>>().not.toBeNever()
+
+			expectTypeOf<Extract<Changes, { kind: 'addField' }>>().toBeNever()
+			expectTypeOf<Extract<Changes, { kind: 'createTable' }>>().toBeNever()
+			expectTypeOf<Extract<Changes, { kind: 'dropTable' }>>().toBeNever()
+			expectTypeOf<Extract<Changes, { kind: 'modifyField' }>>().toBeNever()
+			expectTypeOf<Extract<Changes, { kind: 'renameTable' }>>().toBeNever()
+			expectTypeOf<Extract<Changes, { kind: 'renameField' }>>().toBeNever()
+			expectTypeOf<Extract<Changes, { kind: 'dropField' }>>().toBeNever()
+			expectTypeOf<Extract<Changes, { kind: 'addForeignKey' }>>().toBeNever()
+			expectTypeOf<Extract<Changes, { kind: 'dropForeignKey' }>>().toBeNever()
+		})
+
+		test('type-level: Migrator.from(repo, adapter).build() works without withoutLock', async () => {
+			const { Migrator } = await import('../../migrations/migrator')
+			const { Repo } = await import('../../repo/repo')
+
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const repo = Repo.from(adapter).resolve(() => ({ db: 'test', col: 'test' })).build()
+			const step = Migrator.from(repo, adapter).migrations([])
+
+			expectTypeOf(step).toHaveProperty('build')
+			expectTypeOf(step).toHaveProperty('withoutLock')
+		})
+
+		test('type-level: Migrator.from(repo, adapter).withoutLock().build() also works', async () => {
+			const { Migrator } = await import('../../migrations/migrator')
+			const { Repo } = await import('../../repo/repo')
+
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const repo = Repo.from(adapter).resolve(() => ({ db: 'test', col: 'test' })).build()
+			const migrator = Migrator.from(repo, adapter).migrations([]).withoutLock().build()
+			expect(migrator).toBeDefined()
+		})
+
+		test('end-to-end: Migrator runs addIndex + dropIndex + execute changes', async () => {
+			const { Migrator } = await import('../../migrations/migrator')
+			const { Repo } = await import('../../repo/repo')
+
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+			const repo = Repo.from(adapter).resolve(() => ({ db: 'test', col: 'test' })).build()
+
+			let executeRan = false
+			type M = import('../../migrations/types').Migration<typeof adapter>
+			const migrations: M[] = [
+				{
+					id: '0001-add-idx',
+					tx: false,
+					changes: [
+						{ kind: 'addIndex', table: 'users', on: ['email'], unique: true },
+					],
+				},
+				{
+					id: '0002-backfill',
+					tx: false,
+					changes: [
+						{ kind: 'execute', up: async () => { executeRan = true } },
+					],
+				},
+				{
+					id: '0003-drop-idx',
+					tx: false,
+					changes: [
+						{ kind: 'dropIndex', name: 'users_email_idx' },
+					],
+				},
+			]
+
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			const result = await migrator.up()
+
+			expect(result.ran).toEqual(['0001-add-idx', '0002-backfill', '0003-drop-idx'])
+			expect(executeRan).toBe(true)
+			expect(state.migrations.size).toBe(3)
+			expect(state.collections.get('users')!.indexes).toHaveLength(0)
+		})
+
+		test('introspect round-trip: addIndex then introspect sees the index', async () => {
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			const state = mockMongoDb(adapter)
+
+			state.collections.set('users', {
+				indexes: [{ name: 'users_email_idx', key: { email: 1 }, unique: true }],
+			})
+
+			const schemas = await adapter.introspect()
+
+			expect(schemas).toHaveLength(1)
+			expect(schemas[0].name).toBe('users')
+			expect(schemas[0].pk).toBeUndefined()
+			expect(schemas[0].fields).toEqual([])
+			expect(schemas[0].foreignKeys).toEqual([])
+			expect(schemas[0].indexes).toEqual([
+				{ name: 'users_email_idx', on: ['email'], unique: true },
+			])
+		})
+
+		test('data backfill via execute change', async () => {
+			const { Migrator } = await import('../../migrations/migrator')
+			const { Repo } = await import('../../repo/repo')
+
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017/testdb' })
+			mockMongoDb(adapter)
+			const repo = Repo.from(adapter).resolve(() => ({ db: 'test', col: 'test' })).build()
+
+			const backfilledData: string[] = []
+			type M = import('../../migrations/types').Migration<typeof adapter>
+			const m: M = {
+				id: '0001-backfill',
+				tx: false,
+				changes: [{
+					kind: 'execute',
+					up: async () => {
+						backfilledData.push('user-1-normalized')
+						backfilledData.push('user-2-normalized')
+					},
+				}],
+			}
+
+			const migrator = Migrator.from(repo, adapter).migrations([m]).build()
+			await migrator.up()
+
+			expect(backfilledData).toEqual(['user-1-normalized', 'user-2-normalized'])
 		})
 	})
 }
