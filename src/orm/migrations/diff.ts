@@ -40,6 +40,12 @@ function fieldsEqual(target: SchemaFieldInfo, discovered: DiscoveredField): bool
 	return true
 }
 
+const toFieldPayload = (f: SchemaFieldInfo) => ({
+	name: f.name,
+	type: f.type,
+	...(f.nullable ? { nullable: true as const } : {}),
+})
+
 function extractSchemaInfo(schema: AnySchema): {
 	name: string
 	pk: { name: string; type: FieldTypeName }
@@ -118,7 +124,7 @@ export function diffSchemas(
 				kind: 'createTable',
 				name: info.name,
 				pk: info.pk,
-				fields: info.fields.map((f) => ({ name: f.name, type: f.type, ...(f.nullable ? { nullable: true } : {}) })),
+				fields: info.fields.map(toFieldPayload),
 			})
 			continue
 		}
@@ -135,9 +141,9 @@ export function diffSchemas(
 		for (const tField of info.fields) {
 			const existing = discFieldsByName.get(tField.name)
 			if (!existing) {
-				changes.push({ kind: 'addField', table: info.name, field: { name: tField.name, type: tField.type, ...(tField.nullable ? { nullable: true } : {}) } })
+				changes.push({ kind: 'addField', table: info.name, field: toFieldPayload(tField) })
 			} else if (!fieldsEqual(tField, existing)) {
-				changes.push({ kind: 'modifyField', table: info.name, name: tField.name, to: { name: tField.name, type: tField.type, ...(tField.nullable ? { nullable: true } : {}) } })
+				changes.push({ kind: 'modifyField', table: info.name, name: tField.name, to: toFieldPayload(tField) })
 			}
 		}
 	}
