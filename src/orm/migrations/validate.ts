@@ -6,137 +6,98 @@ function isEmpty(s: string | undefined | null): boolean {
 	return !s || s.trim() === ''
 }
 
-function validateFieldSpec(adapter: OrmAdapter, migrationId: string, changeIndex: number, failures: OrmValidationFailure[], fieldSpec: { name: string; type: string }, fieldLabel: string): void {
+type ChangeContext = { adapter: OrmAdapter; migrationId: string; changeIndex: number; failures: OrmValidationFailure[] }
+
+function validateFieldSpec(ctx: ChangeContext, fieldSpec: { name: string; type: string }, fieldLabel: string): void {
 	if (isEmpty(fieldSpec.name)) {
-		failures.push({ migrationId, changeIndex, field: fieldLabel, cause: `${fieldLabel} name must be non-empty` })
+		ctx.failures.push({ migrationId: ctx.migrationId, changeIndex: ctx.changeIndex, field: fieldLabel, cause: `${fieldLabel} name must be non-empty` })
 	}
-	if (adapter.supportedFieldTypes.length > 0 && !adapter.supportedFieldTypes.includes(fieldSpec.type as any)) {
-		failures.push({ migrationId, changeIndex, field: fieldLabel, cause: `unsupported field type '${fieldSpec.type}'` })
+	if (ctx.adapter.supportedFieldTypes.length > 0 && !ctx.adapter.supportedFieldTypes.includes(fieldSpec.type as any)) {
+		ctx.failures.push({ migrationId: ctx.migrationId, changeIndex: ctx.changeIndex, field: fieldLabel, cause: `unsupported field type '${fieldSpec.type}'` })
 	}
+}
+
+function fail(ctx: ChangeContext, field: string | undefined, cause: string): void {
+	ctx.failures.push({ migrationId: ctx.migrationId, changeIndex: ctx.changeIndex, ...(field ? { field } : {}), cause })
 }
 
 function validateChange(adapter: OrmAdapter, change: AnyChange, migrationId: string, changeIndex: number, failures: OrmValidationFailure[]): void {
 	if (change.kind === 'execute') return
 
+	const ctx: ChangeContext = { adapter, migrationId, changeIndex, failures }
 	const methodName = `apply${change.kind[0].toUpperCase()}${change.kind.slice(1)}`
 	if (typeof (adapter as any)[methodName] !== 'function') {
-		failures.push({ migrationId, changeIndex, cause: `adapter does not support change kind '${change.kind}'` })
+		fail(ctx, undefined, `adapter does not support change kind '${change.kind}'`)
 	}
 
 	switch (change.kind) {
 		case 'createTable': {
-			if (isEmpty(change.name)) {
-				failures.push({ migrationId, changeIndex, field: 'name', cause: 'table name must be non-empty' })
-			}
-			if (isEmpty(change.pk.name)) {
-				failures.push({ migrationId, changeIndex, field: 'pk.name', cause: 'pk name must be non-empty' })
-			}
+			if (isEmpty(change.name)) fail(ctx, 'name', 'table name must be non-empty')
+			if (isEmpty(change.pk.name)) fail(ctx, 'pk.name', 'pk name must be non-empty')
 			if (adapter.supportedFieldTypes.length > 0 && !adapter.supportedFieldTypes.includes(change.pk.type as any)) {
-				failures.push({ migrationId, changeIndex, field: 'pk.type', cause: `unsupported field type '${change.pk.type}'` })
+				fail(ctx, 'pk.type', `unsupported field type '${change.pk.type}'`)
 			}
 			const fieldNames = new Set<string>()
 			for (const f of change.fields) {
-				validateFieldSpec(adapter, migrationId, changeIndex, failures, f, 'field')
-				if (fieldNames.has(f.name)) {
-					failures.push({ migrationId, changeIndex, field: 'fields', cause: `duplicate field name '${f.name}' in createTable` })
-				}
+				validateFieldSpec(ctx, f, 'field')
+				if (fieldNames.has(f.name)) fail(ctx, 'fields', `duplicate field name '${f.name}' in createTable`)
 				fieldNames.add(f.name)
 			}
 			if (change.pk.name && fieldNames.has(change.pk.name)) {
-				failures.push({ migrationId, changeIndex, field: 'pk.name', cause: `pk name '${change.pk.name}' collides with a field name` })
+				fail(ctx, 'pk.name', `pk name '${change.pk.name}' collides with a field name`)
 			}
 			break
 		}
 		case 'dropTable': {
-			if (isEmpty(change.name)) {
-				failures.push({ migrationId, changeIndex, field: 'name', cause: 'table name must be non-empty' })
-			}
+			if (isEmpty(change.name)) fail(ctx, 'name', 'table name must be non-empty')
 			break
 		}
 		case 'addField': {
-			if (isEmpty(change.table)) {
-				failures.push({ migrationId, changeIndex, field: 'table', cause: 'table name must be non-empty' })
-			}
-			validateFieldSpec(adapter, migrationId, changeIndex, failures, change.field, 'field')
+			if (isEmpty(change.table)) fail(ctx, 'table', 'table name must be non-empty')
+			validateFieldSpec(ctx, change.field, 'field')
 			break
 		}
 		case 'dropField': {
-			if (isEmpty(change.table)) {
-				failures.push({ migrationId, changeIndex, field: 'table', cause: 'table name must be non-empty' })
-			}
-			if (isEmpty(change.name)) {
-				failures.push({ migrationId, changeIndex, field: 'name', cause: 'field name must be non-empty' })
-			}
+			if (isEmpty(change.table)) fail(ctx, 'table', 'table name must be non-empty')
+			if (isEmpty(change.name)) fail(ctx, 'name', 'field name must be non-empty')
 			break
 		}
 		case 'modifyField': {
-			if (isEmpty(change.table)) {
-				failures.push({ migrationId, changeIndex, field: 'table', cause: 'table name must be non-empty' })
-			}
-			if (isEmpty(change.name)) {
-				failures.push({ migrationId, changeIndex, field: 'name', cause: 'field name must be non-empty' })
-			}
-			validateFieldSpec(adapter, migrationId, changeIndex, failures, change.to, 'to')
+			if (isEmpty(change.table)) fail(ctx, 'table', 'table name must be non-empty')
+			if (isEmpty(change.name)) fail(ctx, 'name', 'field name must be non-empty')
+			validateFieldSpec(ctx, change.to, 'to')
 			break
 		}
 		case 'renameTable': {
-			if (isEmpty(change.from)) {
-				failures.push({ migrationId, changeIndex, field: 'from', cause: 'table name must be non-empty' })
-			}
-			if (isEmpty(change.to)) {
-				failures.push({ migrationId, changeIndex, field: 'to', cause: 'table name must be non-empty' })
-			}
+			if (isEmpty(change.from)) fail(ctx, 'from', 'table name must be non-empty')
+			if (isEmpty(change.to)) fail(ctx, 'to', 'table name must be non-empty')
 			break
 		}
 		case 'renameField': {
-			if (isEmpty(change.table)) {
-				failures.push({ migrationId, changeIndex, field: 'table', cause: 'table name must be non-empty' })
-			}
-			if (isEmpty(change.from)) {
-				failures.push({ migrationId, changeIndex, field: 'from', cause: 'field name must be non-empty' })
-			}
-			if (isEmpty(change.to)) {
-				failures.push({ migrationId, changeIndex, field: 'to', cause: 'field name must be non-empty' })
-			}
+			if (isEmpty(change.table)) fail(ctx, 'table', 'table name must be non-empty')
+			if (isEmpty(change.from)) fail(ctx, 'from', 'field name must be non-empty')
+			if (isEmpty(change.to)) fail(ctx, 'to', 'field name must be non-empty')
 			break
 		}
 		case 'addIndex': {
-			if (isEmpty(change.table)) {
-				failures.push({ migrationId, changeIndex, field: 'table', cause: 'table name must be non-empty' })
-			}
-			if (!change.on || change.on.length === 0) {
-				failures.push({ migrationId, changeIndex, field: 'on', cause: 'addIndex.on must be non-empty' })
-			}
+			if (isEmpty(change.table)) fail(ctx, 'table', 'table name must be non-empty')
+			if (!change.on || change.on.length === 0) fail(ctx, 'on', 'addIndex.on must be non-empty')
 			break
 		}
 		case 'dropIndex': {
-			if (isEmpty(change.name)) {
-				failures.push({ migrationId, changeIndex, field: 'name', cause: 'index name must be non-empty' })
-			}
+			if (isEmpty(change.name)) fail(ctx, 'name', 'index name must be non-empty')
 			break
 		}
 		case 'addForeignKey': {
-			if (isEmpty(change.table)) {
-				failures.push({ migrationId, changeIndex, field: 'table', cause: 'table name must be non-empty' })
-			}
-			if (isEmpty(change.on)) {
-				failures.push({ migrationId, changeIndex, field: 'on', cause: 'addForeignKey.on must be non-empty' })
-			}
-			if (isEmpty(change.references?.table)) {
-				failures.push({ migrationId, changeIndex, field: 'references.table', cause: 'references table must be non-empty' })
-			}
-			if (isEmpty(change.references?.column)) {
-				failures.push({ migrationId, changeIndex, field: 'references.column', cause: 'references column must be non-empty' })
-			}
+			if (isEmpty(change.table)) fail(ctx, 'table', 'table name must be non-empty')
+			if (isEmpty(change.on)) fail(ctx, 'on', 'addForeignKey.on must be non-empty')
+			if (isEmpty(change.references?.table)) fail(ctx, 'references.table', 'references table must be non-empty')
+			if (isEmpty(change.references?.column)) fail(ctx, 'references.column', 'references column must be non-empty')
 			break
 		}
 		case 'dropForeignKey': {
-			if (isEmpty(change.table)) {
-				failures.push({ migrationId, changeIndex, field: 'table', cause: 'table name must be non-empty' })
-			}
-			if (isEmpty(change.name)) {
-				failures.push({ migrationId, changeIndex, field: 'name', cause: 'foreign key name must be non-empty' })
-			}
+			if (isEmpty(change.table)) fail(ctx, 'table', 'table name must be non-empty')
+			if (isEmpty(change.name)) fail(ctx, 'name', 'foreign key name must be non-empty')
 			break
 		}
 	}

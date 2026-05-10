@@ -17,7 +17,7 @@ import { EquippedError } from '../../../errors'
 import { configurable } from '../../../utilities'
 import type { FieldTypeName } from '../../adapter'
 import type { FilterGroup } from '../../filter'
-import type { DiscoveredSchema } from '../../migrations/introspection-types'
+import type { DiscoveredSchema, ForeignKeyAction } from '../../migrations/introspection-types'
 import type {
 	AddFieldChange,
 	AddForeignKeyChange,
@@ -525,7 +525,7 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 				WHERE tc.table_schema = 'public' AND tc.table_name = $1 AND tc.constraint_type = 'FOREIGN KEY'
 			`, [tableName])
 
-			const foreignKeys: { name: string; on: string; references: { table: string; column: string }; onDelete?: 'cascade' | 'restrict' | 'setNull' | 'noAction'; onUpdate?: 'cascade' | 'restrict' | 'setNull' | 'noAction' }[] = []
+			const foreignKeys: { name: string; on: string; references: { table: string; column: string }; onDelete?: ForeignKeyAction; onUpdate?: ForeignKeyAction }[] = []
 			for (const fk of fkResult.rows) {
 				foreignKeys.push({
 					name: fk.constraint_name,
@@ -564,22 +564,13 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 	}
 
 	#renderFkAction(action: string): string {
-		switch (action.toLowerCase()) {
-			case 'cascade': return 'CASCADE'
-			case 'restrict': return 'RESTRICT'
-			case 'setnull': return 'SET NULL'
-			case 'noaction': return 'NO ACTION'
-			default: return 'NO ACTION'
-		}
+		const map: Record<string, string> = { cascade: 'CASCADE', restrict: 'RESTRICT', setnull: 'SET NULL', noaction: 'NO ACTION' }
+		return map[action.toLowerCase()] ?? 'NO ACTION'
 	}
 
-	#parseFkAction(rule: string): 'cascade' | 'restrict' | 'setNull' | 'noAction' {
-		switch (rule.toUpperCase()) {
-			case 'CASCADE': return 'cascade'
-			case 'RESTRICT': return 'restrict'
-			case 'SET NULL': return 'setNull'
-			default: return 'noAction'
-		}
+	#parseFkAction(rule: string): ForeignKeyAction {
+		const map: Record<string, ForeignKeyAction> = { CASCADE: 'cascade', RESTRICT: 'restrict', 'SET NULL': 'setNull' }
+		return map[rule.toUpperCase()] ?? 'noAction'
 	}
 
 	#parseDefault(raw: string | null): string | number | boolean | null | undefined {

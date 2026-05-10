@@ -1,5 +1,7 @@
 import type { FieldTypeName } from '../adapter'
 
+export type ForeignKeyAction = 'cascade' | 'restrict' | 'setNull' | 'noAction'
+
 export type DiscoveredField = {
 	name: string
 	type: FieldTypeName
@@ -18,8 +20,8 @@ export type DiscoveredForeignKey = {
 	name: string
 	on: string
 	references: { table: string; column: string }
-	onDelete?: 'cascade' | 'restrict' | 'setNull' | 'noAction'
-	onUpdate?: 'cascade' | 'restrict' | 'setNull' | 'noAction'
+	onDelete?: ForeignKeyAction
+	onUpdate?: ForeignKeyAction
 }
 
 export type DiscoveredSchema = {
