@@ -1,10 +1,10 @@
 import type { OrmAdapterLike } from '../adapters/base'
 import type { OrmAdapter } from '../orm-adapter'
-import type { Repo } from '../repo/repo'
-import type { AnySchema } from '../schema'
 import { diffSchemas } from './diff'
 import type { DiscoveredSchema } from './introspection-types'
 import type { ChangeFor } from './types'
+import type { Repo } from '../repo/repo'
+import type { AnySchema } from '../schema'
 
 export type IntrospectableAdapter<A> = A extends { introspect(): Promise<DiscoveredSchema[]> } ? A : never
 

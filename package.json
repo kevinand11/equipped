@@ -18,7 +18,6 @@
 		"lint": "eslint --fix src",
 		"test": "vitest run",
 		"release": "standard-version",
-		"sandcastle": "tsx .sandcastle/main.ts",
 		"prepare": "husky"
 	},
 	"exports": {
@@ -279,7 +278,6 @@
 	"author": "",
 	"license": "ISC",
 	"devDependencies": {
-		"@ai-hero/sandcastle": "^0.5.7",
 		"@commitlint/cli": "^20.4.1",
 		"@commitlint/config-conventional": "^20.4.1",
 		"@k11/configs": "^0.1.2",
