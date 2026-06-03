@@ -22,6 +22,7 @@ import {
 	runOneUpsert,
 } from './internals/executors'
 import { resolvePreloads } from './internals/preloads'
+import type { ReadLimitSource, ReadOffsetSource } from './internals/query-shape'
 import type { SelectedWithPreloads } from './internals/types'
 
 type MaybeNull<T, Req extends boolean> = Req extends true ? T : T | null
@@ -270,28 +271,29 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	declare readonly _builderKind: 'all'
 
 	#orderBy: OrderBy[]
-	#limit: number | undefined
-	#offset: number | undefined
+	#limitSource: ReadLimitSource | undefined
+	#offsetSource: ReadOffsetSource | undefined
 
 	constructor(
 		context: SchemaContext<S>,
 		state?: ReadState<Sel, P>,
-		queryState?: { orderBy?: OrderBy[]; limit?: number; offset?: number },
+		queryState?: { orderBy?: OrderBy[]; limitSource?: ReadLimitSource; offsetSource?: ReadOffsetSource },
 	) {
 		super(context, state)
 		this.#orderBy = queryState?.orderBy ?? []
-		this.#limit = queryState?.limit
-		this.#offset = queryState?.offset
+		this.#limitSource = queryState?.limitSource
+		this.#offsetSource = queryState?.offsetSource
 	}
 
-	#withQuery(queryOverride: Partial<{ orderBy: OrderBy[]; limit: number; offset: number }>) {
+	#withQuery(queryOverride: Partial<{ orderBy: OrderBy[]; limitSource: ReadLimitSource; offsetSource: ReadOffsetSource }>) {
+		const has = (key: keyof typeof queryOverride) => Object.prototype.hasOwnProperty.call(queryOverride, key)
 		return new AllBuilder<S, A, Sel, P>(
 			this._context,
 			this._readState(),
 			{
-				orderBy: queryOverride.orderBy ?? [...this.#orderBy],
-				limit: queryOverride.limit ?? this.#limit,
-				offset: queryOverride.offset ?? this.#offset,
+				orderBy: has('orderBy') ? queryOverride.orderBy : [...this.#orderBy],
+				limitSource: has('limitSource') ? queryOverride.limitSource : this.#limitSource,
+				offsetSource: has('offsetSource') ? queryOverride.offsetSource : this.#offsetSource,
 			},
 		) as this
 	}
@@ -304,7 +306,7 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 				select: next.select,
 				preloads: next.preloads,
 			}),
-			{ orderBy: [...this.#orderBy], limit: this.#limit, offset: this.#offset },
+			{ orderBy: [...this.#orderBy], limitSource: this.#limitSource, offsetSource: this.#offsetSource },
 		) as any
 	}
 
@@ -313,11 +315,15 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	}
 
 	limit(limit: number) {
-		return this.#withQuery({ limit })
+		return this.#withQuery({ limitSource: { value: limit } })
 	}
 
 	offset(offset: number) {
-		return this.#withQuery({ offset })
+		return this.#withQuery({ offsetSource: { kind: 'offset', value: offset } })
+	}
+
+	page(page: number) {
+		return this.#withQuery({ offsetSource: { kind: 'page', value: page } })
 	}
 
 	create(data: SchemaCreateInput<S>[]) {
@@ -357,8 +363,8 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 			select: this._select,
 			preloads: this._preloads,
 			orderBy: this.#orderBy,
-			limit: this.#limit,
-			offset: this.#offset,
+			limitSource: this.#limitSource,
+			offsetSource: this.#offsetSource,
 		})
 	}
 }
@@ -512,6 +518,8 @@ if (import.meta.vitest) {
 	const { describe, test, expect, beforeEach } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { InMemoryAdapter } = await import('../adapters/in-memory')
+	const { OrmValidationError } = await import('../errors')
+	const { Relations } = await import('../relations')
 	const { Repo } = await import('./repo')
 	const { Schema } = await import('../schema')
 
@@ -775,6 +783,173 @@ if (import.meta.vitest) {
 				expect(upserted.email).toBe('x@y.com')
 				expect(upserted.name).toBe('X')
 			})
+		})
+	})
+
+	describe('read query-shape validation and page state', () => {
+		let itemCounter = 0
+		let userCounter = 0
+		let postCounter = 0
+
+		const ItemSchema = Schema.from('paged_items')
+			.pk('id', v.string(), () => `item-${++itemCounter}`)
+			.field('position', v.number())
+			.field('name', v.string())
+			.build()
+
+		const UserSchema = Schema.from('query_shape_users')
+			.pk('id', v.string(), () => `user-${++userCounter}`)
+			.field('name', v.string())
+			.build()
+
+		const PostSchema = Schema.from('query_shape_posts')
+			.pk('id', v.string(), () => `post-${++postCounter}`)
+			.field('userId', v.string())
+			.field('title', v.string())
+			.build()
+
+		const UserRels = Relations.from(UserSchema).hasMany('posts', PostSchema.fields.userId).build()
+		const PostRels = Relations.from(PostSchema).belongsTo('author', PostSchema.fields.userId, UserSchema).build()
+
+		function makeRepo() {
+			const adapter = InMemoryAdapter.create({})
+			return Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
+		}
+
+		async function seedItems(repo: any, count: number) {
+			await repo.on(ItemSchema).all().create(
+				Array.from({ length: count }, (_, index) => ({ position: index + 1, name: `Item ${index + 1}` })),
+			)
+		}
+
+		function expectQueryShapeError(error: unknown, field?: string) {
+			expect(error).toBeInstanceOf(OrmValidationError)
+			const err = error as InstanceType<typeof OrmValidationError>
+			expect(err.kind).toBe('query-shape')
+			if (field) expect(err.failures.some((failure) => failure.field === field)).toBe(true)
+		}
+
+		test('.page(n) is 1-based offset sugar for .find()', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 10)
+
+			const rows = await repo.on(ItemSchema).all().orderBy('position', 'asc').limit(3).page(2).find()
+
+			expect(rows.map((row) => row.position)).toEqual([4, 5, 6])
+		})
+
+		test('.page(2).limit(50).find() uses the final effective limit for offset', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 125)
+
+			const rows = await repo.on(ItemSchema).all().orderBy('position', 'asc').page(2).limit(50).find()
+
+			expect(rows).toHaveLength(50)
+			expect(rows[0].position).toBe(51)
+			expect(rows.at(-1)?.position).toBe(100)
+		})
+
+		test('duplicate .limit(...) calls keep last-wins behavior', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 10)
+
+			const rows = await repo.on(ItemSchema).all().orderBy('position', 'asc').limit(7).limit(3).find()
+
+			expect(rows.map((row) => row.position)).toEqual([1, 2, 3])
+		})
+
+		test('.offset(...) and .page(...) are last-source-wins', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 20)
+
+			const offsetWins = await repo.on(ItemSchema).all().orderBy('position', 'asc').limit(5).page(2).offset(10).find()
+			const pageWins = await repo.on(ItemSchema).all().orderBy('position', 'asc').limit(5).offset(10).page(2).find()
+
+			expect(offsetWins.map((row) => row.position)).toEqual([11, 12, 13, 14, 15])
+			expect(pageWins.map((row) => row.position)).toEqual([6, 7, 8, 9, 10])
+		})
+
+		test('invalid page, limit, and offset values fail as query-shape errors at find()', async () => {
+			const repo = makeRepo()
+
+			for (const [field, read] of [
+				['page', () => repo.on(ItemSchema).all().page(0 as any).find()],
+				['limit', () => repo.on(ItemSchema).all().limit(0 as any).find()],
+				['limit', () => repo.on(ItemSchema).all().limit(undefined as any).page(2).find()],
+				['offset', () => repo.on(ItemSchema).all().offset(-1 as any).find()],
+			] as const) {
+				try {
+					await read()
+					expect.unreachable(`${field} should have failed`)
+				} catch (error) {
+					expectQueryShapeError(error, field)
+				}
+			}
+		})
+
+		test('unknown selected fields fail as query-shape errors on find reads before rows are loaded', async () => {
+			const repo = makeRepo()
+
+			try {
+				await repo.on(ItemSchema).one().select(['unknownField' as any]).find()
+				expect.unreachable('one().find() should have failed')
+			} catch (error) {
+				expectQueryShapeError(error, 'unknownField')
+			}
+
+			try {
+				await repo.on(ItemSchema).all().select(['unknownField' as any]).find()
+				expect.unreachable('all().find() should have failed')
+			} catch (error) {
+				expectQueryShapeError(error, 'unknownField')
+			}
+		})
+
+		test('invalid and coherency-broken preload definitions fail as query-shape errors on find reads', async () => {
+			const repo = makeRepo()
+
+			for (const read of [
+				() => repo.on(UserSchema).all().preload([{ def: {} as any }]).find(),
+				() => repo.on(UserSchema).all().preload([PostRels.author]).find(),
+				() => repo.on(UserSchema).all().preload([{ def: UserRels.posts, preloads: [UserRels.posts] }]).find(),
+			]) {
+				try {
+					await read()
+					expect.unreachable('preload should have failed')
+				} catch (error) {
+					expectQueryShapeError(error)
+				}
+			}
+		})
+
+		test('orderBy(string) remains an unvalidated raw-string escape hatch', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 2)
+
+			const rows = await repo.on(ItemSchema).all().orderBy('missingRawSortField', 'asc').find()
+
+			expect(rows).toHaveLength(2)
+		})
+
+		test('page-based reads without an initialized Instance use default limit 100', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 250)
+
+			const rows = await repo.on(ItemSchema).all().orderBy('position', 'asc').page(2).find()
+
+			expect(rows).toHaveLength(100)
+			expect(rows[0].position).toBe(101)
+			expect(rows.at(-1)?.position).toBe(200)
+		})
+
+		test('find() without page, offset, or limit keeps existing flat-array behavior', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 12)
+
+			const rows = await repo.on(ItemSchema).all().orderBy('position', 'asc').find()
+
+			expect(rows).toHaveLength(12)
+			expect(rows.map((row) => row.position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
 		})
 	})
 }

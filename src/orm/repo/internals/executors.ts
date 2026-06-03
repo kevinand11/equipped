@@ -1,4 +1,5 @@
 import { planSelection } from './computeds'
+import { assertNormalisedFindReadShape, normaliseAllFindReadShape, type ReadLimitSource, type ReadOffsetSource } from './query-shape'
 import type { SelectedWithPreloads } from './types'
 import { assertNormalisedAggregate, assertNormalisedFilter, type FilterGroup } from '../../filter'
 import type { AggregateSpec } from '../../orm-adapter'
@@ -18,6 +19,7 @@ export async function runOneRead<S extends AnySchema, Sel extends string, P exte
 	},
 ): Promise<SelectedWithPreloads<S, Sel, P> | null> {
 	assertNormalisedFilter(context.schema, state.where)
+	assertNormalisedFindReadShape(context.schema, 'findOne', state)
 	const row = await context.use.findOne(state.where)
 	if (!row) return null
 	return context.shapeOneRow(state.select, state.preloads, row)
@@ -30,17 +32,18 @@ export async function runAllRead<S extends AnySchema, Sel extends string, P exte
 		select: readonly Sel[] | undefined
 		preloads: P
 		orderBy: readonly OrderBy[]
-		limit?: number
-		offset?: number
+		limitSource?: ReadLimitSource
+		offsetSource?: ReadOffsetSource
 	},
 ): Promise<SelectedWithPreloads<S, Sel, P>[]> {
 	assertNormalisedFilter(context.schema, state.where)
+	const query = normaliseAllFindReadShape(context.schema, 'findMany', state)
 	const plan = planSelection(context.schema, state.select as readonly string[] | undefined)
 	const rows = await context.use.findMany(state.where, {
 		select: plan.adapterSelect,
 		orderBy: [...state.orderBy],
-		limit: state.limit,
-		offset: state.offset,
+		limit: query.limit,
+		offset: query.offset,
 	})
 	return context.shapeRows(state.select, state.preloads, rows)
 }
