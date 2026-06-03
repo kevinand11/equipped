@@ -10,6 +10,8 @@ export type ReadOffsetSource =
 	| { kind: 'offset'; value: unknown }
 	| { kind: 'page'; value: unknown }
 
+export type ReadLimitSource = { value: unknown }
+
 export type NormalisedAllReadQuery = {
 	limit?: number
 	offset?: number
@@ -104,7 +106,6 @@ function collectPreloadFailures(
 }
 
 function collectLimitFailure(value: unknown, failures: OrmValidationFailure[]): number | undefined {
-	if (value === undefined) return undefined
 	if (isPositiveInteger(value)) return value
 	failures.push({ field: 'limit', cause: 'Limit must be a positive safe integer' })
 	return undefined
@@ -146,7 +147,7 @@ export function normaliseAllFindReadShape(
 	state: {
 		select: readonly string[] | undefined
 		preloads: readonly AnyPreloadDef[] | undefined
-		limit?: unknown
+		limitSource?: ReadLimitSource
 		offsetSource?: ReadOffsetSource
 	},
 ): NormalisedAllReadQuery {
@@ -154,14 +155,14 @@ export function normaliseAllFindReadShape(
 	collectSelectFailures(schema, state.select, failures)
 	collectPreloadFailures(schema, state.preloads, failures)
 
-	let limit = collectLimitFailure(state.limit, failures)
+	let limit = state.limitSource === undefined ? undefined : collectLimitFailure(state.limitSource.value, failures)
 	let offset: number | undefined
 
 	if (state.offsetSource?.kind === 'offset') {
 		offset = collectOffsetFailure(state.offsetSource.value, failures)
 	} else if (state.offsetSource?.kind === 'page') {
 		const page = collectPageFailure(state.offsetSource.value, failures)
-		if (limit === undefined && state.limit === undefined) {
+		if (limit === undefined && state.limitSource === undefined) {
 			limit = getPaginationDefaultLimit()
 			if (!isPositiveInteger(limit)) {
 				failures.push({ field: 'limit', cause: 'Default page limit must be a positive safe integer' })

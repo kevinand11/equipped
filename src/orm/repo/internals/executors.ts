@@ -1,5 +1,5 @@
 import { planSelection } from './computeds'
-import { assertNormalisedFindReadShape, normaliseAllFindReadShape, type ReadOffsetSource } from './query-shape'
+import { assertNormalisedFindReadShape, normaliseAllFindReadShape, type ReadLimitSource, type ReadOffsetSource } from './query-shape'
 import type { SelectedWithPreloads } from './types'
 import { assertNormalisedAggregate, assertNormalisedFilter, type FilterGroup } from '../../filter'
 import type { AggregateSpec } from '../../orm-adapter'
@@ -32,7 +32,7 @@ export async function runAllRead<S extends AnySchema, Sel extends string, P exte
 		select: readonly Sel[] | undefined
 		preloads: P
 		orderBy: readonly OrderBy[]
-		limit?: unknown
+		limitSource?: ReadLimitSource
 		offsetSource?: ReadOffsetSource
 	},
 ): Promise<SelectedWithPreloads<S, Sel, P>[]> {

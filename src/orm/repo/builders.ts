@@ -22,7 +22,7 @@ import {
 	runOneUpsert,
 } from './internals/executors'
 import { resolvePreloads } from './internals/preloads'
-import type { ReadOffsetSource } from './internals/query-shape'
+import type { ReadLimitSource, ReadOffsetSource } from './internals/query-shape'
 import type { SelectedWithPreloads } from './internals/types'
 
 type MaybeNull<T, Req extends boolean> = Req extends true ? T : T | null
@@ -271,28 +271,28 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	declare readonly _builderKind: 'all'
 
 	#orderBy: OrderBy[]
-	#limit: unknown
+	#limitSource: ReadLimitSource | undefined
 	#offsetSource: ReadOffsetSource | undefined
 
 	constructor(
 		context: SchemaContext<S>,
 		state?: ReadState<Sel, P>,
-		queryState?: { orderBy?: OrderBy[]; limit?: unknown; offsetSource?: ReadOffsetSource },
+		queryState?: { orderBy?: OrderBy[]; limitSource?: ReadLimitSource; offsetSource?: ReadOffsetSource },
 	) {
 		super(context, state)
 		this.#orderBy = queryState?.orderBy ?? []
-		this.#limit = queryState?.limit
+		this.#limitSource = queryState?.limitSource
 		this.#offsetSource = queryState?.offsetSource
 	}
 
-	#withQuery(queryOverride: Partial<{ orderBy: OrderBy[]; limit: unknown; offsetSource: ReadOffsetSource }>) {
+	#withQuery(queryOverride: Partial<{ orderBy: OrderBy[]; limitSource: ReadLimitSource; offsetSource: ReadOffsetSource }>) {
 		const has = (key: keyof typeof queryOverride) => Object.prototype.hasOwnProperty.call(queryOverride, key)
 		return new AllBuilder<S, A, Sel, P>(
 			this._context,
 			this._readState(),
 			{
 				orderBy: has('orderBy') ? queryOverride.orderBy : [...this.#orderBy],
-				limit: has('limit') ? queryOverride.limit : this.#limit,
+				limitSource: has('limitSource') ? queryOverride.limitSource : this.#limitSource,
 				offsetSource: has('offsetSource') ? queryOverride.offsetSource : this.#offsetSource,
 			},
 		) as this
@@ -306,7 +306,7 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 				select: next.select,
 				preloads: next.preloads,
 			}),
-			{ orderBy: [...this.#orderBy], limit: this.#limit, offsetSource: this.#offsetSource },
+			{ orderBy: [...this.#orderBy], limitSource: this.#limitSource, offsetSource: this.#offsetSource },
 		) as any
 	}
 
@@ -315,7 +315,7 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 	}
 
 	limit(limit: number) {
-		return this.#withQuery({ limit })
+		return this.#withQuery({ limitSource: { value: limit } })
 	}
 
 	offset(offset: number) {
@@ -363,7 +363,7 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 			select: this._select,
 			preloads: this._preloads,
 			orderBy: this.#orderBy,
-			limit: this.#limit,
+			limitSource: this.#limitSource,
 			offsetSource: this.#offsetSource,
 		})
 	}
@@ -875,6 +875,7 @@ if (import.meta.vitest) {
 			for (const [field, read] of [
 				['page', () => repo.on(ItemSchema).all().page(0 as any).find()],
 				['limit', () => repo.on(ItemSchema).all().limit(0 as any).find()],
+				['limit', () => repo.on(ItemSchema).all().limit(undefined as any).page(2).find()],
 				['offset', () => repo.on(ItemSchema).all().offset(-1 as any).find()],
 			] as const) {
 				try {
