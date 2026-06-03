@@ -1,9 +1,11 @@
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { open, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 
 import { v } from 'valleyed'
 
 import { configurable } from '../../../utilities/configurable'
 import type { FilterGroup } from '../../filter'
+import type { DiscoveredSchema } from '../../migrations/introspection-types'
+import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, AnyFieldSpec, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
@@ -37,8 +39,36 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 		return this.#inMemory.stores
 	}
 
-	#serializeStores(): string {
-		const obj: Record<string, Record<string, Record<string, unknown>>> = {}
+	#serialize(): string {
+		const obj: Record<string, unknown> = {}
+
+		const migrations = [...this.#inMemory.migrations.values()]
+		if (migrations.length > 0) obj['__migrations'] = migrations
+
+		const tables: Record<string, unknown> = {}
+		for (const [name, meta] of this.#inMemory.tables.entries()) {
+			tables[name] = { pk: meta.pk, fields: Object.fromEntries(meta.fields.entries()) }
+		}
+		if (Object.keys(tables).length > 0) obj['__tables'] = tables
+
+		const indexes: Record<string, unknown> = {}
+		for (const [name, meta] of this.#inMemory.indexes.entries()) {
+			indexes[name] = { table: meta.table, on: [...meta.on], unique: meta.unique }
+		}
+		if (Object.keys(indexes).length > 0) obj['__indexes'] = indexes
+
+		const foreignKeys: Record<string, unknown> = {}
+		for (const [name, meta] of this.#inMemory.foreignKeys.entries()) {
+			foreignKeys[name] = {
+				table: meta.table,
+				on: meta.on,
+				references: meta.references,
+				...(meta.onDelete ? { onDelete: meta.onDelete } : {}),
+				...(meta.onUpdate ? { onUpdate: meta.onUpdate } : {}),
+			}
+		}
+		if (Object.keys(foreignKeys).length > 0) obj['__foreignKeys'] = foreignKeys
+
 		for (const [name, store] of this.stores.entries()) {
 			const records: Record<string, Record<string, unknown>> = {}
 			for (const [pk, doc] of store.entries()) {
@@ -46,11 +76,12 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 			}
 			obj[name] = records
 		}
+
 		return JSON.stringify(obj)
 	}
 
 	async #atomicWrite(): Promise<void> {
-		const data = this.#serializeStores()
+		const data = this.#serialize()
 		const tmpPath = this.config.filePath + '.tmp.' + process.pid + '.' + Date.now()
 		await writeFile(tmpPath, data, 'utf-8')
 		await rename(tmpPath, this.config.filePath)
@@ -69,11 +100,47 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 		} catch {
 			return
 		}
-		const data = JSON.parse(raw) as Record<string, Record<string, Record<string, unknown>>>
+		const data = JSON.parse(raw) as Record<string, unknown>
+
+		this.#inMemory.migrations.clear()
+		if (Array.isArray(data['__migrations'])) {
+			for (const m of data['__migrations'] as Array<{ id: string; appliedAt: number }>) {
+				this.#inMemory.migrations.set(m.id, { id: m.id, appliedAt: m.appliedAt })
+			}
+		}
+
+		this.#inMemory.tables.clear()
+		if (data['__tables'] && typeof data['__tables'] === 'object') {
+			for (const [name, meta] of Object.entries(data['__tables'] as Record<string, any>)) {
+				const fields = new Map<string, AnyFieldSpec>()
+				if (meta.fields) {
+					for (const [fieldName, fspec] of Object.entries(meta.fields as Record<string, AnyFieldSpec>)) {
+						fields.set(fieldName, fspec)
+					}
+				}
+				this.#inMemory.tables.set(name, { pk: meta.pk, fields })
+			}
+		}
+
+		this.#inMemory.indexes.clear()
+		if (data['__indexes'] && typeof data['__indexes'] === 'object') {
+			for (const [name, meta] of Object.entries(data['__indexes'] as Record<string, any>)) {
+				this.#inMemory.indexes.set(name, { table: meta.table, on: meta.on, unique: meta.unique })
+			}
+		}
+
+		this.#inMemory.foreignKeys.clear()
+		if (data['__foreignKeys'] && typeof data['__foreignKeys'] === 'object') {
+			for (const [name, meta] of Object.entries(data['__foreignKeys'] as Record<string, any>)) {
+				this.#inMemory.foreignKeys.set(name, meta)
+			}
+		}
+
 		this.stores.clear()
 		for (const [name, records] of Object.entries(data)) {
+			if (name.startsWith('__')) continue
 			const store = new Map<string, Record<string, unknown>>()
-			for (const [pk, doc] of Object.entries(records)) {
+			for (const [pk, doc] of Object.entries(records as Record<string, Record<string, unknown>>)) {
 				store.set(pk, doc)
 			}
 			this.stores.set(name, store)
@@ -139,6 +206,96 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 			return result
 		})
 	}
+
+	async loadMigrations(): Promise<{ id: string; appliedAt: number }[]> {
+		await this.connect()
+		return this.#inMemory.loadMigrations()
+	}
+
+	async recordMigration(id: string, appliedAt: number): Promise<void> {
+		await this.#inMemory.recordMigration(id, appliedAt)
+		await this.#persistToDisk()
+	}
+
+	async acquireMigrationLock<T>(fn: () => Promise<T>): Promise<T> {
+		const lockPath = this.config.filePath + '.lock'
+		const deadline = Date.now() + 30_000
+		while (true) {
+			try {
+				const handle = await open(lockPath, 'wx')
+				await handle.close()
+				break
+			} catch (err: any) {
+				if (err.code !== 'EEXIST') throw err
+				if (Date.now() > deadline) throw new Error('Timed out waiting for migration lock')
+				await new Promise((r) => setTimeout(r, 50))
+			}
+		}
+		try {
+			return await fn()
+		} finally {
+			await unlink(lockPath).catch(() => {})
+		}
+	}
+
+	async applyCreateTable(change: CreateTableChange<any>): Promise<void> {
+		await this.#inMemory.applyCreateTable(change)
+		await this.#persistToDisk()
+	}
+
+	async applyDropTable(change: DropTableChange): Promise<void> {
+		await this.#inMemory.applyDropTable(change)
+		await this.#persistToDisk()
+	}
+
+	async applyAddField(change: AddFieldChange<any>): Promise<void> {
+		await this.#inMemory.applyAddField(change)
+		await this.#persistToDisk()
+	}
+
+	async applyDropField(change: DropFieldChange): Promise<void> {
+		await this.#inMemory.applyDropField(change)
+		await this.#persistToDisk()
+	}
+
+	async applyModifyField(change: ModifyFieldChange<any>): Promise<void> {
+		await this.#inMemory.applyModifyField(change)
+		await this.#persistToDisk()
+	}
+
+	async applyRenameTable(change: RenameTableChange): Promise<void> {
+		await this.#inMemory.applyRenameTable(change)
+		await this.#persistToDisk()
+	}
+
+	async applyRenameField(change: RenameFieldChange): Promise<void> {
+		await this.#inMemory.applyRenameField(change)
+		await this.#persistToDisk()
+	}
+
+	async applyAddIndex(change: AddIndexChange): Promise<void> {
+		await this.#inMemory.applyAddIndex(change)
+		await this.#persistToDisk()
+	}
+
+	async applyDropIndex(change: DropIndexChange): Promise<void> {
+		await this.#inMemory.applyDropIndex(change)
+		await this.#persistToDisk()
+	}
+
+	async applyAddForeignKey(change: AddForeignKeyChange): Promise<void> {
+		await this.#inMemory.applyAddForeignKey(change)
+		await this.#persistToDisk()
+	}
+
+	async applyDropForeignKey(change: DropForeignKeyChange): Promise<void> {
+		await this.#inMemory.applyDropForeignKey(change)
+		await this.#persistToDisk()
+	}
+
+	async introspect(): Promise<DiscoveredSchema[]> {
+		return this.#inMemory.introspect()
+	}
 }
 
 if (import.meta.vitest) {
@@ -151,6 +308,10 @@ if (import.meta.vitest) {
 	const { mkdtemp, rm } = await import('node:fs/promises')
 	const { tmpdir } = await import('node:os')
 	const { join } = await import('node:path')
+	const { Migrator } = await import('../../migrations/migrator')
+	const { Repo } = await import('../../repo/repo')
+	const { OrmMigrationError } = await import('../../errors/migration')
+	type Migration<A extends import('../base').OrmAdapterLike<any>> = import('../../migrations/types').Migration<A>
 
 	let tmpDir: string
 	let filePath: string
@@ -564,6 +725,412 @@ if (import.meta.vitest) {
 			const use2 = a2.use(schema, { table: 'items' })
 			const reloaded = await use2.findMany(FilterGroup.create())
 			expect(reloaded).toHaveLength(20)
+			await a2.disconnect()
+		})
+	})
+
+	describe('json adapter — migration storage', () => {
+		test('recordMigration + loadMigrations round-trip', async () => {
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+
+			await adapter.recordMigration('m-001', 1000)
+			await adapter.recordMigration('m-002', 2000)
+
+			const loaded = await adapter.loadMigrations()
+			expect(loaded).toHaveLength(2)
+			expect(loaded).toEqual([
+				{ id: 'm-001', appliedAt: 1000 },
+				{ id: 'm-002', appliedAt: 2000 },
+			])
+			await adapter.disconnect()
+		})
+
+		test('migration tracker persists across adapter restarts', async () => {
+			const a1 = JsonAdapter.create({ filePath })
+			await a1.connect()
+			await a1.recordMigration('m-001', 1000)
+			await a1.disconnect()
+
+			const a2 = JsonAdapter.create({ filePath })
+			await a2.connect()
+			const loaded = await a2.loadMigrations()
+			expect(loaded).toEqual([{ id: 'm-001', appliedAt: 1000 }])
+			await a2.disconnect()
+		})
+
+		test('__migrations key in JSON file stores tracker data', async () => {
+			const { readFile: rf } = await import('node:fs/promises')
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+			await adapter.recordMigration('m-001', 1000)
+			await adapter.disconnect()
+
+			const raw = JSON.parse(await rf(filePath, 'utf-8'))
+			expect(raw['__migrations']).toEqual([{ id: 'm-001', appliedAt: 1000 }])
+		})
+	})
+
+	describe('json adapter — apply* methods', () => {
+		test('applyCreateTable persists table metadata', async () => {
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+			await adapter.applyCreateTable({
+				kind: 'createTable',
+				name: 'users',
+				pk: { name: 'id', type: 'string' },
+				fields: [{ name: 'email', type: 'string', unique: true }],
+			})
+			await adapter.disconnect()
+
+			const a2 = JsonAdapter.create({ filePath })
+			await a2.connect()
+			const schemas = await a2.introspect()
+			expect(schemas).toHaveLength(1)
+			expect(schemas[0].name).toBe('users')
+			expect(schemas[0].pk).toEqual({ name: 'id', type: 'string' })
+			expect(schemas[0].fields).toEqual([{ name: 'email', type: 'string', nullable: false, unique: true }])
+			await a2.disconnect()
+		})
+
+		test('applyAddIndex and applyDropIndex persist across restarts', async () => {
+			const a1 = JsonAdapter.create({ filePath })
+			await a1.connect()
+			await a1.applyCreateTable({ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [] })
+			await a1.applyAddIndex({ kind: 'addIndex', table: 'users', on: ['email'], unique: true })
+			await a1.disconnect()
+
+			const a2 = JsonAdapter.create({ filePath })
+			await a2.connect()
+			const schemas = await a2.introspect()
+			expect(schemas[0].indexes).toEqual([{ name: 'users_email_idx', on: ['email'], unique: true }])
+			await a2.applyDropIndex({ kind: 'dropIndex', name: 'users_email_idx' })
+			await a2.disconnect()
+
+			const a3 = JsonAdapter.create({ filePath })
+			await a3.connect()
+			const schemas2 = await a3.introspect()
+			expect(schemas2[0].indexes).toEqual([])
+			await a3.disconnect()
+		})
+
+		test('applyAddForeignKey and applyDropForeignKey persist across restarts', async () => {
+			const a1 = JsonAdapter.create({ filePath })
+			await a1.connect()
+			await a1.applyCreateTable({ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [] })
+			await a1.applyCreateTable({ kind: 'createTable', name: 'posts', pk: { name: 'id', type: 'string' }, fields: [] })
+			await a1.applyAddForeignKey({ kind: 'addForeignKey', table: 'posts', on: 'authorId', references: { table: 'users', column: 'id' }, onDelete: 'cascade' })
+			await a1.disconnect()
+
+			const a2 = JsonAdapter.create({ filePath })
+			await a2.connect()
+			const schemas = await a2.introspect()
+			const posts = schemas.find((s) => s.name === 'posts')!
+			expect(posts.foreignKeys).toEqual([{
+				name: 'posts_authorId_fk',
+				on: 'authorId',
+				references: { table: 'users', column: 'id' },
+				onDelete: 'cascade',
+			}])
+			await a2.applyDropForeignKey({ kind: 'dropForeignKey', table: 'posts', name: 'posts_authorId_fk' })
+			await a2.disconnect()
+
+			const a3 = JsonAdapter.create({ filePath })
+			await a3.connect()
+			const schemas2 = await a3.introspect()
+			const posts2 = schemas2.find((s) => s.name === 'posts')!
+			expect(posts2.foreignKeys).toEqual([])
+			await a3.disconnect()
+		})
+	})
+
+	describe('json adapter — acquireMigrationLock', () => {
+		test('file lock serialises concurrent calls', async () => {
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+
+			const order: string[] = []
+			let resolveGate!: () => void
+			const gate = new Promise<void>((r) => { resolveGate = r })
+
+			const p1 = adapter.acquireMigrationLock(async () => {
+				order.push('p1-start')
+				await gate
+				order.push('p1-end')
+			})
+			await new Promise((r) => setTimeout(r, 100))
+			const p2 = adapter.acquireMigrationLock(async () => {
+				order.push('p2')
+			})
+
+			await new Promise((r) => setTimeout(r, 100))
+			expect(order).toEqual(['p1-start'])
+
+			resolveGate()
+			await Promise.all([p1, p2])
+			expect(order).toEqual(['p1-start', 'p1-end', 'p2'])
+
+			await adapter.disconnect()
+		})
+
+		test('lock file is cleaned up after successful execution', async () => {
+			const { access } = await import('node:fs/promises')
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+
+			await adapter.acquireMigrationLock(async () => { /* no-op */ })
+
+			await expect(access(filePath + '.lock')).rejects.toThrow()
+			await adapter.disconnect()
+		})
+
+		test('lock file is cleaned up after failed execution', async () => {
+			const { access } = await import('node:fs/promises')
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+
+			await expect(
+				adapter.acquireMigrationLock(async () => { throw new Error('boom') }),
+			).rejects.toThrow('boom')
+
+			await expect(access(filePath + '.lock')).rejects.toThrow()
+			await adapter.disconnect()
+		})
+	})
+
+	describe('json adapter — end-to-end migrations via Migrator', () => {
+		const UserSchema = Schema.from('users')
+			.pk('id', v.string(), () => `u-${Math.random().toString(36).slice(2)}`)
+			.field('email', v.string())
+			.build()
+
+		function makeEnv() {
+			const adapter = JsonAdapter.create({ filePath })
+			const repo = new Repo({ adapter, resolve: (s) => ({ table: s.name }) })
+			return { adapter, repo }
+		}
+
+		test('end-to-end migration run covering every declarative variant + execute', async () => {
+			const { adapter, repo } = makeEnv()
+			await adapter.connect()
+
+			const migrations: Migration<typeof adapter>[] = [
+				{
+					id: '0001-create',
+					changes: [
+						{ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [{ name: 'email', type: 'string' }] },
+						{ kind: 'createTable', name: 'posts', pk: { name: 'id', type: 'string' }, fields: [{ name: 'title', type: 'string' }, { name: 'authorId', type: 'string' }] },
+						{ kind: 'addIndex', table: 'users', on: ['email'], unique: true },
+						{ kind: 'addForeignKey', table: 'posts', on: 'authorId', references: { table: 'users', column: 'id' } },
+					],
+				},
+				{
+					id: '0002-evolve',
+					changes: [
+						{ kind: 'addField', table: 'users', field: { name: 'age', type: 'number', nullable: true } },
+						{ kind: 'modifyField', table: 'users', name: 'email', to: { name: 'email', type: 'string', unique: true, nullable: true } },
+						{ kind: 'renameField', table: 'posts', from: 'title', to: 'headline' },
+						{ kind: 'renameTable', from: 'posts', to: 'articles' },
+					],
+				},
+				{
+					id: '0003-cleanup',
+					changes: [
+						{ kind: 'dropField', table: 'users', name: 'age' },
+						{ kind: 'dropForeignKey', table: 'posts', name: 'posts_authorId_fk' },
+						{ kind: 'dropIndex', name: 'users_email_idx' },
+						{ kind: 'dropTable', name: 'articles' },
+					],
+				},
+				{
+					id: '0004-seed',
+					changes: [{
+						kind: 'execute',
+						up: async (r) => {
+							await r.on(UserSchema).one().create({ id: 'seed-1', email: 'test@example.com' })
+						},
+					}],
+				},
+			]
+
+			const migrator = Migrator.from(repo, adapter).migrations(migrations).build()
+			const result = await migrator.up()
+			expect(result.ran).toEqual(['0001-create', '0002-evolve', '0003-cleanup', '0004-seed'])
+
+			const recorded = await adapter.loadMigrations()
+			expect(recorded).toHaveLength(4)
+
+			const row = await repo.on(UserSchema).one().id('seed-1').find()
+			expect(row).not.toBeNull()
+			expect(row!.email).toBe('test@example.com')
+
+			// Verify via re-reading the file
+			await adapter.disconnect()
+			const { adapter: a2, repo: r2 } = makeEnv()
+			await a2.connect()
+			const recorded2 = await a2.loadMigrations()
+			expect(recorded2).toHaveLength(4)
+
+			const row2 = await r2.on(UserSchema).one().id('seed-1').find()
+			expect(row2!.email).toBe('test@example.com')
+			await a2.disconnect()
+		})
+
+		test('file lock serialises concurrent migrator.up() runs', async () => {
+			const order: string[] = []
+			let resolveGate!: () => void
+			const gate = new Promise<void>((r) => { resolveGate = r })
+
+			const migrations: Migration<JsonAdapter>[] = [
+				{
+					id: '0001',
+					changes: [{
+						kind: 'execute',
+						up: async () => {
+							order.push('0001-start')
+							await gate
+							order.push('0001-end')
+						},
+					}],
+				},
+				{
+					id: '0002',
+					changes: [{ kind: 'execute', up: async () => { order.push('0002') } }],
+				},
+			]
+
+			const adapter1 = JsonAdapter.create({ filePath })
+			await adapter1.connect()
+			const repo1 = new Repo({ adapter: adapter1, resolve: (s) => ({ table: s.name }) })
+			const migrator1 = Migrator.from(repo1, adapter1).migrations(migrations).build()
+
+			const adapter2 = JsonAdapter.create({ filePath })
+			await adapter2.connect()
+			const repo2 = new Repo({ adapter: adapter2, resolve: (s) => ({ table: s.name }) })
+			const migrator2 = Migrator.from(repo2, adapter2).migrations(migrations).build()
+
+			const p1 = migrator1.up()
+			const p2 = migrator2.up()
+
+			await new Promise((r) => setTimeout(r, 200))
+			expect(order).toEqual(['0001-start'])
+
+			resolveGate()
+			await Promise.all([p1, p2])
+
+			expect(order).toEqual(['0001-start', '0001-end', '0002'])
+
+			await adapter1.disconnect()
+			await adapter2.disconnect()
+		})
+
+		test('tx:true rollback leaves file unchanged on failure', async () => {
+			const { adapter } = makeEnv()
+			await adapter.connect()
+
+			await adapter.applyCreateTable({ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [] })
+			await adapter.disconnect()
+
+			const { adapter: a2, repo: r2 } = makeEnv()
+			await a2.connect()
+
+			const m: Migration<typeof a2> = {
+				id: '0001-will-fail',
+				changes: [
+					{ kind: 'addIndex', table: 'users', on: ['email'] },
+					{
+						kind: 'execute',
+						up: async (r) => {
+							await r.on(UserSchema).one().create({ id: 'partial', email: 'fail@test.com' })
+							throw new Error('mid-migration boom')
+						},
+					},
+				],
+			}
+			const migrator = Migrator.from(r2, a2).migrations([m]).build()
+			await expect(migrator.up()).rejects.toThrow(OrmMigrationError)
+			await a2.disconnect()
+
+			const { adapter: a3, repo: r3 } = makeEnv()
+			await a3.connect()
+			const recorded = await a3.loadMigrations()
+			expect(recorded).toHaveLength(0)
+			const schemas = await a3.introspect()
+			const users = schemas.find((s) => s.name === 'users')!
+			expect(users.indexes).toEqual([])
+			const row = await r3.on(UserSchema).one().id('partial').find()
+			expect(row).toBeNull()
+			await a3.disconnect()
+		})
+
+		test('introspect() round-trip: apply* then introspect returns matching descriptors', async () => {
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+
+			await adapter.applyCreateTable({
+				kind: 'createTable',
+				name: 'users',
+				pk: { name: 'id', type: 'string' },
+				fields: [
+					{ name: 'email', type: 'string', unique: true },
+					{ name: 'age', type: 'number', nullable: true },
+				],
+			})
+			await adapter.applyAddIndex({ kind: 'addIndex', table: 'users', on: ['email'], unique: true })
+			await adapter.applyCreateTable({
+				kind: 'createTable',
+				name: 'posts',
+				pk: { name: 'id', type: 'string' },
+				fields: [{ name: 'authorId', type: 'string' }],
+			})
+			await adapter.applyAddForeignKey({
+				kind: 'addForeignKey',
+				table: 'posts',
+				on: 'authorId',
+				references: { table: 'users', column: 'id' },
+				onDelete: 'cascade',
+			})
+			await adapter.disconnect()
+
+			const a2 = JsonAdapter.create({ filePath })
+			await a2.connect()
+			const schemas = await a2.introspect()
+
+			const users = schemas.find((s) => s.name === 'users')!
+			expect(users.pk).toEqual({ name: 'id', type: 'string' })
+			expect(users.fields).toEqual([
+				{ name: 'email', type: 'string', nullable: false, unique: true },
+				{ name: 'age', type: 'number', nullable: true },
+			])
+			expect(users.indexes).toEqual([{ name: 'users_email_idx', on: ['email'], unique: true }])
+
+			const posts = schemas.find((s) => s.name === 'posts')!
+			expect(posts.pk).toEqual({ name: 'id', type: 'string' })
+			expect(posts.fields).toEqual([{ name: 'authorId', type: 'string', nullable: false }])
+			expect(posts.foreignKeys).toEqual([{
+				name: 'posts_authorId_fk',
+				on: 'authorId',
+				references: { table: 'users', column: 'id' },
+				onDelete: 'cascade',
+			}])
+
+			await a2.disconnect()
+		})
+
+		test('metadata keys do not leak into data stores', async () => {
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+			await adapter.recordMigration('m-001', 1000)
+			await adapter.applyCreateTable({ kind: 'createTable', name: 'users', pk: { name: 'id', type: 'string' }, fields: [] })
+
+			expect(adapter.stores.has('__migrations')).toBe(false)
+			expect(adapter.stores.has('__tables')).toBe(false)
+			await adapter.disconnect()
+
+			const a2 = JsonAdapter.create({ filePath })
+			await a2.connect()
+			expect(a2.stores.has('__migrations')).toBe(false)
+			expect(a2.stores.has('__tables')).toBe(false)
 			await a2.disconnect()
 		})
 	})

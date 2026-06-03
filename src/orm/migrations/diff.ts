@@ -28,7 +28,7 @@ type SchemaFieldInfo = {
 
 function adapterSupports(adapter: OrmAdapter, kind: AnyChange['kind']): boolean {
 	if (kind === 'execute') return true
-	const method = `apply${kind.charAt(0).toUpperCase()}${kind.slice(1)}` as keyof OrmAdapter
+	const method = `apply${kind[0].toUpperCase()}${kind.slice(1)}` as keyof OrmAdapter
 	return typeof (adapter as any)[method] === 'function'
 }
 
