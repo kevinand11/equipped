@@ -22,7 +22,7 @@ export type InMemoryRepoConfig = {
 type MigrationRecord = { id: string; appliedAt: number }
 type TableMeta = { pk: { name: string; type: string }; fields: Map<string, AnyFieldSpec> }
 type IndexMeta = { table: string; on: readonly string[]; unique: boolean }
-type ForeignKeyMeta = { table: string; on: string; references: { table: string; column: string }; onDelete?: string; onUpdate?: string }
+type ForeignKeyMeta = { table: string; on: string; references: { table: string; column: string }; onDelete?: ForeignKeyAction; onUpdate?: ForeignKeyAction }
 
 type Snapshot = {
 	stores: Map<string, Map<string, Record<string, unknown>>>
@@ -526,8 +526,8 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 			table: change.table,
 			on: change.on,
 			references: { table: change.references.table, column: change.references.column },
-			onDelete: change.onDelete,
-			onUpdate: change.onUpdate,
+			onDelete: change.onDelete as ForeignKeyAction | undefined,
+			onUpdate: change.onUpdate as ForeignKeyAction | undefined,
 		})
 	}
 
@@ -554,8 +554,8 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 					name: fkName,
 					on: fk.on,
 					references: { table: fk.references.table, column: fk.references.column },
-					...(fk.onDelete ? { onDelete: fk.onDelete as 'cascade' | 'restrict' | 'setNull' | 'noAction' } : {}),
-					...(fk.onUpdate ? { onUpdate: fk.onUpdate as 'cascade' | 'restrict' | 'setNull' | 'noAction' } : {}),
+					...(fk.onDelete ? { onDelete: fk.onDelete } : {}),
+					...(fk.onUpdate ? { onUpdate: fk.onUpdate } : {}),
 				}))
 			schemas.push({
 				name,

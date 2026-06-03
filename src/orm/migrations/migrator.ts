@@ -32,13 +32,16 @@ export class Migrator<A extends OrmAdapterLike<any>> {
 		this.#withoutLock = withoutLock
 	}
 
+	#requireMethod(name: 'loadMigrations' | 'recordMigration'): void {
+		if (typeof this.#adapter[name] !== 'function') {
+			const phase = name === 'loadMigrations' ? 'load' : 'record' as const
+			throw new OrmMigrationError({ id: '', phase, cause: `adapter does not implement ${name}` })
+		}
+	}
+
 	async up(opts?: PendingOpts): Promise<RunResult> {
-		if (typeof this.#adapter.loadMigrations !== 'function') {
-			throw new OrmMigrationError({ id: '', phase: 'load', cause: 'adapter does not implement loadMigrations' })
-		}
-		if (typeof this.#adapter.recordMigration !== 'function') {
-			throw new OrmMigrationError({ id: '', phase: 'record', cause: 'adapter does not implement recordMigration' })
-		}
+		this.#requireMethod('loadMigrations')
+		this.#requireMethod('recordMigration')
 
 		const useLock = !this.#withoutLock && typeof this.#adapter.acquireMigrationLock === 'function'
 		if (useLock) {
@@ -53,9 +56,7 @@ export class Migrator<A extends OrmAdapterLike<any>> {
 	}
 
 	async status(): Promise<StatusEntry[]> {
-		if (typeof this.#adapter.loadMigrations !== 'function') {
-			throw new OrmMigrationError({ id: '', phase: 'load', cause: 'adapter does not implement loadMigrations' })
-		}
+		this.#requireMethod('loadMigrations')
 		const applied = await this.#adapter.loadMigrations!()
 		const appliedMap = new Map(applied.map((a) => [a.id, a.appliedAt]))
 		const sorted = [...this.#migrations].sort((a, b) => a.id.localeCompare(b.id))
@@ -67,9 +68,7 @@ export class Migrator<A extends OrmAdapterLike<any>> {
 	}
 
 	async dry(opts?: PendingOpts): Promise<{ would: string[] }> {
-		if (typeof this.#adapter.loadMigrations !== 'function') {
-			throw new OrmMigrationError({ id: '', phase: 'load', cause: 'adapter does not implement loadMigrations' })
-		}
+		this.#requireMethod('loadMigrations')
 		const applied = await this.#adapter.loadMigrations!()
 		const { pending } = computePending(this.#migrations as unknown as ReadonlyArray<AnyMigration>, applied, opts)
 		return { would: pending.map((m) => m.id) }

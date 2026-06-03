@@ -48,7 +48,7 @@ function extractSchemaInfo(schema: AnySchema): {
 	const pkField = schema.pkField
 	const pkType = inferFieldType(pkField.pipe)
 	const fields: SchemaFieldInfo[] = []
-	for (const [, field] of Object.entries(schema.fieldDefs)) {
+	for (const field of Object.values(schema.fieldDefs)) {
 		const f = field as any
 		fields.push({
 			name: f.name,
