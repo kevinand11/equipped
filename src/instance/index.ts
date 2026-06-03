@@ -10,7 +10,7 @@ export type { ClassRef, HookCb, HookEvent, HookOptions }
 
 export class Instance {
 	static #id: string | undefined
-	static #instance: Instance
+	static #instance: Instance | undefined
 	static #hooks: Partial<Record<HookEvent, HookRecord[]>> = {}
 	readonly settings: Readonly<Settings>
 	readonly log: Logger<never>
@@ -86,6 +86,10 @@ export class Instance {
 			return Instance.crash(
 				new EquippedError('Has not been initialized. Make sure an instance has been created before you get an instance', {}),
 			)
+		return Instance.#instance
+	}
+
+	static maybeGet() {
 		return Instance.#instance
 	}
 

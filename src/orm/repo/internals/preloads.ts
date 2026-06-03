@@ -157,6 +157,7 @@ if (import.meta.vitest) {
 	const { describe, test, expect } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { InMemoryAdapter } = await import('../../adapters/in-memory')
+	const { OrmValidationError } = await import('../../errors')
 	const { Relations } = await import('../../relations')
 	const { Repo } = await import('../repo')
 	const { Schema } = await import('../../schema')
@@ -248,6 +249,18 @@ if (import.meta.vitest) {
 			return Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
 		}
 
+		async function expectPreloadQueryShapeError(read: Promise<unknown>, cause: RegExp) {
+			try {
+				await read
+				expect.unreachable('preload query-shape validation should have failed')
+			} catch (error) {
+				expect(error).toBeInstanceOf(OrmValidationError)
+				const err = error as InstanceType<typeof OrmValidationError>
+				expect(err.kind).toBe('query-shape')
+				expect(err.failures.some((failure) => cause.test(String(failure.cause)))).toBe(true)
+			}
+		}
+
 		test('hasMany preload resolves related entities', async () => {
 			const Repo = makeRepo()
 			const user = await Repo.on(UserSchema).one().create({ email: 'u@test.com', name: 'User' })
@@ -297,7 +310,7 @@ if (import.meta.vitest) {
 			const user = await Repo.on(UserSchema).one().create({ email: 'cycle@test.com', name: 'Cycle User' })
 			await Repo.on(PostSchema).one().create({ title: 'Cycle Post', userId: user.id })
 
-			await expect(
+			await expectPreloadQueryShapeError(
 				Repo.on(UserSchema)
 					.all()
 					.preload([
@@ -307,7 +320,8 @@ if (import.meta.vitest) {
 						},
 					])
 					.find(),
-			).rejects.toThrow(/Preload cycle detected/)
+				/Preload cycle detected/,
+			)
 		})
 
 		test('depth limit throws when chain exceeds max depth', async () => {
@@ -320,7 +334,7 @@ if (import.meta.vitest) {
 			const f = await Repo.on(FSchema).one().create({ eId: e.id })
 			await Repo.on(GSchema).one().create({ fId: f.id })
 
-			await expect(
+			await expectPreloadQueryShapeError(
 				Repo.on(ASchema)
 					.all()
 					.preload([
@@ -350,19 +364,21 @@ if (import.meta.vitest) {
 						},
 					])
 					.find(),
-			).rejects.toThrow(/Preload depth exceeded/)
+				/Preload depth exceeded/,
+			)
 		})
 
 		test('invalid nested preload definition throws a validation error', async () => {
 			const Repo = makeRepo()
 			await Repo.on(UserSchema).one().create({ email: 'u@test.com', name: 'User' })
 
-			await expect(
+			await expectPreloadQueryShapeError(
 				Repo.on(UserSchema)
 					.all()
 					.preload([{ def: {} as any }])
 					.find(),
-			).rejects.toThrow(/Invalid preload definition/)
+				/Invalid preload definition/,
+			)
 		})
 
 		test('findOne with preloads resolves relations', async () => {
