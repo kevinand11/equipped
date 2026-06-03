@@ -5,7 +5,7 @@ import { v, differ } from 'valleyed'
 import { configurable } from '../../../utilities/configurable'
 import type { FieldTypeName } from '../../adapter'
 import { Filter, FilterGroup, type FilterChild } from '../../filter'
-import type { DiscoveredSchema } from '../../migrations/introspection-types'
+import type { DiscoveredSchema, ForeignKeyAction } from '../../migrations/introspection-types'
 import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, AnyFieldSpec, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
 import type { QueryOptions } from '../../query-options'
@@ -38,7 +38,7 @@ function clone<T>(value: T): T {
 
 const replaceMap = <K, V>(target: Map<K, V>, source: Map<K, V>) => {
 	target.clear()
-	for (const [k, v] of source.entries()) target.set(k, v)
+	for (const [k, val] of source.entries()) target.set(k, val)
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
