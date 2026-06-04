@@ -13,6 +13,7 @@ import {
 	runAggregate,
 	runAllCreate,
 	runAllDelete,
+	runAllIterate,
 	runAllRead,
 	runAllUpdate,
 	runOneCreate,
@@ -49,6 +50,7 @@ export type OneBuilderSurface<S extends AnySchema, A = unknown, Sel extends stri
 
 export type AllBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> =
 	AllBuilder<S, A, Sel, P> &
+	(HasMethod<A, 'iterateMany'> extends true ? {} : { iterate: never }) &
 	(HasMethod<A, 'updateMany'> extends true ? {} : { update: never }) &
 	(HasMethod<A, 'deleteMany'> extends true ? {} : { delete: never })
 
@@ -359,6 +361,17 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 
 	find() {
 		return runAllRead(this._context, {
+			where: this._where,
+			select: this._select,
+			preloads: this._preloads,
+			orderBy: this.#orderBy,
+			limitSource: this.#limitSource,
+			offsetSource: this.#offsetSource,
+		})
+	}
+
+	iterate() {
+		return runAllIterate(this._context, {
 			where: this._where,
 			select: this._select,
 			preloads: this._preloads,

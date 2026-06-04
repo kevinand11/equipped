@@ -6,6 +6,7 @@ import type { AnyUpdateOp } from '../updates'
 
 export type OrmUse = {
 	findMany: (filter: FilterGroup, options?: QueryOptions) => Promise<Record<string, unknown>[]>
+	iterateMany: (filter: FilterGroup, options?: QueryOptions) => AsyncGenerator<Record<string, unknown>, void, void>
 	findOne: (filter: FilterGroup) => Promise<Record<string, unknown> | null>
 	createOne: (data: Record<string, unknown>) => Promise<Record<string, unknown>>
 	createMany: (data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>

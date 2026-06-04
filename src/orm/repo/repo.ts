@@ -328,6 +328,42 @@ if (import.meta.vitest) {
 			expect(rows[0].name).toBe('Bob')
 		})
 
+		test('all().iterate uses adapter iterateMany without findMany emulation', async () => {
+			const TestSchema = Schema.from('iter_repo_users')
+				.pk('id', v.string(), () => 'x')
+				.field('name', v.string())
+				.field('age', v.number())
+				.build()
+			let findManyCalls = 0
+			let capturedOptions: unknown
+
+			class IterAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string', 'number'] as const
+				readonly queryableOps = ['gt'] as const
+				async findMany(): Promise<Record<string, unknown>[]> {
+					findManyCalls += 1
+					throw new Error('findMany should not be called')
+				}
+				async *iterateMany(_s: AnySchema, _c: unknown, _f: unknown, options?: unknown) {
+					capturedOptions = options
+					yield { id: 'u3', name: 'Carol', age: 40 }
+					yield { id: 'u1', name: 'Alice', age: 30 }
+				}
+			}
+
+			const adapter = new (IterAdapter as any)() as IterAdapter
+			const repo = Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
+			const rows: Array<{ id: string; name: string; age: number }> = []
+			for await (const row of repo.on(TestSchema).all().where((q) => q.gt('age', 19)).orderBy('age', 'desc').offset(1).limit(2).iterate()) {
+				rows.push(row)
+			}
+
+			expect(findManyCalls).toBe(0)
+			expect(capturedOptions).toMatchObject({ orderBy: [{ field: 'age', direction: 'desc' }], offset: 1, limit: 2 })
+			expect(rows.map((row) => row.name)).toEqual(['Carol', 'Alice'])
+		})
+
 		test('resolve chains adapter config transforms', async () => {
 			const seenConfigs: unknown[] = []
 			const adapter = InMemoryAdapter.create({})
@@ -831,6 +867,32 @@ if (import.meta.vitest) {
 			type S = import('../schema').AnySchema
 			type All = import('./builders').AllBuilderSurface<S, A>
 			expectTypeOf<All['find']>().toBeFunction()
+		})
+
+		test('adapter with iterateMany enables all().iterate()', () => {
+			class IterateAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async *iterateMany() {}
+			}
+			type A = IterateAdapter
+			type S = import('../schema').AnySchema
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<All['iterate']>().toBeFunction()
+		})
+
+		test('missing iterateMany collapses all().iterate to never', () => {
+			class FindOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+			}
+			type A = FindOnlyAdapter
+			type S = import('../schema').AnySchema
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<All['iterate']>().toBeNever()
 		})
 
 		test('missing updateMany collapses one().update and all().update to never', () => {

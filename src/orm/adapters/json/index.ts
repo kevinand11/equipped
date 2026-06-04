@@ -177,6 +177,10 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 		return this.#inMemory.findMany(schema, config, group, options)
 	}
 
+	iterateMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: QueryOptions) {
+		return this.#inMemory.iterateMany(schema, config, group, options)
+	}
+
 	async updateMany(schema: AnySchema, config: unknown, group: FilterGroup, data: Record<string, unknown>) {
 		const result = await this.#inMemory.updateMany(schema, config, group, data)
 		if (result.length) await this.#persistToDisk()
@@ -413,6 +417,39 @@ if (import.meta.vitest) {
 			const options = { orderBy: [new OrderBy('age', 'desc')], offset: 1, limit: 1, select: ['id', 'name'] as const }
 			const rows = await use.findMany(builtGroup, options)
 			expect(rows).toEqual([{ id: 'u1', name: 'Alice' }])
+
+			await adapter.disconnect()
+		})
+
+		test('iterateMany yields raw rows with filter ordering offset and limit', async () => {
+			const schema = Schema.from('json_iter_users')
+				.pk('id', v.string(), () => 'u')
+				.field('name', v.string())
+				.field('age', v.number())
+				.build()
+
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+			const use = adapter.use(schema, { table: 'json_iter_users' })
+			await use.createMany([
+				{ id: 'u1', name: 'Alice', age: 30 },
+				{ id: 'u2', name: 'Bob', age: 20 },
+				{ id: 'u3', name: 'Carol', age: 40 },
+				{ id: 'u4', name: 'Dan', age: 50 },
+			])
+
+			const rows: Record<string, unknown>[] = []
+			for await (const row of use.iterateMany(FilterGroup.create().gt('age', 19), {
+				orderBy: [new OrderBy('age', 'desc')],
+				offset: 1,
+				limit: 2,
+			})) {
+				rows.push(row)
+			}
+			expect(rows).toEqual([
+				{ id: 'u3', name: 'Carol', age: 40 },
+				{ id: 'u1', name: 'Alice', age: 30 },
+			])
 
 			await adapter.disconnect()
 		})

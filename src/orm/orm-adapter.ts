@@ -38,6 +38,7 @@ export abstract class OrmAdapter {
 	deleteByPk?(schema: AnySchema, config: unknown, pk: unknown): Promise<Record<string, unknown> | null>
 	raw?(schema: AnySchema, config: unknown, ...args: any[]): Promise<any>
 	findMany?(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions): Promise<Record<string, unknown>[]>
+	iterateMany?(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions): AsyncGenerator<Record<string, unknown>, void, void>
 	updateMany?(schema: AnySchema, config: unknown, filter: FilterGroup, data: Record<string, unknown>): Promise<Record<string, unknown>[]>
 	deleteMany?(schema: AnySchema, config: unknown, filter: FilterGroup): Promise<Record<string, unknown>[]>
 	upsertOne?(
@@ -83,8 +84,10 @@ export abstract class OrmAdapter {
 
 	use(schema: AnySchema, config: unknown): OrmUse {
 		const self = this as any
+		const emptyIterator = async function* (): AsyncGenerator<Record<string, unknown>, void, void> {}
 		const use: OrmUse = {
 			findMany: (filter, opts) => self.findMany?.(schema, config, filter, opts) ?? Promise.resolve([]),
+			iterateMany: (filter, opts) => self.iterateMany?.(schema, config, filter, opts) ?? emptyIterator(),
 			findOne: async (filter) => {
 				const rows = await use.findMany(filter, { limit: 1 })
 				return rows[0] ?? null
@@ -238,6 +241,9 @@ if (import.meta.vitest) {
 				async findMany(_s: AnySchema, _c: unknown, _f: any, _o?: any) {
 					return [{ id: 'found' }]
 				}
+				async *iterateMany(_s: AnySchema, _c: unknown, _f: any, _o?: any) {
+					yield { id: 'iterated' }
+				}
 				async createMany(_s: AnySchema, _c: unknown, data: Record<string, unknown>[]) {
 					return data
 				}
@@ -251,6 +257,10 @@ if (import.meta.vitest) {
 
 			const rows = await ormUse.findMany(FilterGroup.create())
 			expect(rows).toEqual([{ id: 'found' }])
+
+			const iterated: Record<string, unknown>[] = []
+			for await (const row of ormUse.iterateMany(FilterGroup.create())) iterated.push(row)
+			expect(iterated).toEqual([{ id: 'iterated' }])
 
 			const created = await ormUse.createOne({ id: 'new' })
 			expect(created).toEqual({ id: 'new' })
@@ -286,6 +296,34 @@ if (import.meta.vitest) {
 			const updated = await ormUse.updateOne(FilterGroup.create().eq('id', 'u1'), { name: 'new' })
 			expect(updated).not.toBeNull()
 			expect(updated!.name).toBe('new')
+
+			vi.restoreAllMocks()
+		})
+
+		test('use().iterateMany does not fall back to findMany when adapter omits iterateMany', async () => {
+			const { Instance: Inst } = await import('../instance')
+			const { Schema } = await import('./schema')
+			vi.spyOn(Inst, 'on').mockImplementation(() => {})
+
+			let findManyCalls = 0
+			class FindOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async findMany() {
+					findManyCalls += 1
+					return [{ id: 'found' }]
+				}
+			}
+
+			const TestSchema = Schema.from('iter_no_fallback')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const adapter = new (FindOnlyAdapter as any)() as FindOnlyAdapter
+			const rows: Record<string, unknown>[] = []
+			for await (const row of adapter.use(TestSchema, { table: 'iter_no_fallback' }).iterateMany(FilterGroup.create())) rows.push(row)
+
+			expect(rows).toEqual([])
+			expect(findManyCalls).toBe(0)
 
 			vi.restoreAllMocks()
 		})
