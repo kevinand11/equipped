@@ -38,6 +38,7 @@ export abstract class OrmAdapter {
 	deleteByPk?(schema: AnySchema, config: unknown, pk: unknown): Promise<Record<string, unknown> | null>
 	raw?(schema: AnySchema, config: unknown, ...args: any[]): Promise<any>
 	findMany?(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions): Promise<Record<string, unknown>[]>
+	count?(schema: AnySchema, config: unknown, filter: FilterGroup): Promise<number>
 	iterateMany?(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions): AsyncGenerator<Record<string, unknown>, void, void>
 	updateMany?(schema: AnySchema, config: unknown, filter: FilterGroup, data: Record<string, unknown>): Promise<Record<string, unknown>[]>
 	deleteMany?(schema: AnySchema, config: unknown, filter: FilterGroup): Promise<Record<string, unknown>[]>
@@ -92,6 +93,7 @@ export abstract class OrmAdapter {
 				const rows = await use.findMany(filter, { limit: 1 })
 				return rows[0] ?? null
 			},
+			count: (filter) => self.count?.(schema, config, filter) ?? Promise.reject(new Error('count not implemented')),
 			createOne: async (d) => {
 				const rows = await use.createMany([d])
 				return rows[0]
@@ -241,6 +243,9 @@ if (import.meta.vitest) {
 				async findMany(_s: AnySchema, _c: unknown, _f: any, _o?: any) {
 					return [{ id: 'found' }]
 				}
+				async count(_s: AnySchema, _c: unknown, _f: any) {
+					return 1
+				}
 				async *iterateMany(_s: AnySchema, _c: unknown, _f: any, _o?: any) {
 					yield { id: 'iterated' }
 				}
@@ -257,6 +262,7 @@ if (import.meta.vitest) {
 
 			const rows = await ormUse.findMany(FilterGroup.create())
 			expect(rows).toEqual([{ id: 'found' }])
+			await expect(ormUse.count(FilterGroup.create())).resolves.toBe(1)
 
 			const iterated: Record<string, unknown>[] = []
 			for await (const row of ormUse.iterateMany(FilterGroup.create())) iterated.push(row)
