@@ -59,7 +59,7 @@ export async function runAllCount<S extends AnySchema>(
 function toPaginated<T>(items: T[], total: number, limit: number, current: number): Paginated<T> {
 	const start = 1
 	const last = Math.ceil(total / limit) || 1
-	const previous = current <= start ? null : current > last ? last : current - 1
+	const previous = current <= start || current > last ? null : current - 1
 	const next = current >= last ? null : current + 1
 	return {
 		pages: { current, start, last, previous, next },
