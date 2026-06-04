@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { Pool, type PoolClient } from 'pg'
+import Cursor from 'pg-cursor'
 import { v } from 'valleyed'
 
 import {
@@ -63,6 +64,12 @@ const postgresqlConnectionPipe = () =>
 
 const TRACKER_TABLE = 'equipped_migrations'
 const ADVISORY_LOCK_KEY = 3_735_928_559
+const DEFAULT_CURSOR_BATCH_SIZE = 1000
+
+type PostgresCursor<T extends Record<string, unknown>> = {
+	read: (rowCount: number) => Promise<T[]>
+	close: () => Promise<void>
+}
 
 const FIELD_TYPE_TO_PG: Record<string, string> = {
 	string: 'text',
@@ -262,13 +269,35 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 
 	async *iterateMany(schema: AnySchema, config: unknown, filter: FilterGroup, options?: IterationQueryOptions) {
 		const c = config as PostgresqlRepoConfig
+		let client: PoolClient | undefined
+		let releaseClient = false
+		let cursor: PostgresCursor<Record<string, unknown>> | undefined
 		try {
 			const tableName = this.#resolveTableName(c)
 			const { sql, params } = buildSelectQuery(filter, options, tableName, schema.pkField.name)
-			const result = await this.#getClient().query(sql, params)
-			for (const row of result.rows) yield row
+			const sessionClient = this.#sessionStore.getStore()
+			if (sessionClient) {
+				client = sessionClient
+			} else {
+				client = await this.pool.connect()
+				releaseClient = true
+			}
+			cursor = client.query(new Cursor<Record<string, unknown>>(sql, params) as any) as PostgresCursor<Record<string, unknown>>
+			const batchSize = options?.batchSize ?? DEFAULT_CURSOR_BATCH_SIZE
+
+			while (true) {
+				const rows = await cursor.read(batchSize)
+				if (rows.length === 0) break
+				for (const row of rows) yield row
+			}
 		} catch (error) {
 			throw new EquippedError('PostgreSQL iterateMany failed', { adapter: 'postgresql', operation: 'iterateMany', table: c.table }, error)
+		} finally {
+			try {
+				await cursor?.close()
+			} finally {
+				if (releaseClient) client?.release()
+			}
 		}
 	}
 
@@ -863,7 +892,7 @@ if (import.meta.vitest) {
 			expect(capturedParams).toEqual([])
 		})
 
-		test('iterateMany forwards compiled query to pool.query and yields raw rows', async () => {
+		test('iterateMany opens a dedicated cursor client, reads in batchSize chunks, and releases on completion', async () => {
 			const { Schema } = await import('../../schema')
 			const { FilterGroup } = await import('../../filter')
 			const { OrderBy } = await import('../../query-options')
@@ -873,26 +902,145 @@ if (import.meta.vitest) {
 				.field('age', v.number())
 				.build()
 			const adapter = PostgresAdapter.create(testConnectionConfig)
-			let capturedSql: unknown
-			let capturedParams: unknown
-			;(adapter.pool as any).query = async (sql: unknown, params: unknown) => {
-				capturedSql = sql
-				capturedParams = params
-				return { rows: [{ id: 'u3', age: 40 }, { id: 'u1', age: 30 }] }
+			let capturedCursor: Cursor<Record<string, unknown>> | undefined
+			const release = vi.fn()
+			const cursor = {
+				read: vi.fn()
+					.mockResolvedValueOnce([{ id: 'u3', age: 40 }])
+					.mockResolvedValueOnce([{ id: 'u1', age: 30 }])
+					.mockResolvedValueOnce([]),
+				close: vi.fn().mockResolvedValue(undefined),
 			}
+			const client = {
+				query: vi.fn((query: Cursor<Record<string, unknown>>) => {
+					capturedCursor = query
+					return cursor
+				}),
+				release,
+			}
+			;(adapter.pool as any).connect = vi.fn(async () => client)
 
 			const rows: Record<string, unknown>[] = []
 			for await (const row of adapter.use(schema, { table: 'people' }).iterateMany(FilterGroup.create().gt('age', 19), {
 				orderBy: [new OrderBy('age', 'desc')],
 				offset: 1,
 				limit: 2,
+				batchSize: 1,
 			})) {
 				rows.push(row)
 			}
 
-			expect(capturedSql).toBe('SELECT * FROM "people" WHERE "age" > $1 ORDER BY "age" DESC LIMIT $2 OFFSET $3')
-			expect(capturedParams).toEqual([19, 2, 1])
+			expect((adapter.pool as any).connect).toHaveBeenCalledTimes(1)
+			expect(capturedCursor).toBeInstanceOf(Cursor)
+			expect(capturedCursor?.text).toBe('SELECT * FROM "people" WHERE "age" > $1 ORDER BY "age" DESC LIMIT $2 OFFSET $3')
+			expect(capturedCursor?.values).toEqual(['19', '2', '1'])
+			expect(cursor.read).toHaveBeenNthCalledWith(1, 1)
+			expect(cursor.read).toHaveBeenNthCalledWith(2, 1)
+			expect(cursor.read).toHaveBeenNthCalledWith(3, 1)
+			expect(cursor.close).toHaveBeenCalledTimes(1)
+			expect(release).toHaveBeenCalledTimes(1)
 			expect(rows).toEqual([{ id: 'u3', age: 40 }, { id: 'u1', age: 30 }])
+		})
+
+		test('iterateMany closes cursor and releases dedicated client on early break', async () => {
+			const { Schema } = await import('../../schema')
+			const { FilterGroup } = await import('../../filter')
+
+			const schema = Schema.from('pg_iter_break')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const adapter = PostgresAdapter.create(testConnectionConfig)
+			const release = vi.fn()
+			const cursor = {
+				read: vi.fn().mockResolvedValueOnce([{ id: 'u1' }, { id: 'u2' }]),
+				close: vi.fn().mockResolvedValue(undefined),
+			}
+			;(adapter.pool as any).connect = vi.fn(async () => ({
+				query: vi.fn(() => cursor),
+				release,
+			}))
+
+			const rows: Record<string, unknown>[] = []
+			for await (const row of adapter.use(schema, { table: 'people' }).iterateMany(FilterGroup.create())) {
+				rows.push(row)
+				break
+			}
+
+			expect(rows).toEqual([{ id: 'u1' }])
+			expect(cursor.close).toHaveBeenCalledTimes(1)
+			expect(release).toHaveBeenCalledTimes(1)
+		})
+
+		test('iterateMany closes cursor and releases dedicated client when the consumer throws', async () => {
+			const { Schema } = await import('../../schema')
+			const { FilterGroup } = await import('../../filter')
+
+			const schema = Schema.from('pg_iter_throw')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const adapter = PostgresAdapter.create(testConnectionConfig)
+			const release = vi.fn()
+			const cursor = {
+				read: vi.fn().mockResolvedValueOnce([{ id: 'u1' }]),
+				close: vi.fn().mockResolvedValue(undefined),
+			}
+			;(adapter.pool as any).connect = vi.fn(async () => ({
+				query: vi.fn(() => cursor),
+				release,
+			}))
+			const consumerError = new Error('consumer failed')
+
+			await expect(async () => {
+				for await (const _row of adapter.use(schema, { table: 'people' }).iterateMany(FilterGroup.create())) {
+					throw consumerError
+				}
+			}).rejects.toThrow(consumerError)
+
+			expect(cursor.close).toHaveBeenCalledTimes(1)
+			expect(release).toHaveBeenCalledTimes(1)
+		})
+
+		test('iterateMany inside a session uses the active client and leaves release ownership to session', async () => {
+			const { Schema } = await import('../../schema')
+			const { FilterGroup } = await import('../../filter')
+
+			const schema = Schema.from('pg_iter_session')
+				.pk('id', v.string(), () => 'x')
+				.build()
+			const adapter = PostgresAdapter.create(testConnectionConfig)
+			const events: string[] = []
+			const release = vi.fn(() => events.push('release'))
+			const cursor = {
+				read: vi.fn()
+					.mockResolvedValueOnce([{ id: 'u1' }])
+					.mockResolvedValueOnce([]),
+				close: vi.fn(async () => events.push('cursor.close')),
+			}
+			const client = {
+				query: vi.fn((query: string | Cursor<Record<string, unknown>>) => {
+					if (typeof query === 'string') {
+						events.push(query)
+						return { rows: [] }
+					}
+					events.push('cursor.open')
+					return cursor
+				}),
+				release,
+			}
+			;(adapter.pool as any).connect = vi.fn(async () => client)
+
+			const rows: Record<string, unknown>[] = []
+			await adapter.session(async () => {
+				for await (const row of adapter.use(schema, { table: 'people' }).iterateMany(FilterGroup.create(), { batchSize: 1 })) {
+					rows.push(row)
+				}
+				events.push('session.body.done')
+			})
+
+			expect((adapter.pool as any).connect).toHaveBeenCalledTimes(1)
+			expect(rows).toEqual([{ id: 'u1' }])
+			expect(events).toEqual(['BEGIN', 'cursor.open', 'cursor.close', 'session.body.done', 'COMMIT', 'release'])
+			expect(release).toHaveBeenCalledTimes(1)
 		})
 
 		test('session method is exposed on the adapter', () => {
