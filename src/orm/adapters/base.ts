@@ -1,12 +1,12 @@
 import type { FilterGroup } from '../filter'
 import type { AggregateSpec } from '../orm-adapter'
-import type { QueryOptions } from '../query-options'
+import type { IterationQueryOptions, QueryOptions } from '../query-options'
 import type { AnySchema } from '../schema'
 import type { AnyUpdateOp } from '../updates'
 
 export type OrmUse = {
 	findMany: (filter: FilterGroup, options?: QueryOptions) => Promise<Record<string, unknown>[]>
-	iterateMany: (filter: FilterGroup, options?: QueryOptions) => AsyncGenerator<Record<string, unknown>, void, void>
+	iterateMany: (filter: FilterGroup, options?: IterationQueryOptions) => AsyncGenerator<Record<string, unknown>, void, void>
 	findOne: (filter: FilterGroup) => Promise<Record<string, unknown> | null>
 	count: (filter: FilterGroup) => Promise<number>
 	createOne: (data: Record<string, unknown>) => Promise<Record<string, unknown>>

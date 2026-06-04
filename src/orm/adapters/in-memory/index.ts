@@ -8,7 +8,7 @@ import { Filter, FilterGroup, type FilterChild } from '../../filter'
 import type { DiscoveredSchema, ForeignKeyAction } from '../../migrations/introspection-types'
 import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, AnyFieldSpec, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query-options'
+import type { IterationQueryOptions, QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import { IncOp, MaxOp, MinOp, MulOp, PatchOp, PullOp, PushOp, SetOp, UnsetOp, type AnyUpdateOp } from '../../updates'
 
@@ -341,11 +341,14 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		return [...store.values()].filter((doc) => matchesFilter(doc, group)).length
 	}
 
-	async *iterateMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: QueryOptions) {
+	async *iterateMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: IterationQueryOptions) {
 		const store = this.#resolveStore(schema, config)
-		const rows = [...store.values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc))
-		for (const row of applyOptions(rows, options)) {
-			yield row
+		const rows = applyOptions([...store.values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc)), options)
+		const batchSize = typeof options?.batchSize === 'number' && Number.isSafeInteger(options.batchSize) && options.batchSize > 0 ? options.batchSize : 1
+		for (let start = 0; start < rows.length; start += batchSize) {
+			for (const row of rows.slice(start, start + batchSize)) {
+				yield row
+			}
 		}
 	}
 

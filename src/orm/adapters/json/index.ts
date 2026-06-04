@@ -7,7 +7,7 @@ import type { FilterGroup } from '../../filter'
 import type { DiscoveredSchema } from '../../migrations/introspection-types'
 import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, AnyFieldSpec, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query-options'
+import type { IterationQueryOptions, QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import type { AnyUpdateOp } from '../../updates'
 import { InMemoryAdapter, type InMemoryRepoConfig } from '../in-memory'
@@ -181,7 +181,7 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 		return this.#inMemory.count(schema, config, group)
 	}
 
-	iterateMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: QueryOptions) {
+	iterateMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: IterationQueryOptions) {
 		return this.#inMemory.iterateMany(schema, config, group, options)
 	}
 
