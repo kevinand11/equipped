@@ -96,7 +96,7 @@ export async function runAllPaginate<S extends AnySchema, Sel extends string, P 
 	return toPaginated(items, total, query.limit, query.current)
 }
 
-export function runAllIterate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
+export async function* runAllIterate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
 	state: {
 		where: FilterGroup
@@ -112,19 +112,17 @@ export function runAllIterate<S extends AnySchema, Sel extends string, P extends
 	const query = normaliseAllIterateReadShape(context.schema, 'iterate', state, options)
 	const plan = planSelection(context.schema, state.select as readonly string[] | undefined)
 
-	return (async function* () {
-		for await (const row of context.use.iterateMany(state.where, {
-			select: plan.adapterSelect,
-			orderBy: [...state.orderBy],
-			limit: query.limit,
-			offset: query.offset,
-			...(query.batchSize === undefined ? {} : { batchSize: query.batchSize }),
-		})) {
-			const shaped = await context.shapeRows(state.select, state.preloads, [row])
-			const first = shaped[0]
-			if (first) yield first
-		}
-	})()
+	for await (const row of context.use.iterateMany(state.where, {
+		select: plan.adapterSelect,
+		orderBy: [...state.orderBy],
+		limit: query.limit,
+		offset: query.offset,
+		...(query.batchSize === undefined ? {} : { batchSize: query.batchSize }),
+	})) {
+		const shaped = await context.shapeRows(state.select, state.preloads, [row])
+		const first = shaped[0]
+		if (first) yield first
+	}
 }
 
 export async function runOneCreate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
