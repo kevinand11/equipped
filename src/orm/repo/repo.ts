@@ -4,6 +4,7 @@ import type { InferAdapterConfig } from '../adapter'
 import { currentTransforms, run } from './als'
 import { SchemaContext, SchemaRef, type HasMethod, type SchemaRefSurface } from './builders'
 import type { OrmAdapterConfig, OrmAdapterLike } from '../adapters/base'
+import type { IterationOptions } from '../query-options'
 import type { AnySchema } from '../schema'
 import { composeSchemaConfig } from '../schema-validations'
 
@@ -422,6 +423,88 @@ if (import.meta.vitest) {
 			expect(rows.map((row) => row.name)).toEqual(['Carol', 'Alice'])
 		})
 
+		test('all().iterate accepts batchSize and forwards it only to iterateMany', async () => {
+			const TestSchema = Schema.from('iter_batch_users')
+				.pk('id', v.string(), () => 'x')
+				.field('name', v.string())
+				.build()
+			const events: unknown[] = []
+
+			class IterAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany(_s: AnySchema, _c: unknown, _f: unknown, options?: unknown) {
+					events.push({ method: 'findMany', options })
+					return [{ id: 'u1', name: 'Alice' }]
+				}
+				async count(_s: AnySchema, _c: unknown, _f: unknown) {
+					events.push({ method: 'count' })
+					return 1
+				}
+				async *iterateMany(_s: AnySchema, _c: unknown, _f: unknown, options?: unknown) {
+					events.push({ method: 'iterateMany', options })
+					yield { id: 'u1', name: 'Alice' }
+				}
+			}
+
+			const adapter = new (IterAdapter as any)() as IterAdapter
+			const repo = Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
+
+			const iterated: Array<{ id: string; name: string }> = []
+			for await (const row of repo.on(TestSchema).all().limit(10).iterate({ batchSize: 3 })) {
+				iterated.push(row)
+			}
+			await repo.on(TestSchema).all().limit(10).find()
+			await repo.on(TestSchema).all().limit(10).paginate()
+
+			expect(iterated).toEqual([{ id: 'u1', name: 'Alice' }])
+			expect(events).toEqual([
+				{ method: 'iterateMany', options: expect.objectContaining({ limit: 10, batchSize: 3 }) },
+				{ method: 'findMany', options: expect.not.objectContaining({ batchSize: expect.anything() }) },
+				{ method: 'findMany', options: expect.not.objectContaining({ batchSize: expect.anything() }) },
+				{ method: 'count' },
+			])
+		})
+
+		test('all().iterate validates batchSize before adapter iteration runs', async () => {
+			const TestSchema = Schema.from('iter_invalid_batch_users')
+				.pk('id', v.string(), () => 'x')
+				.field('name', v.string())
+				.build()
+			let iterateManyCalls = 0
+
+			class IterAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({ table: v.string() })
+				readonly supportedFieldTypes = ['string'] as const
+				async *iterateMany() {
+					iterateManyCalls += 1
+					yield { id: 'u1', name: 'Alice' }
+				}
+			}
+
+			const adapter = new (IterAdapter as any)() as IterAdapter
+			const repo = Repo.from(adapter).resolve((s) => ({ table: s.name })).build()
+
+			for (const batchSize of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY, Number.NaN, '2'] as const) {
+				try {
+					for await (const _row of repo.on(TestSchema).all().iterate({ batchSize } as any)) {
+						void _row
+					}
+					expect.unreachable(`batchSize ${String(batchSize)} should have failed`)
+				} catch (error) {
+					expect(error).toBeInstanceOf(OrmValidationError)
+					const err = error as InstanceType<typeof OrmValidationError>
+					expect(err.kind).toBe('query-shape')
+					expect(err.operation).toBe('iterate')
+					expect(err.failures).toEqual([
+						expect.objectContaining({ option: 'batchSize' }),
+					])
+				}
+			}
+			expect(iterateManyCalls).toBe(0)
+		})
+
 		test('all().iterate yields selected and preloaded documents one at a time', async () => {
 			const adapter = InMemoryAdapter.create({})
 			let preloadReads = 0
@@ -444,7 +527,7 @@ if (import.meta.vitest) {
 			await repo.on(PostSchema).one().create({ title: 'B1', userId: bob.id })
 
 			const rows: any[] = []
-			const iterator = repo.on(UserSchema).all().orderBy('name', 'asc').select(['id', 'name']).preload([UserRels.posts]).iterate()
+			const iterator = repo.on(UserSchema).all().orderBy('name', 'asc').select(['id', 'name']).preload([UserRels.posts]).iterate({ batchSize: 1 })
 			expect(iterator[Symbol.asyncIterator]()).toBe(iterator)
 			for await (const row of iterator) rows.push(row)
 
@@ -988,7 +1071,7 @@ if (import.meta.vitest) {
 			expectTypeOf<All['find']>().toBeFunction()
 		})
 
-		test('adapter with iterateMany enables zero-arg all().iterate()', () => {
+		test('adapter with iterateMany enables all().iterate(options?)', () => {
 			class IterateAdapter extends OrmAdapter {
 				readonly schemaConfigPipe = v.object({})
 				readonly supportedFieldTypes = ['string'] as const
@@ -999,7 +1082,7 @@ if (import.meta.vitest) {
 			type S = import('../schema').AnySchema
 			type All = import('./builders').AllBuilderSurface<S, A>
 			expectTypeOf<All['iterate']>().toBeFunction()
-			expectTypeOf<Parameters<All['iterate']>>().toEqualTypeOf<[]>()
+			expectTypeOf<Parameters<All['iterate']>>().toEqualTypeOf<[options?: IterationOptions]>()
 			expectTypeOf<ReturnType<All['iterate']>>().toEqualTypeOf<AsyncGenerator<import('./internals/types').SelectedWithPreloads<S, never, []>, void, void>>()
 		})
 

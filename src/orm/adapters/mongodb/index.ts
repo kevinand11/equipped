@@ -10,7 +10,7 @@ import type { FilterGroup } from '../../filter'
 import type { DiscoveredSchema } from '../../migrations/introspection-types'
 import type { AddIndexChange, DropIndexChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query-options'
+import type { IterationQueryOptions, QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import type { AnyUpdateOp } from '../../updates'
 
@@ -213,7 +213,7 @@ export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter
 		}
 	}
 
-	async *iterateMany(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions) {
+	async *iterateMany(schema: AnySchema, config: unknown, filter: FilterGroup, options?: IterationQueryOptions) {
 		const schemaCfg = config as MongoDbRepoConfig
 		let cursor: any
 		try {
@@ -228,6 +228,7 @@ export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter
 			if (sort) cursor = cursor.sort(sort)
 			if (limit) cursor = cursor.limit(limit)
 			if (skip) cursor = cursor.skip(skip)
+			if (options?.batchSize) cursor = cursor.batchSize(options.batchSize)
 
 			for await (const row of cursor) {
 				yield row as Record<string, unknown>

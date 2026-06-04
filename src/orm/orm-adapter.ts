@@ -7,7 +7,7 @@ import type { OrmUse } from './adapters/base'
 import { FilterGroup } from './filter'
 import type { DiscoveredSchema } from './migrations/introspection-types'
 import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from './migrations/types'
-import type { QueryOptions } from './query-options'
+import type { IterationQueryOptions, QueryOptions } from './query-options'
 import type { AnySchema } from './schema'
 import type { AnyUpdateOp } from './updates'
 
@@ -39,7 +39,7 @@ export abstract class OrmAdapter {
 	raw?(schema: AnySchema, config: unknown, ...args: any[]): Promise<any>
 	findMany?(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions): Promise<Record<string, unknown>[]>
 	count?(schema: AnySchema, config: unknown, filter: FilterGroup): Promise<number>
-	iterateMany?(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions): AsyncGenerator<Record<string, unknown>, void, void>
+	iterateMany?(schema: AnySchema, config: unknown, filter: FilterGroup, options?: IterationQueryOptions): AsyncGenerator<Record<string, unknown>, void, void>
 	updateMany?(schema: AnySchema, config: unknown, filter: FilterGroup, data: Record<string, unknown>): Promise<Record<string, unknown>[]>
 	deleteMany?(schema: AnySchema, config: unknown, filter: FilterGroup): Promise<Record<string, unknown>[]>
 	upsertOne?(

@@ -33,7 +33,7 @@ import type {
 	RenameTableChange,
 } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query-options'
+import type { IterationQueryOptions, QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import { flattenOps, type AnyUpdateOp } from '../../updates'
 
@@ -260,7 +260,7 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 		}
 	}
 
-	async *iterateMany(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions) {
+	async *iterateMany(schema: AnySchema, config: unknown, filter: FilterGroup, options?: IterationQueryOptions) {
 		const c = config as PostgresqlRepoConfig
 		try {
 			const tableName = this.#resolveTableName(c)

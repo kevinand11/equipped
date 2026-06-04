@@ -16,3 +16,9 @@ export type QueryOptions<Sel extends string = string> = {
 	offset?: number
 	select?: readonly Sel[]
 }
+
+export type IterationOptions = {
+	batchSize?: number
+}
+
+export type IterationQueryOptions<Sel extends string = string> = QueryOptions<Sel> & IterationOptions

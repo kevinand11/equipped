@@ -17,6 +17,10 @@ export type NormalisedAllReadQuery = {
 	offset?: number
 }
 
+export type NormalisedIterationReadQuery = NormalisedAllReadQuery & {
+	batchSize?: number
+}
+
 export type NormalisedPaginatedReadQuery = {
 	limit: number
 	offset: number
@@ -113,20 +117,36 @@ function collectPreloadFailures(
 
 function collectLimitFailure(value: unknown, failures: OrmValidationFailure[]): number | undefined {
 	if (isPositiveInteger(value)) return value
-	failures.push({ field: 'limit', cause: 'Limit must be a positive safe integer' })
+	failures.push({ field: 'limit', option: 'limit', cause: 'Limit must be a positive safe integer' })
 	return undefined
 }
 
 function collectOffsetFailure(value: unknown, failures: OrmValidationFailure[]): number | undefined {
 	if (isNonNegativeInteger(value)) return value
-	failures.push({ field: 'offset', cause: 'Offset must be a non-negative safe integer' })
+	failures.push({ field: 'offset', option: 'offset', cause: 'Offset must be a non-negative safe integer' })
 	return undefined
 }
 
 function collectPageFailure(value: unknown, failures: OrmValidationFailure[]): number | undefined {
 	if (isPositiveInteger(value)) return value
-	failures.push({ field: 'page', cause: 'Page must be a positive safe integer' })
+	failures.push({ field: 'page', option: 'page', cause: 'Page must be a positive safe integer' })
 	return undefined
+}
+
+function collectBatchSizeFailure(value: unknown, failures: OrmValidationFailure[]): number | undefined {
+	if (value === undefined) return undefined
+	if (isPositiveInteger(value)) return value
+	failures.push({ field: 'batchSize', option: 'batchSize', cause: 'Batch size must be a positive safe integer' })
+	return undefined
+}
+
+function collectIterationOptionFailures(options: unknown, failures: OrmValidationFailure[]): number | undefined {
+	if (options === undefined) return undefined
+	if (options == null || typeof options !== 'object' || Array.isArray(options)) {
+		failures.push({ option: 'batchSize', cause: 'Iteration options must be an object' })
+		return undefined
+	}
+	return collectBatchSizeFailure((options as { batchSize?: unknown }).batchSize, failures)
 }
 
 function throwIfFailures(schema: AnySchema, operation: string, failures: OrmValidationFailure[]) {
@@ -187,6 +207,50 @@ export function normaliseAllFindReadShape(
 
 	throwIfFailures(schema, operation, failures)
 	return { limit, offset }
+}
+
+export function normaliseAllIterateReadShape(
+	schema: AnySchema,
+	operation: string,
+	state: {
+		select: readonly string[] | undefined
+		preloads: readonly AnyPreloadDef[] | undefined
+		limitSource?: ReadLimitSource
+		offsetSource?: ReadOffsetSource
+	},
+	options?: unknown,
+): NormalisedIterationReadQuery {
+	const failures: OrmValidationFailure[] = []
+	collectSelectFailures(schema, state.select, failures)
+	collectPreloadFailures(schema, state.preloads, failures)
+
+	let limit = state.limitSource === undefined ? undefined : collectLimitFailure(state.limitSource.value, failures)
+	let offset: number | undefined
+	const batchSize = collectIterationOptionFailures(options, failures)
+
+	if (state.offsetSource?.kind === 'offset') {
+		offset = collectOffsetFailure(state.offsetSource.value, failures)
+	} else if (state.offsetSource?.kind === 'page') {
+		const page = collectPageFailure(state.offsetSource.value, failures)
+		if (limit === undefined && state.limitSource === undefined) {
+			limit = getPaginationDefaultLimit()
+			if (!isPositiveInteger(limit)) {
+				failures.push({ field: 'limit', option: 'limit', cause: 'Default page limit must be a positive safe integer' })
+				limit = undefined
+			}
+		}
+		if (page !== undefined && limit !== undefined) {
+			const resolvedOffset = (page - 1) * limit
+			if (isNonNegativeInteger(resolvedOffset)) {
+				offset = resolvedOffset
+			} else {
+				failures.push({ field: 'offset', option: 'offset', cause: 'Resolved page offset must be a non-negative safe integer' })
+			}
+		}
+	}
+
+	throwIfFailures(schema, operation, failures)
+	return { limit, offset, batchSize }
 }
 
 export function normaliseAllPaginateReadShape(

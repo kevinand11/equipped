@@ -4,7 +4,7 @@ import { OrmNotFoundError, type OrmNotFoundOperation } from '../errors'
 import { toFieldName, type AnyField, type Field } from '../fields'
 import { FilterGroup, type FilterFactory } from '../filter'
 import type { AggregateSpec } from '../orm-adapter'
-import { OrderBy } from '../query-options'
+import { OrderBy, type IterationOptions } from '../query-options'
 import type { AnyPreloadDef } from '../relations'
 import type { AnySchema, SchemaOutput } from '../schema'
 import type { SchemaCreateInput, SchemaUpdateInput } from '../schema-validations'
@@ -391,7 +391,7 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 		})
 	}
 
-	iterate() {
+	iterate(options?: IterationOptions) {
 		return runAllIterate(this._context, {
 			where: this._where,
 			select: this._select,
@@ -399,7 +399,7 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 			orderBy: this.#orderBy,
 			limitSource: this.#limitSource,
 			offsetSource: this.#offsetSource,
-		})
+		}, options)
 	}
 }
 
