@@ -380,6 +380,17 @@ const withPosts = await repo.on(UserSchema).one().id('u1')
     .preload([UserRelations.posts, UserRelations.org])
     .find()
 
+// Iterate a bounded query one document at a time
+for await (const user of repo.on(UserSchema).all()
+    .where((q) => q.eq('active', true))
+    .orderBy('createdAt', 'desc')
+    .limit(100)
+    .iterate()) {
+    console.log(user.email)
+}
+// .iterate() is query iteration over the current result set. It is not a
+// realtime stream, change feed, CDC listener, watch, or subscription API.
+
 // Update
 const updated = await repo.on(UserSchema).one().id('u1').update({ name: 'New Name' })
 const allUpdated = await repo.on(UserSchema).all()
@@ -423,6 +434,7 @@ Builder methods are gated by the adapter's capability declarations. Methods whos
 | `schemaRef.raw()` | `crud.raw` |
 | `one().update()` / `all().update()` | `queryable.updateMany` |
 | `one().delete()` / `all().delete()` | `queryable.deleteMany` |
+| `all().iterate()` | `queryable.iterateMany` |
 | `one().upsert()` | `queryable.upsertOne` |
 | `repo.session()` | `transactional.session` |
 

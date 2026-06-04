@@ -56,6 +56,32 @@ export async function runAllCount<S extends AnySchema>(
 	return context.use.count(state.where)
 }
 
+export async function* runAllIterate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
+	context: SchemaContext<S>,
+	state: {
+		where: FilterGroup
+		select: readonly Sel[] | undefined
+		preloads: P
+		orderBy: readonly OrderBy[]
+		limitSource?: ReadLimitSource
+		offsetSource?: ReadOffsetSource
+	},
+): AsyncGenerator<SelectedWithPreloads<S, Sel, P>, void, void> {
+	assertNormalisedFilter(context.schema, state.where)
+	const query = normaliseAllFindReadShape(context.schema, 'iterateMany', state)
+	const plan = planSelection(context.schema, state.select as readonly string[] | undefined)
+	for await (const row of context.use.iterateMany(state.where, {
+		select: plan.adapterSelect,
+		orderBy: [...state.orderBy],
+		limit: query.limit,
+		offset: query.offset,
+	})) {
+		const shaped = await context.shapeRows(state.select, state.preloads, [row])
+		const first = shaped[0]
+		if (first) yield first
+	}
+}
+
 export async function runOneCreate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
 	state: { select: readonly Sel[] | undefined; preloads: P },

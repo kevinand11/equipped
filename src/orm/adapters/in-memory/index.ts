@@ -341,6 +341,14 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		return [...store.values()].filter((doc) => matchesFilter(doc, group)).length
 	}
 
+	async *iterateMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: QueryOptions) {
+		const store = this.#resolveStore(schema, config)
+		const rows = [...store.values()].filter((doc) => matchesFilter(doc, group)).map((doc) => clone(doc))
+		for (const row of applyOptions(rows, options)) {
+			yield row
+		}
+	}
+
 	async updateMany(schema: AnySchema, config: unknown, group: FilterGroup, data: Record<string, unknown>) {
 		const store = this.#resolveStore(schema, config)
 		const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, group)).map(([id]) => id)
@@ -651,6 +659,36 @@ if (import.meta.vitest) {
 			])
 
 			await expect(use.count(FilterGroup.create().eq('name', 'Alice'))).resolves.toBe(2)
+		})
+
+		test('iterateMany yields raw rows with filter ordering offset and limit', async () => {
+			const schema = Schema.from('iter_users')
+				.pk('id', v.string(), () => 'u')
+				.field('name', v.string())
+				.field('age', v.number())
+				.build()
+			const adapter = InMemoryAdapter.create({})
+			const use = adapter.use(schema, { table: 'iter_users' })
+			await use.createMany([
+				{ id: 'u1', name: 'Alice', age: 30 },
+				{ id: 'u2', name: 'Bob', age: 20 },
+				{ id: 'u3', name: 'Carol', age: 40 },
+				{ id: 'u4', name: 'Dan', age: 50 },
+			])
+
+			const rows: Record<string, unknown>[] = []
+			for await (const row of adapter.iterateMany(schema, { table: 'iter_users' }, FilterGroup.create().gt('age', 19), {
+				orderBy: [new OrderBy('age', 'desc')],
+				offset: 1,
+				limit: 2,
+			})) {
+				rows.push(row)
+			}
+
+			expect(rows).toEqual([
+				{ id: 'u3', name: 'Carol', age: 40 },
+				{ id: 'u1', name: 'Alice', age: 30 },
+			])
 		})
 
 		test('supports update operators and rollback on failed session', async () => {
