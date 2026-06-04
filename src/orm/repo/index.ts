@@ -4,6 +4,7 @@ export {
 	type AllBuilderSurface,
 	OneBuilder,
 	type OneBuilderSurface,
+	type Paginated,
 	SchemaContext,
 	SchemaRef,
 	type SchemaRefSurface,

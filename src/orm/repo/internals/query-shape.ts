@@ -17,6 +17,12 @@ export type NormalisedAllReadQuery = {
 	offset?: number
 }
 
+export type NormalisedPaginatedReadQuery = {
+	limit: number
+	offset: number
+	current: number
+}
+
 function isRelDef(def: unknown): def is AnyRelDef {
 	return def instanceof ManyRelation || def instanceof OneRelation
 }
@@ -181,4 +187,55 @@ export function normaliseAllFindReadShape(
 
 	throwIfFailures(schema, operation, failures)
 	return { limit, offset }
+}
+
+export function normaliseAllPaginateReadShape(
+	schema: AnySchema,
+	operation: string,
+	state: {
+		select: readonly string[] | undefined
+		preloads: readonly AnyPreloadDef[] | undefined
+		limitSource?: ReadLimitSource
+		offsetSource?: ReadOffsetSource
+	},
+): NormalisedPaginatedReadQuery {
+	const failures: OrmValidationFailure[] = []
+	collectSelectFailures(schema, state.select, failures)
+	collectPreloadFailures(schema, state.preloads, failures)
+
+	let limit: number | undefined
+	if (state.limitSource === undefined) {
+		limit = getPaginationDefaultLimit()
+		if (!isPositiveInteger(limit)) {
+			failures.push({ field: 'limit', cause: 'Default page limit must be a positive safe integer' })
+			limit = undefined
+		}
+	} else {
+		limit = collectLimitFailure(state.limitSource.value, failures)
+	}
+
+	let offset = 0
+	let current = 1
+
+	if (state.offsetSource?.kind === 'offset') {
+		const resolvedOffset = collectOffsetFailure(state.offsetSource.value, failures)
+		if (resolvedOffset !== undefined) {
+			offset = resolvedOffset
+			if (limit !== undefined) current = Math.floor(resolvedOffset / limit) + 1
+		}
+	} else if (state.offsetSource?.kind === 'page') {
+		const page = collectPageFailure(state.offsetSource.value, failures)
+		if (page !== undefined) current = page
+		if (page !== undefined && limit !== undefined) {
+			const resolvedOffset = (page - 1) * limit
+			if (isNonNegativeInteger(resolvedOffset)) {
+				offset = resolvedOffset
+			} else {
+				failures.push({ field: 'offset', cause: 'Resolved page offset must be a non-negative safe integer' })
+			}
+		}
+	}
+
+	throwIfFailures(schema, operation, failures)
+	return { limit: limit as number, offset, current }
 }

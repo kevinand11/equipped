@@ -15,6 +15,7 @@ import {
 	runAllCreate,
 	runAllDelete,
 	runAllIterate,
+	runAllPaginate,
 	runAllRead,
 	runAllUpdate,
 	runOneCreate,
@@ -25,7 +26,9 @@ import {
 } from './internals/executors'
 import { resolvePreloads } from './internals/preloads'
 import type { ReadLimitSource, ReadOffsetSource } from './internals/query-shape'
-import type { SelectedWithPreloads } from './internals/types'
+import type { Paginated, SelectedWithPreloads } from './internals/types'
+
+export type { Paginated }
 
 type MaybeNull<T, Req extends boolean> = Req extends true ? T : T | null
 type SchemaPrimaryKeyValue<S extends AnySchema> = SchemaOutput<S>[S['pkField']['name'] & keyof SchemaOutput<S>]
@@ -54,7 +57,8 @@ export type AllBuilderSurface<S extends AnySchema, A = unknown, Sel extends stri
 	(HasMethod<A, 'iterateMany'> extends true ? {} : { iterate: never }) &
 	(HasMethod<A, 'updateMany'> extends true ? {} : { update: never }) &
 	(HasMethod<A, 'deleteMany'> extends true ? {} : { delete: never }) &
-	(HasMethod<A, 'count'> extends true ? {} : { count: never })
+	(HasMethod<A, 'count'> extends true ? {} : { count: never }) &
+	([HasMethod<A, 'findMany'>, HasMethod<A, 'count'>] extends [true, true] ? {} : { paginate: never })
 
 type HasNonEmptyAggregateOps<A> = A extends { aggregateOps: readonly [any, ...any[]] } ? true : false
 
@@ -376,6 +380,17 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 		return runAllCount(this._context, { where: this._where })
 	}
 
+	paginate(): Promise<Paginated<SelectedWithPreloads<S, Sel, P>>> {
+		return runAllPaginate(this._context, {
+			where: this._where,
+			select: this._select,
+			preloads: this._preloads,
+			orderBy: this.#orderBy,
+			limitSource: this.#limitSource,
+			offsetSource: this.#offsetSource,
+		})
+	}
+
 	iterate() {
 		return runAllIterate(this._context, {
 			where: this._where,
@@ -534,10 +549,11 @@ export class AggregateBuilder<
 }
 
 if (import.meta.vitest) {
-	const { describe, test, expect, beforeEach } = import.meta.vitest
+	const { describe, test, expect, expectTypeOf, beforeEach } = import.meta.vitest
 	const { v } = await import('valleyed')
 	const { InMemoryAdapter } = await import('../adapters/in-memory')
 	const { OrmValidationError } = await import('../errors')
+	const { OrmAdapter } = await import('../orm-adapter')
 	const { Relations } = await import('../relations')
 	const { Repo } = await import('./repo')
 	const { Schema } = await import('../schema')
@@ -969,6 +985,157 @@ if (import.meta.vitest) {
 
 			expect(rows).toHaveLength(12)
 			expect(rows.map((row) => row.position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+		})
+
+		test('.paginate() returns a first-page envelope with docs computed from filter-only count', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 5)
+
+			const page = await repo.on(ItemSchema).all().orderBy('position', 'asc').limit(2).paginate()
+
+			expect(page.items.map((row) => row.position)).toEqual([1, 2])
+			expect(page.docs).toEqual({ limit: 2, total: 5, count: 2 })
+			expect(page.pages).toEqual({ current: 1, start: 1, last: 3, previous: null, next: 2 })
+		})
+
+		test('.paginate() without an explicit limit uses the default page limit', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 101)
+
+			const page = await repo.on(ItemSchema).all().orderBy('position', 'asc').paginate()
+
+			expect(page.items).toHaveLength(100)
+			expect(page.docs).toEqual({ limit: 100, total: 101, count: 100 })
+			expect(page.pages).toEqual({ current: 1, start: 1, last: 2, previous: null, next: 2 })
+		})
+
+		test('.paginate() counts only the filter while page items honor limit and offset', async () => {
+			const repo = makeRepo()
+			await repo.on(ItemSchema).all().create([
+				{ position: 1, name: 'keep' },
+				{ position: 2, name: 'drop' },
+				{ position: 3, name: 'keep' },
+				{ position: 4, name: 'keep' },
+			])
+
+			const page = await repo
+				.on(ItemSchema)
+				.all()
+				.where((q) => q.eq('name', 'keep'))
+				.orderBy('position', 'asc')
+				.limit(1)
+				.page(2)
+				.paginate()
+
+			expect(page.items.map((row) => row.position)).toEqual([3])
+			expect(page.docs).toEqual({ limit: 1, total: 3, count: 1 })
+			expect(page.pages).toEqual({ current: 2, start: 1, last: 3, previous: 1, next: 3 })
+		})
+
+		test('.paginate() items preserve selected row shape', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 2)
+
+			const page = await repo.on(ItemSchema).all().orderBy('position', 'asc').select(['name']).limit(1).paginate()
+
+			expect(page.items).toEqual([{ name: 'Item 1' }])
+			expect(page.docs).toMatchObject({ total: 2, count: 1 })
+		})
+
+		test('.paginate() items preserve preloaded row shape', async () => {
+			const repo = makeRepo()
+			const alice = await repo.on(UserSchema).one().create({ name: 'Alice' })
+			const bob = await repo.on(UserSchema).one().create({ name: 'Bob' })
+			await repo.on(PostSchema).all().create([
+				{ userId: alice.id, title: 'A1' },
+				{ userId: alice.id, title: 'A2' },
+				{ userId: bob.id, title: 'B1' },
+			])
+
+			const page = await repo.on(UserSchema).all().orderBy('name', 'asc').preload([UserRels.posts]).limit(1).paginate()
+
+			expect(page.items).toHaveLength(1)
+			expect(page.items[0].name).toBe('Alice')
+			expect(page.items[0].posts.map((post: any) => post.title)).toEqual(['A1', 'A2'])
+			expect(page.docs).toEqual({ limit: 1, total: 2, count: 1 })
+		})
+
+		test('.paginate() uses offset-source last-wins and the final effective limit', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 10)
+
+			const pageSource = await repo.on(ItemSchema).all().orderBy('position', 'asc').page(2).limit(3).paginate()
+			const offsetSource = await repo.on(ItemSchema).all().orderBy('position', 'asc').page(2).limit(2).offset(4).paginate()
+
+			expect(pageSource.items.map((row) => row.position)).toEqual([4, 5, 6])
+			expect(pageSource.pages.current).toBe(2)
+			expect(pageSource.docs.limit).toBe(3)
+			expect(offsetSource.items.map((row) => row.position)).toEqual([5, 6])
+			expect(offsetSource.pages.current).toBe(3)
+			expect(offsetSource.docs.limit).toBe(2)
+		})
+	})
+
+	describe('type-level: paginate surface', () => {
+		const _TestSchema = Schema.from('paginate_type_users')
+			.pk('id', v.string(), () => 'x')
+			.field('name', v.string())
+			.build()
+		type S = typeof _TestSchema
+
+		test('Paginated<T> exposes pages, docs, and items', () => {
+			type Page = Paginated<{ id: string }>
+			expectTypeOf<Page>().toHaveProperty('pages')
+			expectTypeOf<Page>().toHaveProperty('docs')
+			expectTypeOf<Page>().toHaveProperty('items')
+			expectTypeOf<Page['items']>().toEqualTypeOf<{ id: string }[]>()
+		})
+
+		test('.paginate() is a no-argument AllBuilder terminal', () => {
+			type Adapter = { findMany: (...a: any[]) => any; count: (...a: any[]) => any }
+			type All = AllBuilderSurface<S, Adapter>
+			type Result = import('./internals/types').SelectedWithPreloads<S, never, []>
+
+			expectTypeOf<All['paginate']>().toBeFunction()
+			expectTypeOf<Parameters<All['paginate']>>().toEqualTypeOf<[]>()
+			expectTypeOf<ReturnType<All['paginate']>>().toEqualTypeOf<Promise<Paginated<Result>>>()
+		})
+
+		test('.paginate() exists only on AllBuilder', () => {
+			type Adapter = { findMany: (...a: any[]) => any; count: (...a: any[]) => any }
+			type One = OneBuilderSurface<S, Adapter>
+			type OneHasPaginate = 'paginate' extends keyof One ? true : false
+
+			expectTypeOf<OneHasPaginate>().toEqualTypeOf<false>()
+		})
+
+		test('.paginate() is gated on both findMany and count', () => {
+			class FullAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+				async count() { return 0 }
+			}
+			class CountOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async count() { return 0 }
+			}
+			class FindOnlyAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+			}
+			type Full = AllBuilderSurface<S, FullAdapter>
+			type MissingFindMany = AllBuilderSurface<S, CountOnlyAdapter>
+			type MissingCount = AllBuilderSurface<S, FindOnlyAdapter>
+
+			expectTypeOf<Full['paginate']>().toBeFunction()
+			expectTypeOf<MissingFindMany['paginate']>().toBeNever()
+			expectTypeOf<MissingCount['paginate']>().toBeNever()
 		})
 	})
 }

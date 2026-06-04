@@ -9,3 +9,19 @@ type Selected<S extends AnySchema, Sel extends string> = [Sel] extends [never]
 export type SelectedWithPreloads<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]> = Prettify<
 	Selected<S, Sel> & PreloadedMap<P>
 >
+
+export type Paginated<T> = {
+	pages: {
+		current: number
+		start: number
+		last: number
+		previous: number | null
+		next: number | null
+	}
+	docs: {
+		limit: number
+		total: number
+		count: number
+	}
+	items: T[]
+}
