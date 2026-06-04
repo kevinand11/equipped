@@ -362,13 +362,17 @@ const users = await repo.on(UserSchema).all().create([
 // Read by PK
 const found = await repo.on(UserSchema).one().id('u1').find()
 
-// Read with filters, ordering, pagination
-const results = await repo.on(UserSchema).all()
+// Read a stable paginated envelope. Use deterministic ordering for stable pages.
+const page = await repo.on(UserSchema).all()
     .where((q) => q.eq('name', 'Alice'))
     .orderBy('createdAt', 'desc')
+    .page(3)
     .limit(10)
-    .offset(20)
-    .find()
+    .paginate()
+
+console.log(page.items) // page documents
+console.log(page.pages) // { current, start, last, previous, next }
+console.log(page.docs) // { limit, total, count }
 
 // Select specific fields
 const partial = await repo.on(UserSchema).all()

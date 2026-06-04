@@ -1001,6 +1001,19 @@ export type Paginated<T> = {
 because pagination inputs live as builder steps (`.page(...)`, `.limit(...)`),
 not as a terminal payload object.
 
+```ts
+const page = await repo.on(UserSchema).all()
+  .where(q => q.eq(UserSchema.fields.active, true))
+  .orderBy('createdAt', 'desc') // deterministic ordering keeps pages stable
+  .page(2)
+  .limit(25)
+  .paginate()
+
+page.items // selected/preloaded documents for page 2
+page.pages // { current, start, last, previous, next }
+page.docs  // { limit, total, count }
+```
+
 The **last-page floor rule**: `pages.last` is `Math.ceil(total / limit) || 1`,
 so an empty result set still reports `pages.last = 1`.
 

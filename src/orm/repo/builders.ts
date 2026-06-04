@@ -549,8 +549,9 @@ export class AggregateBuilder<
 }
 
 if (import.meta.vitest) {
-	const { describe, test, expect, expectTypeOf, beforeEach } = import.meta.vitest
+	const { describe, test, expect, expectTypeOf, beforeEach, vi } = import.meta.vitest
 	const { v } = await import('valleyed')
+	const { Instance } = await import('../../instance')
 	const { InMemoryAdapter } = await import('../adapters/in-memory')
 	const { OrmValidationError } = await import('../errors')
 	const { OrmAdapter } = await import('../orm-adapter')
@@ -998,15 +999,55 @@ if (import.meta.vitest) {
 			expect(page.pages).toEqual({ current: 1, start: 1, last: 3, previous: null, next: 2 })
 		})
 
-		test('.paginate() without an explicit limit uses the default page limit', async () => {
+		test('.paginate() reports pages.last = 1 for empty result sets', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 3)
+
+			const page = await repo.on(ItemSchema).all().where((q) => q.eq('name', 'missing')).limit(5).paginate()
+
+			expect(page.items).toEqual([])
+			expect(page.docs).toEqual({ limit: 5, total: 0, count: 0 })
+			expect(page.pages).toEqual({ current: 1, start: 1, last: 1, previous: null, next: null })
+		})
+
+		test('.paginate() preserves past-last page requests and clamps previous to the last real page', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 5)
+
+			const page = await repo.on(ItemSchema).all().orderBy('position', 'asc').limit(2).page(4).paginate()
+
+			expect(page.items).toEqual([])
+			expect(page.docs).toEqual({ limit: 2, total: 5, count: 0 })
+			expect(page.pages).toEqual({ current: 4, start: 1, last: 3, previous: 3, next: null })
+		})
+
+		test('.paginate() does not require orderBy', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 3)
+
+			const page = await repo.on(ItemSchema).all().limit(2).paginate()
+
+			expect(page.items).toHaveLength(2)
+			expect(page.docs).toEqual({ limit: 2, total: 3, count: 2 })
+			expect(page.pages).toEqual({ current: 1, start: 1, last: 2, previous: null, next: 2 })
+		})
+
+		test('.paginate() without an explicit limit uses the safe default page limit without Instance.get()', async () => {
 			const repo = makeRepo()
 			await seedItems(repo, 101)
+			const getSpy = vi.spyOn(Instance, 'get').mockImplementation(() => {
+				throw new Error('Instance.get() should not be required for pagination defaults')
+			})
 
-			const page = await repo.on(ItemSchema).all().orderBy('position', 'asc').paginate()
+			try {
+				const page = await repo.on(ItemSchema).all().orderBy('position', 'asc').paginate()
 
-			expect(page.items).toHaveLength(100)
-			expect(page.docs).toEqual({ limit: 100, total: 101, count: 100 })
-			expect(page.pages).toEqual({ current: 1, start: 1, last: 2, previous: null, next: 2 })
+				expect(page.items).toHaveLength(100)
+				expect(page.docs).toEqual({ limit: 100, total: 101, count: 100 })
+				expect(page.pages).toEqual({ current: 1, start: 1, last: 2, previous: null, next: 2 })
+			} finally {
+				getSpy.mockRestore()
+			}
 		})
 
 		test('.paginate() counts only the filter while page items honor limit and offset', async () => {
@@ -1030,6 +1071,47 @@ if (import.meta.vitest) {
 			expect(page.items.map((row) => row.position)).toEqual([3])
 			expect(page.docs).toEqual({ limit: 1, total: 3, count: 1 })
 			expect(page.pages).toEqual({ current: 2, start: 1, last: 3, previous: 1, next: 3 })
+		})
+
+		test('.paginate() starts item and count reads in parallel after query-shape validation and config resolution', async () => {
+			const adapter = InMemoryAdapter.create({})
+			const origUse = adapter.use.bind(adapter)
+			const events: string[] = []
+			;(adapter as any).use = vi.fn((schema: AnySchema, config: any) => {
+				const use = origUse(schema, config)
+				return {
+					...use,
+					findMany: async (...args: any[]) => {
+						events.push('findMany:start')
+						await Promise.resolve()
+						events.push('findMany:end')
+						return use.findMany(...(args as [any, any]))
+					},
+					count: async (...args: any[]) => {
+						events.push('count:start')
+						await Promise.resolve()
+						events.push('count:end')
+						return use.count(...(args as [any]))
+					},
+				}
+			})
+			const repo = Repo.from(adapter)
+				.resolve((s) => {
+					events.push('resolve')
+					return { table: s.name }
+				})
+				.build()
+			await seedItems(repo, 3)
+			events.length = 0
+
+			const page = await repo.on(ItemSchema).all().where((q) => q.eq('name', 'Item 1')).limit(1).paginate()
+
+			expect(events[0]).toBe('resolve')
+			expect(events).toContain('count:start')
+			expect(events).toContain('findMany:end')
+			expect(events.indexOf('count:start')).toBeLessThan(events.indexOf('findMany:end'))
+			expect(page.items.map((row) => row.position)).toEqual([1])
+			expect(page.docs).toEqual({ limit: 1, total: 1, count: 1 })
 		})
 
 		test('.paginate() items preserve selected row shape', async () => {
