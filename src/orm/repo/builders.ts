@@ -1010,7 +1010,18 @@ if (import.meta.vitest) {
 			expect(page.pages).toEqual({ current: 1, start: 1, last: 1, previous: null, next: null })
 		})
 
-		test('.paginate() preserves past-last page requests and clamps previous to the last real page', async () => {
+		test('.paginate() preserves the previous neighbor on the last real page', async () => {
+			const repo = makeRepo()
+			await seedItems(repo, 5)
+
+			const page = await repo.on(ItemSchema).all().orderBy('position', 'asc').limit(2).page(3).paginate()
+
+			expect(page.items.map((row) => row.position)).toEqual([5])
+			expect(page.docs).toEqual({ limit: 2, total: 5, count: 1 })
+			expect(page.pages).toEqual({ current: 3, start: 1, last: 3, previous: 2, next: null })
+		})
+
+		test('.paginate() preserves past-last page requests with no navigation neighbors', async () => {
 			const repo = makeRepo()
 			await seedItems(repo, 5)
 
@@ -1018,7 +1029,7 @@ if (import.meta.vitest) {
 
 			expect(page.items).toEqual([])
 			expect(page.docs).toEqual({ limit: 2, total: 5, count: 0 })
-			expect(page.pages).toEqual({ current: 4, start: 1, last: 3, previous: 3, next: null })
+			expect(page.pages).toEqual({ current: 4, start: 1, last: 3, previous: null, next: null })
 		})
 
 		test('.paginate() does not require orderBy', async () => {
