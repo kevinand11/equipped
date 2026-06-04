@@ -7,7 +7,7 @@ import type { FilterGroup } from '../../filter'
 import type { DiscoveredSchema } from '../../migrations/introspection-types'
 import type { AddFieldChange, AddForeignKeyChange, AddIndexChange, AnyFieldSpec, CreateTableChange, DropFieldChange, DropForeignKeyChange, DropIndexChange, DropTableChange, ModifyFieldChange, RenameFieldChange, RenameTableChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query-options'
+import type { IterationQueryOptions, QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import type { AnyUpdateOp } from '../../updates'
 import { InMemoryAdapter, type InMemoryRepoConfig } from '../in-memory'
@@ -181,7 +181,7 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 		return this.#inMemory.count(schema, config, group)
 	}
 
-	iterateMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: QueryOptions) {
+	iterateMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: IterationQueryOptions) {
 		return this.#inMemory.iterateMany(schema, config, group, options)
 	}
 
@@ -444,7 +444,7 @@ if (import.meta.vitest) {
 			await adapter.disconnect()
 		})
 
-		test('iterateMany yields raw rows with filter ordering offset and limit', async () => {
+		test('iterateMany with batchSize matches findMany through in-memory delegation', async () => {
 			const schema = Schema.from('json_iter_users')
 				.pk('id', v.string(), () => 'u')
 				.field('name', v.string())
@@ -461,17 +461,22 @@ if (import.meta.vitest) {
 				{ id: 'u4', name: 'Dan', age: 50 },
 			])
 
-			const rows: Record<string, unknown>[] = []
-			for await (const row of use.iterateMany(FilterGroup.create().gt('age', 19), {
+			const filter = FilterGroup.create().gt('age', 19)
+			const options = {
 				orderBy: [new OrderBy('age', 'desc')],
 				offset: 1,
 				limit: 2,
-			})) {
+				select: ['id', 'name'],
+			}
+			const expected = await use.findMany(filter, options)
+			const rows: Record<string, unknown>[] = []
+			for await (const row of use.iterateMany(filter, { ...options, batchSize: 2 })) {
 				rows.push(row)
 			}
+			expect(rows).toEqual(expected)
 			expect(rows).toEqual([
-				{ id: 'u3', name: 'Carol', age: 40 },
-				{ id: 'u1', name: 'Alice', age: 30 },
+				{ id: 'u3', name: 'Carol' },
+				{ id: 'u1', name: 'Alice' },
 			])
 
 			await adapter.disconnect()

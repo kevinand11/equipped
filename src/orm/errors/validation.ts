@@ -7,6 +7,7 @@ export type OrmValidationFailure = {
 	rowIndex?: number
 	field?: string
 	alias?: string
+	option?: 'limit' | 'offset' | 'page' | 'batchSize'
 	migrationId?: string
 	changeIndex?: number
 	cause: unknown

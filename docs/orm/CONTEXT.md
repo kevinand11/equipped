@@ -1017,16 +1017,12 @@ page.docs  // { limit, total, count }
 The **last-page floor rule**: `pages.last` is `Math.ceil(total / limit) || 1`,
 so an empty result set still reports `pages.last = 1`.
 
-The **past-last-page rule**: requesting a page past `pages.last` returns an
-empty `items` array, preserves `pages.current` as the requested/effective page,
-sets `pages.last` from the total (with the last-page floor rule), and sets
-`pages.next` to `null`. The framework never clamps the requested page down to
-the last page.
-
-The **navigation-link clamp rule**: navigation links clamp to real pages even
-when `pages.current` is past the end. `pages.previous` is `null` when
-`current <= start`, `last` when `current > last`, and `current - 1` otherwise;
-`pages.next` is `null` when `current >= last`, and `current + 1` otherwise.
+The **past-last-page no-neighbors rule**: requesting a page past `pages.last`
+returns an empty `items` array, preserves `pages.current` as the
+requested/effective page, sets `pages.last` from the total (with the last-page
+floor rule), and sets both `pages.previous` and `pages.next` to `null`. The
+framework never clamps the requested page down to the last page, and navigation
+links only describe adjacent real pages.
 
 The **parallel pagination reads rule**: after validation and config
 resolution, `.paginate()` runs the page-item `findMany` and the filter-only
@@ -1048,18 +1044,36 @@ changes shape into a paginated envelope.
 
 ### 5.10 Document iteration terminal
 
-The **document iteration terminal** is `repo.on(S).all().iterate()`: an
-`AllBuilder` terminal that takes no arguments and returns an async generator
-over the current query's selected and preloaded documents, yielding one document
-at a time. The name is deliberately **iterate**, not `stream`, because "stream"
-is reserved in this context for change-feeds / CDC-style realtime subscription
-semantics.
+The **document iteration terminal** is `repo.on(S).all().iterate(options?)`: an
+`AllBuilder` terminal that returns an async generator over the current query's
+selected and preloaded documents, yielding one document at a time. The name is
+deliberately **iterate**, not `stream`, because "stream" is reserved in this
+context for change-feeds / CDC-style realtime subscription semantics.
 
 ```ts
-for await (const doc of repo.on(UserSchema).all().iterate()) {
+for await (const doc of repo.on(UserSchema).all().iterate({ batchSize: 500 })) {
   // doc has the same selected/preloaded shape as an item from .find()
 }
 ```
+
+The **iteration options object** is `{ batchSize?: number }`. `batchSize` is a
+positive safe integer that tells adapters how many rows to fetch from their
+underlying cursor per backend round trip. It is not a result-set cap: `.limit(n)`
+still controls the maximum number of yielded documents, and `batchSize` only
+controls how many rows the adapter asks the backend cursor for at once. Every
+in-tree adapter honors `batchSize` where its backend exposes chunk sizing:
+PostgreSQL passes it to `pg-cursor` reads, MongoDB passes it to the Mongo cursor,
+and in-memory/json preserve the same yielded order/cardinality while using the
+value only as internal iteration chunk size. Invalid `batchSize` values throw
+`OrmValidationError` with `kind: 'query-shape'` and operation `'iterate'` at the
+Repo-entry boundary. Omitted `batchSize` means the adapter uses its
+backend/default cursor batch size.
+
+The **iteration parity rule**: for the same `.where()`, `.orderBy()`, `.limit()`,
+`.offset()`, `.page()`, `.select()`, and `.preload()` chain, `.iterate(options?)`
+yields the same documents, in the same order, with the same selected/preloaded
+shape as `.find()`. It differs only in delivery mode and backend fetch chunk
+size.
 
 The **per-document preload rule**: when `.iterate()` is used with preloads,
 preloads are resolved for each yielded document independently. This preserves
@@ -1071,9 +1085,21 @@ change feed, not CDC, not a realtime listener, and not a subscription.
 
 The **iterate method** is the adapter method
 `iterateMany(schema, schemaCfg, filter, options): AsyncGenerator<Record<string,
-unknown>>`. It is the only implementation path for `AllBuilder.iterate()`; the
+unknown>>`, where `options` is an iteration-only options type layered over the
+normal read query options with `batchSize?: number`. `batchSize` is not added to
+shared `QueryOptions`, so `findMany`, `paginate`, and `count` never receive it.
+It is the only implementation path for `AllBuilder.iterate(options?)`; the
 framework never emulates iteration by repeatedly calling `findMany`. `iterate()`
 is gated on `iterateMany` method presence.
+
+The **cursor lifetime rule** for PostgreSQL iteration: `iterateMany` owns a
+backend cursor for the lifetime of the async generator. Outside a session, it
+acquires a dedicated client for the cursor, reads rows in `batchSize` chunks when
+provided, closes the cursor, and releases the client in a `finally` block so
+early `break` and consumer-thrown errors do not leak pool clients. Inside
+`repo.session(...)`, it uses the active session client for transaction
+consistency, closes only the cursor in `finally`, and does not release the
+session-owned client.
 
 ---
 
@@ -1337,7 +1363,7 @@ class OrmValidationError extends EquippedError {
     rowIndex?: number
     field?: string                                      // validation/query-shape: offending schema field
     alias?: string                                      // aggregate-only: offending alias / group-key name
-    option?: 'limit' | 'offset' | 'page'                 // query-shape-only: offending query option
+    option?: 'limit' | 'offset' | 'page' | 'batchSize'   // query-shape-only: offending query option
     preload?: string                                    // query-shape-only: offending preload path or relation name
     cause: PipeError | string
   }>

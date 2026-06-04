@@ -104,6 +104,9 @@ importers:
       pg:
         specifier: 8.20.0
         version: 8.20.0
+      pg-cursor:
+        specifier: ^2.20.0
+        version: 2.20.0(pg@8.20.0)
       pino:
         specifier: 10.3.0
         version: 10.3.0
@@ -129,9 +132,6 @@ importers:
         specifier: 4.5.19
         version: 4.5.19
     devDependencies:
-      '@ai-hero/sandcastle':
-        specifier: ^0.5.7
-        version: 0.5.7(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/typeclass@0.39.0(effect@3.21.2))
       '@commitlint/cli':
         specifier: ^20.4.1
         version: 20.4.1(@types/node@25.2.0)(typescript@5.9.3)
@@ -174,6 +174,9 @@ importers:
       '@types/pg':
         specifier: ^8.18.0
         version: 8.18.0
+      '@types/pg-cursor':
+        specifier: ^2.7.2
+        version: 2.7.2
       '@types/pug':
         specifier: ^2.0.10
         version: 2.0.10
@@ -214,18 +217,6 @@ packages:
     resolution: {integrity: sha512-1Yjs2SvM8TflER/OD3cOjhWWOZb58A2t7wpE2S9XfBYTiIl+XFhQG2bjy4Pu1I+EAlCNUzRDYDdFwFYUKvXcIA==}
     engines: {node: '>=0.10.0'}
 
-  '@ai-hero/sandcastle@0.5.7':
-    resolution: {integrity: sha512-5ZznDx9LQCdOYooL+INx6+35tH44Lb/7+BYUmgWPuBXy5YD7pt14GgMHMWbx3NtSYot7VcBMrgj7UpAQmpRrDA==}
-    hasBin: true
-    peerDependencies:
-      '@daytona/sdk': ^0.164.0
-      '@vercel/sandbox': '>=1.0.0'
-    peerDependenciesMeta:
-      '@daytona/sdk':
-        optional: true
-      '@vercel/sandbox':
-        optional: true
-
   '@apidevtools/json-schema-ref-parser@15.2.2':
     resolution: {integrity: sha512-54fvjSwWiBTdVviiUItOCeyxtPSBmCrSEjlOl8XFEDuYD3lXY1lOBWKim/WJ3i1EYzdGx6rSOjK5KRDMppLI4Q==}
     engines: {node: '>=20'}
@@ -243,14 +234,6 @@ packages:
   '@babel/highlight@7.24.2':
     resolution: {integrity: sha512-Yac1ao4flkTxTteCDZLEvdxg2fZfz1v8M4QpaGypq/WPDqg3ijHYbDfs+LG5hvzSoqaSZ9/Z9lKSP3CjZjv+pA==}
     engines: {node: '>=6.9.0'}
-
-  '@clack/core@1.3.0':
-    resolution: {integrity: sha512-xJPHpAmEQUBrXSLx0gF+q5K/IyihXpsHZcha+jB+tyahsKRK3Dxo4D0coZDewHo12NhiuzC3dTtMPbm53GEAAA==}
-    engines: {node: '>= 20.12.0'}
-
-  '@clack/prompts@1.3.0':
-    resolution: {integrity: sha512-GgcWwRCs/xPtaqlMy8qRhPnZf9vlWcWZNHAitnVQ3yk7JmSralSiq5q07yaffYE8SogtDm7zFeKccx1QNVARpw==}
-    engines: {node: '>= 20.12.0'}
 
   '@commitlint/cli@20.4.1':
     resolution: {integrity: sha512-uuFKKpc7OtQM+6SRqT+a4kV818o1pS+uvv/gsRhyX7g4x495jg+Q7P0+O9VNGyLXBYP0syksS7gMRDJKcekr6A==}
@@ -324,97 +307,6 @@ packages:
   '@confluentinc/kafka-javascript@1.8.0':
     resolution: {integrity: sha512-VNrfUkLmnTYklLsjgrq1xDq6e6DU/oSGTkfSDeA5TnkTN8PC9dyWhn/8VLQ6ywsV5i1FwQfqs6Y021Fi6NDKKw==}
     engines: {node: '>=18.0.0'}
-
-  '@effect/cli@0.74.0':
-    resolution: {integrity: sha512-vjMJWJWQ2zMRVcZJj2ZGr7vFgVoX6lsCuqAsNiN2ndWZAidkEJ6g1Euuib2V2nTXeWvRyd3FY2Fw2UvX48Uenw==}
-    peerDependencies:
-      '@effect/platform': ^0.95.0
-      '@effect/printer': ^0.48.0
-      '@effect/printer-ansi': ^0.48.0
-      effect: ^3.20.0
-
-  '@effect/cluster@0.57.0':
-    resolution: {integrity: sha512-VjZoZ4hmgDb0GtGjktypTk/nArA3ntsXU2O9vOBzDjJLRKVBt7IS0/cllHrHwK5Jxkfz86B2k+Prw4/+nrLFlw==}
-    peerDependencies:
-      '@effect/platform': ^0.95.0
-      '@effect/rpc': ^0.74.0
-      '@effect/sql': ^0.50.0
-      '@effect/workflow': ^0.17.0
-      effect: ^3.20.0
-
-  '@effect/experimental@0.59.0':
-    resolution: {integrity: sha512-XqdBpIH5VLlkRxKlyPYp8TAYUeBPjoWYgtrxDebDab14K4kkrpkHk0ZsmmOiQUZ+LY5veRn/PBSogXor9gtPqg==}
-    peerDependencies:
-      '@effect/platform': ^0.95.0
-      effect: ^3.20.0
-      ioredis: ^5
-      lmdb: ^3
-    peerDependenciesMeta:
-      ioredis:
-        optional: true
-      lmdb:
-        optional: true
-
-  '@effect/platform-node-shared@0.58.0':
-    resolution: {integrity: sha512-kl8ejYM1xvjRlk+4/R1YzB6A3E3hVWY4jIfEl21uu4S43V0S15gHvcur7iMIEXfJTX1a25EKF+Buef+Yv5wZZQ==}
-    peerDependencies:
-      '@effect/cluster': ^0.57.0
-      '@effect/platform': ^0.95.0
-      '@effect/rpc': ^0.74.0
-      '@effect/sql': ^0.50.0
-      effect: ^3.20.0
-
-  '@effect/platform-node@0.105.0':
-    resolution: {integrity: sha512-6JxOLqLJMm+m1ZQavIb75S7YJ4fRvrDaYUZ4rqv2IMq5ZK9HVaU/LeejE9tip9zAG9yNM/6mn183iiIV/xge5w==}
-    peerDependencies:
-      '@effect/cluster': ^0.57.0
-      '@effect/platform': ^0.95.0
-      '@effect/rpc': ^0.74.0
-      '@effect/sql': ^0.50.0
-      effect: ^3.20.0
-
-  '@effect/platform@0.95.0':
-    resolution: {integrity: sha512-WDlRiWRSWlmhCPq09bvAofK0qr5vM4yNklXjoJdZHmugKRRTpN/Okn3ODnjgM/Kb/4hjMrRyrsUeH/Brieq7KA==}
-    peerDependencies:
-      effect: ^3.20.0
-
-  '@effect/printer-ansi@0.48.0':
-    resolution: {integrity: sha512-CzQ5kiomjR9DZ6LPfKAaWmys6JU65c2Q/VQcTKRK4RfaDWeTAehpAVmgOIyKSPkcr9XBhjo2cJx4xyZ4E5nN7g==}
-    peerDependencies:
-      '@effect/typeclass': ^0.39.0
-      effect: ^3.20.0
-
-  '@effect/printer@0.48.0':
-    resolution: {integrity: sha512-f/+QVyqACuLkoB+HDDX2XxloslmgMDL+C6ecHBV0cB0zJzJmLCOybwOkRcCI2xJ/DWHEIpoRyvq+Bfdza0AIrA==}
-    peerDependencies:
-      '@effect/typeclass': ^0.39.0
-      effect: ^3.20.0
-
-  '@effect/rpc@0.74.0':
-    resolution: {integrity: sha512-EV/cHQqJxLtY+RTlPlVQU1KyTzml1wFne+Sh91RacGRRVh6uTm4UdhRh9TNtbYHD4rM9yD3T6zqUgKr0AH8MvQ==}
-    peerDependencies:
-      '@effect/platform': ^0.95.0
-      effect: ^3.20.0
-
-  '@effect/sql@0.50.0':
-    resolution: {integrity: sha512-sOTzsC+ICASgSmX1RITYo6ut7ZbkX+hMG6YagJEyhtptxco9MgSflpF/ix/L92haJ+YTS5Zur/Dm2bDNfVes4w==}
-    peerDependencies:
-      '@effect/experimental': ^0.59.0
-      '@effect/platform': ^0.95.0
-      effect: ^3.20.0
-
-  '@effect/typeclass@0.39.0':
-    resolution: {integrity: sha512-V8qGpm4BTMS4pW9e7aCdxC0sy/TYsdxmnpWtokkNWnggZ6kvh1Psp3AfUuuZLyNmUk4T+lYB/ItEsga/+hryig==}
-    peerDependencies:
-      effect: ^3.20.0
-
-  '@effect/workflow@0.17.0':
-    resolution: {integrity: sha512-JiayvFTTMrp36P0cVFcgu6Nb7ZJxQv+FRqs3DPORkVAcCZlWOKa3KyuYebN3qZbRsmLzS7cxuC8BAeMuqb+WaQ==}
-    peerDependencies:
-      '@effect/experimental': ^0.59.0
-      '@effect/platform': ^0.95.0
-      '@effect/rpc': ^0.74.0
-      effect: ^3.20.0
 
   '@emnapi/core@1.4.0':
     resolution: {integrity: sha512-H+N/FqT07NmLmt6OFFtDfwe8PNygprzBikrEMyQfgqSmT0vzE515Pz7R8izwB9q/zsH/MA64AKoul3sA6/CzVg==}
@@ -807,88 +699,6 @@ packages:
   '@paralleldrive/cuid2@2.2.2':
     resolution: {integrity: sha512-ZOBkgDwEdoYVlSeRbYYXs0S9MejQofiVYoTbKzy/6GQa39/q5tQU2IX46+shYnUkpEl3wc+J6wRlar7r2EK2xA==}
 
-  '@parcel/watcher-android-arm64@2.5.6':
-    resolution: {integrity: sha512-YQxSS34tPF/6ZG7r/Ih9xy+kP/WwediEUsqmtf0cuCV5TPPKw/PQHRhueUo6JdeFJaqV3pyjm0GdYjZotbRt/A==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [arm64]
-    os: [android]
-
-  '@parcel/watcher-darwin-arm64@2.5.6':
-    resolution: {integrity: sha512-Z2ZdrnwyXvvvdtRHLmM4knydIdU9adO3D4n/0cVipF3rRiwP+3/sfzpAwA/qKFL6i1ModaabkU7IbpeMBgiVEA==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@parcel/watcher-darwin-x64@2.5.6':
-    resolution: {integrity: sha512-HgvOf3W9dhithcwOWX9uDZyn1lW9R+7tPZ4sug+NGrGIo4Rk1hAXLEbcH1TQSqxts0NYXXlOWqVpvS1SFS4fRg==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@parcel/watcher-freebsd-x64@2.5.6':
-    resolution: {integrity: sha512-vJVi8yd/qzJxEKHkeemh7w3YAn6RJCtYlE4HPMoVnCpIXEzSrxErBW5SJBgKLbXU3WdIpkjBTeUNtyBVn8TRng==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [x64]
-    os: [freebsd]
-
-  '@parcel/watcher-linux-arm-glibc@2.5.6':
-    resolution: {integrity: sha512-9JiYfB6h6BgV50CCfasfLf/uvOcJskMSwcdH1PHH9rvS1IrNy8zad6IUVPVUfmXr+u+Km9IxcfMLzgdOudz9EQ==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [arm]
-    os: [linux]
-
-  '@parcel/watcher-linux-arm-musl@2.5.6':
-    resolution: {integrity: sha512-Ve3gUCG57nuUUSyjBq/MAM0CzArtuIOxsBdQ+ftz6ho8n7s1i9E1Nmk/xmP323r2YL0SONs1EuwqBp2u1k5fxg==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [arm]
-    os: [linux]
-
-  '@parcel/watcher-linux-arm64-glibc@2.5.6':
-    resolution: {integrity: sha512-f2g/DT3NhGPdBmMWYoxixqYr3v/UXcmLOYy16Bx0TM20Tchduwr4EaCbmxh1321TABqPGDpS8D/ggOTaljijOA==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [arm64]
-    os: [linux]
-
-  '@parcel/watcher-linux-arm64-musl@2.5.6':
-    resolution: {integrity: sha512-qb6naMDGlbCwdhLj6hgoVKJl2odL34z2sqkC7Z6kzir8b5W65WYDpLB6R06KabvZdgoHI/zxke4b3zR0wAbDTA==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [arm64]
-    os: [linux]
-
-  '@parcel/watcher-linux-x64-glibc@2.5.6':
-    resolution: {integrity: sha512-kbT5wvNQlx7NaGjzPFu8nVIW1rWqV780O7ZtkjuWaPUgpv2NMFpjYERVi0UYj1msZNyCzGlaCWEtzc+exjMGbQ==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [x64]
-    os: [linux]
-
-  '@parcel/watcher-linux-x64-musl@2.5.6':
-    resolution: {integrity: sha512-1JRFeC+h7RdXwldHzTsmdtYR/Ku8SylLgTU/reMuqdVD7CtLwf0VR1FqeprZ0eHQkO0vqsbvFLXUmYm/uNKJBg==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [x64]
-    os: [linux]
-
-  '@parcel/watcher-win32-arm64@2.5.6':
-    resolution: {integrity: sha512-3ukyebjc6eGlw9yRt678DxVF7rjXatWiHvTXqphZLvo7aC5NdEgFufVwjFfY51ijYEWpXbqF5jtrK275z52D4Q==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [arm64]
-    os: [win32]
-
-  '@parcel/watcher-win32-ia32@2.5.6':
-    resolution: {integrity: sha512-k35yLp1ZMwwee3Ez/pxBi5cf4AoBKYXj00CZ80jUz5h8prpiaQsiRPKQMxoLstNuqe2vR4RNPEAEcjEFzhEz/g==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [ia32]
-    os: [win32]
-
-  '@parcel/watcher-win32-x64@2.5.6':
-    resolution: {integrity: sha512-hbQlYcCq5dlAX9Qx+kFb0FHue6vbjlf0FrNzSKdYK2APUf7tGfGxQCk2ihEREmbR6ZMc0MVAD5RIX/41gpUzTw==}
-    engines: {node: '>= 10.0.0'}
-    cpu: [x64]
-    os: [win32]
-
-  '@parcel/watcher@2.5.6':
-    resolution: {integrity: sha512-tmmZ3lQxAe/k/+rNnXQRawJ4NjxO2hqiOLTHvWchtGZULp4RyFeh6aU4XdOYBFe2KE1oShQTv4AblOs2iOrNnQ==}
-    engines: {node: '>= 10.0.0'}
-
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
 
@@ -1133,6 +943,9 @@ packages:
 
   '@types/normalize-package-data@2.4.4':
     resolution: {integrity: sha512-37i+OaWTh9qeK4LSHPsyRC7NahnGotNuZvjLSgcPzblpHB3rrCJxAOgI5gCdKm7coonsaX1Of0ILiTcnZjbfxA==}
+
+  '@types/pg-cursor@2.7.2':
+    resolution: {integrity: sha512-m3xT8bVFCvx98LuzbvXyuCdT/Hjdd/v8ml4jL4K1QF70Y8clOfCFdgoaEB1FWdcSwcpoFYZTJQaMD9/GQ27efQ==}
 
   '@types/pg@8.18.0':
     resolution: {integrity: sha512-gT+oueVQkqnj6ajGJXblFR4iavIXWsGAFCk3dP4Kki5+a9R4NMt0JARdk6s8cUKcfUoqP5dAtDSLU8xYUTFV+Q==}
@@ -1970,9 +1783,6 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@3.21.2:
-    resolution: {integrity: sha512-rXd2FGDM8KdjSIrc+mqEELo7ScW7xTVxEf1iInmPSpIde9/nyGuFM710cjTo7/EreGXiUX2MOonPpprbz2XHCg==}
-
   emoji-regex@10.4.0:
     resolution: {integrity: sha512-EC+0oUMY1Rqm4O6LLrgjtYDvcVYTy7chDnM4Q7030tP4Kwj3u/pR6gP9ygnp2CJMK5Gq+9Q2oqmrFJAz01DXjw==}
 
@@ -2220,10 +2030,6 @@ packages:
     resolution: {integrity: sha512-hIS4idWWai69NezIdRt2xFVofaF4j+6INOpJlVOLDO8zXGpUVEVzIYk12UUi2JzjEzWL3IOAxcTubgz9Po0yXw==}
     engines: {node: '>= 18'}
 
-  fast-check@3.23.2:
-    resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
-    engines: {node: '>=8.0.0'}
-
   fast-decode-uri-component@1.0.1:
     resolution: {integrity: sha512-WKgKWg5eUxvRZGwW8FvfbaH7AXSh2cL+3j5fMGzUMCxWBJ3dV3a7Wz8y2f/uQ0e3B6WmodD3oS54jTQ9HVTIIg==}
 
@@ -2252,20 +2058,11 @@ packages:
   fast-safe-stringify@2.1.1:
     resolution: {integrity: sha512-W+KJc2dmILlPplD/H4K9l9LcAHAfPtP6BY84uVLXQ6Evcz9Lcg33Y2z1IVblT6xdY54PXYVHEv+0Wpq8Io6zkA==}
 
-  fast-string-truncated-width@3.0.3:
-    resolution: {integrity: sha512-0jjjIEL6+0jag3l2XWWizO64/aZVtpiGE3t0Zgqxv0DPuxiMjvB3M24fCyhZUO4KomJQPj3LTSUnDP3GpdwC0g==}
-
-  fast-string-width@3.0.2:
-    resolution: {integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==}
-
   fast-uri@2.3.0:
     resolution: {integrity: sha512-eel5UKGn369gGEWOqBShmFJWfq/xSJvsgDzgLYC845GneayWvXBf0lJCBn5qTABfewy1ZDPoaR5OZCP+kssfuw==}
 
   fast-uri@3.0.6:
     resolution: {integrity: sha512-Atfo14OibSv5wAp4VWNsFYE1AchQRTv9cBGWET4pZWHzYshFSS9NQI6I57rdKn9croWVMbYFbLhJ+yJvmZIIHw==}
-
-  fast-wrap-ansi@0.2.0:
-    resolution: {integrity: sha512-rLV8JHxTyhVmFYhBJuMujcrHqOT2cnO5Zxj37qROj23CP39GXubJRBUFF0z8KFK77Uc0SukZUf7JZhsVEQ6n8w==}
 
   fastify-plugin@5.0.1:
     resolution: {integrity: sha512-HCxs+YnRaWzCl+cWRYFnHmeRFyR5GVnJTAaCJQiYzQSDwK9MgJdyAsuL3nh0EWRCYMgQ5MeziymvmAhUHYHDUQ==}
@@ -2320,9 +2117,6 @@ packages:
   finalhandler@2.1.0:
     resolution: {integrity: sha512-/t88Ty3d5JWQbWYgaOGCCYfXRwV1+be02WqYYlL6h0lEiUAMPM8o8qKGO01YIkOHzka2up08wvgYD0mDiI+q3Q==}
     engines: {node: '>= 0.8'}
-
-  find-my-way-ts@0.1.6:
-    resolution: {integrity: sha512-a85L9ZoXtNAey3Y6Z+eBWW658kO/MwR7zIafkIUPUMf3isZG0NCs2pjW2wtjxAKuJPxMAsHUIP4ZPGv0o5gyTA==}
 
   find-my-way@9.1.0:
     resolution: {integrity: sha512-Y5jIsuYR4BwWDYYQ2A/RWWE6gD8a0FMgtU+HOq1WKku+Cwdz8M1v8wcAmRXXM1/iqtoqg06v+LjAxMYbCjViMw==}
@@ -2449,11 +2243,13 @@ packages:
   git-raw-commits@2.0.11:
     resolution: {integrity: sha512-VnctFhw+xfj8Va1xtfEqCUD2XDrbAPSJx+hSrE5K7fGdjZruW7XV+QOrN7LF/RJyvspRiD2I0asWsxFp0ya26A==}
     engines: {node: '>=10'}
+    deprecated: This package is no longer maintained. For the JavaScript API, please use @conventional-changelog/git-client instead.
     hasBin: true
 
   git-raw-commits@4.0.0:
     resolution: {integrity: sha512-ICsMM1Wk8xSGMowkOmPrzo2Fgmfo4bMHLNX6ytHjajRJUqvHOw/TFapQ+QG75c3X/tTDDhOSRPGC52dDbNM8FQ==}
     engines: {node: '>=16'}
+    deprecated: This package is no longer maintained. For the JavaScript API, please use @conventional-changelog/git-client instead.
     hasBin: true
 
   git-remote-origin-url@2.0.0:
@@ -2463,6 +2259,7 @@ packages:
   git-semver-tags@4.1.1:
     resolution: {integrity: sha512-OWyMt5zBe7xFs8vglMmhM9lRQzCWL3WjHtxNNfJTMngGym7pC1kh8sP6jevfydJ6LP3ZvGxfb6ABYgPUM0mtsA==}
     engines: {node: '>=10'}
+    deprecated: This package is no longer maintained. For the JavaScript API, please use @conventional-changelog/git-client instead.
     hasBin: true
 
   gitconfiglocal@1.0.0:
@@ -2478,6 +2275,7 @@ packages:
 
   glob@10.4.5:
     resolution: {integrity: sha512-7Bv8RF0k6xjo7d4A/PxYLbUCfb6c+Vpd2/mB2yRDlew7Jb5hEXiCD9ibfO7wpk8i4sevK6DFny9h7EYbM3/sHg==}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@13.0.0:
@@ -2486,7 +2284,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   global-directory@4.0.1:
     resolution: {integrity: sha512-wHTUcDUoZ1H5/0iVqEudYW4/kAlN5cZ3j/bXn0Dpbizl9iaUVeWSHqiOjsgk6OW2bkLclbBjzewBz6weQ1zA2Q==}
@@ -2627,10 +2425,6 @@ packages:
 
   ini@4.1.1:
     resolution: {integrity: sha512-QQnnxNyfvmHFIsj7gkPcYymR8Jdw/o7mp5ZFihxn6h8Ci6fh3Dx4E1gPjpQEpIuPo9XVNY/ZUwh4BPMjGyL01g==}
-    engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
-
-  ini@4.1.3:
-    resolution: {integrity: sha512-X7rqawQBvfdjS10YU1y1YVreA3SsLrW9dX2CewP2EbBJM4ypVNLDkO5y04gejPwKIY9lR+7r9gn3rFPt/kmWFg==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
 
   internal-slot@1.1.0:
@@ -2875,9 +2669,6 @@ packages:
   kind-of@6.0.3:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
-
-  kubernetes-types@1.30.0:
-    resolution: {integrity: sha512-Dew1okvhM/SQcIa2rcgujNndZwU8VnSapDgdxlYoB84ZlpAD43U6KLAFqYo17ykSFGHNPrg0qry0bP+GJd9v7Q==}
 
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
@@ -3172,9 +2963,6 @@ packages:
   msgpackr@1.11.5:
     resolution: {integrity: sha512-UjkUHN0yqp9RWKy0Lplhh+wlpdt9oQBYgULZOiFhV3VclSF1JnSQWZ5r9gORQlNYaUKQoR8itv7g7z1xDDuACA==}
 
-  multipasta@0.2.7:
-    resolution: {integrity: sha512-KPA58d68KgGil15oDqXjkUBEBYc00XvbPj5/X+dyzeo/lWm9Nc25pQRlf1D+gv4OpK7NM0J1odrbu9JNNGvynA==}
-
   music-metadata@7.14.0:
     resolution: {integrity: sha512-xrm3w7SV0Wk+OythZcSbaI8mcr/KHd0knJieu8bVpaPfMv/Agz5EooCAPz3OR5hbYMiUG6dgAPKZKnMzV+3amA==}
     engines: {node: '>=10'}
@@ -3206,9 +2994,6 @@ packages:
 
   node-abort-controller@3.1.1:
     resolution: {integrity: sha512-AGK2yQKIjRuqnc6VkX2Xj5d+QW8xZ87pa1UK6yA6ouUyuxfHuMP6umE5QK7UmTeOAymo+Zx1Fxiuw9rVx8taHQ==}
-
-  node-addon-api@7.1.1:
-    resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
 
   node-fetch@2.7.0:
     resolution: {integrity: sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==}
@@ -3397,6 +3182,11 @@ packages:
   pg-connection-string@2.12.0:
     resolution: {integrity: sha512-U7qg+bpswf3Cs5xLzRqbXbQl85ng0mfSV/J0nnA31MCLgvEaAo7CIhmeyrmJpOr7o+zm0rXK+hNnT5l9RHkCkQ==}
 
+  pg-cursor@2.20.0:
+    resolution: {integrity: sha512-HP/EbUafheaUOs7DxlG6tda/rhmsX2hCTJJJ+gCnhljGyNEs6pBHddbNuomlW3DqEhP3zYD+GqBWkYnJPIZ4tA==}
+    peerDependencies:
+      pg: ^8
+
   pg-int8@1.0.1:
     resolution: {integrity: sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==}
     engines: {node: '>=4.0.0'}
@@ -3560,12 +3350,13 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
 
-  pure-rand@6.1.0:
-    resolution: {integrity: sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA==}
-
   q@1.5.1:
     resolution: {integrity: sha512-kV/CThkXo6xyFEZUugw/+pIOywXcDbFYgSct5cT3gqlbkBE1SJdwy6UQoZvodiWF/ckQLZyDE/Bu1M6gVu5lVw==}
     engines: {node: '>=0.6.0', teleport: '>=0.2.0'}
+    deprecated: |-
+      You or someone you depend on is using Q, the JavaScript Promise library that gave JavaScript developers strong feelings about promises. They can almost certainly migrate to the native JavaScript promise now. Thank you literally everyone for joining me in this bet against the odds. Be excellent to each other.
+
+      (For a CapTP with native promises, see @endo/eventual-send and @endo/captp)
 
   qs@6.14.1:
     resolution: {integrity: sha512-4EK3+xJl8Ts67nLYNwqw/dsFVnCf+qR7RgXSK9jEEm9unao3njwMDdmsdvoKBKHzxd7tCYz5e5M+SnMjdtXGQQ==}
@@ -3826,9 +3617,6 @@ packages:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
 
-  sisteransi@1.0.5:
-    resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
-
   socket.io-adapter@2.5.4:
     resolution: {integrity: sha512-wDNHGXGewWAjQPt3pyeYBtpWSq9cLE5UW1ZUPL/2eGK9jtse/FpXib7epSTsz0Q0m+6sg6Y4KtcFTlah1bdOVg==}
 
@@ -3999,6 +3787,7 @@ packages:
   tar@6.2.1:
     resolution: {integrity: sha512-DZ4yORTwrbTj/7MZYq2w+/ZFdI6OZ/f9SFHR+71gIVUZhOQPHzVCLpvRnPgyaMpfWxxk/4ONva3GQSyNIKRv6A==}
     engines: {node: '>=10'}
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   text-extensions@1.9.0:
     resolution: {integrity: sha512-wiBrwC1EhBelW12Zy26JeOUkQ5mRu+5o8rpsJk5+2t+Y5vE7e842qtZDQ2g1NpX/29HdyFeJ4nSIhI47ENSxlQ==}
@@ -4072,9 +3861,6 @@ packages:
   token-types@4.2.1:
     resolution: {integrity: sha512-6udB24Q737UD/SDsKAHI9FCRP7Bqc9D/MQUV02ORQg5iskjtLJlZJNdN4kKtcdtwCeWIwIHDGaUsTsCCAa8sFQ==}
     engines: {node: '>=10'}
-
-  toml@3.0.0:
-    resolution: {integrity: sha512-y/mWCZinnvxjTKYhJ+pYxwD0mRLVvOtdS2Awbgxln6iEnt4rk0yBxeSBHkGJcPucRiG0e55mwWp+g/05rsrd6w==}
 
   tr46@0.0.3:
     resolution: {integrity: sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==}
@@ -4204,10 +3990,6 @@ packages:
     resolution: {integrity: sha512-uROZWze0R0itiAKVPsYhFov9LxrPMHLMEQFszeI2gCN6bnIIZ8twzBCJcN2LJrBBLfrP0t1FW0g+JmKVl8Vk1g==}
     engines: {node: '>=18.17'}
 
-  undici@7.25.0:
-    resolution: {integrity: sha512-xXnp4kTyor2Zq+J1FfPI6Eq3ew5h6Vl0F/8d9XU5zZQf1tX9s2Su1/3PiMmUANFULpmksxkClamIZcaUqryHsQ==}
-    engines: {node: '>=20.18.1'}
-
   unpipe@1.0.0:
     resolution: {integrity: sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==}
     engines: {node: '>= 0.8'}
@@ -4239,6 +4021,7 @@ packages:
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   validate-npm-package-license@3.0.4:
@@ -4416,18 +4199,6 @@ packages:
       utf-8-validate:
         optional: true
 
-  ws@8.20.0:
-    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   xml-name-validator@4.0.0:
     resolution: {integrity: sha512-ICP2e+jsHvAj2E2lIHxa5tjXRlKDJo4IdvPvCXbXQGdzSfmSpNVyIKMvoZHjDY9DP0zV17iI85o90vRFXNccRw==}
     engines: {node: '>=12'}
@@ -4483,23 +4254,6 @@ snapshots:
 
   '@aashutoshrathi/word-wrap@1.2.6': {}
 
-  '@ai-hero/sandcastle@0.5.7(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/typeclass@0.39.0(effect@3.21.2))':
-    dependencies:
-      '@clack/prompts': 1.3.0
-      '@effect/cli': 0.74.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/printer-ansi@0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@effect/platform': 0.95.0(effect@3.21.2)
-      '@effect/platform-node': 0.105.0(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@effect/printer': 0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2)
-      '@effect/printer-ansi': 0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2)
-      effect: 3.21.2
-    transitivePeerDependencies:
-      - '@effect/cluster'
-      - '@effect/rpc'
-      - '@effect/sql'
-      - '@effect/typeclass'
-      - bufferutil
-      - utf-8-validate
-
   '@apidevtools/json-schema-ref-parser@15.2.2(@types/json-schema@7.0.15)':
     dependencies:
       '@types/json-schema': 7.0.15
@@ -4518,18 +4272,6 @@ snapshots:
       chalk: 2.4.2
       js-tokens: 4.0.0
       picocolors: 1.0.0
-
-  '@clack/core@1.3.0':
-    dependencies:
-      fast-wrap-ansi: 0.2.0
-      sisteransi: 1.0.5
-
-  '@clack/prompts@1.3.0':
-    dependencies:
-      '@clack/core': 1.3.0
-      fast-string-width: 3.0.2
-      fast-wrap-ansi: 0.2.0
-      sisteransi: 1.0.5
 
   '@commitlint/cli@20.4.1(@types/node@25.2.0)(typescript@5.9.3)':
     dependencies:
@@ -4648,104 +4390,6 @@ snapshots:
     transitivePeerDependencies:
       - encoding
       - supports-color
-
-  '@effect/cli@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/printer-ansi@0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
-    dependencies:
-      '@effect/platform': 0.95.0(effect@3.21.2)
-      '@effect/printer': 0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2)
-      '@effect/printer-ansi': 0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2)
-      effect: 3.21.2
-      ini: 4.1.3
-      toml: 3.0.0
-      yaml: 2.8.3
-
-  '@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
-    dependencies:
-      '@effect/platform': 0.95.0(effect@3.21.2)
-      '@effect/rpc': 0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)
-      '@effect/sql': 0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)
-      '@effect/workflow': 0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      effect: 3.21.2
-      kubernetes-types: 1.30.0
-
-  '@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2)':
-    dependencies:
-      '@effect/platform': 0.95.0(effect@3.21.2)
-      effect: 3.21.2
-      uuid: 11.1.0
-    optionalDependencies:
-      ioredis: 5.9.2
-
-  '@effect/platform-node-shared@0.58.0(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
-    dependencies:
-      '@effect/cluster': 0.57.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@effect/platform': 0.95.0(effect@3.21.2)
-      '@effect/rpc': 0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)
-      '@effect/sql': 0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)
-      '@parcel/watcher': 2.5.6
-      effect: 3.21.2
-      multipasta: 0.2.7
-      ws: 8.20.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@effect/platform-node@0.105.0(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
-    dependencies:
-      '@effect/cluster': 0.57.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@effect/platform': 0.95.0(effect@3.21.2)
-      '@effect/platform-node-shared': 0.58.0(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@effect/rpc': 0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)
-      '@effect/sql': 0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)
-      effect: 3.21.2
-      mime: 3.0.0
-      undici: 7.25.0
-      ws: 8.20.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@effect/platform@0.95.0(effect@3.21.2)':
-    dependencies:
-      effect: 3.21.2
-      find-my-way-ts: 0.1.6
-      msgpackr: 1.11.5
-      multipasta: 0.2.7
-
-  '@effect/printer-ansi@0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2)':
-    dependencies:
-      '@effect/printer': 0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2)
-      '@effect/typeclass': 0.39.0(effect@3.21.2)
-      effect: 3.21.2
-
-  '@effect/printer@0.48.0(@effect/typeclass@0.39.0(effect@3.21.2))(effect@3.21.2)':
-    dependencies:
-      '@effect/typeclass': 0.39.0(effect@3.21.2)
-      effect: 3.21.2
-
-  '@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)':
-    dependencies:
-      '@effect/platform': 0.95.0(effect@3.21.2)
-      effect: 3.21.2
-      msgpackr: 1.11.5
-
-  '@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)':
-    dependencies:
-      '@effect/experimental': 0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2)
-      '@effect/platform': 0.95.0(effect@3.21.2)
-      effect: 3.21.2
-      uuid: 11.1.0
-
-  '@effect/typeclass@0.39.0(effect@3.21.2)':
-    dependencies:
-      effect: 3.21.2
-
-  '@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2))(@effect/platform@0.95.0(effect@3.21.2))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
-    dependencies:
-      '@effect/experimental': 0.59.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)(ioredis@5.9.2)
-      '@effect/platform': 0.95.0(effect@3.21.2)
-      '@effect/rpc': 0.74.0(@effect/platform@0.95.0(effect@3.21.2))(effect@3.21.2)
-      effect: 3.21.2
 
   '@emnapi/core@1.4.0':
     dependencies:
@@ -5118,66 +4762,6 @@ snapshots:
     dependencies:
       '@noble/hashes': 1.8.0
 
-  '@parcel/watcher-android-arm64@2.5.6':
-    optional: true
-
-  '@parcel/watcher-darwin-arm64@2.5.6':
-    optional: true
-
-  '@parcel/watcher-darwin-x64@2.5.6':
-    optional: true
-
-  '@parcel/watcher-freebsd-x64@2.5.6':
-    optional: true
-
-  '@parcel/watcher-linux-arm-glibc@2.5.6':
-    optional: true
-
-  '@parcel/watcher-linux-arm-musl@2.5.6':
-    optional: true
-
-  '@parcel/watcher-linux-arm64-glibc@2.5.6':
-    optional: true
-
-  '@parcel/watcher-linux-arm64-musl@2.5.6':
-    optional: true
-
-  '@parcel/watcher-linux-x64-glibc@2.5.6':
-    optional: true
-
-  '@parcel/watcher-linux-x64-musl@2.5.6':
-    optional: true
-
-  '@parcel/watcher-win32-arm64@2.5.6':
-    optional: true
-
-  '@parcel/watcher-win32-ia32@2.5.6':
-    optional: true
-
-  '@parcel/watcher-win32-x64@2.5.6':
-    optional: true
-
-  '@parcel/watcher@2.5.6':
-    dependencies:
-      detect-libc: 2.0.4
-      is-glob: 4.0.3
-      node-addon-api: 7.1.1
-      picomatch: 4.0.3
-    optionalDependencies:
-      '@parcel/watcher-android-arm64': 2.5.6
-      '@parcel/watcher-darwin-arm64': 2.5.6
-      '@parcel/watcher-darwin-x64': 2.5.6
-      '@parcel/watcher-freebsd-x64': 2.5.6
-      '@parcel/watcher-linux-arm-glibc': 2.5.6
-      '@parcel/watcher-linux-arm-musl': 2.5.6
-      '@parcel/watcher-linux-arm64-glibc': 2.5.6
-      '@parcel/watcher-linux-arm64-musl': 2.5.6
-      '@parcel/watcher-linux-x64-glibc': 2.5.6
-      '@parcel/watcher-linux-x64-musl': 2.5.6
-      '@parcel/watcher-win32-arm64': 2.5.6
-      '@parcel/watcher-win32-ia32': 2.5.6
-      '@parcel/watcher-win32-x64': 2.5.6
-
   '@pinojs/redact@0.4.0': {}
 
   '@pkgjs/parseargs@0.11.0':
@@ -5382,6 +4966,11 @@ snapshots:
       undici-types: 7.16.0
 
   '@types/normalize-package-data@2.4.4': {}
+
+  '@types/pg-cursor@2.7.2':
+    dependencies:
+      '@types/node': 25.2.0
+      '@types/pg': 8.18.0
 
   '@types/pg@8.18.0':
     dependencies:
@@ -6274,11 +5863,6 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@3.21.2:
-    dependencies:
-      '@standard-schema/spec': 1.1.0
-      fast-check: 3.23.2
-
   emoji-regex@10.4.0: {}
 
   emoji-regex@8.0.0: {}
@@ -6652,10 +6236,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fast-check@3.23.2:
-    dependencies:
-      pure-rand: 6.1.0
-
   fast-decode-uri-component@1.0.1: {}
 
   fast-deep-equal@3.1.3: {}
@@ -6690,19 +6270,9 @@ snapshots:
 
   fast-safe-stringify@2.1.1: {}
 
-  fast-string-truncated-width@3.0.3: {}
-
-  fast-string-width@3.0.2:
-    dependencies:
-      fast-string-truncated-width: 3.0.3
-
   fast-uri@2.3.0: {}
 
   fast-uri@3.0.6: {}
-
-  fast-wrap-ansi@0.2.0:
-    dependencies:
-      fast-string-width: 3.0.2
 
   fastify-plugin@5.0.1: {}
 
@@ -6775,8 +6345,6 @@ snapshots:
       statuses: 2.0.1
     transitivePeerDependencies:
       - supports-color
-
-  find-my-way-ts@0.1.6: {}
 
   find-my-way@9.1.0:
     dependencies:
@@ -7100,8 +6668,6 @@ snapshots:
 
   ini@4.1.1: {}
 
-  ini@4.1.3: {}
-
   internal-slot@1.1.0:
     dependencies:
       es-errors: 1.3.0
@@ -7355,8 +6921,6 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  kubernetes-types@1.30.0: {}
-
   levn@0.4.1:
     dependencies:
       prelude-ls: 1.2.1
@@ -7601,8 +7165,6 @@ snapshots:
     optionalDependencies:
       msgpackr-extract: 3.0.2
 
-  multipasta@0.2.7: {}
-
   music-metadata@7.14.0:
     dependencies:
       '@tokenizer/token': 0.3.0
@@ -7634,8 +7196,6 @@ snapshots:
   neo-async@2.6.2: {}
 
   node-abort-controller@3.1.1: {}
-
-  node-addon-api@7.1.1: {}
 
   node-fetch@2.7.0:
     dependencies:
@@ -7824,6 +7384,10 @@ snapshots:
 
   pg-connection-string@2.12.0: {}
 
+  pg-cursor@2.20.0(pg@8.20.0):
+    dependencies:
+      pg: 8.20.0
+
   pg-int8@1.0.1: {}
 
   pg-pool@3.13.0(pg@8.20.0):
@@ -7963,8 +7527,6 @@ snapshots:
   pseudomap@1.0.2: {}
 
   punycode@2.3.1: {}
-
-  pure-rand@6.1.0: {}
 
   q@1.5.1: {}
 
@@ -8290,8 +7852,6 @@ snapshots:
 
   signal-exit@4.1.0: {}
 
-  sisteransi@1.0.5: {}
-
   socket.io-adapter@2.5.4:
     dependencies:
       debug: 4.3.7
@@ -8581,8 +8141,6 @@ snapshots:
       '@tokenizer/token': 0.3.0
       ieee754: 1.2.1
 
-  toml@3.0.0: {}
-
   tr46@0.0.3: {}
 
   tr46@5.1.1:
@@ -8723,8 +8281,6 @@ snapshots:
   undici-types@7.16.0: {}
 
   undici@6.21.2: {}
-
-  undici@7.25.0: {}
 
   unpipe@1.0.0: {}
 
@@ -8939,8 +8495,6 @@ snapshots:
 
   ws@8.17.1: {}
 
-  ws@8.20.0: {}
-
   xml-name-validator@4.0.0: {}
 
   xtend@4.0.2: {}
@@ -8951,7 +8505,8 @@ snapshots:
 
   yallist@4.0.0: {}
 
-  yaml@2.8.3: {}
+  yaml@2.8.3:
+    optional: true
 
   yargs-parser@20.2.9: {}
 

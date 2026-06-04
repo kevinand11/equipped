@@ -10,7 +10,7 @@ import type { FilterGroup } from '../../filter'
 import type { DiscoveredSchema } from '../../migrations/introspection-types'
 import type { AddIndexChange, DropIndexChange } from '../../migrations/types'
 import { OrmAdapter, type AggregateSpec } from '../../orm-adapter'
-import type { QueryOptions } from '../../query-options'
+import type { IterationQueryOptions, QueryOptions } from '../../query-options'
 import type { AnySchema } from '../../schema'
 import type { AnyUpdateOp } from '../../updates'
 
@@ -213,7 +213,7 @@ export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter
 		}
 	}
 
-	async *iterateMany(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions) {
+	async *iterateMany(schema: AnySchema, config: unknown, filter: FilterGroup, options?: IterationQueryOptions) {
 		const schemaCfg = config as MongoDbRepoConfig
 		let cursor: any
 		try {
@@ -228,6 +228,7 @@ export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter
 			if (sort) cursor = cursor.sort(sort)
 			if (limit) cursor = cursor.limit(limit)
 			if (skip) cursor = cursor.skip(skip)
+			if (options?.batchSize !== undefined) cursor = cursor.batchSize(options.batchSize)
 
 			for await (const row of cursor) {
 				yield row as Record<string, unknown>
@@ -574,7 +575,7 @@ if (import.meta.vitest) {
 			expect(result).toEqual(mockResults)
 		})
 
-		test('iterateMany yields cursor rows with filter ordering offset limit and closes on early return', async () => {
+		test('iterateMany forwards batchSize and closes cursor on early return', async () => {
 			const { Schema } = await import('../../schema')
 			const { v } = await import('valleyed')
 			const { FilterGroup } = await import('../../filter')
@@ -586,6 +587,7 @@ if (import.meta.vitest) {
 			let capturedSort: unknown
 			let capturedLimit: unknown
 			let capturedSkip: unknown
+			let capturedBatchSize: unknown
 			let closeCalls = 0
 			const cursor = {
 				sort(sort: unknown) {
@@ -598,6 +600,10 @@ if (import.meta.vitest) {
 				},
 				skip(skip: unknown) {
 					capturedSkip = skip
+					return this
+				},
+				batchSize(batchSize: unknown) {
+					capturedBatchSize = batchSize
 					return this
 				},
 				async close() {
@@ -623,6 +629,7 @@ if (import.meta.vitest) {
 				orderBy: [new OrderBy('age', 'desc')],
 				offset: 1,
 				limit: 2,
+				batchSize: 25,
 			})) {
 				rows.push(row)
 				break
@@ -633,7 +640,39 @@ if (import.meta.vitest) {
 			expect(capturedSort).toEqual({ age: -1 })
 			expect(capturedLimit).toBe(2)
 			expect(capturedSkip).toBe(1)
+			expect(capturedBatchSize).toBe(25)
 			expect(rows).toEqual([{ _id: 'u4', age: 50 }])
+			expect(closeCalls).toBe(1)
+		})
+
+		test('iterateMany closes cursor on normal completion', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { FilterGroup } = await import('../../filter')
+			const schema = Schema.from('mongo_iter_complete').pk('_id', v.string(), () => 'x').field('age', v.number()).build()
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017' })
+			let closeCalls = 0
+			const cursor = {
+				async close() {
+					closeCalls += 1
+				},
+				async *[Symbol.asyncIterator]() {
+					yield { _id: 'u1', age: 30 }
+					yield { _id: 'u2', age: 40 }
+				},
+			}
+			;(adapter.client as any).db = () => ({
+				collection: () => ({
+					find: () => cursor,
+				}),
+			})
+
+			const rows: Record<string, unknown>[] = []
+			for await (const row of adapter.use(schema, { db: 'testdb', col: 'people' }).iterateMany(FilterGroup.create())) {
+				rows.push(row)
+			}
+
+			expect(rows).toEqual([{ _id: 'u1', age: 30 }, { _id: 'u2', age: 40 }])
 			expect(closeCalls).toBe(1)
 		})
 
