@@ -11,6 +11,7 @@ import type { SchemaCreateInput, SchemaUpdateInput } from '../schema-validations
 import { applyComputedSelection, planSelection } from './internals/computeds'
 import {
 	runAggregate,
+	runAllCount,
 	runAllCreate,
 	runAllDelete,
 	runAllRead,
@@ -50,7 +51,8 @@ export type OneBuilderSurface<S extends AnySchema, A = unknown, Sel extends stri
 export type AllBuilderSurface<S extends AnySchema, A = unknown, Sel extends string = never, P extends readonly AnyPreloadDef[] = []> =
 	AllBuilder<S, A, Sel, P> &
 	(HasMethod<A, 'updateMany'> extends true ? {} : { update: never }) &
-	(HasMethod<A, 'deleteMany'> extends true ? {} : { delete: never })
+	(HasMethod<A, 'deleteMany'> extends true ? {} : { delete: never }) &
+	(HasMethod<A, 'count'> extends true ? {} : { count: never })
 
 type HasNonEmptyAggregateOps<A> = A extends { aggregateOps: readonly [any, ...any[]] } ? true : false
 
@@ -366,6 +368,10 @@ export class AllBuilder<S extends AnySchema, A = unknown, Sel extends string = n
 			limitSource: this.#limitSource,
 			offsetSource: this.#offsetSource,
 		})
+	}
+
+	count() {
+		return runAllCount(this._context, { where: this._where })
 	}
 }
 

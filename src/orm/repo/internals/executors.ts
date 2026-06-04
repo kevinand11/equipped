@@ -48,6 +48,14 @@ export async function runAllRead<S extends AnySchema, Sel extends string, P exte
 	return context.shapeRows(state.select, state.preloads, rows)
 }
 
+export async function runAllCount<S extends AnySchema>(
+	context: SchemaContext<S>,
+	state: { where: FilterGroup },
+): Promise<number> {
+	assertNormalisedFilter(context.schema, state.where)
+	return context.use.count(state.where)
+}
+
 export async function runOneCreate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
 	context: SchemaContext<S>,
 	state: { select: readonly Sel[] | undefined; preloads: P },

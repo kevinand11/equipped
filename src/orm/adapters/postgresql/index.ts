@@ -5,6 +5,7 @@ import { v } from 'valleyed'
 
 import {
 	buildAggregateQuery,
+	buildCountQuery,
 	buildCreateQuery,
 	buildDeleteQuery,
 	buildPkUpdateQuery,
@@ -244,6 +245,18 @@ export class PostgresAdapter extends configurable(postgresqlConnectionPipe, OrmA
 			return result.rows
 		} catch (error) {
 			throw new EquippedError('PostgreSQL findMany failed', { adapter: 'postgresql', operation: 'findMany', table: c.table }, error)
+		}
+	}
+
+	async count(schema: AnySchema, config: unknown, filter: FilterGroup) {
+		const c = config as PostgresqlRepoConfig
+		try {
+			const tableName = this.#resolveTableName(c)
+			const { sql, params } = buildCountQuery(filter, tableName, schema.pkField.name)
+			const result = await this.#getClient().query(sql, params)
+			return Number(result.rows[0]?.count ?? 0)
+		} catch (error) {
+			throw new EquippedError('PostgreSQL count failed', { adapter: 'postgresql', operation: 'count', table: c.table }, error)
 		}
 	}
 
@@ -690,6 +703,7 @@ if (import.meta.vitest) {
 
 			expect(use.findMany).toBeTypeOf('function')
 			expect(use.findOne).toBeTypeOf('function')
+			expect(use.count).toBeTypeOf('function')
 			expect(use.createOne).toBeTypeOf('function')
 			expect(use.createMany).toBeTypeOf('function')
 			expect(use.updateMany).toBeTypeOf('function')
@@ -737,6 +751,7 @@ if (import.meta.vitest) {
 			expectTypeOf(_one.upsert).toBeFunction()
 			expectTypeOf(_all.create).toBeFunction()
 			expectTypeOf(_all.find).toBeFunction()
+			expectTypeOf(_all.count).toBeFunction()
 			expectTypeOf(_all.update).toBeFunction()
 			expectTypeOf(_all.delete).toBeFunction()
 			expectTypeOf(_ref.raw).toBeFunction()
@@ -773,6 +788,29 @@ if (import.meta.vitest) {
 			const _ref = repo.on(_TestSchema)
 
 			expectTypeOf(_ref.raw<{ id: string }[]>).returns.toEqualTypeOf<Promise<{ id: string }[]>>()
+		})
+
+		test('count forwards COUNT query to pool.query and returns a number', async () => {
+			const { Schema } = await import('../../schema')
+			const { FilterGroup } = await import('../../filter')
+
+			const schema = Schema.from('pg_count')
+				.pk('id', v.string(), () => 'x')
+				.field('name', v.string())
+				.build()
+			const adapter = PostgresAdapter.create(testConnectionConfig)
+			let capturedSql: unknown
+			let capturedParams: unknown
+			;(adapter.pool as any).query = async (sql: unknown, params: unknown) => {
+				capturedSql = sql
+				capturedParams = params
+				return { rows: [{ count: '4' }] }
+			}
+
+			const result = await adapter.count(schema, { table: 'users' }, FilterGroup.create().eq('name', 'Alice'))
+			expect(capturedSql).toBe('SELECT COUNT(*) as count FROM "users" WHERE "name" = $1')
+			expect(capturedParams).toEqual(['Alice'])
+			expect(result).toBe(4)
 		})
 
 		test('raw forwards (command, params) to pool.query at runtime', async () => {

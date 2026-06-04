@@ -336,6 +336,11 @@ export class InMemoryAdapter extends configurable(inMemoryConnectionPipe, OrmAda
 		return applyOptions(rows, options)
 	}
 
+	async count(schema: AnySchema, config: unknown, group: FilterGroup) {
+		const store = this.#resolveStore(schema, config)
+		return [...store.values()].filter((doc) => matchesFilter(doc, group)).length
+	}
+
 	async updateMany(schema: AnySchema, config: unknown, group: FilterGroup, data: Record<string, unknown>) {
 		const store = this.#resolveStore(schema, config)
 		const ids = [...store.entries()].filter(([, doc]) => matchesFilter(doc, group)).map(([id]) => id)
@@ -630,6 +635,22 @@ if (import.meta.vitest) {
 			const options = { orderBy: [new OrderBy('age', 'desc')], offset: 1, limit: 1, select: ['id', 'name'] }
 			const rows = await use.findMany(builtGroup, options)
 			expect(rows).toEqual([{ id: 'u1', name: 'Alice' }])
+		})
+
+		test('count returns the number of matching rows without query options', async () => {
+			const schema = Schema.from('count_users')
+				.pk('id', v.string(), () => 'u')
+				.field('name', v.string())
+				.build()
+			const adapter = InMemoryAdapter.create({})
+			const use = adapter.use(schema, { table: 'count_users' })
+			await use.createMany([
+				{ id: 'u1', name: 'Alice' },
+				{ id: 'u2', name: 'Bob' },
+				{ id: 'u3', name: 'Alice' },
+			])
+
+			await expect(use.count(FilterGroup.create().eq('name', 'Alice'))).resolves.toBe(2)
 		})
 
 		test('supports update operators and rollback on failed session', async () => {

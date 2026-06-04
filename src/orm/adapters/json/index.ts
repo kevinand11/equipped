@@ -177,6 +177,10 @@ export class JsonAdapter extends configurable(jsonConnectionPipe, OrmAdapter) {
 		return this.#inMemory.findMany(schema, config, group, options)
 	}
 
+	async count(schema: AnySchema, config: unknown, group: FilterGroup) {
+		return this.#inMemory.count(schema, config, group)
+	}
+
 	async updateMany(schema: AnySchema, config: unknown, group: FilterGroup, data: Record<string, unknown>) {
 		const result = await this.#inMemory.updateMany(schema, config, group, data)
 		if (result.length) await this.#persistToDisk()
@@ -414,6 +418,25 @@ if (import.meta.vitest) {
 			const rows = await use.findMany(builtGroup, options)
 			expect(rows).toEqual([{ id: 'u1', name: 'Alice' }])
 
+			await adapter.disconnect()
+		})
+
+		test('count delegates to the in-memory store and persists separately from query options', async () => {
+			const schema = Schema.from('count_users')
+				.pk('id', v.string(), () => 'u')
+				.field('name', v.string())
+				.build()
+
+			const adapter = JsonAdapter.create({ filePath })
+			await adapter.connect()
+			const use = adapter.use(schema, { table: 'count_users' })
+			await use.createMany([
+				{ id: 'u1', name: 'Alice' },
+				{ id: 'u2', name: 'Bob' },
+				{ id: 'u3', name: 'Alice' },
+			])
+
+			await expect(use.count(FilterGroup.create().eq('name', 'Alice'))).resolves.toBe(2)
 			await adapter.disconnect()
 		})
 

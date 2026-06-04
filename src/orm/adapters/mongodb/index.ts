@@ -198,6 +198,21 @@ export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter
 		}
 	}
 
+	async count(schema: AnySchema, config: unknown, filter: FilterGroup) {
+		const schemaCfg = config as MongoDbRepoConfig
+		try {
+			const pk = schema.pkField.name
+			const collection = this.#getCollection(schemaCfg)
+			return await collection.countDocuments(compileMongoFilter(filter, pk), { session: this.#sessionStore.getStore() })
+		} catch (error) {
+			throw new EquippedError(
+				'MongoDB count failed',
+				{ adapter: 'mongodb', operation: 'count', collection: schemaCfg.col },
+				error,
+			)
+		}
+	}
+
 	async updateMany(schema: AnySchema, config: unknown, filter: FilterGroup, data: Record<string, unknown>) {
 		const schemaCfg = config as MongoDbRepoConfig
 		try {
@@ -403,6 +418,7 @@ if (import.meta.vitest) {
 
 			expect(use.findMany).toBeTypeOf('function')
 			expect(use.findOne).toBeTypeOf('function')
+			expect(use.count).toBeTypeOf('function')
 			expect(use.createOne).toBeTypeOf('function')
 			expect(use.createMany).toBeTypeOf('function')
 			expect(use.updateMany).toBeTypeOf('function')
@@ -455,6 +471,7 @@ if (import.meta.vitest) {
 			expectTypeOf(_one.upsert).toBeFunction()
 			expectTypeOf(_all.create).toBeFunction()
 			expectTypeOf(_all.find).toBeFunction()
+			expectTypeOf(_all.count).toBeFunction()
 			expectTypeOf(_all.update).toBeFunction()
 			expectTypeOf(_all.delete).toBeFunction()
 			expectTypeOf(_ref.raw).toBeFunction()
@@ -483,6 +500,27 @@ if (import.meta.vitest) {
 			const _ref = repo.on(_TestSchema)
 
 			expectTypeOf(_ref.raw<{ total: number }[]>).returns.toEqualTypeOf<Promise<{ total: number }[]>>()
+		})
+
+		test('count forwards compiled filter to collection.countDocuments', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { FilterGroup } = await import('../../filter')
+			const schema = Schema.from('mongo_count').pk('_id', v.string(), () => 'x').field('name', v.string()).build()
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017' })
+			let capturedFilter: unknown
+			;(adapter.client as any).db = () => ({
+				collection: () => ({
+					countDocuments: async (filter: unknown, _opts: unknown) => {
+						capturedFilter = filter
+						return 7
+					},
+				}),
+			})
+
+			const result = await adapter.count(schema, { db: 'testdb', col: 'things' }, FilterGroup.create().eq('name', 'Alice'))
+			expect(capturedFilter).toEqual({ name: { $eq: 'Alice' } })
+			expect(result).toBe(7)
 		})
 
 		test('raw forwards pipeline to collection.aggregate at runtime', async () => {

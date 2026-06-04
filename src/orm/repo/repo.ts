@@ -200,6 +200,64 @@ if (import.meta.vitest) {
 			expect(all).toEqual([{ id: created.id }])
 		})
 
+		test('all().count() returns filtered counts and ignores query-shape state', async () => {
+			const repo = makeRepo()
+			await repo
+				.on(UserSchema)
+				.all()
+				.create([
+					{ email: 'alice@count.com', name: 'Alice' },
+					{ email: 'bob@count.com', name: 'Bob' },
+					{ email: 'alice2@count.com', name: 'Alice' },
+				])
+
+			const count = await repo
+				.on(UserSchema)
+				.all()
+				.where((q) => q.eq('name', 'Alice'))
+				.select(['does_not_exist'] as any)
+				.preload(['does_not_exist'] as any)
+				.orderBy('does_not_exist')
+				.limit(0)
+				.page(0)
+				.count()
+
+			expect(count).toBe(2)
+		})
+
+		test('all().count() validates only the filter', async () => {
+			const repo = makeRepo()
+			await repo.on(UserSchema).one().create({ email: 'bad-filter-count@test.com', name: 'Alice' })
+
+			await expect(
+				repo
+					.on(UserSchema)
+					.all()
+					.where((q) => q.eq('does_not_exist' as any, 'x'))
+					.select(['also_missing'] as any)
+					.preload(['also_missing'] as any)
+					.limit(0)
+					.count(),
+			).rejects.toBeInstanceOf(OrmValidationError)
+		})
+
+		test('all().count() is distinct from aggregate count', async () => {
+			const repo = makeRepo()
+			await repo
+				.on(UserSchema)
+				.all()
+				.create([
+					{ email: 'one@agg-count.com', name: 'Same' },
+					{ email: 'two@agg-count.com', name: 'Same' },
+				])
+
+			const count = await repo.on(UserSchema).all().where((q) => q.eq('name', 'Same')).count()
+			const aggregate = await repo.on(UserSchema).aggregate().count('total').where((q) => q.eq('name', 'Same')).run()
+
+			expect(count).toBe(2)
+			expect(aggregate).toEqual({ total: 2 })
+		})
+
 		test('builder snapshots are immutable across chain branches', async () => {
 			const repo = makeRepo()
 			await repo
@@ -915,6 +973,33 @@ if (import.meta.vitest) {
 			type All = import('./builders').AllBuilderSurface<S, A>
 			expectTypeOf<One['delete']>().toBeFunction()
 			expectTypeOf<All['delete']>().toBeFunction()
+		})
+
+		test('missing count collapses all().count to never', () => {
+			class NoCountAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+			}
+			type A = NoCountAdapter
+			type S = import('../schema').AnySchema
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<All['count']>().toBeNever()
+		})
+
+		test('adapter with count enables all().count', () => {
+			class WithCountAdapter extends OrmAdapter {
+				readonly schemaConfigPipe = v.object({})
+				readonly supportedFieldTypes = ['string'] as const
+				readonly queryableOps = ['eq'] as const
+				async findMany() { return [] }
+				async count() { return 0 }
+			}
+			type A = WithCountAdapter
+			type S = import('../schema').AnySchema
+			type All = import('./builders').AllBuilderSurface<S, A>
+			expectTypeOf<All['count']>().toBeFunction()
 		})
 
 		test('adapter with raw enables schemaRef.raw', () => {
