@@ -932,8 +932,9 @@ if (import.meta.vitest) {
 
 			expect((adapter.pool as any).connect).toHaveBeenCalledTimes(1)
 			expect(capturedCursor).toBeInstanceOf(Cursor)
-			expect(capturedCursor?.text).toBe('SELECT * FROM "people" WHERE "age" > $1 ORDER BY "age" DESC LIMIT $2 OFFSET $3')
-			expect(capturedCursor?.values).toEqual(['19', '2', '1'])
+			const capturedCursorConfig = capturedCursor as unknown as { text: string; values: unknown[] }
+			expect(capturedCursorConfig.text).toBe('SELECT * FROM "people" WHERE "age" > $1 ORDER BY "age" DESC LIMIT $2 OFFSET $3')
+			expect(capturedCursorConfig.values).toEqual(['19', '2', '1'])
 			expect(cursor.read).toHaveBeenNthCalledWith(1, 1)
 			expect(cursor.read).toHaveBeenNthCalledWith(2, 1)
 			expect(cursor.read).toHaveBeenNthCalledWith(3, 1)
