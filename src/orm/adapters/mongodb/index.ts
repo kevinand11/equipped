@@ -198,6 +198,51 @@ export class MongoDbAdapter extends configurable(mongoConnectionPipe, OrmAdapter
 		}
 	}
 
+	async count(schema: AnySchema, config: unknown, filter: FilterGroup) {
+		const schemaCfg = config as MongoDbRepoConfig
+		try {
+			const pk = schema.pkField.name
+			const collection = this.#getCollection(schemaCfg)
+			return await collection.countDocuments(compileMongoFilter(filter, pk), { session: this.#sessionStore.getStore() })
+		} catch (error) {
+			throw new EquippedError(
+				'MongoDB count failed',
+				{ adapter: 'mongodb', operation: 'count', collection: schemaCfg.col },
+				error,
+			)
+		}
+	}
+
+	async *iterateMany(schema: AnySchema, config: unknown, filter: FilterGroup, options?: QueryOptions) {
+		const schemaCfg = config as MongoDbRepoConfig
+		let cursor: any
+		try {
+			const pk = schema.pkField.name
+			const { filter: mongoFilter, sort, limit, skip, projection } = compileMongoQuery(filter, options, pk)
+			const collection = this.#getCollection(schemaCfg)
+
+			cursor = collection.find(mongoFilter, {
+				session: this.#sessionStore.getStore(),
+				projection,
+			})
+			if (sort) cursor = cursor.sort(sort)
+			if (limit) cursor = cursor.limit(limit)
+			if (skip) cursor = cursor.skip(skip)
+
+			for await (const row of cursor) {
+				yield row as Record<string, unknown>
+			}
+		} catch (error) {
+			throw new EquippedError(
+				'MongoDB iterateMany failed',
+				{ adapter: 'mongodb', operation: 'iterateMany', collection: schemaCfg.col },
+				error,
+			)
+		} finally {
+			await cursor?.close()
+		}
+	}
+
 	async updateMany(schema: AnySchema, config: unknown, filter: FilterGroup, data: Record<string, unknown>) {
 		const schemaCfg = config as MongoDbRepoConfig
 		try {
@@ -402,7 +447,9 @@ if (import.meta.vitest) {
 			const use = adapter.use(schema, { db: 'testdb', col: 'testcol' })
 
 			expect(use.findMany).toBeTypeOf('function')
+			expect(use.iterateMany).toBeTypeOf('function')
 			expect(use.findOne).toBeTypeOf('function')
+			expect(use.count).toBeTypeOf('function')
 			expect(use.createOne).toBeTypeOf('function')
 			expect(use.createMany).toBeTypeOf('function')
 			expect(use.updateMany).toBeTypeOf('function')
@@ -455,6 +502,7 @@ if (import.meta.vitest) {
 			expectTypeOf(_one.upsert).toBeFunction()
 			expectTypeOf(_all.create).toBeFunction()
 			expectTypeOf(_all.find).toBeFunction()
+			expectTypeOf(_all.count).toBeFunction()
 			expectTypeOf(_all.update).toBeFunction()
 			expectTypeOf(_all.delete).toBeFunction()
 			expectTypeOf(_ref.raw).toBeFunction()
@@ -485,6 +533,27 @@ if (import.meta.vitest) {
 			expectTypeOf(_ref.raw<{ total: number }[]>).returns.toEqualTypeOf<Promise<{ total: number }[]>>()
 		})
 
+		test('count forwards compiled filter to collection.countDocuments', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { FilterGroup } = await import('../../filter')
+			const schema = Schema.from('mongo_count').pk('_id', v.string(), () => 'x').field('name', v.string()).build()
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017' })
+			let capturedFilter: unknown
+			;(adapter.client as any).db = () => ({
+				collection: () => ({
+					countDocuments: async (filter: unknown, _opts: unknown) => {
+						capturedFilter = filter
+						return 7
+					},
+				}),
+			})
+
+			const result = await adapter.count(schema, { db: 'testdb', col: 'things' }, FilterGroup.create().eq('name', 'Alice'))
+			expect(capturedFilter).toEqual({ name: { $eq: 'Alice' } })
+			expect(result).toBe(7)
+		})
+
 		test('raw forwards pipeline to collection.aggregate at runtime', async () => {
 			const { Schema } = await import('../../schema')
 			const { v } = await import('valleyed')
@@ -503,6 +572,69 @@ if (import.meta.vitest) {
 			const result = await adapter.use(schema, { db: 'testdb', col: 'things' }).raw([{ $count: 'total' }])
 			expect(capturedPipeline).toEqual([{ $count: 'total' }])
 			expect(result).toEqual(mockResults)
+		})
+
+		test('iterateMany yields cursor rows with filter ordering offset limit and closes on early return', async () => {
+			const { Schema } = await import('../../schema')
+			const { v } = await import('valleyed')
+			const { FilterGroup } = await import('../../filter')
+			const { OrderBy } = await import('../../query-options')
+			const schema = Schema.from('mongo_iter').pk('_id', v.string(), () => 'x').field('age', v.number()).build()
+			const adapter = MongoDbAdapter.create({ uri: 'mongodb://localhost:27017' })
+			let capturedFindFilter: unknown
+			let capturedFindOptions: unknown
+			let capturedSort: unknown
+			let capturedLimit: unknown
+			let capturedSkip: unknown
+			let closeCalls = 0
+			const cursor = {
+				sort(sort: unknown) {
+					capturedSort = sort
+					return this
+				},
+				limit(limit: unknown) {
+					capturedLimit = limit
+					return this
+				},
+				skip(skip: unknown) {
+					capturedSkip = skip
+					return this
+				},
+				async close() {
+					closeCalls += 1
+				},
+				async *[Symbol.asyncIterator]() {
+					yield { _id: 'u4', age: 50 }
+					yield { _id: 'u3', age: 40 }
+				},
+			}
+			;(adapter.client as any).db = () => ({
+				collection: () => ({
+					find: (filter: unknown, options: unknown) => {
+						capturedFindFilter = filter
+						capturedFindOptions = options
+						return cursor
+					},
+				}),
+			})
+
+			const rows: Record<string, unknown>[] = []
+			for await (const row of adapter.use(schema, { db: 'testdb', col: 'people' }).iterateMany(FilterGroup.create().gt('age', 19), {
+				orderBy: [new OrderBy('age', 'desc')],
+				offset: 1,
+				limit: 2,
+			})) {
+				rows.push(row)
+				break
+			}
+
+			expect(capturedFindFilter).toEqual({ age: { $gt: 19 } })
+			expect(capturedFindOptions).toEqual({ session: undefined, projection: undefined })
+			expect(capturedSort).toEqual({ age: -1 })
+			expect(capturedLimit).toBe(2)
+			expect(capturedSkip).toBe(1)
+			expect(rows).toEqual([{ _id: 'u4', age: 50 }])
+			expect(closeCalls).toBe(1)
 		})
 
 		test('nested session returns callback without starting new transaction', () => {

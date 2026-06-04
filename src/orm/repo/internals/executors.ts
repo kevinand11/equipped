@@ -1,5 +1,6 @@
 import { planSelection } from './computeds'
-import type { SelectedWithPreloads } from './types'
+import { assertNormalisedFindReadShape, normaliseAllFindReadShape, normaliseAllPaginateReadShape, type ReadLimitSource, type ReadOffsetSource } from './query-shape'
+import type { Paginated, SelectedWithPreloads } from './types'
 import { assertNormalisedAggregate, assertNormalisedFilter, type FilterGroup } from '../../filter'
 import type { AggregateSpec } from '../../orm-adapter'
 import type { OrderBy } from '../../query-options'
@@ -18,6 +19,7 @@ export async function runOneRead<S extends AnySchema, Sel extends string, P exte
 	},
 ): Promise<SelectedWithPreloads<S, Sel, P> | null> {
 	assertNormalisedFilter(context.schema, state.where)
+	assertNormalisedFindReadShape(context.schema, 'findOne', state)
 	const row = await context.use.findOne(state.where)
 	if (!row) return null
 	return context.shapeOneRow(state.select, state.preloads, row)
@@ -30,19 +32,94 @@ export async function runAllRead<S extends AnySchema, Sel extends string, P exte
 		select: readonly Sel[] | undefined
 		preloads: P
 		orderBy: readonly OrderBy[]
-		limit?: number
-		offset?: number
+		limitSource?: ReadLimitSource
+		offsetSource?: ReadOffsetSource
 	},
 ): Promise<SelectedWithPreloads<S, Sel, P>[]> {
 	assertNormalisedFilter(context.schema, state.where)
+	const query = normaliseAllFindReadShape(context.schema, 'findMany', state)
 	const plan = planSelection(context.schema, state.select as readonly string[] | undefined)
 	const rows = await context.use.findMany(state.where, {
 		select: plan.adapterSelect,
 		orderBy: [...state.orderBy],
-		limit: state.limit,
-		offset: state.offset,
+		limit: query.limit,
+		offset: query.offset,
 	})
 	return context.shapeRows(state.select, state.preloads, rows)
+}
+
+export async function runAllCount<S extends AnySchema>(
+	context: SchemaContext<S>,
+	state: { where: FilterGroup },
+): Promise<number> {
+	assertNormalisedFilter(context.schema, state.where)
+	return context.use.count(state.where)
+}
+
+function toPaginated<T>(items: T[], total: number, limit: number, current: number): Paginated<T> {
+	const start = 1
+	const last = Math.ceil(total / limit) || 1
+	const previous = current <= start ? null : current > last ? last : current - 1
+	const next = current >= last ? null : current + 1
+	return {
+		pages: { current, start, last, previous, next },
+		docs: { limit, total, count: items.length },
+		items,
+	}
+}
+
+export async function runAllPaginate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
+	context: SchemaContext<S>,
+	state: {
+		where: FilterGroup
+		select: readonly Sel[] | undefined
+		preloads: P
+		orderBy: readonly OrderBy[]
+		limitSource?: ReadLimitSource
+		offsetSource?: ReadOffsetSource
+	},
+): Promise<Paginated<SelectedWithPreloads<S, Sel, P>>> {
+	assertNormalisedFilter(context.schema, state.where)
+	const query = normaliseAllPaginateReadShape(context.schema, 'paginate', state)
+	const plan = planSelection(context.schema, state.select as readonly string[] | undefined)
+	const use = context.use
+	const [rows, total] = await Promise.all([
+		use.findMany(state.where, {
+			select: plan.adapterSelect,
+			orderBy: [...state.orderBy],
+			limit: query.limit,
+			offset: query.offset,
+		}),
+		use.count(state.where),
+	])
+	const items = await context.shapeRows(state.select, state.preloads, rows)
+	return toPaginated(items, total, query.limit, query.current)
+}
+
+export async function* runAllIterate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(
+	context: SchemaContext<S>,
+	state: {
+		where: FilterGroup
+		select: readonly Sel[] | undefined
+		preloads: P
+		orderBy: readonly OrderBy[]
+		limitSource?: ReadLimitSource
+		offsetSource?: ReadOffsetSource
+	},
+): AsyncGenerator<SelectedWithPreloads<S, Sel, P>, void, void> {
+	assertNormalisedFilter(context.schema, state.where)
+	const query = normaliseAllFindReadShape(context.schema, 'iterateMany', state)
+	const plan = planSelection(context.schema, state.select as readonly string[] | undefined)
+	for await (const row of context.use.iterateMany(state.where, {
+		select: plan.adapterSelect,
+		orderBy: [...state.orderBy],
+		limit: query.limit,
+		offset: query.offset,
+	})) {
+		const shaped = await context.shapeRows(state.select, state.preloads, [row])
+		const first = shaped[0]
+		if (first) yield first
+	}
 }
 
 export async function runOneCreate<S extends AnySchema, Sel extends string, P extends readonly AnyPreloadDef[]>(

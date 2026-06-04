@@ -362,13 +362,17 @@ const users = await repo.on(UserSchema).all().create([
 // Read by PK
 const found = await repo.on(UserSchema).one().id('u1').find()
 
-// Read with filters, ordering, pagination
-const results = await repo.on(UserSchema).all()
+// Read a stable paginated envelope. Use deterministic ordering for stable pages.
+const page = await repo.on(UserSchema).all()
     .where((q) => q.eq('name', 'Alice'))
     .orderBy('createdAt', 'desc')
+    .page(3)
     .limit(10)
-    .offset(20)
-    .find()
+    .paginate()
+
+console.log(page.items) // page documents
+console.log(page.pages) // { current, start, last, previous, next }
+console.log(page.docs) // { limit, total, count }
 
 // Select specific fields
 const partial = await repo.on(UserSchema).all()
@@ -379,6 +383,17 @@ const partial = await repo.on(UserSchema).all()
 const withPosts = await repo.on(UserSchema).one().id('u1')
     .preload([UserRelations.posts, UserRelations.org])
     .find()
+
+// Iterate a bounded query one document at a time
+for await (const user of repo.on(UserSchema).all()
+    .where((q) => q.eq('active', true))
+    .orderBy('createdAt', 'desc')
+    .limit(100)
+    .iterate()) {
+    console.log(user.email)
+}
+// .iterate() is query iteration over the current result set. It is not a
+// realtime stream, change feed, CDC listener, watch, or subscription API.
 
 // Update
 const updated = await repo.on(UserSchema).one().id('u1').update({ name: 'New Name' })
@@ -423,6 +438,7 @@ Builder methods are gated by the adapter's capability declarations. Methods whos
 | `schemaRef.raw()` | `crud.raw` |
 | `one().update()` / `all().update()` | `queryable.updateMany` |
 | `one().delete()` / `all().delete()` | `queryable.deleteMany` |
+| `all().iterate()` | `queryable.iterateMany` |
 | `one().upsert()` | `queryable.upsertOne` |
 | `repo.session()` | `transactional.session` |
 

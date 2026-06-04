@@ -10,13 +10,6 @@ topics, hydrated `before`/`after` payloads, computed diffs, and
 `created`/`updated`/`deleted` callbacks. The orm has no change-stream surface,
 no CDC config, and no event-bus integration.
 
-## Paginated query envelope
-
-`dbs` returns paginated reads as `{ pages: { current, start, last, previous,
-next }, docs: { limit, total, count }, results }` via `queryParamsPipe` /
-`queryResultsPipe`. The orm's `findMany` returns a flat array — no count, no
-page math, no canonical query-params pipe.
-
 ## Multi-field text search
 
 `dbs` accepts `params.search = { value, fields[] }` and builds a regex `$or`

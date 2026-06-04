@@ -25,7 +25,7 @@ const client = adapter.client
 | `supportedFieldTypes` | `string`, `number`, `boolean`, `null`, `object`, `array`, `date` |
 | `queryableOps` | all 13 canonical ops |
 | `updateOps` | `set`, `inc`, `mul`, `min`, `max`, `unset`, `push`, `pull`, `patch` |
-| Methods | `connect`, `disconnect`, `findByPk`, `createMany`, `updateByPk`, `deleteByPk`, `raw`, `findMany`, `updateMany`, `deleteMany`, `upsertOne`, `session` |
+| Methods | `connect`, `disconnect`, `findByPk`, `createMany`, `updateByPk`, `deleteByPk`, `raw`, `findMany`, `iterateMany`, `updateMany`, `deleteMany`, `upsertOne`, `session` |
 
 ## Migrations
 

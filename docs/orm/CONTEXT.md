@@ -144,8 +144,8 @@ Vocabulary:
 
 - The Adapter has two kinds of named parts: **methods** (flat optional
   instance methods on `OrmAdapter`: `connect`, `disconnect`, `findByPk`,
-  `createMany`, `updateByPk`, `deleteByPk`, `raw`, `findMany`, `updateMany`,
-  `deleteMany`, `upsertOne`, `session`) and **capability declarations**
+  `createMany`, `updateByPk`, `deleteByPk`, `raw`, `findMany`, `count`,
+  `iterateMany`, `updateMany`, `deleteMany`, `upsertOne`, `session`) and **capability declarations**
   (literal-typed `readonly` instance fields: `queryableOps`, `updateOps`,
   `supportedFieldTypes`, plus the required `schemaConfigPipe`).
 - The historical bag groupings (`lifecycle`, `crud`, `queryable`,
@@ -374,7 +374,7 @@ methods and capability declarations, and how they narrow the Repo's surface.
 
 ### 3.1 Methods (and the historical bag groupings)
 
-The Adapter exposes exactly twelve **optional methods** declared on the
+The Adapter exposes exactly fourteen **optional methods** declared on the
 abstract `OrmAdapter` base. Each subclass implements the ones it supports and
 omits the rest:
 
@@ -382,7 +382,7 @@ omits the rest:
 |---|---|
 | `lifecycle` | `connect`, `disconnect` |
 | `crud` | `findByPk`, `createMany`, `updateByPk`, `deleteByPk`, `raw` |
-| `queryable` | `findMany`, `updateMany`, `deleteMany`, `upsertOne` |
+| `queryable` | `findMany`, `count`, `iterateMany`, `updateMany`, `deleteMany`, `upsertOne` |
 | `transactional` | `session` |
 
 The four group labels (`lifecycle`, `crud`, `queryable`, `transactional`)
@@ -631,10 +631,13 @@ Adapter's declarations:
 | `repo.on(S).one().id(pk).delete()` | `crud.deleteByPk` declared |
 | `repo.on(S).raw(...args)` | `crud.raw` declared |
 | `repo.on(S).one().where(q).find()` / `.all().where(q).find()` | `queryable.findMany` declared |
+| `repo.on(S).all().<where?>.count()` | `queryable.count` declared |
+| `repo.on(S).all().<where?>.<orderBy?>.<limit?>.<page?>.iterate()` | `queryable.iterateMany` declared |
 | `repo.on(S).one().where(q).update(d)` / `.all().where(q).update(d)` | `queryable.updateMany` declared AND non-empty `updateOps` |
 | `repo.on(S).one().where(q).delete()` / `.all().where(q).delete()` | `queryable.deleteMany` declared |
 | `repo.on(S).one().where(q).upsert(d)` | `queryable.upsertOne` declared |
 | `repo.on(S).aggregate().<aggs>.<groupBy?>.<where?>.<having?>.run()` | `queryable.aggregate` declared AND non-empty `aggregateOps` |
+| `repo.on(S).all().<where?>.<orderBy?>.<limit?>.<page?>.paginate()` | `queryable.findMany` declared AND `queryable.count` declared |
 | `repo.session(fn)` | `transactional.session` declared |
 
 There is no truly "always-on" verb; every verb is gated by something. Verbs
@@ -687,8 +690,8 @@ chosen:
   `raw`).
 - **Filter-based chains** use `.one().where(q)` / `.all().where(q)` — they
   identify documents via a `FilterGroup` filter (§11). Backed by the
-  adapter's filter-based methods (label `queryable` — `findMany`,
-  `updateMany`, `deleteMany`, `upsertOne`).
+  adapter's filter-based methods (label `queryable` — `findMany`, `count`,
+  `iterateMany`, `updateMany`, `deleteMany`, `upsertOne`).
 
 The split mirrors the method-group split on the adapter. PK-keyed and
 filter-based chains can be declared independently — an adapter can be PK-only
@@ -919,6 +922,159 @@ aggregations, statistical aggregates, and `FILTER (WHERE ...)` per-aggregate
 clauses are all out of the canonical surface. They go through the adapter's
 `raw` method (§5.5).
 
+### 5.9 Paginated query envelope
+
+The **paginated query envelope** is the result shape returned by the `AllBuilder`
+terminal `repo.on(S).all().paginate()`: it wraps the selected and preloaded
+**page items** with page metadata and document counts instead of returning the
+flat array produced by `.find()`. `.paginate()` exists on `AllBuilder` only;
+there is no `OneBuilder` pagination surface.
+
+A **page step** is `.page(page)`, a chain step on `AllBuilder` that records a
+1-based page number. It is page-number sugar over offset pagination.
+
+The **offset-source rule**: `AllBuilder` stores a terminal-evaluated offset
+source. `.offset(n)` sets the source to `(_limit) => n`; `.page(page)` sets the
+source to `(limit) => (page - 1) * limit`; the last source-setting step wins by
+replacement. The source is evaluated only at the terminal using the effective
+page limit, so `.page(2).limit(50)` offsets by `50`, not by the default limit.
+If no offset source is present, `.paginate()` behaves as page `1` (offset `0`),
+and flat `.find()` uses no offset.
+
+The **page limit** is the maximum number of page items requested for the page.
+It comes from `.limit(n)` when present; otherwise any query that uses the page
+step uses the **default page limit**. Duplicate `.limit(...)` calls are allowed;
+the latest limit wins. The **safe default-limit resolver** reads
+`Instance.get().settings.utils.paginationDefaultLimit` when an `Instance` is
+initialised, and otherwise falls back to the settings default `100` without
+crashing; this preserves standalone ORM usage while still honoring application
+settings. The envelope's `docs.limit` reports the effective page limit used for
+the query.
+
+The **count method** is the adapter method `count(schema, schemaCfg, filter):
+Promise<number>`. It receives only the filter, not select/order/limit/offset,
+because `docs.total` means "all documents matching the filter before
+pagination." It consumes the same `FilterGroup` shape and `queryableOps` gates
+as `findMany`; there is no separate count-specific filter-op capability.
+`.paginate()` uses it to compute `docs.total` without loading all matching rows;
+the framework never emulates count by calling `findMany` without pagination.
+`docs.count` is the number of returned page items (`items.length`). `.paginate()`
+is gated on both `findMany` and `count`.
+
+The **count terminal** is `repo.on(S).all().count()`, an `AllBuilder` terminal
+that returns the number of documents matching the chain's filter. It exists on
+`AllBuilder` only; there is no `OneBuilder` count surface. It ignores
+select/preload/order/limit/offset/page state and counts only the filter. Because
+that query-shape state is ignored, invalid ignored options do not affect
+`.count()`; the terminal validates only the filter. It is gated on the
+adapter's `count` method and exists as a lightweight convenience for the same
+filter-only count primitive that powers `.paginate()`.
+
+The **count-vs-aggregation distinction**: `all().count()` is a single-purpose
+row-count terminal returning `number`; `aggregate().count(alias).run()` belongs
+to the aggregation surface and returns an aggregate row, composes with multiple
+aggregators, group keys, and having filters.
+
+`.paginate()` takes no `{ page, limit, offset }` argument. Page and limit come
+from the existing query-shape chain (`.page(...)`, `.limit(...)`) so the
+terminal only means "return the current all-query as a paginated query
+envelope". `.offset(...)` is also allowed before `.paginate()` for callers
+that already think in row offsets; the builder derives the effective page from
+the evaluated offset as `Math.floor(offset / limit) + 1`. `.page(...)` is the
+preferred semantic step for paginated queries.
+
+A **page item** is one selected and preloaded document in the current page. The
+`items` array has the same selected/preloaded row shape as the equivalent
+`.find()` call. The paginated query envelope uses `items` for the page-item
+array — not legacy `results`, because `results` is overloaded with the whole
+query result in the ORM.
+
+```ts
+export type Paginated<T> = {
+  pages: { current: number; start: number; last: number; previous: number | null; next: number | null }
+  docs: { limit: number; total: number; count: number }
+  items: T[]
+}
+```
+
+`Paginated<T>` is exported from `equipped/orm`. There is no `PageRequest` type
+because pagination inputs live as builder steps (`.page(...)`, `.limit(...)`),
+not as a terminal payload object.
+
+```ts
+const page = await repo.on(UserSchema).all()
+  .where(q => q.eq(UserSchema.fields.active, true))
+  .orderBy('createdAt', 'desc') // deterministic ordering keeps pages stable
+  .page(2)
+  .limit(25)
+  .paginate()
+
+page.items // selected/preloaded documents for page 2
+page.pages // { current, start, last, previous, next }
+page.docs  // { limit, total, count }
+```
+
+The **last-page floor rule**: `pages.last` is `Math.ceil(total / limit) || 1`,
+so an empty result set still reports `pages.last = 1`.
+
+The **past-last-page rule**: requesting a page past `pages.last` returns an
+empty `items` array, preserves `pages.current` as the requested/effective page,
+sets `pages.last` from the total (with the last-page floor rule), and sets
+`pages.next` to `null`. The framework never clamps the requested page down to
+the last page.
+
+The **navigation-link clamp rule**: navigation links clamp to real pages even
+when `pages.current` is past the end. `pages.previous` is `null` when
+`current <= start`, `last` when `current > last`, and `current - 1` otherwise;
+`pages.next` is `null` when `current >= last`, and `current + 1` otherwise.
+
+The **parallel pagination reads rule**: after validation and config
+resolution, `.paginate()` runs the page-item `findMany` and the filter-only
+`count` concurrently with `Promise.all`; they are independent reads over the
+same filter.
+
+The **stable-pagination order rule**: `.paginate()` does not require
+`.orderBy(...)`, matching `.find().limit().offset()`; callers who need stable
+pages across writes must provide a deterministic order explicitly. Multiple
+`.orderBy(...)` calls append in order and form a multi-field sort.
+
+`.page(...)` also affects flat `.find()` queries as pure offset sugar; e.g.
+`.limit(25).page(2).find()` returns the second page as a flat array with no
+count query and no envelope.
+
+`.paginate()` is a separate terminal from `.find()`. Calling `.find()` with
+`.limit()` / `.offset()` / `.page()` remains a flat-array query; it never
+changes shape into a paginated envelope.
+
+### 5.10 Document iteration terminal
+
+The **document iteration terminal** is `repo.on(S).all().iterate()`: an
+`AllBuilder` terminal that takes no arguments and returns an async generator
+over the current query's selected and preloaded documents, yielding one document
+at a time. The name is deliberately **iterate**, not `stream`, because "stream"
+is reserved in this context for change-feeds / CDC-style realtime subscription
+semantics.
+
+```ts
+for await (const doc of repo.on(UserSchema).all().iterate()) {
+  // doc has the same selected/preloaded shape as an item from .find()
+}
+```
+
+The **per-document preload rule**: when `.iterate()` is used with preloads,
+preloads are resolved for each yielded document independently. This preserves
+one-document-at-a-time iteration but may issue more preload queries than
+`.find()` / `.paginate()`, which batch preloads across their result arrays.
+
+`.iterate()` is a one-shot read traversal over matching documents. It is not a
+change feed, not CDC, not a realtime listener, and not a subscription.
+
+The **iterate method** is the adapter method
+`iterateMany(schema, schemaCfg, filter, options): AsyncGenerator<Record<string,
+unknown>>`. It is the only implementation path for `AllBuilder.iterate()`; the
+framework never emulates iteration by repeatedly calling `findMany`. `iterate()`
+is gated on `iterateMany` method presence.
+
 ---
 
 ## 6. Configuration resolution
@@ -1104,7 +1260,7 @@ validation runs exactly once, at the Repo-entry boundary; the adapter receives
 
 ### 7.2 Create, update, and filter validation
 
-Three families of validation, each named by its function:
+Four families of validation, each named by its function:
 
 - **`validateCreate(schema, document)`** runs on `createOne` / `createMany`
   inputs. Validates the full document against schema pipes; injects `onCreate`
@@ -1120,6 +1276,18 @@ Three families of validation, each named by its function:
   arg. Enforces the **filter normalisation contract** (§11.6): field-existence
   invariant, op-closure invariant, logical-name invariant. No filter value
   validation.
+- **`assertNormalisedQueryShape(schema, state)`** runs on read-side query
+  shape before `OneBuilder.find()`, `AllBuilder.find()`, `.paginate()` item reads, and `.iterate()` reads. It enforces valid selected
+  fields, valid preload definitions, preload source-chain coherence, positive
+  integer `limit`, non-negative integer `offset`, and positive integer `page`;
+  failures throw `OrmValidationError` with `kind: 'query-shape'` at the
+  Repo-entry boundary. `orderBy(string)` remains a raw-string escape hatch and
+  is not field-existence-validated by query-shape validation. The **preload source-chain coherence rule** requires
+  each top-level preload relation's `source` to match the current schema, and
+  each nested preload relation's `source` to match its parent relation's
+  `target`. Post-adapter computed-field invariant failures remain
+  `EquippedError` because they indicate adapter/framework inconsistency, not
+  user input shape.
 
 ### 7.3 Auto-bump (Q7.α)
 
@@ -1161,15 +1329,17 @@ classification:
 
 ```ts
 class OrmValidationError extends EquippedError {
-  kind: 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible' | 'aggregate'
+  kind: 'validation' | 'conflicting-ops' | 'empty-group' | 'undeclared-op' | 'upsert-filter-incompatible' | 'aggregate' | 'changes' | 'query-shape'
   schema: string
-  operation: 'createOne' | 'createMany' | 'updateOne' | 'updateMany' | 'updateByPk' | 'upsertOne' | 'aggregate'
+  operation: 'createOne' | 'createMany' | 'findOne' | 'findMany' | 'paginate' | 'iterate' | 'updateOne' | 'updateMany' | 'updateByPk' | 'upsertOne' | 'aggregate'
   failures: Array<{
     opIndex?: number
     rowIndex?: number
-    field?: string
-    alias?: string                                      // aggregate-only: the offending alias / group-key name
-    cause: PipeError
+    field?: string                                      // validation/query-shape: offending schema field
+    alias?: string                                      // aggregate-only: offending alias / group-key name
+    option?: 'limit' | 'offset' | 'page'                 // query-shape-only: offending query option
+    preload?: string                                    // query-shape-only: offending preload path or relation name
+    cause: PipeError | string
   }>
 }
 ```
@@ -1818,7 +1988,7 @@ rejected. The bar for promotion is concrete, not speculative.
 | 6 | **Adapter-typed extensions** | Adapter-contributed typed namespaces on the Repo (e.g. `repo.pg.fts`) not supported. | Adapter's `raw` method. |
 | 7 | **Migrations / DDL** | Schema migration, table creation, DDL operations out of scope. | User-managed (dedicated migration tools); `raw` for ad-hoc DDL. |
 | 8 | **Aggregates** | `count` / `sum` / `avg` / `groupBy` out of scope. | `raw`. |
-| 9 | **Streaming / change-feeds** | Cursor streaming, Mongo change streams, Firebase realtime listeners out of scope. | `raw`. |
+| 9 | **Change-feeds / CDC** | Mongo change streams, Firebase realtime listeners, Debezium-style CDC, and realtime subscriptions remain out of scope. Bounded row iteration is in scope via `AllBuilder.iterate()` (§5.10). | `raw` for change-feeds / CDC. |
 | 10 | **Server-side joins** | Joined queries (`findManyJoined`, PG `JOIN`, Mongo `$lookup`) out of scope. Preloads run package-side via `findMany`. | `raw`. |
 | 11 | **Per-field adapter config** | Per-field adapter-specific config (PG types, Mongo index hints) out of scope. | None — accept the constraint or use `raw`. |
 | 12 | **Schema-side adapter binding** | Schemas are fully adapter-agnostic; binding to an adapter happens at Repo construction. No `Schema.boundTo(Adapter)`. | Adapter binding is a Repo concern; use multiple Repos for schemas needing different adapters. |
