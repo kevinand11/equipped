@@ -1,7 +1,7 @@
 {
 	"extends": "@k11/configs/tsconfig/lib",
 	"compilerOptions": {
-		"types": ["@types/node"]
+		"types": ["@types/node", "vitest/importMeta"]
 	},
 	"include": ["src"],
 	"exclude": ["node_modules", "dist"]

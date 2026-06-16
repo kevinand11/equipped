@@ -1,28 +1,16 @@
 import pino, { type Logger } from 'pino'
 import { ulid } from 'ulid'
-import { type ConditionalObjectKeys, type Pipe, type PipeInput, v } from 'valleyed'
+import { type Pipe, v } from 'valleyed'
 
 import { EquippedError } from '../errors'
-import { type HookCb, type HookEvent, type HookRecord, runHooks } from './hooks'
-import {
-	cachePipe,
-	type CacheTypes,
-	dbPipe,
-	type DbTypes,
-	eventBusPipe,
-	type EventBusTypes,
-	instanceSettingsPipe,
-	jobsPipe,
-	type JobTypes,
-	serverTypePipe,
-	type ServerTypes,
-	type Settings,
-	type SettingsInput,
-} from './settings'
+import { type ClassRef, type HookCb, type HookEvent, type HookOptions, type HookRecord, registerHook, runHooks } from './hooks'
+import { instanceSettingsPipe, type Settings, type SettingsInput } from './settings'
+
+export type { ClassRef, HookCb, HookEvent, HookOptions }
 
 export class Instance {
 	static #id: string | undefined
-	static #instance: Instance
+	static #instance: Instance | undefined
 	static #hooks: Partial<Record<HookEvent, HookRecord[]>> = {}
 	readonly settings: Readonly<Settings>
 	readonly log: Logger<never>
@@ -57,26 +45,6 @@ export class Instance {
 
 	getScopedName(name: string, key = '.') {
 		return [this.settings.app.name, name].join(key)
-	}
-
-	createCache<T extends keyof CacheTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof cachePipe>>, { type: T }>>) {
-		return v.assert(cachePipe(), input) as CacheTypes[T]
-	}
-
-	createJobs<T extends keyof JobTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof jobsPipe>>, { type: T }>>) {
-		return v.assert(jobsPipe(), input) as JobTypes[T]
-	}
-
-	createEventBus<T extends keyof EventBusTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof eventBusPipe>>, { type: T }>>) {
-		return v.assert(eventBusPipe(), input) as EventBusTypes[T]
-	}
-
-	createDb<T extends keyof DbTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof dbPipe>>, { db: { type: T } }>>) {
-		return v.assert(dbPipe(), input) as DbTypes[T]
-	}
-
-	createServer<T extends keyof ServerTypes>(input: ConditionalObjectKeys<Extract<PipeInput<ReturnType<typeof serverTypePipe>>, { type: T }>>) {
-		return v.assert(serverTypePipe(), input) as ServerTypes[T]
 	}
 
 	async start() {
@@ -121,9 +89,14 @@ export class Instance {
 		return Instance.#instance
 	}
 
-	static on(event: HookEvent, cb: HookCb, order: number) {
+	static maybeGet() {
+		return Instance.#instance
+	}
+
+	static on(event: HookEvent, cb: HookCb, options?: HookOptions) {
 		Instance.#hooks[event] ??= []
-		Instance.#hooks[event].push({ cb, order })
+		const record: HookRecord = { cb, class: options?.class, after: options?.after ?? [] }
+		registerHook(Instance.#hooks[event], record)
 	}
 
 	static #registerOnExitHandler() {
@@ -135,7 +108,7 @@ export class Instance {
 
 		Object.entries(signals).forEach(([signal, code]) => {
 			process.on(signal, async () => {
-				await runHooks(Instance.#hooks['close'] ?? [], () => {})
+				await runHooks(Instance.#hooks['close'] ?? [], () => {}, true)
 				process.exit(128 + code)
 			})
 		})
@@ -143,7 +116,7 @@ export class Instance {
 
 	static resolveBeforeCrash<T>(cb: () => Promise<T>) {
 		const value = cb()
-		Instance.on('close', async () => await value, 10)
+		Instance.on('close', async () => await value)
 		return value
 	}
 

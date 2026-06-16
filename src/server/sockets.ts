@@ -1,10 +1,10 @@
 import { match as Match } from 'path-to-regexp'
 import type { Server } from 'socket.io'
 
-import type { Entity } from '../dbs/base/core'
+import type { Entity } from '../dbs/adapters/base/core'
 import { Instance } from '../instance'
 import type { AuthUser } from '../types'
-import type { ServerConfig } from './pipes'
+import type { ServerConfig } from './adapters/base'
 import { BaseRequestAuthMethod } from './requests-auth-methods'
 import { StatusCodes, type StatusCodesEnum } from './types'
 
@@ -43,21 +43,17 @@ export class SocketEmitter {
 	) {
 		this.socketInstance = socket
 		this.#setupSocketConnection()
-		Instance.on(
-			'setup',
-			() => {
-				const stream = config.eventBus?.createStream(EmitterEvent as never, { fanout: true })
-				this.#publish = stream
-					? (stream.publish as unknown as (data: EmitData) => Promise<void>)
-					: async (data: EmitData) => {
-							socket.to(data.channel).emit(data.channel, data)
-						}
-				stream?.subscribe(async (data: EmitData) => {
-					socket.to(data.channel).emit(data.channel, data)
-				})
-			},
-			1,
-		)
+		Instance.on('setup', () => {
+			const stream = config.eventBus?.stream(EmitterEvent as never, { fanout: true })
+			this.#publish = stream
+				? (stream.publish as unknown as (data: EmitData) => Promise<void>)
+				: async (data: EmitData) => {
+						socket.to(data.channel).emit(data.channel, data)
+					}
+			stream?.subscribe(async (data: EmitData) => {
+				socket.to(data.channel).emit(data.channel, data)
+			})
+		})
 	}
 
 	async created<T extends Entity>(channels: string[], data: T, to: string | string[] | null) {

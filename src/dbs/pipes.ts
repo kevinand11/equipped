@@ -1,6 +1,7 @@
 import { type ConditionalObjectKeys, type Pipe, type PipeInput, type PipeOutput, v } from 'valleyed'
 
 import { Instance } from '../instance'
+import type { Select } from './adapters/base/core'
 
 export enum QueryKeys {
 	and = 'and',
@@ -16,13 +17,14 @@ export enum Conditions {
 	ne = 'ne',
 	in = 'in',
 	nin = 'nin',
-	exists = 'exists',
 }
 
+// eslint-disable-next-line promise/valid-params -- valleyed v.catch(schema, fallback) is not Promise.prototype.catch
 const queryKeys = v.catch(v.defaults(v.in([QueryKeys.and, QueryKeys.or]), QueryKeys.and), QueryKeys.and)
 const queryWhere = v.object({
 	field: v.string(),
 	value: v.any(),
+	// eslint-disable-next-line promise/valid-params -- valleyed v.catch(schema, fallback) is not Promise.prototype.catch
 	condition: v.catch(v.defaults(v.in(Object.values(Conditions)), Conditions.eq), Conditions.eq),
 })
 const queryWhereBlock = v.recursive(
@@ -57,8 +59,10 @@ export function queryParamsPipe() {
 				all: v.defaults(v.boolean(), false),
 				limit: v.lazy(() => {
 					const pagLimit = Instance.get().settings.utils.paginationDefaultLimit
+					// eslint-disable-next-line promise/valid-params -- valleyed v.catch(schema, fallback) is not Promise.prototype.catch
 					return v.catch(v.defaults(v.number().pipe(v.lte(pagLimit)), pagLimit), pagLimit)
 				}),
+				// eslint-disable-next-line promise/valid-params -- valleyed v.catch(schema, fallback) is not Promise.prototype.catch
 				page: v.catch(v.defaults(v.number().pipe(v.gte(1)), 1), 1),
 				search: v.defaults(
 					v.nullish(
@@ -80,6 +84,7 @@ export function queryParamsPipe() {
 				),
 				whereType: queryKeys,
 				where: queryWhereClause,
+				select: v.optional(v.array(v.string())),
 			})
 			.pipe((p) => ({ ...p, auth: <(typeof p)['where']>[], authType: QueryKeys.and })),
 		{ title: 'Query Params', $refId: 'QueryParams' },
@@ -104,23 +109,16 @@ export function queryResultsPipe<T>(model: Pipe<any, T>) {
 	})
 }
 
-export function wrapQueryParams(params: QueryParamsInput): QueryParams {
+export function wrapQueryParams(params: QueryParamsInput): QueryParamsBase {
 	return v.assert(queryParamsPipe(), params)
 }
 
-export type QueryParams = PipeOutput<ReturnType<typeof queryParamsPipe>>
+export type QueryParamsBase = PipeOutput<ReturnType<typeof queryParamsPipe>>
+export type QueryParams<T, S extends Select<T> | undefined = undefined> = Omit<QueryParamsBase, 'select'> & {
+	select?: S extends undefined ? QueryParamsBase['select'] : S
+}
 export type QueryParamsInput = ConditionalObjectKeys<PipeInput<ReturnType<typeof queryParamsPipe>>>
-export type QueryWhereClause = QueryParams['where'][number]
+export type QueryWhereClause = QueryParamsBase['where'][number]
 export type QueryWhere = Extract<QueryWhereClause, { field: string }>
 export type QueryWhereBlock = Exclude<QueryWhereClause, { field: string }>
 export type QueryResults<T> = PipeOutput<ReturnType<typeof queryResultsPipe<T>>>
-
-export const mongoDbConfigPipe = () =>
-	v.meta(
-		v.object({
-			uri: v.string(),
-		}),
-		{ title: 'Mongodb Config', $refId: 'MongodbConfig' },
-	)
-
-export type MongoDbConfig = PipeOutput<ReturnType<typeof mongoDbConfigPipe>>
