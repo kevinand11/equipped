@@ -2,6 +2,94 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-alpha.0](https://github.com/kevinand11/equipped/compare/v5.2.9...v5.3.0-alpha.0) (2026-06-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **orm:** `Where`, `WhereOp`, `WhereGroupOp`, `QueryGroup`,
+`WhereFactory`, and `FilterOp` are removed from the public API.
+Use `Filter`, `FilterGroup`, and `FilterFactory` from `filter.ts`.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+* **orm:** EventAudit class and all types exported from
+src/audit/ are removed. Migrate to EventLog via
+EventLog.from(repo).build().handler(name, def).
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+* bump version to 6.0.0 for breaking-change lockdown
+* **orm:** delete Adapter.from builder; finalize class-based narrowing
+
+### Features
+
+* computed fields ([d1abd3e](https://github.com/kevinand11/equipped/commit/d1abd3ead8614490a5ca7c0b129e5ab4f59ede78))
+* configurable ([01e3b32](https://github.com/kevinand11/equipped/commit/01e3b329fc5c828324b1e1d826d57c85b550805f))
+* fields and schema fields ([e67a768](https://github.com/kevinand11/equipped/commit/e67a768e21a4d3720e85494be584d91260b31983))
+* implement FilterGroup + queryable behaviour + filter normalisation ([507a8b2](https://github.com/kevinand11/equipped/commit/507a8b2dba27a0ad491b6876bf18f42c7a17a198)), closes [#1](https://github.com/kevinand11/equipped/issues/1) [#5](https://github.com/kevinand11/equipped/issues/5)
+* orm adapters ([cc56149](https://github.com/kevinand11/equipped/commit/cc56149e5bde7fbc532eeede10b9bba2b7a68b20))
+* orm insert path + validation pipeline + OrmValidationError ([9337445](https://github.com/kevinand11/equipped/commit/93374453817848c1cb419c45ec2ae56f593ba85d)), closes [#3](https://github.com/kevinand11/equipped/issues/3) [#1](https://github.com/kevinand11/equipped/issues/1)
+* orm query ([c62f321](https://github.com/kevinand11/equipped/commit/c62f321108660b3843f6f38f81d8d597cb9a9236))
+* orm repo ([0755998](https://github.com/kevinand11/equipped/commit/0755998819384e84e5666c6d2f7d30f3b86fabb8))
+* orm schema ([a360b7e](https://github.com/kevinand11/equipped/commit/a360b7e3bf39a540eae2408cc78cc72abd51d9ea))
+* **orm/postgresql:** migrate PG adapter to defineAdapter shape (issue [#12](https://github.com/kevinand11/equipped/issues/12), PRD [#1](https://github.com/kevinand11/equipped/issues/1)) ([492e1c8](https://github.com/kevinand11/equipped/commit/492e1c8ef715be7ae7d91ccd723a5df684e78f75))
+* **orm:** add .required() modifier to OneBuilder with Req typestate ([e987ae9](https://github.com/kevinand11/equipped/commit/e987ae94c50a4e8d0e7e661f0fb0ad25989e1292))
+* **orm:** add adapter iteration primitive ([6c7ef2b](https://github.com/kevinand11/equipped/commit/6c7ef2b37068bce46d094c054b8f7f2b75728089))
+* **orm:** add AggregateBuilder with count-only end-to-end via in-memory ([e77e9da](https://github.com/kevinand11/equipped/commit/e77e9da81f5ea2ebd7ebb97868edcfb1a4266ab5))
+* **orm:** add canonical AggregateOpName type and aggregateOps capability ([a67605c](https://github.com/kevinand11/equipped/commit/a67605cc9a4eadaf68d23cb71ea6d23b698fcf5c))
+* **orm:** add EventLog foundations and atomic fire path ([9fe567e](https://github.com/kevinand11/equipped/commit/9fe567e02ee69ebec2fe7879233edf305aed95e4))
+* **orm:** add EventLog replay and rerun with per-event session isolation ([ac1ad61](https://github.com/kevinand11/equipped/commit/ac1ad6103883438059c6a26294be048324880048))
+* **orm:** add filter-only count terminal ([ff511be](https://github.com/kevinand11/equipped/commit/ff511be634112720ac4cb9506d2f13e9177e903c))
+* **orm:** add full Change algebra (10 remaining variants) + full validation + migrationId/changeIndex ([2ec765f](https://github.com/kevinand11/equipped/commit/2ec765f2be31264a3cefd64f242d6eba2c5885e0)), closes [#1](https://github.com/kevinand11/equipped/issues/1) [#1](https://github.com/kevinand11/equipped/issues/1) [#1](https://github.com/kevinand11/equipped/issues/1)
+* **orm:** add iteration options validation ([92bde6f](https://github.com/kevinand11/equipped/commit/92bde6f6ba54e2ed6b4ee84d658b7ab0e676ea18))
+* **orm:** add MigrationCodegen + introspect (in-memory adapter) ([5897662](https://github.com/kevinand11/equipped/commit/58976620009ac2bd27488dd30f004460b010f3dd))
+* **orm:** add migrations foundation tracer-bullet ([2c1602b](https://github.com/kevinand11/equipped/commit/2c1602b107fd4d4693246d26f7bc08d034dcf7e1)), closes [#103](https://github.com/kevinand11/equipped/issues/103)
+* **orm:** add Migrator opts (to/steps), status(), dry(), orphan detection + error phases ([ba680b6](https://github.com/kevinand11/equipped/commit/ba680b6e5dd4c74ea3d69b681e90b02088514c45))
+* **orm:** add Mongo adapter migration methods + structural narrowing fix ([3a60395](https://github.com/kevinand11/equipped/commit/3a603953e5301c722f2a985733251b5d7fe4ce5a))
+* **orm:** add MongoDB adapter aggregate pipeline compiler ([f027e64](https://github.com/kevinand11/equipped/commit/f027e647bbe51e0cbed32b80e957c3c26dec3637))
+* **orm:** add OrmAdapter abstract base class and Repo dispatch validator ([accff9f](https://github.com/kevinand11/equipped/commit/accff9f0260e6d473323e91c6bdf7b12d8056e84))
+* **orm:** add OrmNotFoundError class ([18addab](https://github.com/kevinand11/equipped/commit/18addab294c66850e525f6030fe850bb98b3eb1b))
+* **orm:** add paginated all-query envelope ([1defc89](https://github.com/kevinand11/equipped/commit/1defc89a33a0cd29634ab7ff41bf792d809e0c8e))
+* **orm:** add per-migration tx + cluster-safe lock to Migrator ([88d6752](https://github.com/kevinand11/equipped/commit/88d6752b95f2c6af55e9e9bd55bae53b8af7152d)), closes [#104](https://github.com/kevinand11/equipped/issues/104)
+* **orm:** add Postgres adapter migration implementation ([e6cde0c](https://github.com/kevinand11/equipped/commit/e6cde0c1bcbb77f797f37a3d812d8faffc6b9d3c))
+* **orm:** add read query-shape pagination validation ([d2f3b00](https://github.com/kevinand11/equipped/commit/d2f3b00a67ffe053eab12b04e2145f4d899c3e5c))
+* **orm:** complete AggregateBuilder surface (groupBy, aggregators, where/having) ([6bede84](https://github.com/kevinand11/equipped/commit/6bede84df409da31738f31cf4767cd871b2941f6))
+* **orm:** complete walking skeleton type safety + remove adapter cast gap ([0a04718](https://github.com/kevinand11/equipped/commit/0a04718f0a03993ead6bd010e51ab305a867aa87)), closes [#2](https://github.com/kevinand11/equipped/issues/2) [#2](https://github.com/kevinand11/equipped/issues/2) [#5](https://github.com/kevinand11/equipped/issues/5)
+* **orm:** export AggregateBuilder from public barrel ([2c312f7](https://github.com/kevinand11/equipped/commit/2c312f75bc60dd3025ff7852404a90d22e77053b))
+* **orm:** extend OrmValidationError with aggregate kind and alias carrier ([39e4006](https://github.com/kevinand11/equipped/commit/39e4006890b8ce446799d73f93122ee04fd32c36))
+* **orm:** filter-based mutations + deleteByPk + raw escape hatch ([5bbf877](https://github.com/kevinand11/equipped/commit/5bbf87742198709c513bf6f61fb3795798f8d9a2)), closes [#6](https://github.com/kevinand11/equipped/issues/6) [#1](https://github.com/kevinand11/equipped/issues/1)
+* **orm:** implement JSON adapter migrations ([6b9ae13](https://github.com/kevinand11/equipped/commit/6b9ae132131b5776bc55c7dc0c680f606e94823d))
+* **orm:** implement PostgreSQL adapter aggregate compiler ([3a06688](https://github.com/kevinand11/equipped/commit/3a06688a7474119ae1497382e4af8d5fbdad519a))
+* **orm:** implement walking skeleton for defineSchema/defineAdapter/defineRepo ([2ab2c8e](https://github.com/kevinand11/equipped/commit/2ab2c8ea6ae5f8c3d299cf6d01e650ec32ce9d1e)), closes [#2](https://github.com/kevinand11/equipped/issues/2) [#2](https://github.com/kevinand11/equipped/issues/2)
+* **orm:** json adapter aggregate delegation to in-memory ([dedb42c](https://github.com/kevinand11/equipped/commit/dedb42cc381a5eafdb6eafff357201da3f0d9ffb))
+* **orm:** stream postgresql iteration through cursors ([ac18e17](https://github.com/kevinand11/equipped/commit/ac18e1757270dd77d21cae2f2e323003c888dd09))
+* **orm:** update path + op helpers + auto-bump + conflict rejection ([2ee0bfa](https://github.com/kevinand11/equipped/commit/2ee0bfa5d63dc60b62a0621adbfbf120ada3f0a6)), closes [#4](https://github.com/kevinand11/equipped/issues/4)
+* **orm:** upsert dual-path — schema-per-call upsertOne with insert+ops ([0d5f275](https://github.com/kevinand11/equipped/commit/0d5f27544a621916b4ed31753f56e854067203ff)), closes [#8](https://github.com/kevinand11/equipped/issues/8) [#1](https://github.com/kevinand11/equipped/issues/1)
+* projection ([eac52a3](https://github.com/kevinand11/equipped/commit/eac52a3ddd7a385f77f522de811e724852dfd14c))
+* raw command ([6a56326](https://github.com/kevinand11/equipped/commit/6a56326de92246f0d45ffe407fabd15aabbfcb1d))
+
+
+### Bug Fixes
+
+* align README with insert→create and repo.from→repo.on renames ([3378a84](https://github.com/kevinand11/equipped/commit/3378a84981919768eba0d6c0dad9328e95c683aa))
+* one relation return type ([17f05f2](https://github.com/kevinand11/equipped/commit/17f05f273112ac18c85ad3fb3edb8c76dd341e0f))
+* **orm:** drop past-last pagination neighbors ([6ff12da](https://github.com/kevinand11/equipped/commit/6ff12daa0224e180902e7ca6c56625597203d174))
+* **orm:** honor batch size in non-postgres iteration ([acd605a](https://github.com/kevinand11/equipped/commit/acd605acd62bcb3aaeae9fea1b8f7dc489d0a386))
+* **orm:** move ssl into postgresqlConnectionPipe with v.defaults ([a5aafe8](https://github.com/kevinand11/equipped/commit/a5aafe8ac41f90534de8f7ac9a6d2afc54f8f1f3))
+* **orm:** narrow deleteOne fallback to PK filter and remove dead ordering getters ([0e56628](https://github.com/kevinand11/equipped/commit/0e56628074b8245f0ed10862ef577e6dc27e61fd))
+* **orm:** remove unnecessary type cast in schema.pk() ([1cbda00](https://github.com/kevinand11/equipped/commit/1cbda00421223e00a5260eacd62a8f5d583dda23))
+* **orm:** restore direct iterate generator ([bc8a33b](https://github.com/kevinand11/equipped/commit/bc8a33be0884bad22f73d2dbeb6d699d7ac0ba16))
+* **orm:** validate explicit undefined read limits ([3d7c85f](https://github.com/kevinand11/equipped/commit/3d7c85f2c99827cfe0fbf879dc8a14448aa94c12))
+* **postgresql:** use pg-cursor type package ([b6971c7](https://github.com/kevinand11/equipped/commit/b6971c7bed83b61772f58f5d8bd24281b5fc4fe8))
+* pr cleanup ([cc306b6](https://github.com/kevinand11/equipped/commit/cc306b697c242110409703cb67f7c2849ece445d))
+* resolve merge conflict with feature/orm ([e00169a](https://github.com/kevinand11/equipped/commit/e00169a9377a6418f7168f525a06df18c4a8006f))
+* resolve merge conflicts with feature/orm (static-factory refactor) ([6ed7369](https://github.com/kevinand11/equipped/commit/6ed7369efa838ff0e9b54dd139658de5efe84154))
+
+
+* bump version to 6.0.0 for breaking-change lockdown ([927b04a](https://github.com/kevinand11/equipped/commit/927b04a8a39ae06e41f89883183769f81fbecdbf)), closes [#45](https://github.com/kevinand11/equipped/issues/45) [#45](https://github.com/kevinand11/equipped/issues/45) [#46](https://github.com/kevinand11/equipped/issues/46) [#47](https://github.com/kevinand11/equipped/issues/47) [#48](https://github.com/kevinand11/equipped/issues/48) [#54](https://github.com/kevinand11/equipped/issues/54)
+* **orm:** consolidate query.ts into filter.ts + query-options.ts ([f96b3b0](https://github.com/kevinand11/equipped/commit/f96b3b051d673f2c62833daa62c9b3c1e631ff5e))
+* **orm:** delete Adapter.from builder; finalize class-based narrowing ([cec1fa0](https://github.com/kevinand11/equipped/commit/cec1fa0b9785d72f9f62bb1c9aaba6cc75f123df))
+* **orm:** delete legacy src/audit/ EventAudit module ([e99d042](https://github.com/kevinand11/equipped/commit/e99d042eb339f58b1f6a40178b03d184a6ef0312))
+
 ### [5.2.9](https://github.com/kevinand11/equipped/compare/v5.2.8...v5.2.9) (2026-03-21)
 
 
