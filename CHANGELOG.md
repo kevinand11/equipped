@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.3.1](https://github.com/kevinand11/equipped/compare/v5.3.0...v5.3.1) (2026-06-19)
+
+
+### Features
+
+* **server:** add before listen hook ([f72134c](https://github.com/kevinand11/equipped/commit/f72134c67273023a3e98351dd079fa6600b6a43d))
+
 ## [5.3.0](https://github.com/kevinand11/equipped/compare/v5.3.0-alpha.0...v5.3.0) (2026-06-19)
 
 
