@@ -5,12 +5,10 @@
 	"description": "",
 	"type": "module",
 	"sideEffects": false,
+	"packageManager": "pnpm@11.7.0",
 	"main": "./dist/cjs/index.cjs",
 	"module": "./dist/esm/index.mjs",
 	"types": "./dist/types/index.d.ts",
-	"engines": {
-		"node": ">= 20.0.0"
-	},
 	"scripts": {
 		"dev": "tsup --watch",
 		"prebuild": "tsc --noEmit",

@@ -1,0 +1,6 @@
+allowBuilds:
+  '@confluentinc/kafka-javascript': true
+  esbuild: true
+  msgpackr-extract: true
+
+minimumReleaseAge: 1440

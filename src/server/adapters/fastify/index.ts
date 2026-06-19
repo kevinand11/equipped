@@ -5,7 +5,7 @@ import fastifyHelmet from '@fastify/helmet'
 import fastifyMultipart from '@fastify/multipart'
 import fastifyRateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
-import Fastify from 'fastify'
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 // import fastifySlowDown from 'fastify-slow-down'
 import qs from 'qs'
 
@@ -14,7 +14,7 @@ import { Instance } from '../../../instance'
 import { configurable, getMediaDuration } from '../../../utilities'
 import { Request, Response } from '../../requests'
 import { StatusCodes, type IncomingFile, type MethodsEnum } from '../../types'
-import { Server, serverConfigPipe } from '../base'
+import { type RawResponder, Server, serverConfigPipe } from '../base'
 
 export class FastifyServer extends configurable(serverConfigPipe, Server) {
 	#app: ReturnType<typeof Fastify>
@@ -105,6 +105,10 @@ export class FastifyServer extends configurable(serverConfigPipe, Server) {
 		await res.status(response.status).headers(response.headers).send(response.body)
 	}
 
+	protected createRawResponder(req: FastifyRequest, res: FastifyReply): RawResponder {
+		return this.createNodeRawResponder({ request: req.raw, response: res.raw, beforeHandle: () => res.hijack() })
+	}
+
 	protected registerRoute(method: MethodsEnum, path: string, cb: (req: any, res: any) => Promise<void>) {
 		this.#app.register(async (inst) => {
 			inst.route({ url: path, method, handler: cb })
@@ -137,4 +141,61 @@ function excludeBufferKeys<T>(body: T) {
 		body: <T>Object.fromEntries(nonFileEntries),
 		files: <Record<string, IncomingFile[]>>Object.fromEntries(fileEntries),
 	}
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, test, vi } = import.meta.vitest
+
+	const testInstanceState = globalThis as typeof globalThis & { __equippedTestInstanceAliased?: boolean }
+
+	function ensureTestInstance() {
+		const instance = Instance.maybeGet() ?? Instance.create({ app: { name: 'equipped-test' }, log: { level: 'silent' } })
+		if (!testInstanceState.__equippedTestInstanceAliased) {
+			instance.alias('equipped-test')
+			testInstanceState.__equippedTestInstanceAliased = true
+		}
+	}
+
+	function createRawResponse() {
+		return {
+			statusCode: 200,
+			headersSent: false,
+			writableEnded: false,
+			setHeader: vi.fn(),
+			end(chunk?: unknown) {
+				void chunk
+				this.headersSent = true
+				this.writableEnded = true
+			},
+		}
+	}
+
+	class TestFastifyServer extends FastifyServer {
+		exposeRawResponder(req: FastifyRequest, res: FastifyReply) {
+			return this.createRawResponder(req, res)
+		}
+	}
+
+	describe('FastifyServer raw responder', () => {
+		test('hijacks the Fastify reply before passing Node raw request and response to the handler', async () => {
+			ensureTestInstance()
+			const server = TestFastifyServer.create({ port: 0, requests: { log: false } })
+			const rawRequest = { marker: 'request' }
+			const rawResponse = createRawResponse()
+			const reply = { raw: rawResponse, hijack: vi.fn() } as unknown as FastifyReply
+			const request = { raw: rawRequest } as unknown as FastifyRequest
+			let received: { request: unknown; response: unknown } | null = null
+
+			await server.exposeRawResponder(
+				request,
+				reply,
+			)(async (req, res) => {
+				received = { request: req, response: res }
+				res.end('ok')
+			})
+
+			expect(reply.hijack).toHaveBeenCalledOnce()
+			expect(received).toEqual({ request: rawRequest, response: rawResponse })
+		})
+	})
 }

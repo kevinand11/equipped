@@ -1,4 +1,4 @@
-import type http from 'node:http'
+import http, { type IncomingMessage, type ServerResponse } from 'node:http'
 
 import { type FastifyCorsOptions } from '@fastify/cors'
 import { type CorsOptions } from 'cors'
@@ -14,7 +14,7 @@ import type { AuthUser } from '../../types'
 import { pipeErrorToValidationError } from '../../validations'
 import { requestLocalStorage, responseLocalStorage } from '../../validations/valleyed'
 import { openapi, type OpenApiSchemaDef } from '../openapi'
-import { type Request, Response } from '../requests'
+import { Request, Response } from '../requests'
 import { BaseRequestAuthMethod } from '../requests-auth-methods'
 import { Router } from '../routes'
 import { SocketEmitter } from '../sockets'
@@ -72,6 +72,34 @@ export type ServerConfig = PipeOutput<ReturnType<typeof serverConfigPipe>>
 type RequestValidator = (req: Request<any>) => Promise<Request<any>>
 type ResponseValidator = (res: Response<any>) => Promise<Response<any>>
 
+const rawResponseHandledSymbol: unique symbol = Symbol('rawResponseHandled')
+export type RawResponseHandled = { readonly [rawResponseHandledSymbol]: true }
+export type RawResponseHandler = (request: IncomingMessage, response: ServerResponse) => unknown | Promise<unknown>
+export type RawResponder = (handler: RawResponseHandler) => Promise<RawResponseHandled>
+export type ServerNotFoundContext = { request: Request<any>; respondWithRaw: RawResponder }
+export type ServerNotFoundHandler = (
+	context: ServerNotFoundContext,
+) => Response<any> | RawResponseHandled | Promise<Response<any> | RawResponseHandled>
+
+const rawResponseHandled: RawResponseHandled = Object.freeze({ [rawResponseHandledSymbol]: true })
+const rawResponseNotStartedMessage = 'Raw not-found handler did not start or complete a response'
+
+function isRawResponseHandled(input: unknown): input is RawResponseHandled {
+	return Boolean(input && typeof input === 'object' && rawResponseHandledSymbol in input)
+}
+
+function hasRawResponseStarted(response: ServerResponse): boolean {
+	return response.headersSent || response.writableEnded
+}
+
+function writeRawHandlerError(response: ServerResponse, error: unknown) {
+	if (hasRawResponseStarted(response)) return
+	response.statusCode = StatusCodes.BadRequest
+	response.setHeader('Content-Type', 'application/json')
+	const message = error instanceof Error ? error.message : `${error}`
+	response.end(JSON.stringify([{ message }]))
+}
+
 const errorsSchemas = Object.entries(StatusCodes)
 	.filter(([, value]) => value > 399)
 	.map(([key, value]) => ({
@@ -91,9 +119,12 @@ export abstract class Server {
 	#serverConfig!: ServerConfig
 	#queue: (() => void | Promise<void>)[] = []
 	#routesByKey = new Set<string>()
+	#started = false
+	#notFoundHandler: ServerNotFoundHandler | null = null
 
 	protected abstract parseRequest(req: any): Promise<Request<any>>
 	protected abstract handleResponse(res: any, response: Response<any>): Promise<void>
+	protected abstract createRawResponder(req: any, res: any): RawResponder
 	protected abstract registerRoute(method: MethodsEnum, path: string, cb: (req: any, res: any) => Promise<void>): void
 	protected abstract registerErrorHandler(cb: (error: Error, req: any, res: any) => Promise<void>): void
 	protected abstract registerNotFoundHandler(cb: (req: any, res: any) => Promise<void>): void
@@ -161,11 +192,18 @@ export abstract class Server {
 		})
 	}
 
+	setNotFoundHandler(handler: ServerNotFoundHandler): this {
+		if (this.#started) throw new EquippedError('Cannot set not-found handler after server has started', {})
+		this.#notFoundHandler = handler
+		return this
+	}
+
 	test(): TestAgent {
 		return supertest(this.#httpServer)
 	}
 
 	async start(): Promise<boolean> {
+		this.#started = true
 		const config = this.#serverConfig
 		const instance = Instance.get()
 		const { app } = instance.settings
@@ -182,10 +220,7 @@ export abstract class Server {
 
 		await Promise.all(this.#queue.map((cb) => cb()))
 
-		this.registerNotFoundHandler(async (req) => {
-			const request = await this.parseRequest(req)
-			throw new NotFoundError(`Route ${request.path} not found`)
-		})
+		this.registerNotFoundHandler(async (req, res) => await this.#handleNotFound(req, res))
 		this.registerErrorHandler(async (error, _, res) => {
 			if (!(error instanceof EquippedError)) Instance.get().log.error({ error }, 'Uncaught error in route handler')
 			const response =
@@ -209,6 +244,37 @@ export abstract class Server {
 		const started = await this.startServer(config.port)
 		if (started) Instance.get().log.info(`${instance.id}(${app.name}) service listening on port ${config.port}`)
 		return started
+	}
+
+	protected createNodeRawResponder(input: {
+		request: IncomingMessage
+		response: ServerResponse
+		beforeHandle?: () => void
+	}): RawResponder {
+		return async (handler) => {
+			input.beforeHandle?.()
+			try {
+				await handler(input.request, input.response)
+			} catch (error) {
+				if (!hasRawResponseStarted(input.response)) {
+					writeRawHandlerError(input.response, error)
+					return rawResponseHandled
+				}
+				throw error
+			}
+			if (!hasRawResponseStarted(input.response))
+				writeRawHandlerError(input.response, new EquippedError(rawResponseNotStartedMessage, {}))
+			return rawResponseHandled
+		}
+	}
+
+	async #handleNotFound(req: any, res: any) {
+		const request = await this.parseRequest(req)
+		if (!this.#notFoundHandler) throw new NotFoundError(`Route ${request.path} not found`)
+		const result = await this.#notFoundHandler({ request, respondWithRaw: this.createRawResponder(req, res) })
+		if (isRawResponseHandled(result)) return
+		if (result instanceof Response) return await this.handleResponse(res, result)
+		throw new EquippedError('Not-found handler must return a Response or respondWithRaw(...)', {})
 	}
 
 	#resolveSchema(method: MethodsEnum, schema: RouteDef) {
@@ -307,4 +373,195 @@ export abstract class Server {
 			validateResponse,
 		}
 	}
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, test } = import.meta.vitest
+
+	const testInstanceState = globalThis as typeof globalThis & { __equippedTestInstanceAliased?: boolean }
+
+	function ensureTestInstance() {
+		const instance = Instance.maybeGet() ?? Instance.create({ app: { name: 'equipped-test' }, log: { level: 'silent' } })
+		if (!testInstanceState.__equippedTestInstanceAliased) {
+			instance.alias('equipped-test')
+			testInstanceState.__equippedTestInstanceAliased = true
+		}
+	}
+
+	function createRawResponse() {
+		const chunks: string[] = []
+		return {
+			statusCode: 200,
+			headersSent: false,
+			writableEnded: false,
+			headers: {} as Record<string, string>,
+			setHeader(key: string, value: string) {
+				this.headers[key] = value
+			},
+			end(chunk?: unknown) {
+				if (chunk !== undefined) chunks.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk))
+				this.headersSent = true
+				this.writableEnded = true
+			},
+			body() {
+				return chunks.join('')
+			},
+		}
+	}
+
+	class TestServer extends Server {
+		handledResponse: Response<any> | null = null
+		private notFoundHandler: ((req: any, res: any) => Promise<void>) | null = null
+
+		constructor() {
+			super()
+			this.setup(http.createServer(), {
+				port: 0,
+				cors: undefined,
+				eventBus: undefined,
+				publicPath: undefined,
+				healthPath: undefined,
+				openapi: { docsVersion: '1.0.0', docsBaseUrl: ['/'], docsPath: '/__docs' },
+				requests: {
+					log: false,
+					rateLimit: { enabled: false, periodInMs: 1, limit: 1 },
+					slowdown: { enabled: false, periodInMs: 1, delayAfter: 1, delayInMs: 1 },
+				},
+				socketsAuthMethods: [],
+			})
+		}
+
+		protected async parseRequest(req: any) {
+			return new Request<any>({
+				ip: '127.0.0.1',
+				body: {},
+				cookies: {},
+				params: {},
+				query: {},
+				method: Methods.get,
+				path: req.path,
+				headers: {},
+				files: {},
+			})
+		}
+
+		protected async handleResponse(_: any, response: Response<any>) {
+			this.handledResponse = response
+		}
+
+		protected createRawResponder(req: any, res: any): RawResponder {
+			return this.createNodeRawResponder({ request: req.rawRequest, response: res.rawResponse })
+		}
+
+		protected registerRoute() {}
+		protected registerErrorHandler() {}
+
+		protected registerNotFoundHandler(cb: (req: any, res: any) => Promise<void>) {
+			this.notFoundHandler = cb
+		}
+
+		protected async startServer() {
+			return true
+		}
+
+		async dispatchNotFound(
+			path: string,
+		): Promise<{ handledResponse: Response<any> | null; rawResponse: ReturnType<typeof createRawResponse> }> {
+			if (!this.notFoundHandler) throw new Error('not-found handler was not registered')
+			this.handledResponse = null
+			const rawResponse = createRawResponse()
+			await this.notFoundHandler({ path, rawRequest: {} }, { rawResponse })
+			return { handledResponse: this.handledResponse, rawResponse }
+		}
+	}
+
+	describe('Server not-found handler', () => {
+		test('throws the default Equipped not-found error when no custom handler is set', async () => {
+			ensureTestInstance()
+			const server = new TestServer()
+			await server.start()
+
+			await expect(server.dispatchNotFound('/missing')).rejects.toBeInstanceOf(NotFoundError)
+		})
+
+		test('allows a custom not-found handler to return an Equipped response', async () => {
+			ensureTestInstance()
+			const server = new TestServer()
+			server.setNotFoundHandler(
+				({ request }) =>
+					new Response<any>({
+						body: [{ message: `No route for ${request.path}` }],
+						status: StatusCodes.NotFound,
+						headers: {},
+						cookies: {},
+						contentType: 'application/json',
+					}),
+			)
+			await server.start()
+
+			const result = await server.dispatchNotFound('/custom')
+
+			expect(result.handledResponse?.status).toBe(StatusCodes.NotFound)
+			expect(result.handledResponse?.body).toEqual([{ message: 'No route for /custom' }])
+		})
+
+		test('allows a custom not-found handler to complete the response through a raw Node listener', async () => {
+			ensureTestInstance()
+			const server = new TestServer()
+			server.setNotFoundHandler(({ respondWithRaw }) =>
+				respondWithRaw((_, response) => {
+					response.statusCode = 203
+					response.end('raw fallback')
+				}),
+			)
+			await server.start()
+
+			const result = await server.dispatchNotFound('/page')
+
+			expect(result.handledResponse).toBeNull()
+			expect(result.rawResponse.statusCode).toBe(203)
+			expect(result.rawResponse.body()).toBe('raw fallback')
+		})
+
+		test('writes a clear raw error when a raw not-found handler does not start a response', async () => {
+			ensureTestInstance()
+			const server = new TestServer()
+			server.setNotFoundHandler(({ respondWithRaw }) => respondWithRaw(() => {}))
+			await server.start()
+
+			const result = await server.dispatchNotFound('/page')
+
+			expect(result.handledResponse).toBeNull()
+			expect(result.rawResponse.statusCode).toBe(StatusCodes.BadRequest)
+			expect(result.rawResponse.body()).toContain(rawResponseNotStartedMessage)
+		})
+
+		test('rejects a custom not-found handler result that is neither an Equipped response nor raw completion', async () => {
+			ensureTestInstance()
+			const server = new TestServer()
+			server.setNotFoundHandler((() => undefined) as unknown as ServerNotFoundHandler)
+			await server.start()
+
+			await expect(server.dispatchNotFound('/bad')).rejects.toThrow('Not-found handler must return a Response or respondWithRaw(...)')
+		})
+
+		test('rejects setting the custom not-found handler after server startup', async () => {
+			ensureTestInstance()
+			const server = new TestServer()
+			await server.start()
+
+			expect(() =>
+				server.setNotFoundHandler(
+					() =>
+						new Response<any>({
+							body: null,
+							status: StatusCodes.NotFound,
+							headers: {},
+							cookies: {},
+							contentType: 'application/json',
+						}),
+				),
+			).toThrow('Cannot set not-found handler after server has started')
+		})
+	})
 }

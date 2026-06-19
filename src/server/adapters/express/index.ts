@@ -13,7 +13,7 @@ import { Instance } from '../../../instance'
 import { configurable, getMediaDuration } from '../../../utilities'
 import { Request, Response } from '../../requests'
 import { StatusCodes, type IncomingFile, type MethodsEnum } from '../../types'
-import { Server, serverConfigPipe } from '../base'
+import { type RawResponder, Server, serverConfigPipe } from '../base'
 
 export class ExpressServer extends configurable(serverConfigPipe, Server) {
 	#app: express.Express
@@ -109,6 +109,10 @@ export class ExpressServer extends configurable(serverConfigPipe, Server) {
 		}
 	}
 
+	protected createRawResponder(req: express.Request, res: express.Response): RawResponder {
+		return this.createNodeRawResponder({ request: req, response: res })
+	}
+
 	protected registerRoute(method: MethodsEnum, path: string, cb: (req: any, res: any) => Promise<void>) {
 		this.#app[method]?.(path, async (req: any, res: any) => cb(req, res))
 	}
@@ -131,4 +135,58 @@ export class ExpressServer extends configurable(serverConfigPipe, Server) {
 			}
 		})
 	}
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, test, vi } = import.meta.vitest
+
+	const testInstanceState = globalThis as typeof globalThis & { __equippedTestInstanceAliased?: boolean }
+
+	function ensureTestInstance() {
+		const instance = Instance.maybeGet() ?? Instance.create({ app: { name: 'equipped-test' }, log: { level: 'silent' } })
+		if (!testInstanceState.__equippedTestInstanceAliased) {
+			instance.alias('equipped-test')
+			testInstanceState.__equippedTestInstanceAliased = true
+		}
+	}
+
+	function createExpressResponse() {
+		return {
+			statusCode: 200,
+			headersSent: false,
+			writableEnded: false,
+			setHeader: vi.fn(),
+			end(chunk?: unknown) {
+				void chunk
+				this.headersSent = true
+				this.writableEnded = true
+			},
+		}
+	}
+
+	class TestExpressServer extends ExpressServer {
+		exposeRawResponder(req: express.Request, res: express.Response) {
+			return this.createRawResponder(req, res)
+		}
+	}
+
+	describe('ExpressServer raw responder', () => {
+		test('passes the Express request and response to the raw Node handler', async () => {
+			ensureTestInstance()
+			const server = TestExpressServer.create({ port: 0, requests: { log: false } })
+			const req = { marker: 'request' } as unknown as express.Request
+			const res = createExpressResponse() as unknown as express.Response
+			let received: { request: unknown; response: unknown } | null = null
+
+			await server.exposeRawResponder(
+				req,
+				res,
+			)(async (request, response) => {
+				received = { request, response }
+				response.end('ok')
+			})
+
+			expect(received).toEqual({ request: req, response: res })
+		})
+	})
 }
