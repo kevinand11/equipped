@@ -76,6 +76,8 @@ const rawResponseHandledSymbol: unique symbol = Symbol('rawResponseHandled')
 export type RawResponseHandled = { readonly [rawResponseHandledSymbol]: true }
 export type RawResponseHandler = (request: IncomingMessage, response: ServerResponse) => unknown | Promise<unknown>
 export type RawResponder = (handler: RawResponseHandler) => Promise<RawResponseHandled>
+export type ServerBeforeListenContext = { httpServer: http.Server; port: number }
+export type ServerBeforeListenHandler = (context: ServerBeforeListenContext) => void | Promise<void>
 export type ServerNotFoundContext = { request: Request<any>; respondWithRaw: RawResponder }
 export type ServerNotFoundHandler = (
 	context: ServerNotFoundContext,
@@ -120,6 +122,7 @@ export abstract class Server {
 	#queue: (() => void | Promise<void>)[] = []
 	#routesByKey = new Set<string>()
 	#started = false
+	#beforeListenHandlers: ServerBeforeListenHandler[] = []
 	#notFoundHandler: ServerNotFoundHandler | null = null
 
 	protected abstract parseRequest(req: any): Promise<Request<any>>
@@ -198,6 +201,12 @@ export abstract class Server {
 		return this
 	}
 
+	onBeforeListen(handler: ServerBeforeListenHandler): this {
+		if (this.#started) throw new EquippedError('Cannot add before-listen handler after server has started', {})
+		this.#beforeListenHandlers.push(handler)
+		return this
+	}
+
 	test(): TestAgent {
 		return supertest(this.#httpServer)
 	}
@@ -240,6 +249,8 @@ export abstract class Server {
 							})
 			return await this.handleResponse(res, response)
 		})
+
+		for (const handler of this.#beforeListenHandlers) await handler({ httpServer: this.#httpServer, port: config.port })
 
 		const started = await this.startServer(config.port)
 		if (started) Instance.get().log.info(`${instance.id}(${app.name}) service listening on port ${config.port}`)
@@ -411,6 +422,7 @@ if (import.meta.vitest) {
 
 	class TestServer extends Server {
 		handledResponse: Response<any> | null = null
+		startedPorts: number[] = []
 		private notFoundHandler: ((req: any, res: any) => Promise<void>) | null = null
 
 		constructor() {
@@ -460,7 +472,8 @@ if (import.meta.vitest) {
 			this.notFoundHandler = cb
 		}
 
-		protected async startServer() {
+		protected async startServer(port: number) {
+			this.startedPorts.push(port)
 			return true
 		}
 
@@ -474,6 +487,52 @@ if (import.meta.vitest) {
 			return { handledResponse: this.handledResponse, rawResponse }
 		}
 	}
+
+	describe('Server before-listen handlers', () => {
+		test('runs before-listen handlers before adapter listen in registration order', async () => {
+			ensureTestInstance()
+			const server = new TestServer()
+			const calls: string[] = []
+			let receivedServer: http.Server | null = null
+
+			server
+				.onBeforeListen(({ httpServer, port }) => {
+					calls.push(`first:${port}`)
+					receivedServer = httpServer
+					expect(server.startedPorts).toEqual([])
+				})
+				.onBeforeListen(({ httpServer, port }) => {
+					calls.push(`second:${port}`)
+					expect(httpServer).toBe(receivedServer)
+					expect(server.startedPorts).toEqual([])
+				})
+
+			await server.start()
+
+			expect(calls).toEqual(['first:0', 'second:0'])
+			expect(receivedServer).toBeInstanceOf(http.Server)
+			expect(server.startedPorts).toEqual([0])
+		})
+
+		test('rejects startup when a before-listen handler fails before adapter listen', async () => {
+			ensureTestInstance()
+			const server = new TestServer()
+			server.onBeforeListen(async () => {
+				throw new Error('before-listen failed')
+			})
+
+			await expect(server.start()).rejects.toThrow('before-listen failed')
+			expect(server.startedPorts).toEqual([])
+		})
+
+		test('rejects adding before-listen handlers after server startup', async () => {
+			ensureTestInstance()
+			const server = new TestServer()
+			await server.start()
+
+			expect(() => server.onBeforeListen(() => {})).toThrow('Cannot add before-listen handler after server has started')
+		})
+	})
 
 	describe('Server not-found handler', () => {
 		test('throws the default Equipped not-found error when no custom handler is set', async () => {
