@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0](https://github.com/kevinand11/equipped/compare/v5.3.0-alpha.0...v5.3.0) (2026-06-19)
+
+
+### Features
+
+* **server:** add custom not found fallback ([6173b4f](https://github.com/kevinand11/equipped/commit/6173b4ffb7f14dd7f965507c972f9fb1434dc5d1))
+
 ## [5.3.0-alpha.0](https://github.com/kevinand11/equipped/compare/v5.2.9...v5.3.0-alpha.0) (2026-06-16)
 
 
