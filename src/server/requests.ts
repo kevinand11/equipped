@@ -5,9 +5,8 @@ import type { SerializeOptions } from '@fastify/cookie'
 import type { DistributiveOmit, IsInTypeList } from 'valleyed'
 
 import type { RequestError } from '../errors'
-import type { DefaultCookies, DefaultHeaders, IncomingFile, MethodsEnum, RouteDef, RouteDefToReqRes } from './types'
 import type { AuthUser } from '../types'
-import { parseJSONObject } from '../utilities'
+import type { DefaultCookies, DefaultHeaders, IncomingFile, MethodsEnum, RouteDef, RouteDefToReqRes } from './types'
 
 export type CookieVal<C extends DefaultCookies> = {
 	[K in keyof C]: SerializeOptions & { value: C[K] }
@@ -51,8 +50,10 @@ export class Request<Def extends RouteDefToReqRes<any>> {
 		this.params = params
 		this.cookies = cookies
 		this.headers = headers
-		this.query = parseJSONObject(query)
-		this.body = <any>Object.assign(parseJSONObject(body), files)
+		const hasFiles = Object.keys(files).length > 0
+		const bodyFields = body && typeof body === 'object' && !Array.isArray(body) ? body : {}
+		this.query = query
+		this.body = <any>(hasFiles ? Object.assign({}, bodyFields, files) : body)
 	}
 
 	pipe(stream: Readable, opts: { headers?: Def['responseHeaders']; cookies?: Def['responseCookies']; status?: Def['statusCode'] } = {}) {
@@ -131,4 +132,91 @@ export class Response<Def extends RouteDefToReqRes<any>> {
 			if (this.cookies[key]) this.cookies[key].value = val
 		})
 	}
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, test } = import.meta.vitest
+
+	describe('Request', () => {
+		test('preserves adapter-provided query and body values without JSON normalization', () => {
+			const query = {
+				count: '10',
+				active: 'true',
+				filter: '{"name":"test"}',
+				quoted: '"value"',
+			}
+			const body = {
+				count: '10',
+				active: 'false',
+				payload: '{"nested":true}',
+				quoted: '"value"',
+			}
+
+			const request = new Request<any>({
+				ip: undefined,
+				body,
+				cookies: {},
+				params: {},
+				query,
+				method: 'post',
+				path: '/items',
+				headers: {},
+				files: {},
+			})
+
+			expect(request.query).toEqual(query)
+			expect(request.body).toEqual(body)
+		})
+
+		test('continues merging uploaded files into body fields without parsing string fields', () => {
+			const file: IncomingFile = {
+				name: 'avatar.png',
+				type: 'image/png',
+				size: 4,
+				isTruncated: false,
+				data: Buffer.from('file'),
+				duration: 0,
+			}
+			const body = { metadata: '{"alt":"avatar"}' }
+
+			const request = new Request<any>({
+				ip: undefined,
+				body,
+				cookies: {},
+				params: {},
+				query: {},
+				method: 'post',
+				path: '/upload',
+				headers: {},
+				files: { avatar: [file] },
+			})
+
+			expect(request.body).toEqual({ metadata: '{"alt":"avatar"}', avatar: [file] })
+		})
+
+		test('does not spread non-object body values when uploaded files are present', () => {
+			const file: IncomingFile = {
+				name: 'avatar.png',
+				type: 'image/png',
+				size: 4,
+				isTruncated: false,
+				data: Buffer.from('file'),
+				duration: 0,
+			}
+
+			const request = new Request<any>({
+				ip: undefined,
+				body: 'raw text body',
+				cookies: {},
+				params: {},
+				query: {},
+				method: 'post',
+				path: '/upload',
+				headers: {},
+				files: { avatar: [file] },
+			})
+
+			expect(request.body).toEqual({ avatar: [file] })
+		})
+	})
 }
