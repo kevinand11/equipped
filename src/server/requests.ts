@@ -6,7 +6,7 @@ import type { DistributiveOmit, IsInTypeList } from 'valleyed'
 
 import type { RequestError } from '../errors'
 import type { AuthUser } from '../types'
-import type { DefaultCookies, DefaultHeaders, IncomingFile, MethodsEnum, RouteDef, RouteDefToReqRes } from './types'
+import { StatusCodes, type DefaultCookies, type DefaultHeaders, type IncomingFile, type MethodsEnum, type RouteDef, type RouteDefToReqRes } from './types'
 
 export type CookieVal<C extends DefaultCookies> = {
 	[K in keyof C]: SerializeOptions & { value: C[K] }
@@ -116,7 +116,7 @@ export class Response<Def extends RouteDefToReqRes<any>> {
 		this.cookies = cookies
 		this.piped = piped
 
-		if (!this.piped) {
+		if (!this.piped && this.status !== StatusCodes.NoContent) {
 			// @ts-expect-error indexing on generic
 			this.headers['Content-Type'] = contentType
 		}
@@ -136,6 +136,35 @@ export class Response<Def extends RouteDefToReqRes<any>> {
 
 if (import.meta.vitest) {
 	const { describe, expect, test } = import.meta.vitest
+
+	describe('Response', () => {
+		test('does not set content-type for 204 no-content responses', () => {
+			const response = new Response<any>({
+				body: undefined,
+				status: StatusCodes.NoContent,
+				contentType: 'application/json',
+				headers: {},
+				cookies: {},
+			})
+
+			expect(response.status).toBe(StatusCodes.NoContent)
+			expect(response.body).toBeUndefined()
+			expect(response.headers).not.toHaveProperty('Content-Type')
+		})
+
+		test('keeps default content-type for normal JSON responses', () => {
+			const response = new Response<any>({
+				body: { ok: true },
+				status: StatusCodes.Ok,
+				contentType: 'application/json',
+				headers: {},
+				cookies: {},
+			})
+
+			expect(response.status).toBe(StatusCodes.Ok)
+			expect(response.headers).toHaveProperty('Content-Type', 'application/json')
+		})
+	})
 
 	describe('Request', () => {
 		test('preserves adapter-provided query and body values without JSON normalization', () => {

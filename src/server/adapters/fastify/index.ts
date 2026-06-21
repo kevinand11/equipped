@@ -102,7 +102,8 @@ export class FastifyServer extends configurable(serverConfigPipe, Server) {
 
 	protected async handleResponse(res: any, response: Response<any>) {
 		for (const [key, { value, ...opts }] of Object.entries(response.cookies)) res = res.setCookie(key, value, opts)
-		await res.status(response.status).headers(response.headers).send(response.body)
+		const reply = res.status(response.status).headers(response.headers)
+		await (response.status === StatusCodes.NoContent ? reply.send() : reply.send(response.body))
 	}
 
 	protected createRawResponder(req: FastifyRequest, res: FastifyReply): RawResponder {

@@ -16,6 +16,7 @@ export const Methods = {
 
 export const StatusCodes = {
 	Ok: 200,
+	NoContent: 204,
 	Found: 302,
 	BadRequest: 400,
 	NotAuthenticated: 401,

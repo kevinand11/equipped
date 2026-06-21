@@ -102,6 +102,10 @@ export class ExpressServer extends configurable(serverConfigPipe, Server) {
 		if (!response.piped) {
 			Object.entries(response.headers).forEach(([key, value]) => res.header(key, value as string))
 			Object.entries(response.cookies).forEach(([key, { value, ...opts }]) => res.cookie(key, value, opts))
+			if (response.status === StatusCodes.NoContent) {
+				res.status(response.status).end()
+				return
+			}
 			const type = response.body === null || response.body === undefined ? 'json' : 'send'
 			res.status(response.status)[type](response.body).end()
 		} else {
