@@ -22,6 +22,7 @@ export const StatusCodes = {
 	NotAuthorized: 403,
 	NotFound: 404,
 	ValidationError: 422,
+	PreconditionRequired: 428,
 	TooManyRequests: 429,
 	TokenExpired: 461,
 } as const
