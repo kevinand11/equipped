@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.3.3](https://github.com/kevinand11/equipped/compare/v5.3.2...v5.3.3) (2026-06-21)
+
+
+### Features
+
+* **server:** add precondition required error ([b4630f8](https://github.com/kevinand11/equipped/commit/b4630f841858858af23a4d7f498e7a3ddba83b5b))
+
 ### [5.3.2](https://github.com/kevinand11/equipped/compare/v5.3.1...v5.3.2) (2026-06-20)
 
 ### [5.3.1](https://github.com/kevinand11/equipped/compare/v5.3.0...v5.3.1) (2026-06-19)
